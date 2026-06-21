@@ -12,9 +12,9 @@
     <div class="actions">
       <button id="btn-new">Create New</button>
       <button id="btn-load">Load</button>
-      <input type="file" id="file-import" accept="application/json" hidden />
+      <input type="file" id="file-load" accept="application/json,.json" hidden />
+      <button id="btn-import">Import</button>
       <button id="btn-save">Save</button>
-      <button id="btn-export">Export JSON</button>
       <button id="btn-export-engine" class="primary">Export engine loadout</button>
     </div>
   </header>
@@ -31,13 +31,19 @@
 
       <section class="panel" id="character-panel">
         <input id="char-name" class="char-name" type="text" placeholder="Name" />
+        <div class="char-level">Level <span id="char-level">1</span></div>
         <textarea id="char-desc" class="char-desc" rows="4" placeholder="Description"></textarea>
+        <div class="field">
+          <span>Archetype</span>
+          <div id="archetype-pick" class="archetype-row"></div>
+        </div>
+        <div id="stat-block" class="stat-block"></div>
         <div class="field">
           <span>Colours (1–3)</span>
           <div id="color-pick" class="pip-row"></div>
         </div>
         <div class="field">
-          <span>Starting mana (two slots — may be the same colour)</span>
+          <span id="mana-label">Starting mana</span>
           <div id="mana-pick"></div>
         </div>
       </section>
@@ -82,6 +88,23 @@
 
   <div id="detail-overlay" class="overlay hidden">
     <div class="detail-card" id="detail-card"></div>
+  </div>
+
+  <div id="import-overlay" class="overlay hidden">
+    <div class="detail-card">
+      <h3>Import deck list</h3>
+      <div class="meta">Paste one card per line. Quantity, set code in (parens), and
+        collector number are ignored — only the card name is used. Anything that
+        can't be added cleanly (wrong type, off-colour, over 40) still imports and
+        is flagged in the list.</div>
+      <textarea id="import-text" rows="12" spellcheck="false"
+        placeholder="1 Akroma's Will (CMR) 3&#10;1 Apostle's Blessing (MM2) 8&#10;1 Banishing Light (CM2) 18"></textarea>
+      <div id="import-status" class="meta"></div>
+      <div class="detail-actions">
+        <button id="import-cancel">Cancel</button>
+        <button class="primary" id="import-go">Import</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>

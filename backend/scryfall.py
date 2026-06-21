@@ -69,3 +69,19 @@ def fetch_named(name: str) -> dict:
         raise ValueError(f"Card not found on Scryfall: {name!r}")
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_best(name: str) -> dict:
+    """Best match for an imported line: exact name first, then a fuzzy fallback."""
+    try:
+        return fetch_named(name)
+    except ValueError:
+        pass
+    _throttle()
+    resp = requests.get(
+        f"{BASE}/cards/named", params={"fuzzy": name}, headers=HEADERS, timeout=15
+    )
+    if resp.status_code == 404:
+        raise ValueError(f"Card not found on Scryfall: {name!r}")
+    resp.raise_for_status()
+    return resp.json()

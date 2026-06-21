@@ -2,10 +2,15 @@
 // single source of truth; this file only round-trips what the backend validates.
 
 const COLORS = ["W", "U", "B", "R", "G"];
+const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster"];
+let ARCHETYPES = {}; // {Fighter:{starting_hp,starting_hand,starting_mana}, …} from backend
 
 const blankLoadout = () => ({
   ltg_version: "0.1",
-  character: { name: "New Character", description: "", portrait: "", colors: ["U"], starting_mana: ["U", "B"] },
+  character: {
+    name: "New Character", description: "", portrait: "",
+    archetype: "Fighter", level: 1, colors: ["U"], starting_mana: ["U", "U"],
+  },
   cards: [],
 });
 
@@ -59,32 +64,79 @@ function renderPortrait() {
   }
 }
 
+function manaAmount() {
+  return ARCHETYPES[state.character.archetype]?.starting_mana || 2;
+}
+
+// Keep starting_mana the right length for the archetype and within `colors`.
+function reconcileStartingMana() {
+  const ch = state.character;
+  const colors = ch.colors;
+  const amount = manaAmount();
+  for (let i = 0; i < ch.starting_mana.length; i++) {
+    if (!colors.includes(ch.starting_mana[i])) ch.starting_mana[i] = colors[0];
+  }
+  while (ch.starting_mana.length < amount) ch.starting_mana.push(colors[0]);
+  ch.starting_mana.length = amount;
+}
+
 function renderCharacter() {
-  $("#char-name").value = state.character.name;
-  $("#char-desc").value = state.character.description || "";
+  const ch = state.character;
+  $("#char-name").value = ch.name;
+  $("#char-desc").value = ch.description || "";
+  $("#char-level").textContent = ch.level || 1;
   renderPortrait();
 
+  // Archetype picker
+  const archPick = $("#archetype-pick");
+  archPick.innerHTML = "";
+  ARCHETYPE_ORDER.forEach((a) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "archetype-btn" + (ch.archetype === a ? " on" : "");
+    btn.textContent = a;
+    btn.onclick = () => setArchetype(a);
+    archPick.appendChild(btn);
+  });
+
+  // Derived stat block (read-only)
+  const stats = ARCHETYPES[ch.archetype];
+  $("#stat-block").innerHTML = stats
+    ? `<span class="stat"><b>${stats.starting_hp}</b> HP</span>
+       <span class="stat"><b>${stats.starting_hand}</b> hand</span>
+       <span class="stat"><b>${stats.starting_mana}</b> mana</span>`
+    : "";
+
+  // Colours
   const colorPick = $("#color-pick");
   colorPick.innerHTML = "";
   COLORS.forEach((c) => {
-    colorPick.appendChild(makePip(c, state.character.colors.includes(c), () => toggleColor(c)));
+    colorPick.appendChild(makePip(c, ch.colors.includes(c), () => toggleColor(c)));
   });
 
-  // Starting mana: two independent slots; each picks one colour, duplicates allowed.
+  // Starting mana: amount-many slots, each constrained to the character's colours.
+  $("#mana-label").textContent = `Starting mana (${manaAmount()}, from your colours)`;
   const manaPick = $("#mana-pick");
   manaPick.innerHTML = "";
-  [0, 1].forEach((slot) => {
+  for (let slot = 0; slot < manaAmount(); slot++) {
     const row = document.createElement("div");
     row.className = "pip-row mana-slot";
     const label = document.createElement("span");
     label.className = "slot-label";
     label.textContent = `Slot ${slot + 1}`;
     row.appendChild(label);
-    COLORS.forEach((c) => {
-      row.appendChild(makePip(c, state.character.starting_mana[slot] === c, () => setMana(slot, c)));
+    ch.colors.forEach((c) => {
+      row.appendChild(makePip(c, ch.starting_mana[slot] === c, () => setMana(slot, c)));
     });
     manaPick.appendChild(row);
-  });
+  }
+}
+
+function setArchetype(a) {
+  state.character.archetype = a;
+  reconcileStartingMana();
+  renderCharacter();
+  scheduleValidate();
 }
 
 function setMana(slot, c) {
@@ -103,6 +155,7 @@ function toggleColor(c) {
   } else {
     toast("Colours: pick at most 3");
   }
+  reconcileStartingMana();
   renderCharacter();
   scheduleValidate();
 }
@@ -225,9 +278,18 @@ function costString(cost) {
   return parts.join("") || "—";
 }
 
+// Card types LTG doesn't accept (mirror of backend FORBIDDEN_TYPES) — for the flag.
+const FORBIDDEN_TYPES = ["Land", "Planeswalker", "Creature", "Artifact"];
+function forbiddenType(typeLine) {
+  const tokens = (typeLine || "").split(/[^A-Za-z]+/);
+  return FORBIDDEN_TYPES.find((t) => tokens.includes(t)) || null;
+}
+
 // Per-card legality issues, computed live against the character's identity.
 function cardIssues(card) {
   const issues = [];
+  const badType = forbiddenType(card.type);
+  if (badType) issues.push({ cls: "bad", text: `⛔ fix: ${badType}` });
   const identity = new Set(state.character.colors);
   const offColors = Object.keys(card.cost.colors || {}).filter((c) => !identity.has(c));
   if (offColors.length) issues.push({ cls: "bad", text: `⛔ off-colour (${offColors.join("")})` });
@@ -284,6 +346,15 @@ async function loadSpecs() {
   } catch (e) { /* editor falls back to whatever the card already holds */ }
 }
 
+async function loadArchetypes() {
+  try {
+    ARCHETYPES = await api("GET", "/api/archetypes");
+    reconcileStartingMana();
+    renderCharacter();
+    scheduleValidate();
+  } catch (e) { /* picker falls back to defaults */ }
+}
+
 // Mirror of backend describe_target, for slot/link labels.
 function describeTargetJS(d) {
   if (typeof d === "string") return d; // "$slot" ref
@@ -316,6 +387,7 @@ function defaultEffect(kind) {
     else if (p.control === "int" || p.control === "float" || p.control === "value") eff[p.name] = 1;
     else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
     else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
+    else if (p.control === "action_target") eff[p.name] = { class: "action", side: "enemy" };
     else eff[p.name] = "";
   });
   return eff;
@@ -361,12 +433,15 @@ function targetControlHtml(i, current, card) {
 function valueControlHtml(i, p, val) {
   let type = "number", num = 1, ref = "";
   if (val === "all") type = "all";
-  else if (val && typeof val === "object" && "ref" in val) { type = "ref"; ref = val.ref; }
-  else num = val;
+  else if (val && typeof val === "object" && "ref" in val) {
+    if (val.ref === "mana_capacity") type = "capacity";
+    else { type = "ref"; ref = val.ref; }
+  } else num = val;
   return `
     <select class="val-type" data-i="${i}" data-p="${p}">
       <option value="number" ${type === "number" ? "selected" : ""}>number</option>
       <option value="all" ${type === "all" ? "selected" : ""}>all</option>
+      <option value="capacity" ${type === "capacity" ? "selected" : ""}>mana capacity</option>
       <option value="ref" ${type === "ref" ? "selected" : ""}>reference</option>
     </select>
     ${type === "number" ? `<input class="val-input" type="number" data-i="${i}" data-p="${p}" value="${num}" />` : ""}
@@ -395,7 +470,9 @@ function effectRowHtml(e, i, card) {
   const spec = EFFECT_SPECS[e.kind];
   const kindSel = `<select class="eff-kind" data-i="${i}">${KINDS().map((k) => `<option ${k === e.kind ? "selected" : ""}>${k}</option>`).join("")}</select>`;
   const params = (spec?.params || []).map((p) => {
-    if (p.name === "target") return `<span class="param">target ${targetControlHtml(i, e.target, card)}</span>`;
+    if (p.name === "target" && p.control === "action_target")
+      return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
+    if (p.name === "target") return `<span class="param"><label class="inline">target</label> ${targetControlHtml(i, e.target, card)}</span>`;
     return `<span class="param">${paramHtml(i, p, e[p.name])}</span>`;
   }).join("");
   return `
@@ -524,7 +601,9 @@ function wireDetail(idx) {
   document.querySelectorAll(".val-type").forEach((sel) => {
     sel.onchange = () => {
       const i = +sel.dataset.i, p = sel.dataset.p;
-      card.effects[i][p] = sel.value === "all" ? "all" : sel.value === "ref" ? { ref: "" } : 1;
+      card.effects[i][p] = sel.value === "all" ? "all"
+        : sel.value === "capacity" ? { ref: "mana_capacity" }
+        : sel.value === "ref" ? { ref: "" } : 1;
       recheckCard(idx, true);
     };
   });
@@ -631,7 +710,12 @@ async function recheckCard(idx, rerender) {
   try {
     const res = await api("POST", "/api/cards/validate", { card });
     if (res.valid) {
-      state.cards[idx] = { ...res.card, _lints: res.lints, _error: null };
+      // Mutate in place so wired handlers (which close over this object) stay
+      // valid across non-rerender edits; replacing the object would orphan them.
+      Object.keys(card).forEach((k) => { if (!k.startsWith("_")) delete card[k]; });
+      Object.assign(card, res.card);
+      card._lints = res.lints;
+      card._error = null;
     } else {
       card._error = res.errors.join("; ");
       card._lints = card._lints || [];
@@ -714,51 +798,124 @@ function renderStatus(s) {
 }
 
 // --------------------------------------------------------------------------
-// Top bar: new / load / save / export / import
+// Top bar: new / load / save / import deck list / export engine loadout
 // --------------------------------------------------------------------------
+let currentFileHandle = null;   // File System Access handle for the open savegame
+let currentFileName = null;
+const HAS_FS = typeof window.showOpenFilePicker === "function";
+const JSON_TYPES = [{ description: "LTG loadout", accept: { "application/json": [".json"] } }];
+
 function syncCharacterFromInputs() {
   state.character.name = $("#char-name").value;
   state.character.description = $("#char-desc").value;
 }
 
+function defaultFileName(suffix = "") {
+  const base = (state.character.name || "loadout").replace(/[^a-z0-9]+/gi, "_").toLowerCase();
+  return `${base}${suffix}.json`;
+}
+
+function applyLoadedText(text, handle, name) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { toast("Load failed: invalid JSON"); return; }
+  state = data;
+  currentFileHandle = handle || null;
+  currentFileName = name || null;
+  reconcileStartingMana();
+  renderAll();
+  toast(`Loaded ${name || "loadout"}`);
+}
+
+// Load — a real file picker; remembers the handle so Save can overwrite it.
+async function loadLoadout() {
+  if (HAS_FS) {
+    let handle;
+    try { [handle] = await window.showOpenFilePicker({ types: JSON_TYPES, multiple: false }); }
+    catch (e) { return; } // user cancelled
+    const file = await handle.getFile();
+    applyLoadedText(await file.text(), handle, file.name);
+  } else {
+    $("#file-load").click(); // fallback: <input type=file>
+  }
+}
+
+async function writeHandle(handle, text) {
+  const w = await handle.createWritable();
+  await w.write(text);
+  await w.close();
+}
+
+// Save — overwrite the open file, else prompt for a location (Save As).
 async function saveLoadout() {
   syncCharacterFromInputs();
-  try {
-    const { saved } = await api("POST", "/api/loadout/save", { loadout: state });
-    toast(`Saved as "${saved}"`);
-  } catch (e) {
-    toast(`Save failed: ${e.message}`);
+  const text = JSON.stringify(state, null, 2);
+  if (currentFileHandle) {
+    try { await writeHandle(currentFileHandle, text); toast(`Saved ${currentFileName || ""}`.trim()); }
+    catch (e) { toast(`Save failed: ${e.message}`); }
+    return;
+  }
+  if (HAS_FS) {
+    let handle;
+    try { handle = await window.showSaveFilePicker({ suggestedName: defaultFileName(), types: JSON_TYPES }); }
+    catch (e) { return; } // user cancelled
+    try {
+      await writeHandle(handle, text);
+      currentFileHandle = handle;
+      currentFileName = handle.name;
+      toast(`Saved ${handle.name}`);
+    } catch (e) { toast(`Save failed: ${e.message}`); }
+  } else {
+    downloadText(text, defaultFileName()); // fallback: download
+    toast("Saved (downloaded)");
   }
 }
 
-async function loadDialog() {
-  let names = [];
-  try { names = (await api("GET", "/api/loadouts")).loadouts; } catch (e) { /* ignore */ }
-  const choice = prompt(
-    `Load a saved loadout by name, or click Cancel then "Load" again to import a file.\n\nSaved: ${
-      names.length ? names.join(", ") : "(none)"}`,
-    names[0] || ""
-  );
-  if (choice === null) { $("#file-import").click(); return; }
-  if (!choice.trim()) return;
-  try {
-    state = await api("GET", `/api/loadout/${encodeURIComponent(choice.trim())}`);
-    renderAll();
-    toast(`Loaded "${choice.trim()}"`);
-  } catch (e) {
-    toast(`Load failed: ${e.message}`);
-  }
-}
-
-function exportJson() {
-  syncCharacterFromInputs();
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
+function downloadText(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `${(state.character.name || "loadout").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.json`;
-  a.click();
+  a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+}
+
+// --- Deck-list import ------------------------------------------------------
+function openImport() {
+  $("#import-text").value = "";
+  $("#import-status").textContent = "";
+  $("#import-overlay").classList.remove("hidden");
+  $("#import-text").focus();
+}
+function closeImport() { $("#import-overlay").classList.add("hidden"); }
+
+// "1 Akroma's Will (CMR) 3" -> "Akroma's Will" (drop qty, set code, collector #).
+function parseDeckList(text) {
+  return text.split(/\r?\n/).map((line) => {
+    let s = line.trim();
+    if (!s || s.startsWith("//") || s.startsWith("#")) return null;
+    s = s.replace(/^\s*\d+\s*x?\s+/i, "");        // leading quantity ("1 ", "2x ")
+    s = s.replace(/\s*\([^)]*\)\s*\d*\s*$/, "");   // trailing "(SET) 123"
+    return s.trim();
+  }).filter(Boolean);
+}
+
+async function doImport() {
+  const names = parseDeckList($("#import-text").value);
+  if (!names.length) { $("#import-status").textContent = "No card names found."; return; }
+  $("#import-status").textContent = `Importing ${names.length} card(s)…`;
+  $("#import-go").disabled = true;
+  try {
+    const res = await api("POST", "/api/cards/import", { names });
+    res.cards.forEach(({ card, lints }) => state.cards.push({ ...card, _lints: lints }));
+    renderDeck();
+    scheduleValidate();
+    closeImport();
+    const nf = res.not_found.length;
+    toast(`Imported ${res.cards.length} card(s)${nf ? ` — ${nf} not found` : ""}.`);
+    if (nf) console.warn("Not found on import:", res.not_found);
+  } catch (e) {
+    $("#import-status").textContent = `Import failed: ${e.message}`;
+  } finally {
+    $("#import-go").disabled = false;
+  }
 }
 
 // Export an engine-ready loadout: only structurally-valid, validated cards.
@@ -789,20 +946,6 @@ async function exportEngineLoadout() {
   }
 }
 
-function importFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      state = JSON.parse(reader.result);
-      renderAll();
-      toast("Imported from file");
-    } catch (e) {
-      toast("Import failed: invalid JSON");
-    }
-  };
-  reader.readAsText(file);
-}
-
 // --------------------------------------------------------------------------
 // Helpers + wiring
 // --------------------------------------------------------------------------
@@ -820,16 +963,23 @@ function renderAll() {
 }
 
 function init() {
-  $("#btn-new").onclick = () => { if (confirm("Discard current loadout and start new?")) { state = blankLoadout(); renderAll(); } };
-  $("#btn-load").onclick = loadDialog;
+  $("#btn-new").onclick = () => { if (confirm("Discard current loadout and start new?")) { state = blankLoadout(); currentFileHandle = null; currentFileName = null; renderAll(); } };
+  $("#btn-load").onclick = loadLoadout;
+  $("#btn-import").onclick = openImport;
   $("#btn-save").onclick = saveLoadout;
-  $("#btn-export").onclick = exportJson;
   $("#btn-export-engine").onclick = exportEngineLoadout;
   $("#btn-search").onclick = doSearch;
   $("#search-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   $("#char-name").oninput = () => { state.character.name = $("#char-name").value; scheduleValidate(); };
   $("#char-desc").oninput = () => { state.character.description = $("#char-desc").value; };
-  $("#file-import").onchange = (e) => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ""; };
+  $("#file-load").onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) file.text().then((t) => applyLoadedText(t, null, file.name));
+    e.target.value = "";
+  };
+  $("#import-cancel").onclick = closeImport;
+  $("#import-go").onclick = doImport;
+  $("#import-overlay").onclick = (e) => { if (e.target.id === "import-overlay") closeImport(); };
   $("#portrait").onclick = (e) => { if (e.target.id !== "portrait-clear") $("#portrait-file").click(); };
   $("#portrait-clear").onclick = (e) => { e.stopPropagation(); state.character.portrait = ""; renderPortrait(); };
   $("#portrait-file").onchange = (e) => {
@@ -845,6 +995,7 @@ function init() {
     th.onclick = () => applySort(th.dataset.sort);
   });
   loadSpecs();
+  loadArchetypes();
   renderAll();
 }
 

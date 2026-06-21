@@ -9,7 +9,7 @@
   "timing": "channeled",
   "reactive": false,
   "original_text": "At the beginning of your upkeep, create a 1/1 black Faerie Rogue creature token with flying and you lose 1 life.",
-  "translated_text": "At the start of each of your turns while channeled: create a Faerie ally and lose 1 HP.",
+  "translated_text": "At the start of every turn while channeled: create a Faerie ally and lose 1 HP.",
   "effects": [
     { "kind": "create_token", "token_id": "faerie", "count": 1, "trigger": "upkeep" },
     { "kind": "lose_life", "amount": 1, "target": { "mode": "self" }, "trigger": "upkeep" }

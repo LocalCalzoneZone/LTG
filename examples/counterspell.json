@@ -9,8 +9,9 @@
   "timing": "instant",
   "reactive": true,
   "original_text": "Counter target spell.",
-  "translated_text": "Counter an enemy.",
+  "translated_text": "Cancel an enemy action (spell or ability).",
   "effects": [
-    { "kind": "counter_intent", "target": { "mode": "chosen", "side": "enemy", "targeted": true } }
-  ]
+    { "kind": "counter", "filter": "action", "target": { "class": "action", "side": "enemy" } }
+  ],
+  "validated": true
 }

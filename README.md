@@ -70,16 +70,16 @@ loadouts/        created at runtime by Save
 | GET  | `/api/scryfall/search?q=` | name → match list |
 | POST | `/api/cards/add` `{source_name}` | fetch + map + best-effort translate → Card (rejects Land / Planeswalker / Creature / Artifact with 422) |
 | POST | `/api/loadout/validate` `{loadout}` | `{valid, errors[], status}` (deck status) |
+| POST | `/api/cards/import` `{names[]}` | bulk import a deck list → `cards[]` (+ `lints`) + `not_found[]`; never blocks |
 | POST | `/api/cards/validate` `{card}` | structural-validate one card → re-derived text + `lints[]` |
 | GET  | `/api/effect-specs` | per-primitive param descriptors + target modes/sides (powers the editor) |
+| GET  | `/api/archetypes` | archetype → stats table (Fighter/Tactician/Caster) for the picker |
 | POST | `/api/loadout/export` `{loadout}` | engine loadout of validated cards + `omitted[]` report |
-| GET  | `/api/loadouts` | list saved names |
-| GET  | `/api/loadout/{name}` | load one |
-| POST | `/api/loadout/save` `{loadout}` | write `./loadouts/<slug>.json` (drafts; no validation gate) |
 | GET  | `/api/schema` | exported JSON Schema of `Loadout` |
 
-The UI also supports raw JSON **Export** (download) and **Import** (file picker via
-the Load button → Cancel).
+Save/Load are handled client-side via the browser File System Access API (see
+**Save / Load / Import / Export** below), so the loadout JSON lives wherever you
+choose rather than in a server folder.
 
 ## Editing & validating effects (the source of truth)
 
@@ -158,6 +158,76 @@ slot map. `translated_text` then auto-renders the shared wording
   neither continuous nor recurring. All lints live in one place — `LINT_RULES`
   in `mappings.py`.
 
+### Lands & mana (ramp / rituals)
+
+LTG has **no land cards** — mana is a colour-locked *capacity* that curves up
++1/turn. Lands survive only as references inside spells, translated to capacity
+(the land names are dropped: Forest→G, Island→U, Swamp→B, Plains→W, Mountain→R,
+"a basic land"→`choice`).
+
+- **`ramp`** raises capacity above the curve: `{kind:"ramp", amount, color, availability}`.
+  `availability` ∈ `immediate` (capacity + pool now) / `tapped` (capacity now,
+  pool next refresh) / `deferred` (capacity at the start of your next turn).
+  Renders e.g. "Add 1 green mana capacity (usable this turn)." /
+  "(not usable this turn)." / "At the start of your next turn, add …".
+- **`add_mana`** is a ritual — a one-time burst into your *current pool* this
+  turn, no capacity change: `{kind:"add_mana", amount, color}` →
+  "Add 3 black mana to your pool this turn."
+
+`color` ∈ {W,U,B,R,G,`choice`}; a non-`choice` grant outside the deck identity is
+flagged in deck-status (folded into the off-colour warning). Auto-translation
+handles Rampant Growth (→ tapped ramp) and Dark Ritual (→ add_mana); see
+[examples/rampant_growth.json](examples/rampant_growth.json),
+[examples/cultivate.json](examples/cultivate.json),
+[examples/dark_ritual.json](examples/dark_ritual.json).
+
+**Other land references** translate to the capacity model too:
+- *"for each land you control"* → a capacity value-ref `{"ref":"mana_capacity"}`
+  (any amount field can hold it — in the editor pick **mana capacity** in the
+  value dropdown). Renders e.g. "Draw a card **for each point of mana
+  capacity**." See [examples/for_each_land.json](examples/for_each_land.json).
+- *landfall / "whenever a land enters"* → a **`capacity_increase`** trigger on a
+  channeled card. Renders "**Whenever your mana capacity increases:** …". See
+  [examples/landfall.json](examples/landfall.json).
+
+### Actions, intents & counters (the stack vocabulary)
+
+Everything that resolves is an **action** with two orthogonal axes — `type`
+(`spell` | `ability`) and **speed** (`active` | `reactive`). Speed is *derived,
+never stored*: a player card is always a `spell` whose speed comes from `timing`
+(instant→reactive, sorcery→active, channeled→sustained); abilities derive theirs
+from `ability_kind`. See `spell_speed` / `ability_speed` in `schema.py`.
+
+An enemy action is first a telegraphed **intent** (pre-stack), then the same
+action **on the stack**. Two surfaces, two targets:
+
+- **Intent** — reached by targeting the *enemy that owns it* (a `creature`-class
+  target). Player tools: **`strip_intent`** ("Remove the chosen enemy's
+  telegraphed intent.") and **`stun`** ("The chosen enemy skips its next
+  intent."). Type-agnostic.
+- **Action on the stack** — reached by targeting the *action itself* (an
+  `action`-class target). This is where **counters** operate.
+
+**Counter** (replaces the old `counter_intent`) is one filtered effect:
+`{ "kind":"counter", "filter":<node>, "target":{"class":"action","side":"enemy"} }`.
+The `filter` is a node in the lattice `action ⊃ {spell, ability ⊃ {attack,
+activated, triggered}}` (matching a node also matches its descendants — resolution
+is the engine's job):
+
+| filter | renders |
+|---|---|
+| `action` | Cancel an enemy action (spell or ability). |
+| `spell` | Cancel an enemy spell. |
+| `ability` | Cancel an enemy ability (including attacks). |
+| `triggered` | Cancel an enemy triggered ability. |
+
+The target descriptor gains a **`class`**: `creature` (default — the existing
+mode/side/exclude_self/targeted descriptor) or `action`. Only counters target
+`class: action`; the type system rejects a creature target on a counter and an
+action target on any other effect. A counter card should be `timing: instant,
+reactive: true` (lint otherwise). See [examples/counterspell.json](examples/counterspell.json),
+[examples/negate.json](examples/negate.json), [examples/stifle.json](examples/stifle.json).
+
 ### Channeled effects (enchantments)
 
 MTG enchantments become **`channeled`** cards — sustained effects that persist
@@ -188,25 +258,41 @@ Convention: power → "+X attack", toughness → "+X temp HP" (buff) / "-X HP"
 for channeling (mana reservation, break-on-hit, release) is out of scope here —
 this layer only types the card and renders correct text.
 
-### Export engine loadout
+### Save / Load / Import / Export
 
-The **Export engine loadout** button emits a loadout containing **only cards that
-are structurally valid AND `validated: true`**. Unvalidated/malformed cards are
-**omitted and reported** (the normal **Save** keeps drafts as-is). Endpoint:
-`POST /api/loadout/export`.
+- **Load** opens a native file picker and reads a savegame JSON, remembering the
+  file handle.
+- **Save** overwrites that open file; with no file open it prompts for a location
+  (Save As). (Uses the File System Access API; browsers without it fall back to a
+  file-input for Load and a download for Save.)
+- **Import** opens a modal where you paste a deck list — one card per line, e.g.
+  `1 Akroma's Will (CMR) 3`. Quantity, set code, and collector number are ignored;
+  only the name is used, resolved on Scryfall (exact, then fuzzy) via
+  `POST /api/cards/import`. The import is **non-blocking**: wrong types, off-colour
+  cards, or going over 40 all import anyway and are **flagged in the list** to fix
+  (a creature shows "⛔ fix: Creature"); names Scryfall can't resolve are reported.
+- **Export engine loadout** emits a loadout containing **only cards that are
+  structurally valid AND `validated: true`** (incl. resolved character `stats`);
+  unvalidated/malformed cards are **omitted and reported**. `POST /api/loadout/export`.
 
 ## Data model (summary)
 
 - **Loadout** = `ltg_version`, `character`, `cards[]`.
-- **Character** = `name`, `description`, `colors` (1–3 of WUBRG), `starting_mana`
-  (exactly 2; a colour outside `colors` *warns*, never blocks).
+- **Character** = `name`, `description`, `portrait`, **`archetype`** (required —
+  Fighter / Tactician / Caster), `level` (int ≥ 1, default 1), `colors` (1–3 of
+  WUBRG), `starting_mana`. Archetype drives derived stats (HP / hand / mana
+  amount) from `ARCHETYPE_STATS` — the single source of truth; the builder shows
+  them read-only and the engine export includes the resolved `stats`.
+  `starting_mana` length **==** the archetype's mana amount (2, or 3 for Caster),
+  each colour picked from `colors`; a colour outside `colors` *warns*, never blocks.
 - **Card** = id, flavour `name`, `source_name`, `rarity`, `level` (cmc), `type`,
   `cost {generic, colors}`, `timing` (instant/sorcery/channeled — enchantment →
   channeled), `reactive`, `original_text`, `translated_text`, `effects[]`,
   `targets {slot: descriptor}`, `needs_translation`, `text_override`, `validated`.
 - **Effect** = discriminated union on `kind` (deal_damage, heal, destroy, bounce,
-  counter_intent, pump, wound, … see `schema.py`). `Value = int | "all" | {ref}`.
-  `target` = a TargetDescriptor (mode/side/exclude_self/targeted) or a `$slot` ref.
+  counter, pump, wound, ramp, add_mana, … see `schema.py`). `Value = int | "all" | {ref}`.
+  `target` = a creature TargetDescriptor (mode/side/exclude_self/targeted) or a
+  `$slot` ref; **counters** instead target `{class:"action", side:"enemy"}`.
 
 ## Deck status (advisory only — never blocks)
 

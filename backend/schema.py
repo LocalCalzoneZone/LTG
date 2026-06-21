@@ -21,6 +21,7 @@ from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     StringConstraints,
     field_validator,
@@ -108,6 +109,64 @@ def t_all(side: str, exclude_self: bool = False) -> TargetDescriptor:
     return TargetDescriptor(mode=TargetMode.all, side=Side(side), exclude_self=exclude_self)
 
 
+# --------------------------------------------------------------------------- #
+# Action classification (the stack vocabulary)
+# --------------------------------------------------------------------------- #
+# Every action has two orthogonal axes: type (spell|ability) and speed
+# (active|reactive). Speed is DERIVED, never stored: a spell's speed comes from
+# its card `timing`; an ability's from its `ability_kind`.
+class ActionType(str, Enum):
+    spell = "spell"
+    ability = "ability"
+
+
+class AbilityKind(str, Enum):
+    attack = "attack"
+    activated = "activated"
+    triggered = "triggered"
+    reaction = "reaction"
+
+
+class Speed(str, Enum):
+    active = "active"
+    reactive = "reactive"
+    sustained = "sustained"  # channeled enchantments
+
+
+_ABILITY_SPEED = {
+    AbilityKind.attack: Speed.active,
+    AbilityKind.activated: Speed.active,
+    AbilityKind.triggered: Speed.reactive,
+    AbilityKind.reaction: Speed.reactive,
+}
+_TIMING_SPEED = {"instant": Speed.reactive, "sorcery": Speed.active, "channeled": Speed.sustained}
+
+
+def spell_speed(timing: str) -> Speed:
+    """instant→reactive, sorcery→active, channeled→sustained."""
+    return _TIMING_SPEED[str(timing)]
+
+
+def ability_speed(ability_kind: AbilityKind) -> Speed:
+    """attack/activated→active, triggered/reaction→reactive."""
+    return _ABILITY_SPEED[AbilityKind(ability_kind)]
+
+
+# A counter's filter is a node in the action-type lattice (matching a node also
+# matches its descendants — resolution is the engine's job, deferred):
+#   action ⊃ {spell, ability ⊃ {attack, activated, triggered}}
+FilterNode = Literal["action", "spell", "ability", "attack", "activated", "triggered"]
+
+
+class ActionTarget(BaseModel):
+    """A stack action, targeted by a counter. Inherently targeted; enemy-side."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
+    target_class: Literal["action"] = Field("action", alias="class")
+    side: Side = Side.enemy
+
+
 class Duration(str, Enum):
     end_of_turn = "end_of_turn"
     this_turn = "this_turn"
@@ -117,8 +176,9 @@ class Duration(str, Enum):
 
 
 # Effects on channeled cards may fire on a recurring trigger instead of being
-# continuous. Only "upkeep" exists for now (start of each of the controller's turns).
-TriggerType = Literal["upkeep"]
+# continuous: "upkeep" (start of each of your turns) or "capacity_increase"
+# (landfall — whenever your mana capacity goes up).
+TriggerType = Literal["upkeep", "capacity_increase"]
 
 
 class Ref(BaseModel):
@@ -159,14 +219,14 @@ class EffectBase(BaseModel):
 
 class DealDamage(EffectBase):
     kind: Literal["deal_damage"] = "deal_damage"
-    amount: int
+    amount: Value  # int, "all", or a {ref} like mana_capacity ("for each …")
     target: TargetOrSlot
     nonlethal: bool = False
 
 
 class Heal(EffectBase):
     kind: Literal["heal"] = "heal"
-    amount: int
+    amount: Value
     target: TargetOrSlot
 
 
@@ -191,9 +251,12 @@ class Bounce(EffectBase):
     target: TargetOrSlot
 
 
-class CounterIntent(EffectBase):
-    kind: Literal["counter_intent"] = "counter_intent"
-    target: TargetOrSlot = Field(default_factory=lambda: t_chosen("enemy", targeted=True))
+class Counter(EffectBase):
+    """Cancel an enemy action on the stack, filtered by type."""
+
+    kind: Literal["counter"] = "counter"
+    filter: FilterNode = "action"
+    target: ActionTarget = Field(default_factory=lambda: ActionTarget(side=Side.enemy))
 
 
 class StripIntent(EffectBase):
@@ -246,13 +309,13 @@ class Protection(EffectBase):
 
 class Draw(EffectBase):
     kind: Literal["draw"] = "draw"
-    amount: int
+    amount: Value
     target: TargetOrSlot = Field(default_factory=t_self)
 
 
 class Scry(EffectBase):
     kind: Literal["scry"] = "scry"
-    amount: int
+    amount: Value
     target: TargetOrSlot = Field(default_factory=t_self)
 
 
@@ -281,6 +344,33 @@ class Revive(EffectBase):
     to_fraction: float = 0.5
 
 
+# LTG has no land cards; lands survive only as references inside ramp/ritual
+# spells, translated into the capacity model (the land names are dropped).
+RampColor = Literal["W", "U", "B", "R", "G", "choice"]
+Availability = Literal["immediate", "tapped", "deferred"]
+
+
+class Ramp(EffectBase):
+    """Raise mana *capacity* (the lands-equivalent), above the natural +1/turn.
+
+    availability: immediate (capacity + pool now) | tapped (capacity now, pool
+    next refresh) | deferred (capacity added at the start of your next turn).
+    """
+
+    kind: Literal["ramp"] = "ramp"
+    amount: int = 1
+    color: RampColor = "choice"
+    availability: Availability = "tapped"
+
+
+class AddMana(EffectBase):
+    """A ritual: a one-time burst into your CURRENT pool this turn (no capacity)."""
+
+    kind: Literal["add_mana"] = "add_mana"
+    amount: int = 1
+    color: RampColor = "B"
+
+
 EFFECT_CLASSES = [
     DealDamage,
     Heal,
@@ -288,7 +378,7 @@ EFFECT_CLASSES = [
     Destroy,
     Exile,
     Bounce,
-    CounterIntent,
+    Counter,
     StripIntent,
     Stun,
     Pump,
@@ -302,6 +392,8 @@ EFFECT_CLASSES = [
     Taunt,
     Disable,
     Revive,
+    Ramp,
+    AddMana,
 ]
 
 Effect = Annotated[
@@ -326,8 +418,12 @@ def _control_for(annotation) -> dict:
         return {"control": "int"}
     if annotation is float:
         return {"control": "float"}
+    if annotation is ActionTarget:  # counter's fixed enemy-action target
+        return {"control": "action_target"}
     origin = _t.get_origin(annotation)
     args = _t.get_args(annotation)
+    if origin is Literal:  # e.g. FilterNode
+        return {"control": "enum", "options": list(args)}
     if origin is Union:
         if TargetDescriptor in args:  # TargetOrSlot
             return {"control": "target"}
@@ -446,11 +542,11 @@ class Card(BaseModel):
             is_channeled = self.timing == Timing.channeled
             if getattr(effect, "duration", None) == Duration.while_channeled and not is_channeled:
                 raise ValueError("duration 'while_channeled' is only valid on channeled cards")
-            if effect.trigger == "upkeep":
+            if effect.trigger is not None:
                 if not is_channeled:
-                    raise ValueError("trigger 'upkeep' is only valid on channeled cards")
+                    raise ValueError(f"trigger '{effect.trigger}' is only valid on channeled cards")
                 if getattr(effect, "duration", None) == Duration.while_channeled:
-                    raise ValueError("an upkeep effect must not also be 'while_channeled'")
+                    raise ValueError("a triggered effect must not also be 'while_channeled'")
         return self
 
     def resolved_target(self, effect) -> Optional[TargetDescriptor]:
@@ -461,6 +557,36 @@ class Card(BaseModel):
             return self.targets.get(name)
         return target
 
+    # Player cards are always spells; their speed derives from `timing`
+    # (instant→reactive, sorcery→active, channeled→sustained). Never stored.
+    @property
+    def action_type(self) -> ActionType:
+        return ActionType.spell
+
+    @property
+    def speed(self) -> Speed:
+        return spell_speed(self.timing.value)
+
+
+class Archetype(str, Enum):
+    Fighter = "Fighter"
+    Tactician = "Tactician"
+    Caster = "Caster"
+
+
+# Single source of truth for archetype stats. Stats are a function of
+# (archetype, level); at level 1 they equal this table. Retune here.
+ARCHETYPE_STATS = {
+    Archetype.Fighter: {"starting_hp": 25, "starting_hand": 2, "starting_mana": 2},
+    Archetype.Tactician: {"starting_hp": 15, "starting_hand": 4, "starting_mana": 2},
+    Archetype.Caster: {"starting_hp": 10, "starting_hand": 3, "starting_mana": 3},
+}
+
+
+def archetype_stats(archetype: Archetype, level: int = 1) -> dict:
+    """Resolved stats for an (archetype, level). Level is a placeholder for now."""
+    return dict(ARCHETYPE_STATS[Archetype(archetype)])
+
 
 class Character(BaseModel):
     name: str
@@ -468,6 +594,8 @@ class Character(BaseModel):
     # Optional portrait, stored inline as a data URL (or any image URL) so a
     # saved loadout stays self-contained. Empty when unset.
     portrait: str = ""
+    archetype: Archetype  # required — drives derived stats (see ARCHETYPE_STATS)
+    level: int = 1
     colors: List[Color]
     starting_mana: List[Color]
 
@@ -480,12 +608,27 @@ class Character(BaseModel):
             raise ValueError("colors must be unique")
         return v
 
-    @field_validator("starting_mana")
+    @field_validator("level")
     @classmethod
-    def _mana_count(cls, v: List[Color]) -> List[Color]:
-        if len(v) != 2:
-            raise ValueError("starting_mana must be exactly 2 colours")
+    def _level_min(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("level must be >= 1")
         return v
+
+    @model_validator(mode="after")
+    def _mana_count(self) -> "Character":
+        amount = archetype_stats(self.archetype, self.level)["starting_mana"]
+        if len(self.starting_mana) != amount:
+            raise ValueError(
+                f"{self.archetype.value} starts with {amount} mana colours; "
+                f"got {len(self.starting_mana)}"
+            )
+        return self
+
+    @property
+    def stats(self) -> dict:
+        """Derived HP / hand size / mana amount — read-only, from the table."""
+        return archetype_stats(self.archetype, self.level)
 
 
 class Loadout(BaseModel):
@@ -513,10 +656,19 @@ def deck_status(loadout: Loadout) -> dict:
         seen[c.source_name] = seen.get(c.source_name, 0) + 1
     duplicates = sorted(name for name, n in seen.items() if n > 1)
 
-    identity = set(loadout.character.colors)
-    off_color = sorted(
-        {c.name for c in cards if set(c.cost.colors.keys()) - identity}
-    )
+    identity = {c.value for c in loadout.character.colors}
+
+    def off_identity(card) -> bool:
+        # A card is off-colour if its cost OR any ramp/add_mana grant introduces a
+        # colour outside the deck identity (a "choice" grant is always fine).
+        colours = {c.value for c in card.cost.colors.keys()}
+        for e in card.effects:
+            grant = getattr(e, "color", None)
+            if grant is not None and grant != "choice":
+                colours.add(grant)
+        return bool(colours - identity)
+
+    off_color = sorted({c.name for c in cards if off_identity(c)})
 
     untranslated = sum(
         1 for c in cards if c.needs_translation and not c.validated

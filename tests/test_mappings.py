@@ -53,9 +53,11 @@ def test_build_card_from_mocked_scryfall_fetch():
     assert not card.needs_translation
 
 
-def test_counterspell_translates_to_counter_intent_and_is_reactive():
+def test_counterspell_translates_to_counter_and_is_reactive():
     card = build_card(COUNTERSPELL_SCRYFALL)
-    assert card.effects[0].kind == "counter_intent"
+    assert card.effects[0].kind == "counter"
+    assert card.effects[0].filter == "action"
+    assert card.effects[0].target.target_class == "action"
     assert card.reactive is True
     assert card.cost.colors == {"U": 2}
 
@@ -73,6 +75,28 @@ def test_unrecognized_card_flagged_needs_translation():
     assert card.effects == []
     assert card.needs_translation is True
     assert card.translated_text == ""
+
+
+def test_import_endpoint_never_blocks_and_reports_missing():
+    from fastapi.testclient import TestClient
+    from backend.app import app
+
+    creature = {"name": "Grizzly Bears", "mana_cost": "{1}{G}", "cmc": 2.0,
+                "type_line": "Creature — Bear", "rarity": "common", "oracle_text": ""}
+
+    def fake(name):
+        if name == "Grizzly Bears":
+            return creature
+        raise ValueError("not found")
+
+    client = TestClient(app)
+    with patch.object(scryfall, "fetch_best", side_effect=fake):
+        r = client.post("/api/cards/import",
+                        json={"names": ["Grizzly Bears", "Zzz Nope"]}).json()
+    # forbidden type (Creature) imports anyway; the missing name is reported.
+    assert len(r["cards"]) == 1
+    assert r["cards"][0]["card"]["type"] == "Creature — Bear"
+    assert r["not_found"] == ["Zzz Nope"]
 
 
 def test_nonstandard_scryfall_rarity_normalized():
@@ -168,6 +192,7 @@ def test_deck_status_reports_warnings():
         {
             "character": {
                 "name": "Test",
+                "archetype": "Fighter",
                 "colors": ["U", "B"],
                 "starting_mana": ["U", "G"],
             },

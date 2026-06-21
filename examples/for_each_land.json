@@ -1,0 +1,17 @@
+{
+  "id": "for_each_land",
+  "name": "Verdant Insight",
+  "source_name": "Reach of Branches",
+  "rarity": "uncommon",
+  "level": 3,
+  "type": "Sorcery",
+  "cost": { "generic": 2, "colors": { "G": 1 } },
+  "timing": "sorcery",
+  "reactive": false,
+  "original_text": "Draw a card for each land you control.",
+  "translated_text": "Draw a card for each point of mana capacity.",
+  "effects": [
+    { "kind": "draw", "amount": { "ref": "mana_capacity" }, "target": { "mode": "self" } }
+  ],
+  "validated": true
+}

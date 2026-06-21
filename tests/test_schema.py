@@ -71,6 +71,7 @@ def test_character_colors_count_enforced():
             {
                 "character": {
                     "name": "X",
+                    "archetype": "Fighter",
                     "colors": ["W", "U", "B", "R"],  # 4 > 3
                     "starting_mana": ["W", "U"],
                 },
@@ -84,6 +85,7 @@ def test_character_portrait_round_trips():
         "character": {
             "name": "Ys",
             "portrait": "data:image/png;base64,AAAA",
+            "archetype": "Fighter",
             "colors": ["U"],
             "starting_mana": ["U", "U"],
         },
@@ -99,6 +101,7 @@ def test_starting_mana_allows_two_of_same_colour():
         {
             "character": {
                 "name": "Mono",
+                "archetype": "Fighter",
                 "colors": ["U"],
                 "starting_mana": ["U", "U"],
             },
@@ -108,15 +111,39 @@ def test_starting_mana_allows_two_of_same_colour():
     assert loadout.character.starting_mana == ["U", "U"]
 
 
-def test_character_starting_mana_must_be_two():
+def test_starting_mana_length_must_match_archetype():
+    # Fighter starts with 2; a 1-colour starting mana is invalid.
     with pytest.raises(ValidationError):
         Loadout.model_validate(
             {
                 "character": {
-                    "name": "X",
-                    "colors": ["W"],
-                    "starting_mana": ["W"],  # only 1
+                    "name": "X", "archetype": "Fighter",
+                    "colors": ["W"], "starting_mana": ["W"],
                 },
                 "cards": [],
             }
         )
+    # Caster starts with 3; a 2-colour starting mana is invalid.
+    with pytest.raises(ValidationError):
+        Loadout.model_validate(
+            {
+                "character": {
+                    "name": "X", "archetype": "Caster",
+                    "colors": ["U", "B"], "starting_mana": ["U", "B"],
+                },
+                "cards": [],
+            }
+        )
+
+
+def test_archetype_required_and_stats_derive():
+    from backend.schema import Character, archetype_stats
+    with pytest.raises(ValidationError):
+        Character.model_validate({"name": "X", "colors": ["U"], "starting_mana": ["U", "U"]})
+    caster = Character.model_validate({
+        "name": "Ys", "archetype": "Caster", "colors": ["U", "B"],
+        "starting_mana": ["U", "U", "B"],
+    })
+    assert caster.level == 1
+    assert caster.stats == {"starting_hp": 10, "starting_hand": 3, "starting_mana": 3}
+    assert archetype_stats("Fighter") == {"starting_hp": 25, "starting_hand": 2, "starting_mana": 2}

@@ -1,0 +1,18 @@
+{
+  "id": "cultivate",
+  "name": "Tend the Wilds",
+  "source_name": "Cultivate",
+  "rarity": "uncommon",
+  "level": 3,
+  "type": "Sorcery",
+  "cost": { "generic": 2, "colors": { "G": 1 } },
+  "timing": "sorcery",
+  "reactive": false,
+  "original_text": "Search your library for up to two basic land cards, reveal them, put one onto the battlefield tapped and the other into your hand, then shuffle.",
+  "translated_text": "Add 1 mana capacity of your choice (not usable this turn). At the start of your next turn, add 1 mana capacity of your choice.",
+  "effects": [
+    { "kind": "ramp", "amount": 1, "color": "choice", "availability": "tapped" },
+    { "kind": "ramp", "amount": 1, "color": "choice", "availability": "deferred" }
+  ],
+  "validated": true
+}

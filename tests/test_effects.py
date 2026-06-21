@@ -119,9 +119,10 @@ def test_lint_exclude_self_on_enemy():
     assert any("no-op" in m for m in lint_card(c))
 
 
-def test_lint_counter_intent_not_reactive():
-    c = card(reactive=False, effects=[{"kind": "counter_intent", "target": CHOSEN_ENEMY_T}])
-    assert any("reactive" in m for m in lint_card(c))
+def test_lint_counter_not_reactive():
+    c = card(reactive=False, effects=[{"kind": "counter", "filter": "action",
+                                       "target": {"class": "action", "side": "enemy"}}])
+    assert any("respond" in m for m in lint_card(c))
 
 
 def test_lint_zero_amount_and_unused_slot():

@@ -44,7 +44,7 @@ def test_bitterblossom_render():
         {"kind": "create_token", "token_id": "faerie", "count": 1, "trigger": "upkeep"},
         {"kind": "lose_life", "amount": 1, "target": {"mode": "self"}, "trigger": "upkeep"},
     ])
-    assert render(c) == ("At the start of each of your turns while channeled: "
+    assert render(c) == ("At the start of every turn while channeled: "
                          "create a Faerie ally and lose 1 HP.")
 
 

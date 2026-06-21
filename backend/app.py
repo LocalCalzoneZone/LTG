@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 
 from . import mappings, scryfall
 from .schema import (
+    ARCHETYPE_STATS,
     Card,
     Character,
     Loadout,
@@ -48,6 +49,10 @@ class CardBody(BaseModel):
     card: dict
 
 
+class ImportBody(BaseModel):
+    names: List[str]
+
+
 # --------------------------------------------------------------------------- #
 # Scryfall
 # --------------------------------------------------------------------------- #
@@ -57,6 +62,24 @@ def api_search(q: str = "") -> dict:
         return {"matches": scryfall.search(q)}
     except Exception as exc:  # network / upstream errors → 502
         raise HTTPException(status_code=502, detail=f"Scryfall error: {exc}")
+
+
+@app.post("/api/cards/import")
+def api_import(body: ImportBody) -> dict:
+    """Bulk-import a pasted deck list. Builds EVERY card (no type/colour/count
+    gate) so nothing interrupts the import; problems are flagged in the UI, not
+    blocked. Names that Scryfall can't resolve are reported in `not_found`.
+    """
+    out, not_found = [], []
+    for name in body.names:
+        try:
+            data = scryfall.fetch_best(name)
+            card = mappings.build_card(data)
+        except Exception:
+            not_found.append(name)
+            continue
+        out.append({"card": card.model_dump(), "lints": mappings.lint_card(card)})
+    return {"cards": out, "not_found": not_found}
 
 
 @app.post("/api/cards/add")
@@ -105,6 +128,12 @@ def _format_errors(exc: ValidationError) -> List[str]:
 def api_effect_specs() -> dict:
     """Param descriptors per primitive + target-builder vocab, for the editor."""
     return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES}
+
+
+@app.get("/api/archetypes")
+def api_archetypes() -> dict:
+    """The archetype → stats table (single source of truth for the picker)."""
+    return {a.value: stats for a, stats in ARCHETYPE_STATS.items()}
 
 
 @app.post("/api/cards/validate")
@@ -198,9 +227,10 @@ def api_export(body: LoadoutBody) -> dict:
             )
         exported.append(card.model_dump())
 
+    # Include the resolved stats for the engine's convenience (they match the table).
     engine_loadout = {
         "ltg_version": raw.get("ltg_version", "0.1"),
-        "character": character.model_dump(),
+        "character": {**character.model_dump(), "stats": character.stats},
         "cards": exported,
     }
     return {

@@ -1,0 +1,17 @@
+{
+  "id": "landfall",
+  "name": "Tidal Attunement",
+  "source_name": "Tireless Provisioner",
+  "rarity": "rare",
+  "level": 2,
+  "type": "Enchantment",
+  "cost": { "generic": 1, "colors": { "G": 1 } },
+  "timing": "channeled",
+  "reactive": false,
+  "original_text": "Landfall — Whenever a land enters the battlefield under your control, create a Treasure token.",
+  "translated_text": "Whenever your mana capacity increases: create a Treasure ally.",
+  "effects": [
+    { "kind": "create_token", "token_id": "treasure", "count": 1, "trigger": "capacity_increase" }
+  ],
+  "validated": true
+}

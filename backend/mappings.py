@@ -19,10 +19,13 @@ import re
 from typing import Callable, List, Tuple
 
 from .schema import (
+    ActionTarget,
+    AddMana,
     Bounce,
     Card,
-    CounterIntent,
+    Counter,
     Cost,
+    Ramp,
     DealDamage,
     Destroy,
     Draw,
@@ -70,9 +73,20 @@ def register(pattern: str) -> Callable[[Builder], Builder]:
 # Targets are descriptors. `targeted=True` whenever the matched phrasing uses the
 # word "target" (per the targeting-model brief); friendly/either targets still
 # carry it so the engine can honour hexproof/shroud later.
+@register(r"counter target (?:activated|triggered)(?: or (?:activated|triggered))? abilit")
+def _counter_ability(m, ctx):
+    return [Counter(filter="ability")]
+
+
+@register(r"counter target noncreature spell")
+def _counter_noncreature(m, ctx):
+    return [Counter(filter="spell")]
+
+
 @register(r"counter target spell")
 def _counter_spell(m, ctx):
-    return [CounterIntent(target=t_chosen("enemy", targeted=True))]
+    # LTG's Counterspell answers any enemy action (spell or ability).
+    return [Counter(filter="action")]
 
 
 @register(r"destroy target (?:creature|permanent|enchantment)")
@@ -143,6 +157,39 @@ def _pacify(m, ctx):
     return [Disable(intent_type="attack", target=t_chosen("enemy", targeted=True))]
 
 
+# --- Lands → mana capacity (the land names are dropped) -------------------- #
+_LAND_COLOR = {"forest": "G", "island": "U", "swamp": "B", "plains": "W", "mountain": "R"}
+
+
+def land_color(text: str) -> str:
+    """Colour a land reference maps to; 'choice' for a generic basic land."""
+    low = (text or "").lower()
+    for name, color in _LAND_COLOR.items():
+        if name in low:
+            return color
+    return "choice"
+
+
+@register(
+    r"search your library for .*?(?:land|forest|island|swamp|plains|mountain)"
+    r".*?(?:onto|to) the battlefield"
+)
+def _ramp(m, ctx):
+    text = m.string
+    availability = "tapped" if "tapped" in text else "immediate"
+    return [Ramp(amount=1, color=land_color(text), availability=availability)]
+
+
+@register(r"\badd\b\s*((?:\{[^}]+\})+)")
+def _add_mana(m, ctx):
+    counts: dict = {}
+    for token in re.findall(r"\{([^}]+)\}", m.group(1)):
+        c = token.upper()
+        if c in {"W", "U", "B", "R", "G"}:
+            counts[c] = counts.get(c, 0) + 1
+    return [AddMana(amount=n, color=c) for c, n in counts.items()]
+
+
 def _word_to_int(token: str) -> int:
     words = {
         "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4,
@@ -163,7 +210,7 @@ def translate(oracle_text: str, ctx: dict) -> List[Effect]:
         if not match:
             continue
         for effect in builder(match, ctx):
-            key = (effect.kind, repr(getattr(effect, "target", None)))
+            key = repr(effect.model_dump(mode="json"))
             if key in seen_kinds:
                 continue
             seen_kinds.add(key)
@@ -226,10 +273,17 @@ def _tgt(t) -> str:
 
 def _value(v) -> str:
     if isinstance(v, Ref):
+        if v.ref == "mana_capacity":
+            return "your mana capacity"
         if v.ref.endswith(".level"):
             return "its Level"
         return v.ref
     return str(v)
+
+
+def _is_capacity(v) -> bool:
+    """True when a value scales by mana capacity ("for each land you control")."""
+    return isinstance(v, Ref) and v.ref == "mana_capacity"
 
 
 def _duration_suffix(e) -> str:
@@ -246,10 +300,49 @@ def _lc_first(s: str) -> str:
 
 
 def _render_lose_life(e) -> str:
-    amount_phrase = "HP equal to " + _value(e.amount) if isinstance(e.amount, Ref) else f"{e.amount} HP"
+    if _is_capacity(e.amount):
+        body = "1 HP for each point of mana capacity"
+    elif isinstance(e.amount, Ref):
+        body = "HP equal to " + _value(e.amount)
+    else:
+        body = f"{e.amount} HP"
     if _is_self(e.target):
-        return f"Lose {amount_phrase}."
-    return f"{_tgt(e.target).capitalize()} loses {amount_phrase}."
+        return f"Lose {body}."
+    return f"{_tgt(e.target).capitalize()} loses {body}."
+
+
+_COLOR_WORD = {"W": "white", "U": "blue", "B": "black", "R": "red", "G": "green"}
+
+
+def _capacity_phrase(e) -> str:
+    if e.color == "choice":
+        return f"{e.amount} mana capacity of your choice"
+    return f"{e.amount} {_COLOR_WORD[e.color]} mana capacity"
+
+
+def _render_ramp(e) -> str:
+    phrase = _capacity_phrase(e)
+    if e.availability == "immediate":
+        return f"Add {phrase} (usable this turn)."
+    if e.availability == "deferred":
+        return f"At the start of your next turn, add {phrase}."
+    return f"Add {phrase} (not usable this turn)."  # tapped
+
+
+def _render_add_mana(e) -> str:
+    colour = "mana of your choice" if e.color == "choice" else f"{_COLOR_WORD[e.color]} mana"
+    return f"Add {e.amount} {colour} to your pool this turn."
+
+
+# Counter filter → player-facing phrase (filter matches a node + its descendants).
+_FILTER_PHRASE = {
+    "action": "an enemy action (spell or ability)",
+    "spell": "an enemy spell",
+    "ability": "an enemy ability (including attacks)",
+    "triggered": "an enemy triggered ability",
+    "attack": "an enemy attack",
+    "activated": "an enemy activated ability",
+}
 
 
 # Power/toughness convention: power → "attack", toughness → "temp HP" (buff) / "HP" (debuff).
@@ -269,26 +362,40 @@ def _render_counters(e) -> str:
 
 
 RENDERERS = {
-    "deal_damage": lambda e: f"Deal {e.amount} damage to {_tgt(e.target)}.",
-    "heal": lambda e: f"Restore {e.amount} HP to {_tgt(e.target)}.",
+    "deal_damage": lambda e: (
+        f"Deal 1 damage to {_tgt(e.target)} for each point of mana capacity."
+        if _is_capacity(e.amount) else f"Deal {e.amount} damage to {_tgt(e.target)}."
+    ),
+    "heal": lambda e: (
+        f"Restore 1 HP to {_tgt(e.target)} for each point of mana capacity."
+        if _is_capacity(e.amount) else f"Restore {e.amount} HP to {_tgt(e.target)}."
+    ),
     "lose_life": lambda e: _render_lose_life(e),
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
     "exile": lambda e: f"Exile {_tgt(e.target)}.",
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",
-    "counter_intent": lambda e: f"Counter {_tgt(e.target)}.",
-    "strip_intent": lambda e: f"Strip {_tgt(e.target)}.",
-    "stun": lambda e: f"Stun {_tgt(e.target)} for {e.intents} intent(s).",
+    "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
+    "strip_intent": lambda e: f"Remove {_subject(e.target, None, True)}'s telegraphed intent.",
+    "stun": lambda e: f"{_subject(e.target, None, True).capitalize()} skips its next intent.",
     "pump": _render_pump,
     "wound": _render_wound,
     "counters": _render_counters,
     "prevent": lambda e: f"Prevent {_value(e.amount)} damage to {_tgt(e.target)}.",
     "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
-    "draw": lambda e: f"Draw {e.amount} card(s).",
-    "scry": lambda e: f"Scry {e.amount}.",
+    "draw": lambda e: (
+        "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
+        else f"Draw {e.amount} card(s)."
+    ),
+    "scry": lambda e: (
+        "Scry 1 for each point of mana capacity." if _is_capacity(e.amount)
+        else f"Scry {e.amount}."
+    ),
     "create_token": lambda e: f"Create {e.count} {e.token_id} token(s).",
     "taunt": lambda e: f"Force {_tgt(e.target)} to target you this turn.",
     "disable": lambda e: f"{_tgt(e.target).capitalize()} can't {e.intent_type}.",
     "revive": lambda e: f"Revive {_tgt(e.target)} at {int(e.to_fraction * 100)}% HP.",
+    "ramp": _render_ramp,
+    "add_mana": _render_add_mana,
 }
 
 
@@ -400,7 +507,8 @@ def _upkeep_clause(e, targets) -> str:
     k = e.kind
     if k == "create_token":
         token = e.token_id.replace("_", " ").title()
-        return f"create a {token} ally" if e.count == 1 else f"create {e.count} {token} allies"
+        article = "an" if token[:1].lower() in "aeiou" else "a"
+        return f"create {article} {token} ally" if e.count == 1 else f"create {e.count} {token} allies"
     if k == "lose_life":
         amt = _value(e.amount) if isinstance(e.amount, Ref) else e.amount
         if _is_self(_resolve(e.target, targets) or e.target):
@@ -419,13 +527,18 @@ def _upkeep_clause(e, targets) -> str:
 
 def _render_channeled(effects, targets) -> str:
     parts = []
+    # Continuous (untriggered) effects, one sentence each.
     for e in effects:
-        if getattr(e, "trigger", None) != "upkeep":
+        if getattr(e, "trigger", None) is None:
             parts.append("While channeled: " + _channeled_body(e, targets) + ".")
-    upkeep = [e for e in effects if getattr(e, "trigger", None) == "upkeep"]
-    if upkeep:
-        clauses = [_upkeep_clause(e, targets) for e in upkeep]
-        parts.append("At the start of each of your turns while channeled: " + _join_and(clauses) + ".")
+    # Each recurring trigger groups its effects under its own lead-in.
+    for trigger, lead in (
+        ("upkeep", "At the start of every turn while channeled: "),
+        ("capacity_increase", "Whenever your mana capacity increases: "),
+    ):
+        group = [e for e in effects if getattr(e, "trigger", None) == trigger]
+        if group:
+            parts.append(lead + _join_and([_upkeep_clause(e, targets) for e in group]) + ".")
     return " ".join(parts)
 
 
@@ -465,8 +578,10 @@ def _lint_exclude_self_on_enemy(card):
 
 
 def _lint_counter_reactive(card):
-    if any(e.kind == "counter_intent" for e in card.effects) and not card.reactive:
-        return ["counter_intent present but card is not reactive — it likely should be."]
+    # A counter must be able to respond: instant + reactive.
+    if any(e.kind == "counter" for e in card.effects):
+        if not card.reactive or card.timing.value != "instant":
+            return ["a counter card should be timing 'instant' and reactive — it must be able to respond."]
     return []
 
 
@@ -506,10 +621,10 @@ def _lint_channeled_persistence(card):
     out = []
     for e in card.effects:
         continuous = getattr(e, "duration", None) == Duration.while_channeled
-        if not continuous and e.trigger != "upkeep":
+        if not continuous and e.trigger is None:
             out.append(
                 f"{e.kind}: on a channeled card, set duration 'while_channeled' "
-                f"(continuous) or trigger 'upkeep' (recurring)."
+                f"(continuous) or a trigger (recurring)."
             )
     return out
 
@@ -602,10 +717,24 @@ def build_card(scryfall_json: dict) -> Card:
 
     effects = translate(oracle_text, {"source": scryfall_json})
     timing = derive_timing(type_line)
-    reactive = any(e.kind in ("counter_intent", "strip_intent") for e in effects)
+    reactive = any(e.kind in ("counter", "strip_intent") for e in effects)
 
-    # On channeled (enchantment) cards, a static effect with a duration field is
-    # continuous: make it `while_channeled` so it reads and validates as ongoing.
+    low = oracle_text.lower()
+    # "for each land you control" → scale the amount by mana capacity.
+    if re.search(r"for each (?:basic )?land you control", low):
+        for e in effects:
+            if isinstance(getattr(e, "amount", None), int):
+                e.amount = Ref(ref="mana_capacity")
+    # landfall ("whenever a land enters") → a capacity_increase trigger
+    # (only on channeled cards, where recurring triggers are legal).
+    if timing == Timing.channeled and (
+        "landfall" in low or re.search(r"whenever (?:a|another) land .*enters", low)
+    ):
+        for e in effects:
+            e.trigger = "capacity_increase"
+
+    # On channeled (enchantment) cards, a static (untriggered) effect with a
+    # duration field is continuous: make it `while_channeled`.
     if timing == Timing.channeled:
         for e in effects:
             if hasattr(e, "duration") and e.trigger is None:

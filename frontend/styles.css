@@ -93,6 +93,17 @@ textarea { resize: vertical; }
 .pip:hover { opacity: 0.8; border-color: var(--line); }
 .pip .mana-icon { width: 26px; height: 26px; display: block; }
 .pip.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
+.char-level { color: var(--muted); font-size: 12px; margin: 0 0 8px 6px; }
+.char-level span { color: var(--accent); font-weight: 600; }
+.archetype-row { display: flex; gap: 6px; }
+.archetype-btn { flex: 1; padding: 6px 4px; font-size: 12px; }
+.archetype-btn.on { background: var(--accent); color: #0c0f16; border-color: var(--accent); }
+.stat-block { display: flex; gap: 10px; margin: 0 0 12px; }
+.stat {
+  flex: 1; text-align: center; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 4px; font-size: 11px; color: var(--muted);
+}
+.stat b { display: block; font-size: 16px; color: var(--text); }
 .mana-slot { margin-bottom: 6px; }
 .slot-label { font-size: 11px; color: var(--muted); width: 42px; flex: none; }
 .mana-icon { vertical-align: middle; }
@@ -166,7 +177,7 @@ label.inline input[type=number] { width: 64px; }
 .eff-kind { font-weight: 600; }
 .effect-tools button { padding: 2px 7px; font-size: 12px; margin-left: 3px; }
 .effect-params { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; align-items: center; }
-.param { display: inline-flex; align-items: center; }
+.param { display: inline-flex; align-items: center; gap: 5px; }
 .tgt-builder { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .tgt-summary { color: var(--accent); font-size: 12px; }
 label.inline.mini { font-size: 11px; gap: 3px; }
@@ -182,6 +193,12 @@ label.inline.mini { font-size: 11px; gap: 3px; }
 .lints { background: rgba(255,180,84,0.06); border: 1px solid rgba(255,180,84,0.25); border-radius: 8px; }
 .lint { color: var(--warn); font-size: 12px; padding: 2px 0; }
 .validate-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#import-text {
+  width: 100%; margin: 10px 0; padding: 9px; border-radius: 6px; resize: vertical;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+}
+#import-status { min-height: 16px; }
 .detail-card h3 { margin: 0 0 4px; }
 .detail-card .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
 .detail-card .block { margin-bottom: 14px; }
