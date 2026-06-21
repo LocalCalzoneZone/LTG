@@ -1,0 +1,16 @@
+{
+  "id": "pacifism",
+  "name": "Still the Blade",
+  "source_name": "Pacifism",
+  "rarity": "common",
+  "level": 2,
+  "type": "Enchantment — Aura",
+  "cost": { "generic": 1, "colors": { "W": 1 } },
+  "timing": "channeled",
+  "reactive": false,
+  "original_text": "Enchant creature. Enchanted creature can't attack or block.",
+  "translated_text": "An enemy can't attack.",
+  "effects": [
+    { "kind": "disable", "intent_type": "attack", "target": "an_enemy" }
+  ]
+}

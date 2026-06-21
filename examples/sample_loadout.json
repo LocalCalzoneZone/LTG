@@ -1,0 +1,42 @@
+{
+  "ltg_version": "0.1",
+  "character": {
+    "name": "Ys",
+    "description": "A fae trickster who unravels foes with counters, debuffs, and conjured faeries. Fragile; minimal direct damage.",
+    "colors": ["U", "B"],
+    "starting_mana": ["U", "B"]
+  },
+  "cards": [
+    {
+      "id": "counterspell",
+      "name": "Unweave",
+      "source_name": "Counterspell",
+      "rarity": "common",
+      "level": 2,
+      "type": "Instant",
+      "cost": { "colors": { "U": 2 } },
+      "timing": "instant",
+      "reactive": true,
+      "original_text": "Counter target spell.",
+      "translated_text": "Counter an enemy intent.",
+      "effects": [{ "kind": "counter_intent", "target": "an_enemy_intent" }]
+    },
+    {
+      "id": "feed_the_swarm",
+      "name": "Consume",
+      "source_name": "Feed the Swarm",
+      "rarity": "common",
+      "level": 2,
+      "type": "Sorcery",
+      "cost": { "generic": 1, "colors": { "B": 1 } },
+      "timing": "sorcery",
+      "reactive": false,
+      "original_text": "Destroy target creature or enchantment. You lose life equal to its mana value.",
+      "translated_text": "Destroy an enemy. Lose HP equal to its Level.",
+      "effects": [
+        { "kind": "destroy", "target": "an_enemy" },
+        { "kind": "lose_life", "amount": { "ref": "destroyed_target.level" }, "target": "self" }
+      ]
+    }
+  ]
+}

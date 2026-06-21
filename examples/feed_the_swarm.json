@@ -1,0 +1,17 @@
+{
+  "id": "feed_the_swarm",
+  "name": "Consume",
+  "source_name": "Feed the Swarm",
+  "rarity": "common",
+  "level": 2,
+  "type": "Sorcery",
+  "cost": { "generic": 1, "colors": { "B": 1 } },
+  "timing": "sorcery",
+  "reactive": false,
+  "original_text": "Destroy target creature or enchantment. You lose life equal to its mana value.",
+  "translated_text": "Destroy an enemy. Lose HP equal to its Level.",
+  "effects": [
+    { "kind": "destroy", "target": "an_enemy" },
+    { "kind": "lose_life", "amount": { "ref": "destroyed_target.level" }, "target": "self" }
+  ]
+}

@@ -1,0 +1,134 @@
+"""Scryfall mapping (mocked) + translation registry + renderer + deck status."""
+
+from unittest.mock import patch
+
+from backend import scryfall
+from backend.mappings import build_card, parse_mana_cost, render_effects, translate
+from backend.schema import Loadout, deck_status
+
+GIANT_GROWTH_SCRYFALL = {
+    "name": "Giant Growth",
+    "mana_cost": "{G}",
+    "cmc": 1.0,
+    "type_line": "Instant",
+    "oracle_text": "Target creature gets +3/+3 until end of turn.",
+    "rarity": "common",
+    "color_identity": ["G"],
+}
+
+COUNTERSPELL_SCRYFALL = {
+    "name": "Counterspell",
+    "mana_cost": "{U}{U}",
+    "cmc": 2.0,
+    "type_line": "Instant",
+    "oracle_text": "Counter target spell.",
+    "rarity": "common",
+    "color_identity": ["U"],
+}
+
+
+def test_build_card_from_mocked_scryfall_fetch():
+    with patch.object(
+        scryfall, "fetch_named", return_value=GIANT_GROWTH_SCRYFALL
+    ) as mocked:
+        data = scryfall.fetch_named("Giant Growth")
+        mocked.assert_called_once_with("Giant Growth")
+
+    card = build_card(data)
+    assert card.source_name == "Giant Growth"
+    assert card.id == "giant_growth"
+    assert card.level == 1
+    assert card.timing.value == "instant"
+    assert card.rarity.value == "common"
+    assert card.cost.colors == {"G": 1}
+    assert card.cost.generic == 0
+    assert card.effects[0].kind == "pump"
+    assert card.effects[0].power == 3
+    assert not card.needs_translation
+
+
+def test_counterspell_translates_to_counter_intent_and_is_reactive():
+    card = build_card(COUNTERSPELL_SCRYFALL)
+    assert card.effects[0].kind == "counter_intent"
+    assert card.reactive is True
+    assert card.cost.colors == {"U": 2}
+
+
+def test_unrecognized_card_flagged_needs_translation():
+    weird = {
+        "name": "Strange Brew",
+        "mana_cost": "{3}{R}",
+        "cmc": 4.0,
+        "type_line": "Sorcery",
+        "oracle_text": "Some entirely bespoke mechanic with no known template.",
+        "rarity": "rare",
+    }
+    card = build_card(weird)
+    assert card.effects == []
+    assert card.needs_translation is True
+    assert card.translated_text == ""
+
+
+def test_nonstandard_scryfall_rarity_normalized():
+    # Real cards (e.g. Black Lotus) report rarities outside the LTG four;
+    # they must fold onto a valid rarity, not crash the builder.
+    lotus = {
+        "name": "Black Lotus",
+        "mana_cost": "{0}",
+        "cmc": 0.0,
+        "type_line": "Artifact",
+        "oracle_text": "{T}, Sacrifice Black Lotus: Add three mana of any one color.",
+        "rarity": "bonus",
+    }
+    card = build_card(lotus)
+    assert card.rarity.value == "mythic"
+    assert card.needs_translation is True
+
+
+def test_parse_mana_cost():
+    cost = parse_mana_cost("{1}{B}{B}")
+    assert cost.generic == 1
+    assert cost.colors == {"B": 2}
+
+
+def test_renderer_matches_brief_example():
+    from backend.schema import DealDamage, Target
+
+    text = render_effects([DealDamage(amount=3, target=Target.an_enemy)])
+    assert text == "Deal 3 damage to an enemy."
+
+
+def test_feed_the_swarm_two_step_translation():
+    feed = {
+        "name": "Feed the Swarm",
+        "mana_cost": "{1}{B}",
+        "cmc": 2.0,
+        "type_line": "Sorcery",
+        "oracle_text": "Destroy target creature or enchantment. You lose life equal to its mana value.",
+        "rarity": "common",
+    }
+    card = build_card(feed)
+    kinds = [e.kind for e in card.effects]
+    assert "destroy" in kinds and "lose_life" in kinds
+
+
+def test_deck_status_reports_warnings():
+    loadout = Loadout.model_validate(
+        {
+            "character": {
+                "name": "Test",
+                "colors": ["U", "B"],
+                "starting_mana": ["U", "G"],
+            },
+            "cards": [
+                build_card(COUNTERSPELL_SCRYFALL).model_dump(),
+                build_card(COUNTERSPELL_SCRYFALL).model_dump(),
+                build_card(GIANT_GROWTH_SCRYFALL).model_dump(),
+            ],
+        }
+    )
+    status = deck_status(loadout)
+    assert status["size"]["count"] == 3
+    assert "Counterspell" in status["duplicates"]
+    assert "Giant Growth" in status["off_color"]  # G outside U/B identity
+    assert status["starting_mana_outside_identity"] == ["G"]

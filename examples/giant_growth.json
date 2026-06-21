@@ -1,0 +1,16 @@
+{
+  "id": "giant_growth",
+  "name": "Surge of Strength",
+  "source_name": "Giant Growth",
+  "rarity": "common",
+  "level": 1,
+  "type": "Instant",
+  "cost": { "colors": { "G": 1 } },
+  "timing": "instant",
+  "reactive": false,
+  "original_text": "Target creature gets +3/+3 until end of turn.",
+  "translated_text": "An ally gains +3 damage and +3 temporary HP this turn.",
+  "effects": [
+    { "kind": "pump", "power": 3, "toughness": 3, "target": "an_ally", "duration": "end_of_turn" }
+  ]
+}
