@@ -18,25 +18,30 @@
       "timing": "instant",
       "reactive": true,
       "original_text": "Counter target spell.",
-      "translated_text": "Counter an enemy intent.",
-      "effects": [{ "kind": "counter_intent", "target": "an_enemy_intent" }]
+      "translated_text": "Counter an enemy.",
+      "effects": [
+        { "kind": "counter_intent", "target": { "mode": "chosen", "side": "enemy", "targeted": true } }
+      ],
+      "validated": true
     },
     {
-      "id": "feed_the_swarm",
-      "name": "Consume",
-      "source_name": "Feed the Swarm",
+      "id": "sign_in_blood",
+      "name": "Blood Pact",
+      "source_name": "Sign in Blood",
       "rarity": "common",
       "level": 2,
       "type": "Sorcery",
-      "cost": { "generic": 1, "colors": { "B": 1 } },
+      "cost": { "colors": { "B": 2 } },
       "timing": "sorcery",
       "reactive": false,
-      "original_text": "Destroy target creature or enchantment. You lose life equal to its mana value.",
-      "translated_text": "Destroy an enemy. Lose HP equal to its Level.",
+      "original_text": "Target player draws two cards and loses 2 life.",
+      "translated_text": "Choose an ally: they draw 2, then lose 2 HP.",
+      "targets": { "T1": { "mode": "chosen", "side": "ally", "targeted": true } },
       "effects": [
-        { "kind": "destroy", "target": "an_enemy" },
-        { "kind": "lose_life", "amount": { "ref": "destroyed_target.level" }, "target": "self" }
-      ]
+        { "kind": "draw", "amount": 2, "target": "$T1" },
+        { "kind": "lose_life", "amount": 2, "target": "$T1" }
+      ],
+      "validated": true
     }
   ]
 }

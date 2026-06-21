@@ -16,7 +16,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from . import mappings, scryfall
-from .schema import Card, Loadout, deck_status
+from .schema import (
+    Card,
+    Character,
+    Loadout,
+    MODE_VALUES,
+    SIDE_VALUES,
+    deck_status,
+    effect_specs,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 LOADOUT_DIR = ROOT / "loadouts"
@@ -34,6 +42,10 @@ class AddCardBody(BaseModel):
 
 class LoadoutBody(BaseModel):
     loadout: dict
+
+
+class CardBody(BaseModel):
+    card: dict
 
 
 # --------------------------------------------------------------------------- #
@@ -55,6 +67,14 @@ def api_add_card(body: AddCardBody) -> Card:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Scryfall error: {exc}")
+
+    bad = mappings.forbidden_type(data.get("type_line", ""))
+    if bad:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{data.get('name', 'This card')} is a {bad}; "
+            f"LTG loadouts only accept spells (no {', '.join(mappings.FORBIDDEN_TYPES)}).",
+        )
     return mappings.build_card(data)
 
 
@@ -76,6 +96,40 @@ def _format_errors(exc: ValidationError) -> List[str]:
         loc = ".".join(str(p) for p in err["loc"])
         out.append(f"{loc}: {err['msg']}")
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Per-card validation / re-render / lints (powers the guided effect editor)
+# --------------------------------------------------------------------------- #
+@app.get("/api/effect-specs")
+def api_effect_specs() -> dict:
+    """Param descriptors per primitive + target-builder vocab, for the editor."""
+    return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES}
+
+
+@app.post("/api/cards/validate")
+def api_validate_card(body: CardBody) -> dict:
+    """Structurally validate a card, re-derive its text from effects, and lint.
+
+    `effects` (+ `targets`) is the source of truth: unless `text_override` is
+    set, `translated_text` is re-rendered here so text never drifts from effects.
+    """
+    try:
+        card = Card.model_validate(body.card)
+    except ValidationError as exc:
+        return {"valid": False, "errors": _format_errors(exc), "card": None, "lints": []}
+
+    if not card.text_override:
+        card.translated_text = mappings.render_effects(
+            card.effects, card.targets, channeled=card.timing.value == "channeled"
+        )
+
+    return {
+        "valid": True,
+        "errors": [],
+        "card": card.model_dump(),
+        "lints": mappings.lint_card(card),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -109,6 +163,51 @@ def api_save(body: LoadoutBody) -> dict:
     path = _safe_path(name)
     path.write_text(json.dumps(loadout.model_dump(), indent=2))
     return {"saved": name}
+
+
+@app.post("/api/loadout/export")
+def api_export(body: LoadoutBody) -> dict:
+    """Emit an engine loadout containing ONLY structurally-valid, validated cards.
+
+    Unvalidated or malformed cards are omitted and reported (explicit behaviour);
+    this is separate from the normal Save, which keeps drafts as-is.
+    """
+    raw = body.loadout
+    try:
+        character = Character.model_validate(raw.get("character", {}))
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=["character invalid: " + e for e in _format_errors(exc)],
+        )
+
+    exported, omitted = [], []
+    for i, raw_card in enumerate(raw.get("cards", [])):
+        name = raw_card.get("name") or raw_card.get("source_name") or f"card #{i + 1}"
+        try:
+            card = Card.model_validate(raw_card)
+        except ValidationError as exc:
+            omitted.append({"name": name, "reason": "structurally invalid: " + "; ".join(_format_errors(exc))})
+            continue
+        if not card.validated:
+            omitted.append({"name": name, "reason": "not validated — ratify its effects first"})
+            continue
+        if not card.text_override:
+            card.translated_text = mappings.render_effects(
+                card.effects, card.targets, channeled=card.timing.value == "channeled"
+            )
+        exported.append(card.model_dump())
+
+    engine_loadout = {
+        "ltg_version": raw.get("ltg_version", "0.1"),
+        "character": character.model_dump(),
+        "cards": exported,
+    }
+    return {
+        "engine_loadout": engine_loadout,
+        "exported_count": len(exported),
+        "omitted": omitted,
+    }
 
 
 @app.get("/api/schema")

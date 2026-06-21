@@ -5,7 +5,7 @@ const COLORS = ["W", "U", "B", "R", "G"];
 
 const blankLoadout = () => ({
   ltg_version: "0.1",
-  character: { name: "New Character", description: "", colors: ["U"], starting_mana: ["U", "B"] },
+  character: { name: "New Character", description: "", portrait: "", colors: ["U"], starting_mana: ["U", "B"] },
   cards: [],
 });
 
@@ -33,31 +33,64 @@ function toast(msg) {
 // --------------------------------------------------------------------------
 // Character panel
 // --------------------------------------------------------------------------
+function manaIcon(c) {
+  return `<img class="mana-icon" src="/assets/mana/${c}.svg" alt="${c}" title="${c}" />`;
+}
+
+function makePip(color, on, onClick) {
+  const pip = document.createElement("button");
+  pip.type = "button";
+  pip.className = "pip" + (on ? " on" : "");
+  pip.dataset.c = color;
+  pip.innerHTML = manaIcon(color);
+  pip.onclick = onClick;
+  return pip;
+}
+
+function renderPortrait() {
+  const img = $("#portrait-img");
+  const ph = $("#portrait-ph");
+  const clear = $("#portrait-clear");
+  const src = state.character.portrait || "";
+  if (src) {
+    img.src = src; img.hidden = false; ph.hidden = true; clear.hidden = false;
+  } else {
+    img.hidden = true; img.removeAttribute("src"); ph.hidden = false; clear.hidden = true;
+  }
+}
+
 function renderCharacter() {
   $("#char-name").value = state.character.name;
   $("#char-desc").value = state.character.description || "";
+  renderPortrait();
 
   const colorPick = $("#color-pick");
   colorPick.innerHTML = "";
   COLORS.forEach((c) => {
-    const pip = document.createElement("div");
-    pip.className = "pip" + (state.character.colors.includes(c) ? " on" : "");
-    pip.dataset.c = c;
-    pip.textContent = c;
-    pip.onclick = () => toggleColor(c);
-    colorPick.appendChild(pip);
+    colorPick.appendChild(makePip(c, state.character.colors.includes(c), () => toggleColor(c)));
   });
 
+  // Starting mana: two independent slots; each picks one colour, duplicates allowed.
   const manaPick = $("#mana-pick");
   manaPick.innerHTML = "";
-  COLORS.forEach((c) => {
-    const pip = document.createElement("div");
-    pip.className = "pip" + (state.character.starting_mana.includes(c) ? " on" : "");
-    pip.dataset.c = c;
-    pip.textContent = c;
-    pip.onclick = () => toggleMana(c);
-    manaPick.appendChild(pip);
+  [0, 1].forEach((slot) => {
+    const row = document.createElement("div");
+    row.className = "pip-row mana-slot";
+    const label = document.createElement("span");
+    label.className = "slot-label";
+    label.textContent = `Slot ${slot + 1}`;
+    row.appendChild(label);
+    COLORS.forEach((c) => {
+      row.appendChild(makePip(c, state.character.starting_mana[slot] === c, () => setMana(slot, c)));
+    });
+    manaPick.appendChild(row);
   });
+}
+
+function setMana(slot, c) {
+  state.character.starting_mana[slot] = c;
+  renderCharacter();
+  scheduleValidate();
 }
 
 function toggleColor(c) {
@@ -69,21 +102,6 @@ function toggleColor(c) {
     list.push(c);
   } else {
     toast("Colours: pick at most 3");
-  }
-  renderCharacter();
-  scheduleValidate();
-}
-
-function toggleMana(c) {
-  const list = state.character.starting_mana;
-  const i = list.indexOf(c);
-  if (i >= 0) {
-    list.splice(i, 1);
-  } else if (list.length < 2) {
-    list.push(c);
-  } else {
-    list.shift(); // keep the two most recent
-    list.push(c);
   }
   renderCharacter();
   scheduleValidate();
@@ -103,8 +121,14 @@ async function doSearch() {
     if (!matches.length) { ul.innerHTML = "<li class='meta'>No matches.</li>"; return; }
     matches.forEach((m) => {
       const li = document.createElement("li");
-      li.innerHTML = `<span>${m.name}</span><span class="meta">${m.type_line} · ${m.rarity}</span>`;
-      li.onclick = () => addCard(m.name);
+      li.innerHTML = `
+        <span class="res-main">
+          <span class="res-name">${escapeHtml(m.name)}</span>
+          <span class="meta">${escapeHtml(m.type_line)} · ${m.rarity}</span>
+        </span>
+        <button class="quick-add" title="Quick add to deck">+</button>`;
+      li.querySelector(".res-main").onclick = () => openPreview(m);
+      li.querySelector(".quick-add").onclick = (e) => { e.stopPropagation(); addCard(m.name); };
       ul.appendChild(li);
     });
   } catch (e) {
@@ -118,15 +142,79 @@ async function addCard(name) {
     state.cards.push(card);
     renderDeck();
     scheduleValidate();
+    await recheckCard(state.cards.length - 1, false); // populate lints on add
     toast(`Added ${card.source_name}${card.needs_translation ? " (needs translation)" : ""}`);
   } catch (e) {
     toast(`Add failed: ${e.message}`);
   }
 }
 
+// Preview a search result (full MTG card) before committing it to the deck.
+function searchCostString(m) {
+  return (m.mana_cost || "").replace(/[{}]/g, "") || "—";
+}
+
+function openPreview(m) {
+  const el = $("#detail-card");
+  el.innerHTML = `
+    <h3>${escapeHtml(m.name)}</h3>
+    <div class="sub">${escapeHtml(m.type_line)} · ${m.rarity} · ${searchCostString(m)}
+      · Level ${Math.round(m.cmc || 0)}</div>
+
+    <div class="block">
+      <div class="label">MTG card text</div>
+      <div class="readonly-text">${escapeHtml(m.oracle_text) || "(no rules text)"}</div>
+    </div>
+    <div class="block meta">This is the original MTG card. Adding it runs the LTG
+      translation registry and drops it into your deck.</div>
+
+    <div class="detail-actions">
+      <button id="preview-cancel">Cancel</button>
+      <button class="primary" id="preview-add">Add to deck</button>
+    </div>`;
+  $("#preview-add").onclick = async () => { closeDetail(); await addCard(m.name); };
+  $("#preview-cancel").onclick = closeDetail;
+  $("#detail-overlay").classList.remove("hidden");
+}
+
 // --------------------------------------------------------------------------
 // Deck table
 // --------------------------------------------------------------------------
+let sortState = { key: null, dir: 1 };
+
+const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, mythic: 3 };
+
+function cardSortValue(card, key) {
+  switch (key) {
+    case "cost": return card.level;
+    case "rarity": return RARITY_RANK[card.rarity] ?? -1;
+    case "source_name": return card.source_name.toLowerCase();
+    case "type": return card.type.toLowerCase();
+    default: return (card.name || "").toLowerCase();
+  }
+}
+
+function applySort(key) {
+  if (sortState.key === key) {
+    sortState.dir *= -1;
+  } else {
+    sortState = { key, dir: 1 };
+  }
+  state.cards.sort((a, b) => {
+    const va = cardSortValue(a, key), vb = cardSortValue(b, key);
+    if (va < vb) return -1 * sortState.dir;
+    if (va > vb) return 1 * sortState.dir;
+    return 0;
+  });
+  renderDeck();
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll("#deck-table th.sortable").forEach((th) => {
+    const ind = th.querySelector(".sort-ind");
+    ind.textContent = th.dataset.sort === sortState.key ? (sortState.dir === 1 ? " ▲" : " ▼") : "";
+  });
+}
 function costString(cost) {
   const parts = [];
   if (cost.generic) parts.push(String(cost.generic));
@@ -137,6 +225,20 @@ function costString(cost) {
   return parts.join("") || "—";
 }
 
+// Per-card legality issues, computed live against the character's identity.
+function cardIssues(card) {
+  const issues = [];
+  const identity = new Set(state.character.colors);
+  const offColors = Object.keys(card.cost.colors || {}).filter((c) => !identity.has(c));
+  if (offColors.length) issues.push({ cls: "bad", text: `⛔ off-colour (${offColors.join("")})` });
+  const dupes = state.cards.filter((c) => c.source_name === card.source_name).length;
+  if (dupes > 1) issues.push({ cls: "warn", text: "⚠ duplicate" });
+  if (card.validated) issues.push({ cls: "good", text: "✓ validated" });
+  else if (card.needs_translation) issues.push({ cls: "flag", text: "⚑ needs translation" });
+  if ((card._lints || []).length) issues.push({ cls: "warn", text: `⚠ ${card._lints.length} lint${card._lints.length > 1 ? "s" : ""}` });
+  return issues;
+}
+
 function renderDeck() {
   $("#deck-count").textContent = state.cards.length;
   const body = $("#deck-body");
@@ -144,8 +246,12 @@ function renderDeck() {
   state.cards.forEach((card, idx) => {
     const tr = document.createElement("tr");
     const nameInput = `<input type="text" value="${escapeAttr(card.name)}" data-idx="${idx}" class="name-edit" />`;
+    const flags = cardIssues(card)
+      .map((i) => ` <span class="chip ${i.cls}">${i.text}</span>`)
+      .join("");
+    if (cardIssues(card).some((i) => i.cls === "bad")) tr.classList.add("row-illegal");
     tr.innerHTML = `
-      <td>${nameInput}${card.needs_translation ? " <span class='flag'>⚑ needs translation</span>" : ""}</td>
+      <td>${nameInput}${flags}</td>
       <td>${card.source_name}</td>
       <td>${costString(card.cost)}</td>
       <td>${card.type}</td>
@@ -157,31 +263,167 @@ function renderDeck() {
     tr.onclick = () => openDetail(idx);
     body.appendChild(tr);
   });
+  updateSortIndicators();
 }
 
 // --------------------------------------------------------------------------
-// Card detail
+// Guided effect editor
 // --------------------------------------------------------------------------
+let EFFECT_SPECS = {};   // { kind: { params:[{name,control,...}] } }
+let MODES = ["self", "chosen", "all"];
+let SIDES = ["ally", "enemy", "any"];
+const MODE_LABEL = { self: "You", chosen: "Choose one", all: "All" };
+const SIDE_LABEL = { ally: "Ally", enemy: "Enemy", any: "Either" };
+
+async function loadSpecs() {
+  try {
+    const r = await api("GET", "/api/effect-specs");
+    EFFECT_SPECS = r.specs;
+    MODES = r.modes;
+    SIDES = r.sides;
+  } catch (e) { /* editor falls back to whatever the card already holds */ }
+}
+
+// Mirror of backend describe_target, for slot/link labels.
+function describeTargetJS(d) {
+  if (typeof d === "string") return d; // "$slot" ref
+  if (!d || d.mode === "self") return "you";
+  if (d.mode === "all") {
+    const n = { ally: "all allies", enemy: "all enemies", any: "everyone" }[d.side];
+    return d.exclude_self && d.side !== "enemy" ? "all other " + n.split(" ").slice(1).join(" ") : n;
+  }
+  const noun = { ally: "ally", enemy: "enemy", any: "target" }[d.side];
+  const art = d.exclude_self ? "another" : ("aeiou".includes(noun[0]) ? "an" : "a");
+  return `${art} ${noun}${d.targeted ? ", targeted" : ""}`;
+}
+
+// Normalize a descriptor so it stays schema-coherent as the user toggles mode.
+function normTarget(d) {
+  if (d.mode === "self") return { mode: "self" };
+  const out = { mode: d.mode, side: d.side || "ally", exclude_self: !!d.exclude_self };
+  if (d.mode === "chosen") out.targeted = !!d.targeted;
+  return out;
+}
+
+const KINDS = () => Object.keys(EFFECT_SPECS);
+
+// A fresh effect of `kind`, filled from the spec defaults.
+function defaultEffect(kind) {
+  const eff = { kind };
+  (EFFECT_SPECS[kind]?.params || []).forEach((p) => {
+    if ("default" in p) eff[p.name] = clone(p.default);
+    else if (p.control === "bool") eff[p.name] = false;
+    else if (p.control === "int" || p.control === "float" || p.control === "value") eff[p.name] = 1;
+    else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
+    else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
+    else eff[p.name] = "";
+  });
+  return eff;
+}
+
+const clone = (x) => (x && typeof x === "object" ? JSON.parse(JSON.stringify(x)) : x);
+
+function slotLabel(name, card) { return `${name} (${describeTargetJS(card.targets[name])})`; }
+
+function nextSlotName(card) {
+  let n = 1;
+  while (card.targets[`T${n}`] !== undefined) n++;
+  return `T${n}`;
+}
+
+// --- HTML builders --------------------------------------------------------
+// The target descriptor builder: link select + (when direct) mode/side/toggles.
+function targetControlHtml(i, current, card) {
+  const isSlot = typeof current === "string";
+  const slots = Object.keys(card.targets);
+  const linkOpts = [`<option value="__direct__" ${isSlot ? "" : "selected"}>Build target…</option>`];
+  if (slots.length) {
+    linkOpts.push(`<optgroup label="Shared slot">`);
+    slots.forEach((s) => linkOpts.push(`<option value="$${s}" ${current === "$" + s ? "selected" : ""}>↪ ${slotLabel(s, card)}</option>`));
+    linkOpts.push(`</optgroup>`);
+  }
+  linkOpts.push(`<option value="__new_slot__">＋ New shared slot</option>`);
+  const link = `<select class="tgt-link" data-i="${i}">${linkOpts.join("")}</select>`;
+
+  if (isSlot) return `<span class="tgt-builder">${link}<span class="tgt-summary">↪ ${describeTargetJS(current)}</span></span>`;
+
+  const d = current || { mode: "chosen", side: "any" };
+  const modeSel = `<select class="tgt-mode" data-i="${i}">${MODES.map((m) => `<option value="${m}" ${d.mode === m ? "selected" : ""}>${MODE_LABEL[m] || m}</option>`).join("")}</select>`;
+  const sideSel = d.mode === "self" ? "" :
+    `<select class="tgt-side" data-i="${i}">${SIDES.map((s) => `<option value="${s}" ${d.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
+  const exclude = d.mode === "self" ? "" :
+    `<label class="inline mini"><input type="checkbox" class="tgt-exclude" data-i="${i}" ${d.exclude_self ? "checked" : ""}/> another</label>`;
+  const targeted = d.mode === "chosen" ?
+    `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" data-i="${i}" ${d.targeted ? "checked" : ""}/> targets</label>` : "";
+  return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}</span>`;
+}
+
+function valueControlHtml(i, p, val) {
+  let type = "number", num = 1, ref = "";
+  if (val === "all") type = "all";
+  else if (val && typeof val === "object" && "ref" in val) { type = "ref"; ref = val.ref; }
+  else num = val;
+  return `
+    <select class="val-type" data-i="${i}" data-p="${p}">
+      <option value="number" ${type === "number" ? "selected" : ""}>number</option>
+      <option value="all" ${type === "all" ? "selected" : ""}>all</option>
+      <option value="ref" ${type === "ref" ? "selected" : ""}>reference</option>
+    </select>
+    ${type === "number" ? `<input class="val-input" type="number" data-i="${i}" data-p="${p}" value="${num}" />` : ""}
+    ${type === "ref" ? `<input class="val-input" type="text" data-i="${i}" data-p="${p}" value="${escapeAttr(ref)}" placeholder="e.g. destroyed_target.level" />` : ""}`;
+}
+
+function paramHtml(i, p, val) {
+  switch (p.control) {
+    case "bool":
+      return `<label class="inline"><input type="checkbox" class="eff-param" data-i="${i}" data-p="${p.name}" ${val ? "checked" : ""}/> ${p.name}</label>`;
+    case "int":
+    case "float":
+      return `<label class="inline">${p.name} <input type="number" class="eff-param" data-i="${i}" data-p="${p.name}" step="${p.control === "float" ? "0.1" : "1"}" value="${val ?? 0}" /></label>`;
+    case "enum": {
+      const none = p.optional ? `<option value="" ${val == null ? "selected" : ""}>(none)</option>` : "";
+      return `<label class="inline">${p.name} <select class="eff-param" data-i="${i}" data-p="${p.name}">${none}${(p.options || []).map((o) => `<option ${val === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`;
+    }
+    case "value":
+      return `<label class="inline">${p.name} ${valueControlHtml(i, p.name, val)}</label>`;
+    default:
+      return `<label class="inline">${p.name} <input type="text" class="eff-param" data-i="${i}" data-p="${p.name}" value="${escapeAttr(val ?? "")}" /></label>`;
+  }
+}
+
+function effectRowHtml(e, i, card) {
+  const spec = EFFECT_SPECS[e.kind];
+  const kindSel = `<select class="eff-kind" data-i="${i}">${KINDS().map((k) => `<option ${k === e.kind ? "selected" : ""}>${k}</option>`).join("")}</select>`;
+  const params = (spec?.params || []).map((p) => {
+    if (p.name === "target") return `<span class="param">target ${targetControlHtml(i, e.target, card)}</span>`;
+    return `<span class="param">${paramHtml(i, p, e[p.name])}</span>`;
+  }).join("");
+  return `
+    <div class="effect-row">
+      <div class="effect-head">
+        ${kindSel}
+        <span class="effect-tools">
+          <button class="eff-up" data-i="${i}" title="Move up">↑</button>
+          <button class="eff-down" data-i="${i}" title="Move down">↓</button>
+          <button class="eff-remove danger" data-i="${i}" title="Remove">✕</button>
+        </span>
+      </div>
+      <div class="effect-params">${params}</div>
+    </div>`;
+}
+
+let currentIdx = null;
+
 function openDetail(idx) {
+  currentIdx = idx;
   const card = state.cards[idx];
+  const lints = card._lints || [];
+  const slots = Object.keys(card.targets);
   const el = $("#detail-card");
-  const effectsHtml = card.effects.length
-    ? card.effects.map((e) => `<div>${escapeHtml(JSON.stringify(e))}</div>`).join("")
-    : "<div class='meta'>(no structured effects)</div>";
+
   el.innerHTML = `
     <h3>${escapeHtml(card.name)}</h3>
-    <div class="sub">${card.source_name} · ${card.type} · ${card.rarity} · Level ${card.level}
-      ${card.needs_translation ? "· <span class='flag'>⚑ needs translation</span>" : ""}</div>
-
-    <div class="block">
-      <div class="label">Original MTG text (read-only)</div>
-      <div class="readonly-text">${escapeHtml(card.original_text) || "—"}</div>
-    </div>
-
-    <div class="block">
-      <div class="label">Translated (LTG) text — editable</div>
-      <textarea id="detail-translated" rows="3">${escapeHtml(card.translated_text)}</textarea>
-    </div>
+    <div class="sub">${card.source_name} · ${card.type} · ${card.rarity} · Level ${card.level}</div>
 
     <div class="block">
       <div class="label">Flavour name — editable</div>
@@ -189,26 +431,242 @@ function openDetail(idx) {
     </div>
 
     <div class="block">
-      <div class="label">Structured effects (read-only)</div>
-      <div class="effects">${effectsHtml}</div>
+      <div class="label">Original MTG text (read-only)</div>
+      <div class="readonly-text">${escapeHtml(card.original_text) || "—"}</div>
     </div>
 
-    <label><input type="checkbox" id="detail-reactive" ${card.reactive ? "checked" : ""} /> reactive</label>
+    <div class="block">
+      <div class="label-row">
+        <div class="label">Effects (source of truth)</div>
+        <button id="raw-toggle" class="small">{ } raw JSON</button>
+      </div>
+      <div id="effects-editor">
+        ${card.effects.map((e, i) => effectRowHtml(e, i, card)).join("") || "<div class='meta'>No effects yet.</div>"}
+      </div>
+      <button id="add-effect" class="small">＋ Add effect</button>
+      ${slots.length ? `<div class="slots">
+        <div class="label">Shared target slots (chosen-only)</div>
+        ${slots.map((s) => { const d = card.targets[s]; return `<div class="slot-row">
+          <span class="slot-name">$${s}</span>
+          <select class="slot-side" data-slot="${s}">${SIDES.map((t) => `<option value="${t}" ${d.side === t ? "selected" : ""}>${SIDE_LABEL[t] || t}</option>`).join("")}</select>
+          <label class="inline mini"><input type="checkbox" class="slot-exclude" data-slot="${s}" ${d.exclude_self ? "checked" : ""}/> another</label>
+          <label class="inline mini"><input type="checkbox" class="slot-targeted" data-slot="${s}" ${d.targeted ? "checked" : ""}/> targets</label>
+          <button class="slot-remove danger" data-slot="${s}" title="Remove slot">✕</button>
+        </div>`; }).join("")}
+      </div>` : ""}
+      <div id="raw-json" class="hidden">
+        <textarea id="raw-json-text" rows="7" spellcheck="false">${escapeHtml(JSON.stringify({ targets: card.targets, effects: card.effects }, null, 2))}</textarea>
+        <button id="raw-apply" class="small">Apply JSON</button>
+        <span id="raw-error" class="chip bad" hidden></span>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="label-row">
+        <div class="label">Translated text — ${card.text_override ? "manual override" : "auto-derived from effects"}</div>
+        <label class="inline small"><input type="checkbox" id="text-override" ${card.text_override ? "checked" : ""}/> manual override</label>
+      </div>
+      <textarea id="detail-translated" rows="2" ${card.text_override ? "" : "readonly"}>${escapeHtml(card.translated_text)}</textarea>
+    </div>
+
+    ${lints.length ? `<div class="block lints">
+      <div class="label">Lints</div>
+      ${lints.map((l) => `<div class="lint">⚠ ${escapeHtml(l)}</div>`).join("")}
+    </div>` : ""}
+
+    <label class="inline"><input type="checkbox" id="detail-reactive" ${card.reactive ? "checked" : ""} /> reactive</label>
+
+    <div class="block validate-bar">
+      <span class="chip ${card.validated ? "good" : "warn"}">${card.validated ? "✓ Validated" : "Not validated"}</span>
+      <button id="detail-validate" class="${card.validated ? "" : "primary"}">${card.validated ? "Unmark" : "Mark validated"}</button>
+    </div>
 
     <div class="detail-actions">
       <button class="danger" id="detail-remove">Remove from deck</button>
-      <button class="primary" id="detail-close">Done</button>
+      <button id="detail-close">Done</button>
     </div>`;
 
-  $("#detail-translated").oninput = (e) => { card.translated_text = e.target.value; };
-  $("#detail-name").oninput = (e) => { card.name = e.target.value; };
-  $("#detail-reactive").onchange = (e) => { card.reactive = e.target.checked; };
-  $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
-  $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
+  wireDetail(idx);
   $("#detail-overlay").classList.remove("hidden");
 }
 
-function closeDetail() { $("#detail-overlay").classList.add("hidden"); }
+function wireDetail(idx) {
+  const card = state.cards[idx];
+
+  $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
+  $("#detail-reactive").onchange = (e) => { card.reactive = e.target.checked; recheckCard(idx, true); };
+  $("#detail-validate").onclick = () => toggleValidated(idx);
+  $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
+  $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
+
+  $("#add-effect").onclick = () => { card.effects.push(defaultEffect("deal_damage")); recheckCard(idx, true); };
+
+  $("#text-override").onchange = (e) => { card.text_override = e.target.checked; recheckCard(idx, true); };
+  $("#detail-translated").oninput = (e) => { if (card.text_override) card.translated_text = e.target.value; };
+
+  // Effect kind / params / target
+  document.querySelectorAll(".eff-kind").forEach((sel) => {
+    sel.onchange = () => { const i = +sel.dataset.i; card.effects[i] = defaultEffect(sel.value); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".eff-param").forEach((inp) => {
+    inp.onchange = () => {
+      const i = +inp.dataset.i, p = inp.dataset.p;
+      const spec = (EFFECT_SPECS[card.effects[i].kind].params || []).find((x) => x.name === p);
+      card.effects[i][p] = inp.type === "checkbox" ? inp.checked
+        : spec.control === "int" ? (parseInt(inp.value) || 0)
+        : spec.control === "float" ? (parseFloat(inp.value) || 0)
+        : (spec.control === "enum" && spec.optional && inp.value === "") ? null
+        : inp.value;
+      // changing a continuous/recurring marker can re-shape the card → full re-render
+      recheckCard(idx, p === "trigger" || p === "duration");
+    };
+  });
+  document.querySelectorAll(".val-type").forEach((sel) => {
+    sel.onchange = () => {
+      const i = +sel.dataset.i, p = sel.dataset.p;
+      card.effects[i][p] = sel.value === "all" ? "all" : sel.value === "ref" ? { ref: "" } : 1;
+      recheckCard(idx, true);
+    };
+  });
+  document.querySelectorAll(".val-input").forEach((inp) => {
+    inp.onchange = () => {
+      const i = +inp.dataset.i, p = inp.dataset.p;
+      card.effects[i][p] = inp.type === "number" ? (parseInt(inp.value) || 0) : { ref: inp.value };
+      recheckCard(idx, false);
+    };
+  });
+  // Target descriptor builder
+  document.querySelectorAll(".tgt-link").forEach((sel) => {
+    sel.onchange = () => onTargetLink(idx, +sel.dataset.i, sel.value);
+  });
+  document.querySelectorAll(".tgt-mode").forEach((sel) => {
+    sel.onchange = () => { const e = card.effects[+sel.dataset.i]; e.target = normTarget({ ...e.target, mode: sel.value }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".tgt-side").forEach((sel) => {
+    sel.onchange = () => { const e = card.effects[+sel.dataset.i]; e.target = normTarget({ ...e.target, side: sel.value }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".tgt-exclude").forEach((cb) => {
+    cb.onchange = () => { const e = card.effects[+cb.dataset.i]; e.target = normTarget({ ...e.target, exclude_self: cb.checked }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".tgt-targeted").forEach((cb) => {
+    cb.onchange = () => { const e = card.effects[+cb.dataset.i]; e.target = normTarget({ ...e.target, targeted: cb.checked }); recheckCard(idx, true); };
+  });
+
+  document.querySelectorAll(".eff-up").forEach((b) => b.onclick = () => moveEffect(idx, +b.dataset.i, -1));
+  document.querySelectorAll(".eff-down").forEach((b) => b.onclick = () => moveEffect(idx, +b.dataset.i, 1));
+  document.querySelectorAll(".eff-remove").forEach((b) => b.onclick = () => { card.effects.splice(+b.dataset.i, 1); recheckCard(idx, true); });
+
+  // Slots (chosen-only descriptors)
+  document.querySelectorAll(".slot-side").forEach((sel) => {
+    sel.onchange = () => { card.targets[sel.dataset.slot] = normTarget({ ...card.targets[sel.dataset.slot], side: sel.value }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".slot-exclude").forEach((cb) => {
+    cb.onchange = () => { card.targets[cb.dataset.slot] = normTarget({ ...card.targets[cb.dataset.slot], exclude_self: cb.checked }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".slot-targeted").forEach((cb) => {
+    cb.onchange = () => { card.targets[cb.dataset.slot] = normTarget({ ...card.targets[cb.dataset.slot], targeted: cb.checked }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".slot-remove").forEach((b) => {
+    b.onclick = () => {
+      const s = b.dataset.slot;
+      card.effects.forEach((e) => { if (e.target === "$" + s) e.target = clone(card.targets[s]); });
+      delete card.targets[s];
+      recheckCard(idx, true);
+    };
+  });
+
+  // Raw JSON escape hatch
+  $("#raw-toggle").onclick = () => $("#raw-json").classList.toggle("hidden");
+  $("#raw-apply").onclick = () => applyRawJson(idx);
+}
+
+// The link dropdown: build inline, link to an existing slot, or make a new one.
+function onTargetLink(idx, i, value) {
+  const card = state.cards[idx];
+  const e = card.effects[i];
+  if (value === "__direct__") {
+    // unlink: materialize the current descriptor (copy the slot's, or default)
+    e.target = typeof e.target === "string"
+      ? clone(card.targets[e.target.slice(1)]) || { mode: "chosen", side: "any" }
+      : e.target;
+  } else if (value === "__new_slot__") {
+    const name = nextSlotName(card);
+    const cur = e.target;
+    const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: false };
+    card.targets[name] = seed;
+    e.target = "$" + name;
+  } else {
+    e.target = value; // "$T1"
+  }
+  recheckCard(idx, true);
+}
+
+function moveEffect(idx, i, dir) {
+  const arr = state.cards[idx].effects;
+  const j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  recheckCard(idx, true);
+}
+
+function applyRawJson(idx) {
+  const card = state.cards[idx];
+  const errEl = $("#raw-error");
+  try {
+    const parsed = JSON.parse($("#raw-json-text").value);
+    card.effects = parsed.effects || [];
+    card.targets = parsed.targets || {};
+    errEl.hidden = true;
+    recheckCard(idx, true);
+  } catch (e) {
+    errEl.textContent = "Invalid JSON: " + e.message;
+    errEl.hidden = false;
+  }
+}
+
+// Re-validate a card after an edit: un-ratify, re-derive text, refresh lints.
+async function recheckCard(idx, rerender) {
+  const card = state.cards[idx];
+  card.validated = false;
+  try {
+    const res = await api("POST", "/api/cards/validate", { card });
+    if (res.valid) {
+      state.cards[idx] = { ...res.card, _lints: res.lints, _error: null };
+    } else {
+      card._error = res.errors.join("; ");
+      card._lints = card._lints || [];
+      toast("Invalid: " + res.errors[0]);
+    }
+  } catch (e) {
+    toast("Validation error: " + e.message);
+  }
+  renderDeck();
+  scheduleValidate();
+  if (rerender) openDetail(idx);
+  else {
+    // light update: refresh derived text only (params edited in place)
+    const c = state.cards[idx];
+    const ta = $("#detail-translated");
+    if (ta && !c.text_override) ta.value = c.translated_text;
+  }
+}
+
+// Ratify / un-ratify the card's effects.
+function toggleValidated(idx) {
+  const card = state.cards[idx];
+  if (card.validated) {
+    card.validated = false;
+  } else {
+    if ((card._error || "").length) { toast("Fix structural errors first."); return; }
+    card.validated = true;
+    card.needs_translation = false;
+  }
+  renderDeck();
+  scheduleValidate();
+  openDetail(idx);
+}
+
+function closeDetail() { currentIdx = null; $("#detail-overlay").classList.add("hidden"); }
 
 // --------------------------------------------------------------------------
 // Deck status (live, non-blocking)
@@ -303,6 +761,34 @@ function exportJson() {
   URL.revokeObjectURL(url);
 }
 
+// Export an engine-ready loadout: only structurally-valid, validated cards.
+async function exportEngineLoadout() {
+  syncCharacterFromInputs();
+  try {
+    const res = await api("POST", "/api/loadout/export", { loadout: state });
+    if (res.exported_count === 0) {
+      const reasons = res.omitted.map((o) => `• ${o.name}: ${o.reason}`).join("\n");
+      alert(`Nothing exported — no validated cards.\n\nOmitted:\n${reasons || "(deck is empty)"}`);
+      return;
+    }
+    const blob = new Blob([JSON.stringify(res.engine_loadout, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(state.character.name || "loadout").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.engine.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    if (res.omitted.length) {
+      toast(`Exported ${res.exported_count}; omitted ${res.omitted.length} unvalidated.`);
+      console.warn("Omitted from engine export:", res.omitted);
+    } else {
+      toast(`Exported ${res.exported_count} validated card(s).`);
+    }
+  } catch (e) {
+    toast(`Export failed: ${e.message}`);
+  }
+}
+
 function importFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -338,12 +824,27 @@ function init() {
   $("#btn-load").onclick = loadDialog;
   $("#btn-save").onclick = saveLoadout;
   $("#btn-export").onclick = exportJson;
+  $("#btn-export-engine").onclick = exportEngineLoadout;
   $("#btn-search").onclick = doSearch;
   $("#search-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   $("#char-name").oninput = () => { state.character.name = $("#char-name").value; scheduleValidate(); };
   $("#char-desc").oninput = () => { state.character.description = $("#char-desc").value; };
   $("#file-import").onchange = (e) => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ""; };
+  $("#portrait").onclick = (e) => { if (e.target.id !== "portrait-clear") $("#portrait-file").click(); };
+  $("#portrait-clear").onclick = (e) => { e.stopPropagation(); state.character.portrait = ""; renderPortrait(); };
+  $("#portrait-file").onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { state.character.portrait = reader.result; renderPortrait(); };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
   $("#detail-overlay").onclick = (e) => { if (e.target.id === "detail-overlay") { closeDetail(); renderDeck(); } };
+  document.querySelectorAll("#deck-table th.sortable").forEach((th) => {
+    th.onclick = () => applySort(th.dataset.sort);
+  });
+  loadSpecs();
   renderAll();
 }
 

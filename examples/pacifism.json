@@ -9,8 +9,12 @@
   "timing": "channeled",
   "reactive": false,
   "original_text": "Enchant creature. Enchanted creature can't attack or block.",
-  "translated_text": "An enemy can't attack.",
+  "translated_text": "While channeled: the chosen enemy can't attack.",
+  "targets": {
+    "T1": { "mode": "chosen", "side": "enemy", "targeted": true }
+  },
   "effects": [
-    { "kind": "disable", "intent_type": "attack", "target": "an_enemy" }
-  ]
+    { "kind": "disable", "intent_type": "attack", "target": "$T1", "duration": "while_channeled" }
+  ],
+  "validated": true
 }

@@ -9,9 +9,9 @@
   "timing": "sorcery",
   "reactive": false,
   "original_text": "Destroy target creature or enchantment. You lose life equal to its mana value.",
-  "translated_text": "Destroy an enemy. Lose HP equal to its Level.",
+  "translated_text": "Destroy a target. Lose HP equal to its Level.",
   "effects": [
-    { "kind": "destroy", "target": "an_enemy" },
-    { "kind": "lose_life", "amount": { "ref": "destroyed_target.level" }, "target": "self" }
+    { "kind": "destroy", "target": { "mode": "chosen", "side": "any", "targeted": true } },
+    { "kind": "lose_life", "amount": { "ref": "destroyed_target.level" }, "target": { "mode": "self" } }
   ]
 }

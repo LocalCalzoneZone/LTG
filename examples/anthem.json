@@ -1,0 +1,23 @@
+{
+  "id": "anthem",
+  "name": "Rallying Banner",
+  "source_name": "Glorious Anthem",
+  "rarity": "rare",
+  "level": 3,
+  "type": "Enchantment",
+  "cost": { "generic": 1, "colors": { "W": 2 } },
+  "timing": "channeled",
+  "reactive": false,
+  "original_text": "Creatures you control get +1/+1.",
+  "translated_text": "While channeled: all allies gain +1 attack and +1 temp HP.",
+  "effects": [
+    {
+      "kind": "pump",
+      "power": 1,
+      "toughness": 1,
+      "target": { "mode": "all", "side": "ally" },
+      "duration": "while_channeled"
+    }
+  ],
+  "validated": true
+}

@@ -49,6 +49,8 @@ def search(query: str) -> List[dict]:
             "type_line": c.get("type_line", ""),
             "rarity": c.get("rarity", ""),
             "mana_cost": c.get("mana_cost", ""),
+            "oracle_text": c.get("oracle_text", ""),
+            "cmc": c.get("cmc", 0),
         }
         for c in data[:20]
     ]

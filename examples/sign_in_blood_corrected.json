@@ -1,0 +1,21 @@
+{
+  "id": "sign_in_blood",
+  "name": "Blood Pact",
+  "source_name": "Sign in Blood",
+  "rarity": "common",
+  "level": 2,
+  "type": "Sorcery",
+  "cost": { "colors": { "B": 2 } },
+  "timing": "sorcery",
+  "reactive": false,
+  "original_text": "Target player draws two cards and loses 2 life.",
+  "translated_text": "Choose an ally: they draw 2, then lose 2 HP.",
+  "targets": {
+    "T1": { "mode": "chosen", "side": "ally", "targeted": true }
+  },
+  "effects": [
+    { "kind": "draw", "amount": 2, "target": "$T1" },
+    { "kind": "lose_life", "amount": 2, "target": "$T1" }
+  ],
+  "validated": true
+}

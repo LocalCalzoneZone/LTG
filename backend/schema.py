@@ -17,9 +17,15 @@ That is the whole change.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Literal, Union
+from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from typing_extensions import Annotated
 
 
@@ -47,22 +53,72 @@ class Timing(str, Enum):
     channeled = "channeled"
 
 
-class Target(str, Enum):
+class TargetMode(str, Enum):
     self_ = "self"
-    an_ally = "an_ally"
-    an_enemy = "an_enemy"
-    all_enemies = "all_enemies"
-    all_allies = "all_allies"
-    a_minion = "a_minion"
-    the_boss = "the_boss"
-    an_ally_token = "an_ally_token"
-    an_enemy_intent = "an_enemy_intent"
+    chosen = "chosen"
+    all = "all"
+
+
+class Side(str, Enum):
+    ally = "ally"
+    enemy = "enemy"
+    any = "any"
+
+
+class TargetDescriptor(BaseModel):
+    """How an effect picks what it affects — a mechanical property, not a label.
+
+    `targeted` records whether the effect uses MTG's targeting mechanic (so the
+    future engine can let hexproof/shroud interact). It is only meaningful on a
+    `chosen` target. "ally" includes you unless `exclude_self`.
+    """
+
+    mode: TargetMode
+    side: Optional[Side] = None  # omitted for mode:self (always you)
+    exclude_self: bool = False
+    targeted: bool = False
+
+    @model_validator(mode="after")
+    def _coherent(self) -> "TargetDescriptor":
+        if self.mode == TargetMode.self_:
+            if self.side is not None:
+                raise ValueError("mode 'self' must not specify a side")
+            if self.targeted:
+                raise ValueError("mode 'self' cannot be targeted")
+        else:
+            if self.side is None:
+                raise ValueError(f"mode '{self.mode.value}' requires a side")
+        if self.targeted and self.mode != TargetMode.chosen:
+            raise ValueError("targeted is only valid when mode is 'chosen'")
+        return self
+
+
+# Convenience constructors used by the registry.
+def t_self() -> TargetDescriptor:
+    return TargetDescriptor(mode=TargetMode.self_)
+
+
+def t_chosen(side: str, targeted: bool = False, exclude_self: bool = False) -> TargetDescriptor:
+    return TargetDescriptor(
+        mode=TargetMode.chosen, side=Side(side), targeted=targeted, exclude_self=exclude_self
+    )
+
+
+def t_all(side: str, exclude_self: bool = False) -> TargetDescriptor:
+    return TargetDescriptor(mode=TargetMode.all, side=Side(side), exclude_self=exclude_self)
 
 
 class Duration(str, Enum):
     end_of_turn = "end_of_turn"
     this_turn = "this_turn"
     encounter = "encounter"
+    # Applies continuously while the enchantment is channeled (channeled cards only).
+    while_channeled = "while_channeled"
+
+
+# Effects on channeled cards may fire on a recurring trigger instead of being
+# continuous. Only "upkeep" exists for now (start of each of the controller's turns).
+TriggerType = Literal["upkeep"]
 
 
 class Ref(BaseModel):
@@ -75,157 +131,254 @@ class Ref(BaseModel):
 Value = Union[int, Literal["all"], Ref]
 
 
+# An effect's target is either a TargetDescriptor OR a "$slot" reference resolved
+# at the card level (see Card.targets). Slot refs let several effects share one
+# chosen target, so the engine resolves it once and applies it to every effect.
+SLOT_REF_PATTERN = r"^\$[A-Za-z_][A-Za-z0-9_]*$"
+SlotRef = Annotated[str, StringConstraints(pattern=SLOT_REF_PATTERN)]
+TargetOrSlot = Union[TargetDescriptor, SlotRef]
+
+
+def slot_name(target) -> Optional[str]:
+    """Return the slot name if `target` is a "$slot" reference, else None."""
+    return target[1:] if isinstance(target, str) and target.startswith("$") else None
+
+
 # --------------------------------------------------------------------------- #
 # Effect primitives (discriminated union on `kind`)
 # --------------------------------------------------------------------------- #
-class DealDamage(BaseModel):
+class EffectBase(BaseModel):
+    """Shared across every primitive: an optional recurring trigger.
+
+    `trigger="upkeep"` makes a channeled effect fire once at the start of each of
+    the controller's turns (a discrete event, no `while_channeled` duration).
+    """
+
+    trigger: Optional[TriggerType] = None
+
+
+class DealDamage(EffectBase):
     kind: Literal["deal_damage"] = "deal_damage"
     amount: int
-    target: Target
+    target: TargetOrSlot
     nonlethal: bool = False
 
 
-class Heal(BaseModel):
+class Heal(EffectBase):
     kind: Literal["heal"] = "heal"
     amount: int
-    target: Target
+    target: TargetOrSlot
 
 
-class LoseLife(BaseModel):
+class LoseLife(EffectBase):
     kind: Literal["lose_life"] = "lose_life"
     amount: Value
-    target: Target
+    target: TargetOrSlot
 
 
-class Destroy(BaseModel):
+class Destroy(EffectBase):
     kind: Literal["destroy"] = "destroy"
-    target: Target
+    target: TargetOrSlot
 
 
-class Exile(BaseModel):
+class Exile(EffectBase):
     kind: Literal["exile"] = "exile"
-    target: Target
+    target: TargetOrSlot
 
 
-class Bounce(BaseModel):
+class Bounce(EffectBase):
     kind: Literal["bounce"] = "bounce"
-    target: Target
+    target: TargetOrSlot
 
 
-class CounterIntent(BaseModel):
+class CounterIntent(EffectBase):
     kind: Literal["counter_intent"] = "counter_intent"
-    target: Target = Target.an_enemy_intent
+    target: TargetOrSlot = Field(default_factory=lambda: t_chosen("enemy", targeted=True))
 
 
-class StripIntent(BaseModel):
+class StripIntent(EffectBase):
     kind: Literal["strip_intent"] = "strip_intent"
-    target: Target
+    target: TargetOrSlot
 
 
-class Stun(BaseModel):
+class Stun(EffectBase):
     kind: Literal["stun"] = "stun"
-    target: Target
+    target: TargetOrSlot
     intents: int = 1
 
 
-class Pump(BaseModel):
+class Pump(EffectBase):
     kind: Literal["pump"] = "pump"
     power: int
     toughness: int
-    target: Target
+    target: TargetOrSlot
     duration: Duration = Duration.end_of_turn
 
 
-class Wound(BaseModel):
+class Wound(EffectBase):
     kind: Literal["wound"] = "wound"
     power: int
     toughness: int
-    target: Target
+    target: TargetOrSlot
     duration: Duration = Duration.end_of_turn
 
 
-class Counters(BaseModel):
+class Counters(EffectBase):
     kind: Literal["counters"] = "counters"
     power: int
     toughness: int
-    target: Target
+    target: TargetOrSlot
     duration: Duration = Duration.encounter
 
 
-class Prevent(BaseModel):
+class Prevent(EffectBase):
     kind: Literal["prevent"] = "prevent"
     amount: Value
-    target: Target
+    target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
 
-class Protection(BaseModel):
+class Protection(EffectBase):
     kind: Literal["protection"] = "protection"
-    target: Target
+    target: TargetOrSlot
     scope: str = "next_spell_or_attack"
 
 
-class Draw(BaseModel):
+class Draw(EffectBase):
     kind: Literal["draw"] = "draw"
     amount: int
-    target: Target = Target.self_
+    target: TargetOrSlot = Field(default_factory=t_self)
 
 
-class Scry(BaseModel):
+class Scry(EffectBase):
     kind: Literal["scry"] = "scry"
     amount: int
-    target: Target = Target.self_
+    target: TargetOrSlot = Field(default_factory=t_self)
 
 
-class CreateToken(BaseModel):
+class CreateToken(EffectBase):
     kind: Literal["create_token"] = "create_token"
     token_id: str
     count: int = 1
 
 
-class Taunt(BaseModel):
+class Taunt(EffectBase):
     kind: Literal["taunt"] = "taunt"
-    target: Target
+    target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
 
-class Disable(BaseModel):
+class Disable(EffectBase):
     kind: Literal["disable"] = "disable"
     intent_type: str
-    target: Target
+    target: TargetOrSlot
+    duration: Duration = Duration.this_turn
 
 
-class Revive(BaseModel):
+class Revive(EffectBase):
     kind: Literal["revive"] = "revive"
-    target: Target
+    target: TargetOrSlot
     to_fraction: float = 0.5
 
 
+EFFECT_CLASSES = [
+    DealDamage,
+    Heal,
+    LoseLife,
+    Destroy,
+    Exile,
+    Bounce,
+    CounterIntent,
+    StripIntent,
+    Stun,
+    Pump,
+    Wound,
+    Counters,
+    Prevent,
+    Protection,
+    Draw,
+    Scry,
+    CreateToken,
+    Taunt,
+    Disable,
+    Revive,
+]
+
 Effect = Annotated[
-    Union[
-        DealDamage,
-        Heal,
-        LoseLife,
-        Destroy,
-        Exile,
-        Bounce,
-        CounterIntent,
-        StripIntent,
-        Stun,
-        Pump,
-        Wound,
-        Counters,
-        Prevent,
-        Protection,
-        Draw,
-        Scry,
-        CreateToken,
-        Taunt,
-        Disable,
-        Revive,
-    ],
+    Union[tuple(EFFECT_CLASSES)],
     Field(discriminator="kind"),
 ]
+
+
+# --------------------------------------------------------------------------- #
+# Editor metadata — describes each primitive's params so the frontend editor
+# can build typed inputs. Derived from the models, so adding a primitive above
+# automatically surfaces in the guided editor (no JS change needed).
+# --------------------------------------------------------------------------- #
+import typing as _t  # noqa: E402
+
+
+def _control_for(annotation) -> dict:
+    """Classify a field annotation into a UI control descriptor."""
+    if annotation is bool:
+        return {"control": "bool"}
+    if annotation is int:
+        return {"control": "int"}
+    if annotation is float:
+        return {"control": "float"}
+    origin = _t.get_origin(annotation)
+    args = _t.get_args(annotation)
+    if origin is Union:
+        if TargetDescriptor in args:  # TargetOrSlot
+            return {"control": "target"}
+        non_none = [a for a in args if a is not type(None)]
+        if type(None) in args and len(non_none) == 1:  # Optional[...] → optional enum
+            inner = non_none[0]
+            if _t.get_origin(inner) is Literal:
+                return {"control": "enum", "options": list(_t.get_args(inner)), "optional": True}
+            if isinstance(inner, type) and issubclass(inner, Enum):
+                return {"control": "enum", "options": [e.value for e in inner], "optional": True}
+        return {"control": "value"}  # Value = int | "all" | {ref}
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return {"control": "enum", "options": [e.value for e in annotation]}
+    return {"control": "str"}
+
+
+def effect_specs() -> dict:
+    """Per-kind param descriptors for the guided editor."""
+    from pydantic_core import PydanticUndefined
+
+    specs = {}
+    for cls in EFFECT_CLASSES:
+        kind = cls.model_fields["kind"].default
+        params = []
+        for fname, finfo in cls.model_fields.items():
+            if fname == "kind":
+                continue
+            spec = {"name": fname, **_control_for(finfo.annotation)}
+            default = finfo.default
+            if default is PydanticUndefined and finfo.default_factory is not None:
+                default = finfo.default_factory()
+            if default is not PydanticUndefined:
+                if isinstance(default, BaseModel):
+                    spec["default"] = default.model_dump(mode="json")
+                elif isinstance(default, Enum):
+                    spec["default"] = default.value
+                else:
+                    spec["default"] = default
+                spec["required"] = False
+            else:
+                spec["required"] = True
+            params.append(spec)
+        # Keep `trigger` (a base-class field) last so it reads after the kind's
+        # own params in the editor.
+        params.sort(key=lambda p: p["name"] == "trigger")
+        specs[kind] = {"params": params}
+    return specs
+
+
+MODE_VALUES = [m.value for m in TargetMode]
+SIDE_VALUES = [s.value for s in Side]
 
 
 # --------------------------------------------------------------------------- #
@@ -259,12 +412,62 @@ class Card(BaseModel):
     original_text: str = ""
     translated_text: str = ""
     effects: List[Effect] = Field(default_factory=list)
+    # Shared target slots: {slot_name: chosen TargetDescriptor}. Most cards
+    # declare none and use direct descriptors; slots are only added when several
+    # effects must hit the SAME chosen target (see SlotRef).
+    targets: Dict[str, TargetDescriptor] = Field(default_factory=dict)
     needs_translation: bool = False
+    # True when the translated_text was authored by hand (do not auto-render).
+    text_override: bool = False
+    # True when a human has ratified this card's effects. Any edit resets it.
+    validated: bool = False
+
+    @model_validator(mode="after")
+    def _check_targets(self) -> "Card":
+        # Shared slots must be `chosen` (only chosen targets have a choice to share).
+        for name, desc in self.targets.items():
+            if desc.mode != TargetMode.chosen:
+                raise ValueError(f"shared slot '{name}' must be mode 'chosen'")
+        # Slot refs must point at declared slots; draw/scry can't hit enemies.
+        for effect in self.effects:
+            name = slot_name(getattr(effect, "target", None))
+            if name is not None and name not in self.targets:
+                raise ValueError(
+                    f"effect references undeclared slot '${name}'; declare it in 'targets'"
+                )
+            if effect.kind in ("draw", "scry"):
+                desc = self.resolved_target(effect)
+                if desc is not None and desc.side == Side.enemy:
+                    raise ValueError(
+                        f"{effect.kind} cannot target an enemy (enemies have no library)"
+                    )
+            # Channeled-only persistence: while_channeled / upkeep are illegal on
+            # one-shot cards, and an effect can't be both continuous and recurring.
+            is_channeled = self.timing == Timing.channeled
+            if getattr(effect, "duration", None) == Duration.while_channeled and not is_channeled:
+                raise ValueError("duration 'while_channeled' is only valid on channeled cards")
+            if effect.trigger == "upkeep":
+                if not is_channeled:
+                    raise ValueError("trigger 'upkeep' is only valid on channeled cards")
+                if getattr(effect, "duration", None) == Duration.while_channeled:
+                    raise ValueError("an upkeep effect must not also be 'while_channeled'")
+        return self
+
+    def resolved_target(self, effect) -> Optional[TargetDescriptor]:
+        """The effect's effective descriptor, resolving a slot ref if present."""
+        target = getattr(effect, "target", None)
+        name = slot_name(target)
+        if name is not None:
+            return self.targets.get(name)
+        return target
 
 
 class Character(BaseModel):
     name: str
     description: str = ""
+    # Optional portrait, stored inline as a data URL (or any image URL) so a
+    # saved loadout stays self-contained. Empty when unset.
+    portrait: str = ""
     colors: List[Color]
     starting_mana: List[Color]
 
@@ -315,7 +518,9 @@ def deck_status(loadout: Loadout) -> dict:
         {c.name for c in cards if set(c.cost.colors.keys()) - identity}
     )
 
-    untranslated = sum(1 for c in cards if c.needs_translation)
+    untranslated = sum(
+        1 for c in cards if c.needs_translation and not c.validated
+    )
 
     starting_mana_off = [
         m.value for m in loadout.character.starting_mana if m not in identity

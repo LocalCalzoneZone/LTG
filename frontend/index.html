@@ -8,58 +8,75 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Langelier Tactical Game — Deck Builder</h1>
+    <h1>LTG – Deck Builder</h1>
     <div class="actions">
       <button id="btn-new">Create New</button>
       <button id="btn-load">Load</button>
       <input type="file" id="file-import" accept="application/json" hidden />
       <button id="btn-save">Save</button>
       <button id="btn-export">Export JSON</button>
+      <button id="btn-export-engine" class="primary">Export engine loadout</button>
     </div>
   </header>
 
-  <main>
-    <section class="panel" id="character-panel">
-      <h2>Character</h2>
-      <label>Name <input id="char-name" type="text" /></label>
-      <label>Description
-        <textarea id="char-desc" rows="3"></textarea>
-      </label>
-      <div class="field">
-        <span>Colours (1–3)</span>
-        <div id="color-pick" class="pip-row"></div>
+  <main class="layout">
+    <!-- LEFT: character info -->
+    <aside class="col-left">
+      <div class="portrait" id="portrait" title="Click to set a portrait">
+        <img id="portrait-img" alt="Character portrait" hidden />
+        <div id="portrait-ph" class="portrait-ph">＋<br />Add portrait</div>
+        <button id="portrait-clear" class="portrait-clear" hidden title="Remove portrait">✕</button>
+        <input type="file" id="portrait-file" accept="image/*" hidden />
       </div>
-      <div class="field">
-        <span>Starting mana (pick 2)</span>
-        <div id="mana-pick" class="pip-row"></div>
+
+      <section class="panel" id="character-panel">
+        <input id="char-name" class="char-name" type="text" placeholder="Name" />
+        <textarea id="char-desc" class="char-desc" rows="4" placeholder="Description"></textarea>
+        <div class="field">
+          <span>Colours (1–3)</span>
+          <div id="color-pick" class="pip-row"></div>
+        </div>
+        <div class="field">
+          <span>Starting mana (two slots — may be the same colour)</span>
+          <div id="mana-pick"></div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- RIGHT: tools -->
+    <section class="col-right">
+      <div class="right-top">
+        <section class="panel" id="search-panel">
+          <h2>Add cards</h2>
+          <div class="search-row">
+            <input id="search-input" type="text" placeholder="Search MTG card name…" />
+            <button id="btn-search">Search</button>
+          </div>
+          <ul id="search-results" class="results"></ul>
+        </section>
+
+        <section class="panel" id="status-panel">
+          <h2>Deck status</h2>
+          <div id="status-body" class="status">No cards yet.</div>
+        </section>
       </div>
-    </section>
 
-    <section class="panel" id="search-panel">
-      <h2>Add cards</h2>
-      <div class="search-row">
-        <input id="search-input" type="text" placeholder="Search MTG card name…" />
-        <button id="btn-search">Search</button>
-      </div>
-      <ul id="search-results" class="results"></ul>
-    </section>
-
-    <section class="panel" id="status-panel">
-      <h2>Deck status</h2>
-      <div id="status-body" class="status">No cards yet.</div>
-    </section>
-
-    <section class="panel wide" id="deck-panel">
-      <h2>Deck (<span id="deck-count">0</span>)</h2>
-      <table id="deck-table">
+      <section class="panel" id="deck-panel">
+        <h2>Deck (<span id="deck-count">0</span>)</h2>
+        <table id="deck-table">
         <thead>
           <tr>
-            <th>Name (flavour)</th><th>Source</th><th>Cost</th>
-            <th>Type</th><th>Rarity</th><th></th>
+            <th class="sortable" data-sort="name">Name (flavour)<span class="sort-ind"></span></th>
+            <th class="sortable" data-sort="source_name">Source<span class="sort-ind"></span></th>
+            <th class="sortable" data-sort="cost">Cost<span class="sort-ind"></span></th>
+            <th class="sortable" data-sort="type">Type<span class="sort-ind"></span></th>
+            <th class="sortable" data-sort="rarity">Rarity<span class="sort-ind"></span></th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="deck-body"></tbody>
       </table>
+      </section>
     </section>
   </main>
 

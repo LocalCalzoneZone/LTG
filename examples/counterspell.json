@@ -9,8 +9,8 @@
   "timing": "instant",
   "reactive": true,
   "original_text": "Counter target spell.",
-  "translated_text": "Counter an enemy intent.",
+  "translated_text": "Counter an enemy.",
   "effects": [
-    { "kind": "counter_intent", "target": "an_enemy_intent" }
+    { "kind": "counter_intent", "target": { "mode": "chosen", "side": "enemy", "targeted": true } }
   ]
 }

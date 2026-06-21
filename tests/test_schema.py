@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from backend.schema import Card, Loadout
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
-FIXTURES = ["giant_growth", "counterspell", "feed_the_swarm", "pacifism"]
+FIXTURES = ["giant_growth", "counterspell", "feed_the_swarm", "pacifism", "anthem"]
 
 
 @pytest.mark.parametrize("name", FIXTURES)
@@ -27,6 +27,15 @@ def test_fixture_round_trips_losslessly(name):
     assert again == card
     # And dumping is stable: dump -> load -> dump is a fixed point.
     assert again.model_dump() == card.model_dump()
+
+
+def test_corrected_shared_target_fixture_round_trips():
+    data = json.loads((EXAMPLES / "sign_in_blood_corrected.json").read_text())
+    card = Card.model_validate(data)
+    assert card.targets["T1"].mode.value == "chosen"
+    assert card.targets["T1"].side.value == "ally"
+    assert all(e.target == "$T1" for e in card.effects)
+    assert Card.model_validate(card.model_dump()) == card
 
 
 def test_sample_loadout_validates_and_round_trips():
@@ -68,6 +77,35 @@ def test_character_colors_count_enforced():
                 "cards": [],
             }
         )
+
+
+def test_character_portrait_round_trips():
+    data = {
+        "character": {
+            "name": "Ys",
+            "portrait": "data:image/png;base64,AAAA",
+            "colors": ["U"],
+            "starting_mana": ["U", "U"],
+        },
+        "cards": [],
+    }
+    loadout = Loadout.model_validate(data)
+    assert loadout.character.portrait == "data:image/png;base64,AAAA"
+    assert Loadout.model_validate(loadout.model_dump()) == loadout
+
+
+def test_starting_mana_allows_two_of_same_colour():
+    loadout = Loadout.model_validate(
+        {
+            "character": {
+                "name": "Mono",
+                "colors": ["U"],
+                "starting_mana": ["U", "U"],
+            },
+            "cards": [],
+        }
+    )
+    assert loadout.character.starting_mana == ["U", "U"]
 
 
 def test_character_starting_mana_must_be_two():
