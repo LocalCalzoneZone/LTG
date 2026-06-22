@@ -115,7 +115,14 @@ textarea { resize: vertical; }
   margin-bottom: 5px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px;
 }
 .results li:hover { border-color: var(--accent); }
-.results .meta { color: var(--muted); font-size: 12px; }
+.results .meta { color: var(--muted); font-size: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.res-cost { display: inline-flex; align-items: center; gap: 1px; }
+.res-cost .mana-icon { width: 14px; height: 14px; }
+.mc-generic {
+  display: inline-grid; place-items: center; min-width: 14px; height: 14px;
+  padding: 0 2px; border-radius: 50%; background: var(--panel-2);
+  color: var(--text); font-size: 10px; font-weight: 600;
+}
 .res-main { display: flex; flex-direction: column; gap: 2px; flex: 1; cursor: pointer; min-width: 0; }
 .res-name { font-weight: 600; }
 .quick-add {

@@ -45,6 +45,16 @@ function manaIcon(c) {
   return `<img class="mana-icon" src="/assets/mana/${c}.svg" alt="${c}" title="${c}" />`;
 }
 
+// Render a Scryfall mana cost ("{1}{G}{G}") as small icons + generic-number pips.
+function manaCostHtml(manaCost) {
+  const tokens = (manaCost || "").match(/\{([^}]+)\}/g) || [];
+  if (!tokens.length) return "";
+  return `<span class="res-cost">${tokens.map((t) => {
+    const sym = t.slice(1, -1);
+    return /^[WUBRG]$/.test(sym) ? manaIcon(sym) : `<span class="mc-generic">${escapeHtml(sym)}</span>`;
+  }).join("")}</span>`;
+}
+
 function makePip(color, on, onClick) {
   const pip = document.createElement("button");
   pip.type = "button";
@@ -180,7 +190,7 @@ async function doSearch() {
       li.innerHTML = `
         <span class="res-main">
           <span class="res-name">${escapeHtml(m.name)}</span>
-          <span class="meta">${escapeHtml(m.type_line)} · ${m.rarity}</span>
+          <span class="meta">${manaCostHtml(m.mana_cost)}${escapeHtml(m.type_line)} · ${m.rarity}</span>
         </span>
         <button class="quick-add" title="Quick add to deck">+</button>`;
       li.querySelector(".res-main").onclick = () => openPreview(m);
