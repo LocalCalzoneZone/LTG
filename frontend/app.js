@@ -281,14 +281,16 @@ function updateSortIndicators() {
     ind.textContent = th.dataset.sort === sortState.key ? (sortState.dir === 1 ? " ▲" : " ▼") : "";
   });
 }
-function costString(cost) {
+
+// Mana cost as icons (matches the search-result presentation).
+function costIconsHtml(cost) {
   const parts = [];
-  if (cost.generic) parts.push(String(cost.generic));
+  if (cost.generic) parts.push(`<span class="mc-generic">${cost.generic}</span>`);
   for (const c of COLORS) {
     const n = (cost.colors && cost.colors[c]) || 0;
-    for (let i = 0; i < n; i++) parts.push(c);
+    for (let i = 0; i < n; i++) parts.push(manaIcon(c));
   }
-  return parts.join("") || "—";
+  return parts.length ? `<span class="res-cost">${parts.join("")}</span>` : "—";
 }
 
 // Card types LTG doesn't accept (mirror of backend FORBIDDEN_TYPES) — for the flag.
@@ -298,18 +300,21 @@ function forbiddenType(typeLine) {
   return FORBIDDEN_TYPES.find((t) => tokens.includes(t)) || null;
 }
 
-// Per-card legality issues, computed live against the character's identity.
+// Per-card status for the Status column: validated / needs validating + any issues.
 function cardIssues(card) {
   const issues = [];
+  issues.push(card.validated
+    ? { cls: "good", text: "✓ validated" }
+    : { cls: "warn", text: "needs validating" });
+  if (card._error) issues.push({ cls: "bad", text: "⛔ invalid" });
   const badType = forbiddenType(card.type);
-  if (badType) issues.push({ cls: "bad", text: `⛔ fix: ${badType}` });
+  if (badType) issues.push({ cls: "bad", text: `⛔ ${badType} type` });
   const identity = new Set(state.character.colors);
   const offColors = Object.keys(card.cost.colors || {}).filter((c) => !identity.has(c));
   if (offColors.length) issues.push({ cls: "bad", text: `⛔ off-colour (${offColors.join("")})` });
   const dupes = state.cards.filter((c) => c.source_name === card.source_name).length;
   if (dupes > 1) issues.push({ cls: "warn", text: "⚠ duplicate" });
-  if (card.validated) issues.push({ cls: "good", text: "✓ validated" });
-  else if (card.needs_translation) issues.push({ cls: "flag", text: "⚑ needs translation" });
+  if (card.needs_translation) issues.push({ cls: "flag", text: "⚑ needs translation" });
   if ((card._lints || []).length) issues.push({ cls: "warn", text: `⚠ ${card._lints.length} lint${card._lints.length > 1 ? "s" : ""}` });
   return issues;
 }
@@ -320,20 +325,17 @@ function renderDeck() {
   body.innerHTML = "";
   state.cards.forEach((card, idx) => {
     const tr = document.createElement("tr");
-    const nameInput = `<input type="text" value="${escapeAttr(card.name)}" data-idx="${idx}" class="name-edit" />`;
-    const flags = cardIssues(card)
-      .map((i) => ` <span class="chip ${i.cls}">${i.text}</span>`)
-      .join("");
-    if (cardIssues(card).some((i) => i.cls === "bad")) tr.classList.add("row-illegal");
+    const issues = cardIssues(card);
+    const status = issues.map((i) => `<span class="chip ${i.cls}">${i.text}</span>`).join("");
+    if (issues.some((i) => i.cls === "bad")) tr.classList.add("row-illegal");
     tr.innerHTML = `
-      <td>${nameInput}${flags}</td>
+      <td class="deck-name">${escapeHtml(card.name)}</td>
       <td>${card.source_name}</td>
-      <td>${costString(card.cost)}</td>
+      <td>${costIconsHtml(card.cost)}</td>
       <td>${card.type}</td>
       <td>${card.rarity}</td>
+      <td class="deck-status-cell">${status}</td>
       <td><button class="remove-btn" data-idx="${idx}">✕</button></td>`;
-    tr.querySelector(".name-edit").onclick = (e) => e.stopPropagation();
-    tr.querySelector(".name-edit").oninput = (e) => { state.cards[idx].name = e.target.value; scheduleValidate(); };
     tr.querySelector(".remove-btn").onclick = (e) => { e.stopPropagation(); state.cards.splice(idx, 1); renderDeck(); scheduleValidate(); };
     tr.onclick = () => openCard(idx);
     body.appendChild(tr);

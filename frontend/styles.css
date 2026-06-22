@@ -139,6 +139,9 @@ th.sortable:hover { color: var(--text); }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--panel-2); }
 td input { padding: 4px 6px; }
+.deck-name { font-weight: 500; }
+.deck-status-cell { white-space: normal; }
+.deck-status-cell .chip { margin: 1px 2px 1px 0; }
 .flag { color: var(--warn); font-size: 11px; }
 .chip {
   display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 10px;
