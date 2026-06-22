@@ -1,0 +1,22 @@
+{
+  "id": "modal_charm",
+  "name": "Fae Charm",
+  "source_name": "Fae Charm",
+  "rarity": "uncommon",
+  "level": 2,
+  "type": "Instant",
+  "cost": { "generic": 1, "colors": { "U": 1 } },
+  "timing": "instant",
+  "original_text": "Choose one —\n• Counter target spell.\n• Draw two cards.",
+  "translated_text": "Choose one — • Cancel an enemy action (spell or ability). • Draw 2 card(s).",
+  "effects": [
+    {
+      "kind": "modal",
+      "modes": [
+        { "label": "", "effects": [{ "kind": "counter", "filter": "action", "target": { "class": "action", "side": "enemy" } }] },
+        { "label": "", "effects": [{ "kind": "draw", "amount": 2, "target": { "mode": "self" } }] }
+      ]
+    }
+  ],
+  "validated": true
+}

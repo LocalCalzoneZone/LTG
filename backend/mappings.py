@@ -37,6 +37,8 @@ from .schema import (
     Heal,
     KEYWORDS,
     LoseLife,
+    Modal,
+    Mode,
     RemoveKeyword,
     Prevent,
     Pump,
@@ -406,6 +408,31 @@ def _grant_duration(e) -> str:
     return ""  # while_channeled — the channeled prefix carries it
 
 
+# Modal ("Choose one") and conditional ("If …, …") rendering.
+def _condition_phrase(cond) -> str:
+    if cond.kind == "cast_mode":
+        return "cast as an action" if cond.mode == "action" else "cast as a reaction"
+    if cond.property == "has_keyword":
+        return f"the target has {KEYWORDS.get(cond.keyword, {}).get('display', cond.keyword)}"
+    if cond.property == "side":
+        s = cond.side.value if hasattr(cond.side, "value") else cond.side
+        return {"ally": "the target is an ally", "enemy": "the target is an enemy"}.get(s, "the target qualifies")
+    return "the condition holds"
+
+
+def _render_modal(e) -> str:
+    parts = []
+    for m in e.modes:
+        label = f"{m.label}: " if m.label else ""
+        parts.append(f"• {label}{render_effects(m.effects)}")
+    return "Choose one — " + " ".join(parts)
+
+
+def _render_conditional(e) -> str:
+    inner = render_effects(e.effects)
+    return f"If {_condition_phrase(e.condition)}, {_lc_first(inner)}"
+
+
 # Power/toughness convention: power → "attack", toughness → "temp HP" (buff) / "HP" (debuff).
 def _render_pump(e) -> str:
     verb = "gain" if _plural(e.target) else "gains"
@@ -458,12 +485,15 @@ RENDERERS = {
     "ramp": _render_ramp,
     "add_mana": _render_add_mana,
     "grant_keyword": lambda e: (
-        f"{_subject(e.target).capitalize()} gains "
+        f"{_subject(e.target).capitalize()} {'gain' if _plural(e.target) else 'gains'} "
         f"{_keyword_phrase(e.keywords, e.params)}{_grant_duration(e)}."
     ),
     "remove_keyword": lambda e: (
-        f"{_subject(e.target).capitalize()} loses {_keyword_phrase(e.keywords, e.params)}."
+        f"{_subject(e.target).capitalize()} {'lose' if _plural(e.target) else 'loses'} "
+        f"{_keyword_phrase(e.keywords, e.params)}."
     ),
+    "modal": _render_modal,
+    "conditional": _render_conditional,
 }
 
 
@@ -784,14 +814,40 @@ def slugify(name: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", name.lower())).strip("_")
 
 
+def parse_modal(oracle_text: str):
+    """If the text is a 'Choose one —' modal, build a Modal effect from its bullets."""
+    if "choose one" not in (oracle_text or "").lower():
+        return None
+    bullets = [b.strip() for b in re.split(r"[•·]\s*", oracle_text)[1:] if b.strip()]
+    modes = []
+    for b in bullets:
+        effs = translate(b, {})
+        if effs:
+            modes.append(Mode(effects=effs))
+    return Modal(modes=modes) if len(modes) >= 2 else None
+
+
 def build_card(scryfall_json: dict) -> Card:
     """Map a Scryfall card payload onto a Card, best-effort translating it."""
     source_name = scryfall_json["name"]
     oracle_text = scryfall_json.get("oracle_text", "") or ""
     type_line = scryfall_json.get("type_line", "")
+    timing = derive_timing(type_line)
+
+    # Modal cards ("Choose one —") become a single Modal effect over their bullets.
+    modal = parse_modal(oracle_text)
+    if modal is not None:
+        translated = render_effects([modal])
+        return Card(
+            id=slugify(source_name), name=source_name, source_name=source_name,
+            rarity=normalize_rarity(scryfall_json.get("rarity", "common")),
+            level=int(scryfall_json.get("cmc", 0) or 0), type=type_line,
+            cost=parse_mana_cost(scryfall_json.get("mana_cost", "")), timing=timing,
+            original_text=oracle_text, translated_text=translated, effects=[modal],
+            needs_translation=False,
+        )
 
     effects = translate(oracle_text, {"source": scryfall_json})
-    timing = derive_timing(type_line)
 
     low = oracle_text.lower()
     # "for each land you control" → scale the amount by mana capacity.

@@ -180,6 +180,11 @@ label.inline { display: inline-flex; align-items: center; gap: 5px; margin: 0; c
 label.inline input[type=number] { width: 64px; }
 #effects-editor { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
 .effect-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); }
+.effect-row.marker { background: rgba(122, 162, 255, 0.08); border-color: rgba(122, 162, 255, 0.45); }
+.effect-row.scoped { margin-left: 20px; border-left: 3px solid var(--accent); }
+.marker-note { color: var(--muted); font-size: 11px; font-style: italic; }
+.cond-builder { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.add-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .effect-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .eff-kind { font-weight: 600; }
 .effect-tools button { padding: 2px 7px; font-size: 12px; margin-left: 3px; }
@@ -188,6 +193,7 @@ label.inline input[type=number] { width: 64px; }
 .tgt-builder { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .kw-list { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .kw-label { color: var(--muted); font-size: 12px; }
+.nested-note { color: var(--muted); font-size: 12px; font-style: italic; }
 .tgt-summary { color: var(--accent); font-size: 12px; }
 label.inline.mini { font-size: 11px; gap: 3px; }
 .slot-side { max-width: 110px; }

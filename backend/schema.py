@@ -445,7 +445,10 @@ class AddMana(EffectBase):
     color: RampColor = "B"
 
 
-EFFECT_CLASSES = [
+# Leaf effects (everything except the container effects modal/conditional). These
+# are what a mode or a conditional branch may contain — so containers never nest
+# inside one another (no modal-in-modal), which keeps the union non-recursive.
+LEAF_EFFECT_CLASSES = [
     DealDamage,
     Heal,
     LoseLife,
@@ -472,10 +475,83 @@ EFFECT_CLASSES = [
     AddMana,
 ]
 
+LeafEffect = Annotated[Union[tuple(LEAF_EFFECT_CLASSES)], Field(discriminator="kind")]
+
+
+# --------------------------------------------------------------------------- #
+# Container effects: modal ("Choose one") and conditional ("If …, then …").
+# --------------------------------------------------------------------------- #
+class Mode(BaseModel):
+    """One option of a modal card; the player picks exactly one mode at cast."""
+
+    label: str = ""
+    effects: List[LeafEffect] = Field(min_length=1)
+
+
+class Modal(EffectBase):
+    """Choose one — the card may be cast for any one of its modes."""
+
+    kind: Literal["modal"] = "modal"
+    modes: List[Mode] = Field(min_length=2)
+
+
+class CastModeCondition(BaseModel):
+    """True when the card was cast at this speed (action = proactive, reaction = response)."""
+
+    kind: Literal["cast_mode"] = "cast_mode"
+    mode: Literal["action", "reaction"]
+
+
+class TargetPropertyCondition(BaseModel):
+    """True when the (main) target has a property — a keyword, or a side."""
+
+    kind: Literal["target_property"] = "target_property"
+    property: Literal["has_keyword", "side"]
+    keyword: Optional[str] = None
+    side: Optional[Side] = None
+
+    @model_validator(mode="after")
+    def _coherent(self) -> "TargetPropertyCondition":
+        if self.property == "has_keyword":
+            if self.keyword is None:
+                raise ValueError("target_property 'has_keyword' requires a keyword")
+            if self.keyword not in KEYWORDS:
+                raise ValueError(f"unknown keyword '{self.keyword}'")
+        if self.property == "side" and self.side is None:
+            raise ValueError("target_property 'side' requires a side")
+        return self
+
+
+Condition = Annotated[
+    Union[CastModeCondition, TargetPropertyCondition], Field(discriminator="kind")
+]
+
+
+class Conditional(EffectBase):
+    """Apply extra effect(s) only if a condition holds (target property or cast mode)."""
+
+    kind: Literal["conditional"] = "conditional"
+    condition: Condition
+    effects: List[LeafEffect] = Field(min_length=1)
+
+
+EFFECT_CLASSES = LEAF_EFFECT_CLASSES + [Modal, Conditional]
+
 Effect = Annotated[
     Union[tuple(EFFECT_CLASSES)],
     Field(discriminator="kind"),
 ]
+
+
+def iter_effects(effects):
+    """Yield every effect, descending into modal modes and conditional branches."""
+    for e in effects:
+        yield e
+        if getattr(e, "kind", None) == "modal":
+            for m in e.modes:
+                yield from iter_effects(m.effects)
+        elif getattr(e, "kind", None) == "conditional":
+            yield from iter_effects(e.effects)
 
 
 # --------------------------------------------------------------------------- #
@@ -537,6 +613,11 @@ def effect_specs() -> dict:
                 labels["all"] = "All abilities"
                 params.append({"name": "keywords", "control": "keyword_list",
                                "options": opts, "labels": labels, "required": True})
+                continue
+            if fname in ("modes", "condition", "effects"):
+                # Container fields (modal modes / conditional branch). The guided
+                # editor shows a summary; deep edits go through the raw-JSON hatch.
+                params.append({"name": fname, "control": "nested", "required": True})
                 continue
             spec = {"name": fname, **_control_for(finfo.annotation)}
             default = finfo.default
@@ -611,7 +692,9 @@ class Card(BaseModel):
             if desc.mode != TargetMode.chosen:
                 raise ValueError(f"shared slot '{name}' must be mode 'chosen'")
         # Slot refs must point at declared slots; draw/scry can't hit enemies.
-        for effect in self.effects:
+        # Descend into modal modes / conditional branches so nested effects are
+        # checked too.
+        for effect in iter_effects(self.effects):
             name = slot_name(getattr(effect, "target", None))
             if name is not None and name not in self.targets:
                 raise ValueError(
@@ -748,7 +831,7 @@ def deck_status(loadout: Loadout) -> dict:
         # A card is off-colour if its cost OR any ramp/add_mana grant introduces a
         # colour outside the deck identity (a "choice" grant is always fine).
         colours = {c.value for c in card.cost.colors.keys()}
-        for e in card.effects:
+        for e in iter_effects(card.effects):
             grant = getattr(e, "color", None)
             if grant is not None and grant != "choice":
                 colours.add(grant)

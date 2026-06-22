@@ -158,6 +158,35 @@ slot map. `translated_text` then auto-renders the shared wording
   neither continuous nor recurring. All lints live in one place — `LINT_RULES`
   in `mappings.py`.
 
+### Modal cards & conditional effects
+
+Two container effects wrap other effects (their branches hold **leaf** effects
+only — no nesting a modal inside a modal):
+
+- **`modal`** — a "Choose one" card: `{kind:"modal", modes:[{label?, effects:[…]}, …]}`
+  (≥2 modes). The card may be cast for any one mode. Renders
+  "Choose one — • Cancel an enemy action (spell or ability). • Draw 2 card(s)."
+  Auto-translation parses a "Choose one —" oracle text by its `•` bullets.
+- **`conditional`** — an extra effect gated by a condition:
+  `{kind:"conditional", condition, effects:[…]}`. The condition is either
+  **`cast_mode`** (`action`/`reaction` — the speed it was cast at) or
+  **`target_property`** (`has_keyword` / `side`). Renders "If cast as a reaction,
+  draw 1 card." / "If the target has Flight, deal 2 damage to an enemy." Composes
+  with the card's other effects.
+
+Card-level validation descends into modes/branches (`iter_effects`), so e.g. a
+`draw` targeting an enemy inside a mode is still rejected. See
+[examples/modal_charm.json](examples/modal_charm.json),
+[examples/conditional_strike.json](examples/conditional_strike.json).
+
+**Editor:** these are edited inline as **marker rows** in the flat effects list,
+not raw JSON. A `modal`/`conditional` row scopes the effects **below** it (shown
+indented): consecutive `modal` markers are the options of one "Choose one";
+a `conditional` marker gates the effects beneath it, and its condition
+(`cast mode` action/reaction, or `target property` keyword/side) is set with
+inline dropdowns. The editor flattens the nested schema into rows and rebuilds it
+on every edit, so the stored JSON stays in the clean nested form.
+
 ### Granting & removing keywords
 
 Effects can attach evergreen keywords to a creature. The **keyword registry**
@@ -314,8 +343,9 @@ this layer only types the card and renders correct text.
   channeled→sustained), `original_text`, `translated_text`, `effects[]`,
   `targets {slot: descriptor}`, `needs_translation`, `text_override`, `validated`.
 - **Effect** = discriminated union on `kind` (deal_damage, heal, destroy, bounce,
-  counter, pump, wound, ramp, add_mana, grant_keyword, remove_keyword, … see
-  `schema.py`). `Value = int | "all" | {ref}`.
+  counter, pump, wound, ramp, add_mana, grant_keyword, remove_keyword, modal,
+  conditional, … see `schema.py`). `Value = int | "all" | {ref}`. The container
+  effects `modal`/`conditional` hold **leaf** effects (no deeper nesting).
   `target` = a creature TargetDescriptor (mode/side/exclude_self/targeted) or a
   `$slot` ref; **counters** instead target `{class:"action", side:"enemy"}`.
 

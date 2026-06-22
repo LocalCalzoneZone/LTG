@@ -56,6 +56,15 @@ def test_remove_renderings():
         == "An ally loses all abilities."
 
 
+def test_grant_verb_agrees_with_target_number():
+    plural = render([{"kind": "grant_keyword", "keywords": ["lifelink"],
+                      "target": {"mode": "all", "side": "ally"}, "duration": "end_of_turn"}])
+    assert plural == "All allies gain Lifelink until end of turn."
+    single = render([{"kind": "grant_keyword", "keywords": ["flying"],
+                      "target": CHOSEN_ALLY, "duration": "end_of_turn"}])
+    assert single == "An ally gains Flight until end of turn."
+
+
 def test_protection_from_param_renders():
     assert render([{"kind": "grant_keyword", "keywords": ["protection"], "params": {"from": "red"},
                     "target": CHOSEN_ALLY}]) \
