@@ -33,8 +33,11 @@ from .schema import (
     Duration,
     Effect,
     Exile,
+    GrantKeyword,
     Heal,
+    KEYWORDS,
     LoseLife,
+    RemoveKeyword,
     Prevent,
     Pump,
     Ref,
@@ -155,6 +158,41 @@ def _gain_life(m, ctx):
 @register(r"can't attack(?: or block)?")
 def _pacify(m, ctx):
     return [Disable(intent_type="attack", target=t_chosen("enemy", targeted=True))]
+
+
+# --- Granting / removing keywords (names match the registry) --------------- #
+# MTG keyword phrasing → registry identifier (multi-word forms first).
+_KEYWORD_WORDS = {
+    "first strike": "first_strike", "flying": "flying", "trample": "trample",
+    "deathtouch": "deathtouch", "lifelink": "lifelink", "vigilance": "vigilance",
+    "reach": "reach", "hexproof": "hexproof", "indestructible": "indestructible",
+}
+
+
+def _grant_target(text: str):
+    if "creatures you control" in text or "each creature you control" in text:
+        return t_all("ally")
+    if "a creature you control" in text or "another creature you control" in text:
+        return t_chosen("ally")
+    if "target" in text:
+        return t_chosen("any", targeted=True)
+    return t_chosen("ally")
+
+
+@register(r"\b(?:gains?|have|has)\b\s+(?:flying|trample|first strike|deathtouch|lifelink|vigilance|reach|hexproof|indestructible)")
+def _grant_keyword(m, ctx):
+    text = m.string.lower()
+    found = [ident for word, ident in _KEYWORD_WORDS.items()
+             if re.search(r"\b" + re.escape(word) + r"\b", text)]
+    if not found:
+        return []
+    return [GrantKeyword(keywords=found, target=_grant_target(text))]
+
+
+@register(r"loses? all abilities")
+def _remove_all(m, ctx):
+    text = m.string.lower()
+    return [RemoveKeyword(keywords=["all"], target=_grant_target(text))]
 
 
 # --- Lands → mana capacity (the land names are dropped) -------------------- #
@@ -345,6 +383,28 @@ _FILTER_PHRASE = {
 }
 
 
+# Keyword grant/remove text — display names + glosses come from the registry.
+def _keyword_phrase(keywords, params=None) -> str:
+    if keywords == ["all"]:
+        return "all abilities"
+    names = []
+    for k in keywords:
+        disp = KEYWORDS.get(k, {}).get("display", k)
+        if k == "protection" and params and params.get("from"):
+            disp += f" from {params['from']}"
+        names.append(disp)
+    return _join_and(names)
+
+
+def _grant_duration(e) -> str:
+    dur = getattr(e, "duration", None)
+    if dur in (Duration.end_of_turn, Duration.this_turn):
+        return " until end of turn"
+    if dur == Duration.encounter:
+        return " for the encounter"
+    return ""  # while_channeled — the channeled prefix carries it
+
+
 # Power/toughness convention: power → "attack", toughness → "temp HP" (buff) / "HP" (debuff).
 def _render_pump(e) -> str:
     verb = "gain" if _plural(e.target) else "gains"
@@ -396,6 +456,13 @@ RENDERERS = {
     "revive": lambda e: f"Revive {_tgt(e.target)} at {int(e.to_fraction * 100)}% HP.",
     "ramp": _render_ramp,
     "add_mana": _render_add_mana,
+    "grant_keyword": lambda e: (
+        f"{_subject(e.target).capitalize()} gains "
+        f"{_keyword_phrase(e.keywords, e.params)}{_grant_duration(e)}."
+    ),
+    "remove_keyword": lambda e: (
+        f"{_subject(e.target).capitalize()} loses {_keyword_phrase(e.keywords, e.params)}."
+    ),
 }
 
 
@@ -421,6 +488,8 @@ _CLAUSE = {
     "exile": lambda e: "are exiled",
     "bounce": lambda e: "are returned to hand",
     "stun": lambda e: f"are stunned for {e.intents} intent(s)",
+    "grant_keyword": lambda e: f"gain {_keyword_phrase(e.keywords, e.params)}",
+    "remove_keyword": lambda e: f"lose {_keyword_phrase(e.keywords, e.params)}",
 }
 
 
@@ -491,6 +560,12 @@ def _channeled_body(e, targets) -> str:
         return f"{_subject(e.target, targets, True)} {verb} -{e.power} attack and -{e.toughness} HP"
     if k == "disable":
         return f"{_subject(e.target, targets, True)} can't {e.intent_type}"
+    if k == "grant_keyword":
+        verb = "have" if _plural(e.target, targets) else "has"
+        return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
+    if k == "remove_keyword":
+        verb = "lose" if _plural(e.target, targets) else "loses"
+        return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
     if k == "taunt":
         return f"{_subject(e.target, targets, True)} must target you"
     if k == "prevent":
@@ -577,11 +652,10 @@ def _lint_exclude_self_on_enemy(card):
     return out
 
 
-def _lint_counter_reactive(card):
-    # A counter must be able to respond: instant + reactive.
-    if any(e.kind == "counter" for e in card.effects):
-        if not card.reactive or card.timing.value != "instant":
-            return ["a counter card should be timing 'instant' and reactive — it must be able to respond."]
+def _lint_counter_timing(card):
+    # A counter must be able to respond — i.e. be an instant (instant ⟹ reactive).
+    if any(e.kind == "counter" for e in card.effects) and card.timing.value != "instant":
+        return ["a counter card should be timing 'instant' so it can respond."]
     return []
 
 
@@ -633,7 +707,7 @@ LINT_RULES = [
     _lint_no_effects,
     _lint_draw_scry_side,
     _lint_exclude_self_on_enemy,
-    _lint_counter_reactive,
+    _lint_counter_timing,
     _lint_amounts,
     _lint_slots,
     _lint_channeled_persistence,
@@ -717,7 +791,6 @@ def build_card(scryfall_json: dict) -> Card:
 
     effects = translate(oracle_text, {"source": scryfall_json})
     timing = derive_timing(type_line)
-    reactive = any(e.kind in ("counter", "strip_intent") for e in effects)
 
     low = oracle_text.lower()
     # "for each land you control" → scale the amount by mana capacity.
@@ -751,7 +824,6 @@ def build_card(scryfall_json: dict) -> Card:
         type=type_line,
         cost=parse_mana_cost(scryfall_json.get("mana_cost", "")),
         timing=timing,
-        reactive=reactive,
         original_text=oracle_text,
         translated_text=translated,
         effects=effects,

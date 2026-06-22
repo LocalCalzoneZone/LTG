@@ -119,9 +119,10 @@ def test_lint_exclude_self_on_enemy():
     assert any("no-op" in m for m in lint_card(c))
 
 
-def test_lint_counter_not_reactive():
-    c = card(reactive=False, effects=[{"kind": "counter", "filter": "action",
-                                       "target": {"class": "action", "side": "enemy"}}])
+def test_lint_counter_on_non_instant():
+    # BASE is a Sorcery; a counter on a non-instant is flagged (can't respond).
+    c = card(effects=[{"kind": "counter", "filter": "action",
+                       "target": {"class": "action", "side": "enemy"}}])
     assert any("respond" in m for m in lint_card(c))
 
 

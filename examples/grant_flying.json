@@ -1,0 +1,21 @@
+{
+  "id": "grant_flying",
+  "name": "Take Wing",
+  "source_name": "Jump",
+  "rarity": "common",
+  "level": 1,
+  "type": "Instant",
+  "cost": { "colors": { "U": 1 } },
+  "timing": "instant",
+  "original_text": "Target creature gains flying until end of turn.",
+  "translated_text": "An ally gains Flight until end of turn.",
+  "effects": [
+    {
+      "kind": "grant_keyword",
+      "keywords": ["flying"],
+      "target": { "class": "creature", "mode": "chosen", "side": "ally", "targeted": true },
+      "duration": "end_of_turn"
+    }
+  ],
+  "validated": true
+}

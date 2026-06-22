@@ -7,7 +7,6 @@
   "type": "Instant",
   "cost": { "colors": { "B": 1 } },
   "timing": "instant",
-  "reactive": false,
   "original_text": "Add {B}{B}{B}.",
   "translated_text": "Add 3 black mana to your pool this turn.",
   "effects": [

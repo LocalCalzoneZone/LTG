@@ -191,6 +191,49 @@ class Ref(BaseModel):
 Value = Union[int, Literal["all"], Ref]
 
 
+# --------------------------------------------------------------------------- #
+# Keyword registry — the source of truth for grantable evergreen statics. A
+# grant effect references a keyword by name; the engine reads it and applies its
+# rule. Retired keywords are kept here but can't be granted.
+# --------------------------------------------------------------------------- #
+KEYWORDS = {
+    "flying": {"display": "Flight", "gloss": "airborne — ignores rows; only reach/ranged can hit it", "grantable": True, "params": []},
+    "reach": {"display": "Reach", "gloss": "can hit flyers; guards the row behind", "grantable": True, "params": []},
+    "first_strike": {"display": "First Strike", "gloss": "may hold its attack and use it as a reaction", "grantable": True, "params": []},
+    "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
+    "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
+    "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
+    "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
+    "hexproof": {"display": "Hexproof", "gloss": "can't be spell-targeted by enemies", "grantable": True, "params": []},
+    "indestructible": {"display": "Indestructible", "gloss": "can't drop below 1 HP from damage", "grantable": True, "params": []},
+    "protection": {"display": "Protection", "gloss": "prevents the next spell or attack", "grantable": True, "params": ["from"]},
+    # Retired — not grantable.
+    "menace": {"display": "Menace", "gloss": "", "grantable": False, "params": []},
+    "ward": {"display": "Ward", "gloss": "", "grantable": False, "params": []},
+    "convoke": {"display": "Convoke", "gloss": "", "grantable": False, "params": []},
+}
+GRANTABLE_KEYWORDS = [k for k, v in KEYWORDS.items() if v["grantable"]]
+
+
+def _check_grant_keywords(keywords: List[str], params: Optional[dict], for_grant: bool) -> None:
+    """Validate keyword names + params for grant/remove effects."""
+    for kw in keywords:
+        if kw == "all" and not for_grant:
+            continue  # "remove all abilities"
+        info = KEYWORDS.get(kw)
+        if info is None:
+            raise ValueError(f"unknown keyword '{kw}'")
+        if for_grant and not info["grantable"]:
+            raise ValueError(f"keyword '{kw}' is retired and not grantable")
+    if params:
+        allowed = set()
+        for kw in keywords:
+            allowed |= set(KEYWORDS.get(kw, {}).get("params", []))
+        for p in params:
+            if p not in allowed:
+                raise ValueError(f"param '{p}' is not supported by these keywords")
+
+
 # An effect's target is either a TargetDescriptor OR a "$slot" reference resolved
 # at the card level (see Card.targets). Slot refs let several effects share one
 # chosen target, so the engine resolves it once and applies it to every effect.
@@ -344,6 +387,36 @@ class Revive(EffectBase):
     to_fraction: float = 0.5
 
 
+class GrantKeyword(EffectBase):
+    """Attach one or more registry keywords to a creature for a duration."""
+
+    kind: Literal["grant_keyword"] = "grant_keyword"
+    keywords: List[str] = Field(min_length=1)
+    params: Optional[Dict[str, str]] = None
+    target: TargetOrSlot
+    duration: Duration = Duration.end_of_turn
+
+    @model_validator(mode="after")
+    def _check(self) -> "GrantKeyword":
+        _check_grant_keywords(self.keywords, self.params, for_grant=True)
+        return self
+
+
+class RemoveKeyword(EffectBase):
+    """Remove named keyword(s) from a creature — or `["all"]` for all abilities."""
+
+    kind: Literal["remove_keyword"] = "remove_keyword"
+    keywords: List[str] = Field(min_length=1)
+    params: Optional[Dict[str, str]] = None
+    target: TargetOrSlot
+    duration: Duration = Duration.end_of_turn
+
+    @model_validator(mode="after")
+    def _check(self) -> "RemoveKeyword":
+        _check_grant_keywords(self.keywords, self.params, for_grant=False)
+        return self
+
+
 # LTG has no land cards; lands survive only as references inside ramp/ritual
 # spells, translated into the capacity model (the land names are dropped).
 RampColor = Literal["W", "U", "B", "R", "G", "choice"]
@@ -392,6 +465,8 @@ EFFECT_CLASSES = [
     Taunt,
     Disable,
     Revive,
+    GrantKeyword,
+    RemoveKeyword,
     Ramp,
     AddMana,
 ]
@@ -451,6 +526,17 @@ def effect_specs() -> dict:
         for fname, finfo in cls.model_fields.items():
             if fname == "kind":
                 continue
+            if fname == "params":
+                continue  # niche (e.g. protection.from) — edit via raw JSON
+            if fname == "keywords":
+                opts = list(GRANTABLE_KEYWORDS)
+                if kind == "remove_keyword":
+                    opts.append("all")
+                labels = {k: KEYWORDS.get(k, {}).get("display", k) for k in opts}
+                labels["all"] = "All abilities"
+                params.append({"name": "keywords", "control": "keyword_list",
+                               "options": opts, "labels": labels, "required": True})
+                continue
             spec = {"name": fname, **_control_for(finfo.annotation)}
             default = finfo.default
             if default is PydanticUndefined and finfo.default_factory is not None:
@@ -503,8 +589,7 @@ class Card(BaseModel):
     level: int
     type: str
     cost: Cost = Field(default_factory=Cost)
-    timing: Timing
-    reactive: bool = False
+    timing: Timing  # instant/sorcery/channeled — also derives the card's speed
     original_text: str = ""
     translated_text: str = ""
     effects: List[Effect] = Field(default_factory=list)

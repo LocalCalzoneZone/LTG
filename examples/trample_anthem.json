@@ -1,0 +1,21 @@
+{
+  "id": "trample_anthem",
+  "name": "Wild Charge",
+  "source_name": "Stampeding Plains",
+  "rarity": "rare",
+  "level": 3,
+  "type": "Enchantment",
+  "cost": { "generic": 2, "colors": { "G": 1 } },
+  "timing": "channeled",
+  "original_text": "Creatures you control have trample.",
+  "translated_text": "While channeled: all allies have Trample.",
+  "effects": [
+    {
+      "kind": "grant_keyword",
+      "keywords": ["trample"],
+      "target": { "class": "creature", "mode": "all", "side": "ally" },
+      "duration": "while_channeled"
+    }
+  ],
+  "validated": true
+}

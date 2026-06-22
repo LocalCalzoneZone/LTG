@@ -18,7 +18,6 @@
       "type": "Instant",
       "cost": { "colors": { "U": 2 } },
       "timing": "instant",
-      "reactive": true,
       "original_text": "Counter target spell.",
       "translated_text": "Cancel an enemy action (spell or ability).",
       "effects": [
@@ -35,7 +34,6 @@
       "type": "Sorcery",
       "cost": { "colors": { "B": 2 } },
       "timing": "sorcery",
-      "reactive": false,
       "original_text": "Target player draws two cards and loses 2 life.",
       "translated_text": "Choose an ally: they draw 2, then lose 2 HP.",
       "targets": { "T1": { "mode": "chosen", "side": "ally", "targeted": true } },

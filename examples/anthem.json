@@ -7,7 +7,6 @@
   "type": "Enchantment",
   "cost": { "generic": 1, "colors": { "W": 2 } },
   "timing": "channeled",
-  "reactive": false,
   "original_text": "Creatures you control get +1/+1.",
   "translated_text": "While channeled: all allies gain +1 attack and +1 temp HP.",
   "effects": [

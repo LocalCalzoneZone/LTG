@@ -153,10 +153,32 @@ slot map. `translated_text` then auto-renders the shared wording
   validated** to ratify a card's effects. Editing un-ratifies it.
 - **Validation lints** (non-blocking warnings, shown in the detail panel, run on
   add and edit): no effects extracted, `draw`/`scry` resolving to *either* side,
-  `exclude_self` on an enemy-only target (no-op), `counter_intent` without
-  `reactive`, zero/negative amounts, unused slots, and a channeled effect that is
+  `exclude_self` on an enemy-only target (no-op), a `counter` that isn't an
+  instant, zero/negative amounts, unused slots, and a channeled effect that is
   neither continuous nor recurring. All lints live in one place — `LINT_RULES`
   in `mappings.py`.
+
+### Granting & removing keywords
+
+Effects can attach evergreen keywords to a creature. The **keyword registry**
+(`KEYWORDS` in `schema.py`) is the source of truth for each keyword's identifier,
+display name, gloss, grantability, and params — a grant *references* a keyword by
+name, it doesn't redefine it.
+
+- **`grant_keyword`** — `{kind, keywords:[…], params?, target, duration}` attaches
+  one or more keywords. Renders "An ally gains Flight until end of turn." /
+  (channeled) "While channeled: all allies have Trample."
+- **`remove_keyword`** — same shape; removes them, or `["all"]` for "loses all
+  abilities."
+
+Both use the existing **target descriptor** and **duration**, and **compose**
+with other effects (`pump` + `grant_keyword` = "+2/+2 and first strike"). The
+grantable set: flying, reach, first_strike, vigilance, trample, deathtouch,
+lifelink, hexproof, indestructible, protection (optional `from` param). **Retired**
+keywords (menace, ward, convoke) are rejected for granting with a clear error;
+unknown keywords too. The editor shows the grantable list as labelled checkboxes.
+See [examples/grant_flying.json](examples/grant_flying.json),
+[examples/trample_anthem.json](examples/trample_anthem.json).
 
 ### Lands & mana (ramp / rituals)
 
@@ -224,8 +246,9 @@ is the engine's job):
 The target descriptor gains a **`class`**: `creature` (default — the existing
 mode/side/exclude_self/targeted descriptor) or `action`. Only counters target
 `class: action`; the type system rejects a creature target on a counter and an
-action target on any other effect. A counter card should be `timing: instant,
-reactive: true` (lint otherwise). See [examples/counterspell.json](examples/counterspell.json),
+action target on any other effect. A counter card should be `timing: instant`
+(instant ⟹ reactive, so it can respond — lint otherwise). See
+[examples/counterspell.json](examples/counterspell.json),
 [examples/negate.json](examples/negate.json), [examples/stifle.json](examples/stifle.json).
 
 ### Channeled effects (enchantments)
@@ -287,10 +310,12 @@ this layer only types the card and renders correct text.
   each colour picked from `colors`; a colour outside `colors` *warns*, never blocks.
 - **Card** = id, flavour `name`, `source_name`, `rarity`, `level` (cmc), `type`,
   `cost {generic, colors}`, `timing` (instant/sorcery/channeled — enchantment →
-  channeled), `reactive`, `original_text`, `translated_text`, `effects[]`,
+  channeled; **derives `speed`**: instant→reactive, sorcery→active,
+  channeled→sustained), `original_text`, `translated_text`, `effects[]`,
   `targets {slot: descriptor}`, `needs_translation`, `text_override`, `validated`.
 - **Effect** = discriminated union on `kind` (deal_damage, heal, destroy, bounce,
-  counter, pump, wound, ramp, add_mana, … see `schema.py`). `Value = int | "all" | {ref}`.
+  counter, pump, wound, ramp, add_mana, grant_keyword, remove_keyword, … see
+  `schema.py`). `Value = int | "all" | {ref}`.
   `target` = a creature TargetDescriptor (mode/side/exclude_self/targeted) or a
   `$slot` ref; **counters** instead target `{class:"action", side:"enemy"}`.
 

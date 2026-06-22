@@ -2,6 +2,9 @@
 // single source of truth; this file only round-trips what the backend validates.
 
 const COLORS = ["W", "U", "B", "R", "G"];
+// A spell's speed derives from its timing (matches backend spell_speed).
+const SPEED_BY_TIMING = { instant: "reactive", sorcery: "active", channeled: "sustained" };
+const derivedSpeed = (timing) => SPEED_BY_TIMING[timing] || "—";
 const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster"];
 let ARCHETYPES = {}; // {Fighter:{starting_hp,starting_hand,starting_mana}, …} from backend
 
@@ -388,6 +391,7 @@ function defaultEffect(kind) {
     else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
     else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
     else if (p.control === "action_target") eff[p.name] = { class: "action", side: "enemy" };
+    else if (p.control === "keyword_list") eff[p.name] = (p.options || []).length ? [p.options[0]] : [];
     else eff[p.name] = "";
   });
   return eff;
@@ -461,6 +465,11 @@ function paramHtml(i, p, val) {
     }
     case "value":
       return `<label class="inline">${p.name} ${valueControlHtml(i, p.name, val)}</label>`;
+    case "keyword_list": {
+      const sel = new Set(val || []);
+      return `<span class="kw-list"><span class="kw-label">${p.name}</span>${(p.options || []).map((o) =>
+        `<label class="inline mini"><input type="checkbox" class="kw-check" data-i="${i}" data-kw="${o}" ${sel.has(o) ? "checked" : ""}/> ${escapeHtml((p.labels && p.labels[o]) || o)}</label>`).join("")}</span>`;
+    }
     default:
       return `<label class="inline">${p.name} <input type="text" class="eff-param" data-i="${i}" data-p="${p.name}" value="${escapeAttr(val ?? "")}" /></label>`;
   }
@@ -551,7 +560,7 @@ function openDetail(idx) {
       ${lints.map((l) => `<div class="lint">⚠ ${escapeHtml(l)}</div>`).join("")}
     </div>` : ""}
 
-    <label class="inline"><input type="checkbox" id="detail-reactive" ${card.reactive ? "checked" : ""} /> reactive</label>
+    <div class="timing-note">Timing <b>${card.timing}</b> → <b>${derivedSpeed(card.timing)}</b> (derived)</div>
 
     <div class="block validate-bar">
       <span class="chip ${card.validated ? "good" : "warn"}">${card.validated ? "✓ Validated" : "Not validated"}</span>
@@ -571,7 +580,6 @@ function wireDetail(idx) {
   const card = state.cards[idx];
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
-  $("#detail-reactive").onchange = (e) => { card.reactive = e.target.checked; recheckCard(idx, true); };
   $("#detail-validate").onclick = () => toggleValidated(idx);
   $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
   $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
@@ -596,6 +604,16 @@ function wireDetail(idx) {
         : inp.value;
       // changing a continuous/recurring marker can re-shape the card → full re-render
       recheckCard(idx, p === "trigger" || p === "duration");
+    };
+  });
+  document.querySelectorAll(".kw-check").forEach((cb) => {
+    cb.onchange = () => {
+      const e = card.effects[+cb.dataset.i], kw = cb.dataset.kw;
+      e.keywords = e.keywords || [];
+      const at = e.keywords.indexOf(kw);
+      if (cb.checked && at < 0) e.keywords.push(kw);
+      if (!cb.checked && at >= 0) e.keywords.splice(at, 1);
+      recheckCard(idx, false);
     };
   });
   document.querySelectorAll(".val-type").forEach((sel) => {

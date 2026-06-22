@@ -53,12 +53,14 @@ def test_build_card_from_mocked_scryfall_fetch():
     assert not card.needs_translation
 
 
-def test_counterspell_translates_to_counter_and_is_reactive():
+def test_counterspell_translates_to_counter_and_is_instant():
     card = build_card(COUNTERSPELL_SCRYFALL)
     assert card.effects[0].kind == "counter"
     assert card.effects[0].filter == "action"
     assert card.effects[0].target.target_class == "action"
-    assert card.reactive is True
+    # An instant is reactive by derivation — no separate flag.
+    assert card.timing.value == "instant"
+    assert card.speed.value == "reactive"
     assert card.cost.colors == {"U": 2}
 
 

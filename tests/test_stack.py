@@ -21,7 +21,7 @@ ACTION = {"class": "action", "side": "enemy"}
 
 def card(effects, **kw):
     base = {"id": "x", "name": "x", "source_name": "x", "rarity": "common",
-            "level": 1, "type": "Instant", "timing": "instant", "reactive": True}
+            "level": 1, "type": "Instant", "timing": "instant"}
     base.update(kw)
     return Card.model_validate({**base, "effects": effects})
 
@@ -74,7 +74,7 @@ def test_bad_filter_rejected():
 def test_counter_on_sorcery_flagged():
     from backend.mappings import lint_card
     c = card([{"kind": "counter", "filter": "action", "target": ACTION}],
-             type="Sorcery", timing="sorcery", reactive=False)
+             type="Sorcery", timing="sorcery")
     assert any("respond" in m for m in lint_card(c))
 
 

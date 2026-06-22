@@ -7,7 +7,6 @@
   "type": "Sorcery",
   "cost": { "generic": 2, "colors": { "G": 1 } },
   "timing": "sorcery",
-  "reactive": false,
   "original_text": "Draw a card for each land you control.",
   "translated_text": "Draw a card for each point of mana capacity.",
   "effects": [

@@ -7,7 +7,6 @@
   "type": "Enchantment — Tribal",
   "cost": { "colors": { "B": 1 } },
   "timing": "channeled",
-  "reactive": false,
   "original_text": "At the beginning of your upkeep, create a 1/1 black Faerie Rogue creature token with flying and you lose 1 life.",
   "translated_text": "At the start of every turn while channeled: create a Faerie ally and lose 1 HP.",
   "effects": [

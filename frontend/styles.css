@@ -179,6 +179,8 @@ label.inline input[type=number] { width: 64px; }
 .effect-params { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; align-items: center; }
 .param { display: inline-flex; align-items: center; gap: 5px; }
 .tgt-builder { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.kw-list { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.kw-label { color: var(--muted); font-size: 12px; }
 .tgt-summary { color: var(--accent); font-size: 12px; }
 label.inline.mini { font-size: 11px; gap: 3px; }
 .slot-side { max-width: 110px; }
@@ -192,6 +194,8 @@ label.inline.mini { font-size: 11px; gap: 3px; }
 #raw-json textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
 .lints { background: rgba(255,180,84,0.06); border: 1px solid rgba(255,180,84,0.25); border-radius: 8px; }
 .lint { color: var(--warn); font-size: 12px; padding: 2px 0; }
+.timing-note { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.timing-note b { color: var(--text); text-transform: capitalize; }
 .validate-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 #import-text {
   width: 100%; margin: 10px 0; padding: 9px; border-radius: 6px; resize: vertical;

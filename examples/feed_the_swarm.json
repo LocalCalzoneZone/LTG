@@ -7,7 +7,6 @@
   "type": "Sorcery",
   "cost": { "generic": 1, "colors": { "B": 1 } },
   "timing": "sorcery",
-  "reactive": false,
   "original_text": "Destroy target creature or enchantment. You lose life equal to its mana value.",
   "translated_text": "Destroy a target. Lose HP equal to its Level.",
   "effects": [
