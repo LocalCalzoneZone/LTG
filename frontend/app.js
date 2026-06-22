@@ -5,7 +5,7 @@ const COLORS = ["W", "U", "B", "R", "G"];
 // A spell's speed derives from its timing (matches backend spell_speed).
 const SPEED_BY_TIMING = { instant: "reactive", sorcery: "active", channeled: "sustained" };
 const derivedSpeed = (timing) => SPEED_BY_TIMING[timing] || "—";
-const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster"];
+const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster", "Channeler"];
 let ARCHETYPES = {}; // {Fighter:{starting_hp,starting_hand,starting_mana}, …} from backend
 
 const blankLoadout = () => ({

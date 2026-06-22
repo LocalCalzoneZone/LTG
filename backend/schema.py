@@ -741,6 +741,7 @@ class Archetype(str, Enum):
     Fighter = "Fighter"
     Tactician = "Tactician"
     Caster = "Caster"
+    Channeler = "Channeler"
 
 
 # Single source of truth for archetype stats. Stats are a function of
@@ -749,6 +750,7 @@ ARCHETYPE_STATS = {
     Archetype.Fighter: {"starting_hp": 25, "starting_hand": 2, "starting_mana": 2},
     Archetype.Tactician: {"starting_hp": 15, "starting_hand": 4, "starting_mana": 2},
     Archetype.Caster: {"starting_hp": 10, "starting_hand": 3, "starting_mana": 3},
+    Archetype.Channeler: {"starting_hp": 15, "starting_hand": 2, "starting_mana": 4},
 }
 
 
