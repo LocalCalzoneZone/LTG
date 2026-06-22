@@ -12,7 +12,7 @@ manual — **no LLM in this build.**
 
 ## Run it (clickable)
 
-Double-click **`start.command`** in Finder. On first run it creates the virtual
+Double-click **`LTG-Deckbuilder.command`** in Finder. On first run it creates the virtual
 environment, installs dependencies, then serves the app and opens your browser at
 <http://localhost:8000>. (macOS may ask you to confirm running it the first time.)
 
@@ -21,8 +21,13 @@ environment, installs dependencies, then serves the app and opens your browser a
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt   # editable-installs core + both apps
-uvicorn ltg_deckbuilder.app:app --host 0.0.0.0 --port 8000 --reload
+ltg-deckbuilder                   # serve on 0.0.0.0:8000 and open a browser
 ```
+
+`ltg-deckbuilder` is a console command installed with the app. Flags:
+`--port`, `--host`, `--reload` (auto-reload for dev), `--no-browser`. Equivalent
+to `python -m ltg_deckbuilder`, or run uvicorn directly with
+`uvicorn ltg_deckbuilder.app:app --reload`.
 
 Then open <http://localhost:8000>. The FastAPI server serves both the API and the
 static frontend, so that single `uvicorn` command is the whole app.

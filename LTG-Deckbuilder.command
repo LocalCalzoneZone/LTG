@@ -11,8 +11,5 @@ if [ ! -d .venv ]; then
   ./.venv/bin/pip install -r requirements.txt || exit 1
 fi
 
-# Open the browser a moment after the server starts listening.
-( sleep 2 && open "http://localhost:8000" ) &
-
-echo "Starting LTG Deck Builder at http://localhost:8000  (Ctrl-C to stop)"
-exec ./.venv/bin/uvicorn ltg_deckbuilder.app:app --host 0.0.0.0 --port 8000
+# The `ltg-deckbuilder` command serves the app and opens the browser itself.
+exec ./.venv/bin/ltg-deckbuilder
