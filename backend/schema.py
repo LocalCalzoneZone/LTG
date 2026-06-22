@@ -200,6 +200,7 @@ KEYWORDS = {
     "flying": {"display": "Flight", "gloss": "airborne — ignores rows; only reach/ranged can hit it", "grantable": True, "params": []},
     "reach": {"display": "Reach", "gloss": "can hit flyers; guards the row behind", "grantable": True, "params": []},
     "first_strike": {"display": "First Strike", "gloss": "may hold its attack and use it as a reaction", "grantable": True, "params": []},
+    "double_strike": {"display": "Double Strike", "gloss": "strikes twice — hits first (as a reaction) and again on its normal attack", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},

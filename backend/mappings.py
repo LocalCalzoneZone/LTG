@@ -163,9 +163,10 @@ def _pacify(m, ctx):
 # --- Granting / removing keywords (names match the registry) --------------- #
 # MTG keyword phrasing → registry identifier (multi-word forms first).
 _KEYWORD_WORDS = {
-    "first strike": "first_strike", "flying": "flying", "trample": "trample",
-    "deathtouch": "deathtouch", "lifelink": "lifelink", "vigilance": "vigilance",
-    "reach": "reach", "hexproof": "hexproof", "indestructible": "indestructible",
+    "double strike": "double_strike", "first strike": "first_strike",
+    "flying": "flying", "trample": "trample", "deathtouch": "deathtouch",
+    "lifelink": "lifelink", "vigilance": "vigilance", "reach": "reach",
+    "hexproof": "hexproof", "indestructible": "indestructible",
 }
 
 
@@ -179,7 +180,7 @@ def _grant_target(text: str):
     return t_chosen("ally")
 
 
-@register(r"\b(?:gains?|have|has)\b\s+(?:flying|trample|first strike|deathtouch|lifelink|vigilance|reach|hexproof|indestructible)")
+@register(r"\b(?:gains?|have|has)\b\s+(?:flying|trample|double strike|first strike|deathtouch|lifelink|vigilance|reach|hexproof|indestructible)")
 def _grant_keyword(m, ctx):
     text = m.string.lower()
     found = [ident for word, ident in _KEYWORD_WORDS.items()
