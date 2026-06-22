@@ -1,7 +1,10 @@
 """FastAPI app: Scryfall search/add, loadout validate/save/load, schema export.
 
 Serves the static frontend at `/` so the whole tool runs from one command:
-    uvicorn backend.app:app --reload
+    uvicorn ltg_deckbuilder.app:app --reload
+
+The vocabulary (schema, translation, lints) is imported from `ltg_core`; this
+module owns only app concerns — web routes, persistence, Scryfall ingestion.
 """
 
 from __future__ import annotations
@@ -15,8 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from . import mappings, scryfall
-from .schema import (
+from ltg_core.schema import (
     ARCHETYPE_STATS,
     Card,
     Character,
@@ -26,10 +28,16 @@ from .schema import (
     deck_status,
     effect_specs,
 )
+from ltg_core.lints import lint_card
+from ltg_core.translation import render_effects
 
-ROOT = Path(__file__).resolve().parent.parent
-LOADOUT_DIR = ROOT / "loadouts"
-FRONTEND_DIR = ROOT / "frontend"
+from . import ingest, scryfall
+
+# app.py lives at apps/deckbuilder/ltg_deckbuilder/app.py; the frontend and the
+# loadout store sit at the deckbuilder app root (one level up from the package).
+APP_ROOT = Path(__file__).resolve().parent.parent
+LOADOUT_DIR = APP_ROOT / "loadouts"
+FRONTEND_DIR = APP_ROOT / "frontend"
 
 app = FastAPI(title="Langelier Tactical Game — Deck Builder")
 
@@ -74,11 +82,11 @@ def api_import(body: ImportBody) -> dict:
     for name in body.names:
         try:
             data = scryfall.fetch_best(name)
-            card = mappings.build_card(data)
+            card = ingest.build_card(data)
         except Exception:
             not_found.append(name)
             continue
-        out.append({"card": card.model_dump(), "lints": mappings.lint_card(card)})
+        out.append({"card": card.model_dump(), "lints": lint_card(card)})
     return {"cards": out, "not_found": not_found}
 
 
@@ -91,14 +99,14 @@ def api_add_card(body: AddCardBody) -> Card:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Scryfall error: {exc}")
 
-    bad = mappings.forbidden_type(data.get("type_line", ""))
+    bad = ingest.forbidden_type(data.get("type_line", ""))
     if bad:
         raise HTTPException(
             status_code=422,
             detail=f"{data.get('name', 'This card')} is a {bad}; "
-            f"LTG loadouts only accept spells (no {', '.join(mappings.FORBIDDEN_TYPES)}).",
+            f"LTG loadouts only accept spells (no {', '.join(ingest.FORBIDDEN_TYPES)}).",
         )
-    return mappings.build_card(data)
+    return ingest.build_card(data)
 
 
 # --------------------------------------------------------------------------- #
@@ -149,7 +157,7 @@ def api_validate_card(body: CardBody) -> dict:
         return {"valid": False, "errors": _format_errors(exc), "card": None, "lints": []}
 
     if not card.text_override:
-        card.translated_text = mappings.render_effects(
+        card.translated_text = render_effects(
             card.effects, card.targets, channeled=card.timing.value == "channeled"
         )
 
@@ -157,7 +165,7 @@ def api_validate_card(body: CardBody) -> dict:
         "valid": True,
         "errors": [],
         "card": card.model_dump(),
-        "lints": mappings.lint_card(card),
+        "lints": lint_card(card),
     }
 
 
@@ -222,7 +230,7 @@ def api_export(body: LoadoutBody) -> dict:
             omitted.append({"name": name, "reason": "not validated — ratify its effects first"})
             continue
         if not card.text_override:
-            card.translated_text = mappings.render_effects(
+            card.translated_text = render_effects(
                 card.effects, card.targets, channeled=card.timing.value == "channeled"
             )
         exported.append(card.model_dump())

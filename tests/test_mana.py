@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.mappings import build_card, render_effects
-from backend.schema import Card, Loadout, deck_status
+from ltg_core.translation import render_effects
+from ltg_deckbuilder.ingest import build_card
+from ltg_core.schema import Card, Loadout, deck_status
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 

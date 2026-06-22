@@ -1,8 +1,10 @@
-fastapi>=0.110
-uvicorn[standard]>=0.27
-pydantic>=2.5
-typing-extensions>=4.8
-requests>=2.31
-# test/dev
+# LTG monorepo — editable installs of every package in one resolve.
+# `core` is listed first; the apps declare `ltg-core` as a dependency and pip
+# resolves it from this local checkout (never PyPI) since all three are present.
+-e ./core
+-e ./apps/deckbuilder
+-e ./apps/combat
+
+# test / dev
 pytest>=8.0
 httpx>=0.27

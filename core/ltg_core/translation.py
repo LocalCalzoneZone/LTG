@@ -1,8 +1,9 @@
-"""Translation registry + effects→text renderer + Scryfall→Card builder.
+"""Translation registry + effects→text renderer — the shared vocabulary.
 
-Deterministic and manual: where a rule recognizes oracle text it fills `effects`
-and renders `translated_text`; otherwise the card is left blank and flagged
-`needs_translation` for the user to author by hand. No LLM here.
+Two halves of one round-trip: a registry of deterministic text→effect rules
+(`register` / `translate`) and a renderer that turns effects back into
+LTG-language text (`render_effects`). No LLM, no Scryfall, no app concerns — the
+Scryfall→Card ingestion that *uses* this registry lives in the Deckbuilder app.
 
 To add a translation mapping:
     @register(r"counter target spell")
@@ -19,12 +20,9 @@ import re
 from typing import Callable, List, Tuple
 
 from .schema import (
-    ActionTarget,
     AddMana,
     Bounce,
-    Card,
     Counter,
-    Cost,
     Ramp,
     DealDamage,
     Destroy,
@@ -37,17 +35,13 @@ from .schema import (
     Heal,
     KEYWORDS,
     LoseLife,
-    Modal,
-    Mode,
     RemoveKeyword,
     Prevent,
     Pump,
     Ref,
     Scry,
     Side,
-    TargetDescriptor,
     TargetMode,
-    Timing,
     Wound,
     slot_name,
     t_all,
@@ -646,243 +640,3 @@ def _render_channeled(effects, targets) -> str:
         if group:
             parts.append(lead + _join_and([_upkeep_clause(e, targets) for e in group]) + ".")
     return " ".join(parts)
-
-
-# --------------------------------------------------------------------------- #
-# Validation lints — cheap, non-blocking checks shown while editing.
-# Keep every rule in LINT_RULES so the list is easy to extend.
-# --------------------------------------------------------------------------- #
-def _lint_no_effects(card):
-    if not card.effects and len((card.original_text or "").strip()) > 12:
-        return ["No effects extracted — translate this card manually."]
-    return []
-
-
-def _lint_draw_scry_side(card):
-    # side:enemy is rejected at validation; side:any is merely risky → flag.
-    out = []
-    for e in card.effects:
-        if e.kind in ("draw", "scry"):
-            desc = card.resolved_target(e)
-            if desc is not None and desc.side == Side.any:
-                out.append(f"{e.kind} can target either side — it must resolve to an ally/you.")
-    return out
-
-
-def _lint_exclude_self_on_enemy(card):
-    out = []
-    descs = list(card.targets.items())
-    for e in card.effects:
-        t = getattr(e, "target", None)
-        if t is not None and not isinstance(t, str):
-            descs.append((None, t))
-    for name, desc in descs:
-        if getattr(desc, "exclude_self", False) and desc.side == Side.enemy:
-            where = f"slot {name}" if name else "an effect"
-            out.append(f"'exclude_self' on {where} is a no-op (enemy side never includes you).")
-    return out
-
-
-def _lint_counter_timing(card):
-    # A counter must be able to respond — i.e. be an instant (instant ⟹ reactive).
-    if any(e.kind == "counter" for e in card.effects) and card.timing.value != "instant":
-        return ["a counter card should be timing 'instant' so it can respond."]
-    return []
-
-
-def _lint_amounts(card):
-    out = []
-    for e in card.effects:
-        amt = getattr(e, "amount", None)
-        if isinstance(amt, int):
-            if amt == 0:
-                out.append(f"{e.kind}: amount is 0 — did you mean a positive value?")
-            elif amt < 0:
-                out.append(f"{e.kind}: amount is negative ({amt}).")
-        if hasattr(e, "power") and hasattr(e, "toughness") and e.power == 0 and e.toughness == 0:
-            out.append(f"{e.kind}: power and toughness are both 0 — no effect.")
-    return out
-
-
-def _lint_slots(card):
-    out = []
-    declared = set(card.targets.keys())
-    referenced = set()
-    for e in card.effects:
-        s = slot_name(getattr(e, "target", None))
-        if s is not None:
-            referenced.add(s)
-            if s not in declared:
-                out.append(f"effect references undeclared slot ${s}.")
-    for s in sorted(declared - referenced):
-        out.append(f"slot {s} is declared but never used.")
-    return out
-
-
-def _lint_channeled_persistence(card):
-    # On a channeled card every effect should be continuous or recurring.
-    if card.timing != Timing.channeled:
-        return []
-    out = []
-    for e in card.effects:
-        continuous = getattr(e, "duration", None) == Duration.while_channeled
-        if not continuous and e.trigger is None:
-            out.append(
-                f"{e.kind}: on a channeled card, set duration 'while_channeled' "
-                f"(continuous) or a trigger (recurring)."
-            )
-    return out
-
-
-LINT_RULES = [
-    _lint_no_effects,
-    _lint_draw_scry_side,
-    _lint_exclude_self_on_enemy,
-    _lint_counter_timing,
-    _lint_amounts,
-    _lint_slots,
-    _lint_channeled_persistence,
-]
-
-
-def lint_card(card) -> List[str]:
-    """Run all lint rules over a (structurally valid) card; return warnings."""
-    out = []
-    for rule in LINT_RULES:
-        out.extend(rule(card))
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# Scryfall → Card
-# --------------------------------------------------------------------------- #
-_MANA_TOKEN = re.compile(r"\{([^}]+)\}")
-_COLOR_LETTERS = {"W", "U", "B", "R", "G"}
-
-# Scryfall has rarities beyond the four LTG cares about (e.g. "special",
-# "bonus"). Fold those onto the nearest LTG rarity instead of rejecting the card.
-_RARITY_MAP = {
-    "common": "common",
-    "uncommon": "uncommon",
-    "rare": "rare",
-    "mythic": "mythic",
-    "special": "rare",
-    "bonus": "mythic",
-}
-
-
-def normalize_rarity(rarity: str) -> str:
-    return _RARITY_MAP.get((rarity or "").lower(), "rare")
-
-
-# Card types LTG does not accept into a loadout (spells only — no permanents
-# that would become board state). Add is rejected if the type line names any.
-FORBIDDEN_TYPES = ("Land", "Planeswalker", "Creature", "Artifact")
-
-
-def forbidden_type(type_line: str) -> str | None:
-    """Return the first forbidden type present in the type line, else None."""
-    tokens = re.findall(r"[A-Za-z]+", type_line or "")
-    for forbidden in FORBIDDEN_TYPES:
-        if forbidden in tokens:
-            return forbidden
-    return None
-
-
-def parse_mana_cost(mana_cost: str) -> Cost:
-    """'{1}{B}' -> Cost(generic=1, colors={B:1}). Hybrids/X ignored for now."""
-    generic = 0
-    colors: dict = {}
-    for token in _MANA_TOKEN.findall(mana_cost or ""):
-        if token.isdigit():
-            generic += int(token)
-        elif token in _COLOR_LETTERS:
-            colors[token] = colors.get(token, 0) + 1
-    return Cost(generic=generic, colors=colors)
-
-
-def derive_timing(type_line: str) -> Timing:
-    t = (type_line or "").lower()
-    if "instant" in t:
-        return Timing.instant
-    if "enchantment" in t:
-        return Timing.channeled
-    return Timing.sorcery
-
-
-def slugify(name: str) -> str:
-    return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", name.lower())).strip("_")
-
-
-def parse_modal(oracle_text: str):
-    """If the text is a 'Choose one —' modal, build a Modal effect from its bullets."""
-    if "choose one" not in (oracle_text or "").lower():
-        return None
-    bullets = [b.strip() for b in re.split(r"[•·]\s*", oracle_text)[1:] if b.strip()]
-    modes = []
-    for b in bullets:
-        effs = translate(b, {})
-        if effs:
-            modes.append(Mode(effects=effs))
-    return Modal(modes=modes) if len(modes) >= 2 else None
-
-
-def build_card(scryfall_json: dict) -> Card:
-    """Map a Scryfall card payload onto a Card, best-effort translating it."""
-    source_name = scryfall_json["name"]
-    oracle_text = scryfall_json.get("oracle_text", "") or ""
-    type_line = scryfall_json.get("type_line", "")
-    timing = derive_timing(type_line)
-
-    # Modal cards ("Choose one —") become a single Modal effect over their bullets.
-    modal = parse_modal(oracle_text)
-    if modal is not None:
-        translated = render_effects([modal])
-        return Card(
-            id=slugify(source_name), name=source_name, source_name=source_name,
-            rarity=normalize_rarity(scryfall_json.get("rarity", "common")),
-            level=int(scryfall_json.get("cmc", 0) or 0), type=type_line,
-            cost=parse_mana_cost(scryfall_json.get("mana_cost", "")), timing=timing,
-            original_text=oracle_text, translated_text=translated, effects=[modal],
-            needs_translation=False,
-        )
-
-    effects = translate(oracle_text, {"source": scryfall_json})
-
-    low = oracle_text.lower()
-    # "for each land you control" → scale the amount by mana capacity.
-    if re.search(r"for each (?:basic )?land you control", low):
-        for e in effects:
-            if isinstance(getattr(e, "amount", None), int):
-                e.amount = Ref(ref="mana_capacity")
-    # landfall ("whenever a land enters") → a capacity_increase trigger
-    # (only on channeled cards, where recurring triggers are legal).
-    if timing == Timing.channeled and (
-        "landfall" in low or re.search(r"whenever (?:a|another) land .*enters", low)
-    ):
-        for e in effects:
-            e.trigger = "capacity_increase"
-
-    # On channeled (enchantment) cards, a static (untriggered) effect with a
-    # duration field is continuous: make it `while_channeled`.
-    if timing == Timing.channeled:
-        for e in effects:
-            if hasattr(e, "duration") and e.trigger is None:
-                e.duration = Duration.while_channeled
-
-    translated = render_effects(effects, channeled=(timing == Timing.channeled))
-
-    return Card(
-        id=slugify(source_name),
-        name=source_name,
-        source_name=source_name,
-        rarity=normalize_rarity(scryfall_json.get("rarity", "common")),
-        level=int(scryfall_json.get("cmc", 0) or 0),
-        type=type_line,
-        cost=parse_mana_cost(scryfall_json.get("mana_cost", "")),
-        timing=timing,
-        original_text=oracle_text,
-        translated_text=translated,
-        effects=effects,
-        needs_translation=len(effects) == 0,
-    )

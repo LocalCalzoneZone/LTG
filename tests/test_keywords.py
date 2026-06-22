@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.mappings import build_card, render_effects
-from backend.schema import Card, effect_specs
+from ltg_core.translation import render_effects
+from ltg_deckbuilder.ingest import build_card
+from ltg_core.schema import Card, effect_specs
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 CHOSEN_ALLY = {"class": "creature", "mode": "chosen", "side": "ally", "targeted": True}

@@ -7,6 +7,7 @@ if [ ! -d .venv ]; then
   echo "First run: creating virtual environment and installing dependencies…"
   python3 -m venv .venv || exit 1
   ./.venv/bin/pip install --upgrade pip >/dev/null
+  # Editable install of the whole monorepo (core + both apps).
   ./.venv/bin/pip install -r requirements.txt || exit 1
 fi
 
@@ -14,4 +15,4 @@ fi
 ( sleep 2 && open "http://localhost:8000" ) &
 
 echo "Starting LTG Deck Builder at http://localhost:8000  (Ctrl-C to stop)"
-exec ./.venv/bin/uvicorn backend.app:app --host 0.0.0.0 --port 8000
+exec ./.venv/bin/uvicorn ltg_deckbuilder.app:app --host 0.0.0.0 --port 8000

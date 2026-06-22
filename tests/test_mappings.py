@@ -2,15 +2,10 @@
 
 from unittest.mock import patch
 
-from backend import scryfall
-from backend.mappings import (
-    build_card,
-    forbidden_type,
-    parse_mana_cost,
-    render_effects,
-    translate,
-)
-from backend.schema import Loadout, deck_status
+from ltg_deckbuilder import scryfall
+from ltg_core.translation import render_effects, translate
+from ltg_deckbuilder.ingest import build_card, forbidden_type, parse_mana_cost
+from ltg_core.schema import Loadout, deck_status
 
 GIANT_GROWTH_SCRYFALL = {
     "name": "Giant Growth",
@@ -81,7 +76,7 @@ def test_unrecognized_card_flagged_needs_translation():
 
 def test_import_endpoint_never_blocks_and_reports_missing():
     from fastapi.testclient import TestClient
-    from backend.app import app
+    from ltg_deckbuilder.app import app
 
     creature = {"name": "Grizzly Bears", "mana_cost": "{1}{G}", "cmc": 2.0,
                 "type_line": "Creature — Bear", "rarity": "common", "oracle_text": ""}
@@ -169,7 +164,7 @@ def test_parse_mana_cost():
 
 
 def test_renderer_matches_brief_example():
-    from backend.schema import DealDamage, t_chosen
+    from ltg_core.schema import DealDamage, t_chosen
 
     text = render_effects([DealDamage(amount=3, target=t_chosen("enemy", targeted=True))])
     assert text == "Deal 3 damage to an enemy."

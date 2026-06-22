@@ -20,8 +20,8 @@ environment, installs dependencies, then serves the app and opens your browser a
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
+pip install -r requirements.txt   # editable-installs core + both apps
+uvicorn ltg_deckbuilder.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Then open <http://localhost:8000>. The FastAPI server serves both the API and the
@@ -35,7 +35,8 @@ macOS). If a firewall prompts you, allow incoming connections for Python.
 End-to-end flow: **Create New → set name/colours/mana → search a card → add it →
 edit flavour name / translated text → Save → reload the page → Load.**
 
-> The frontend is intentionally a dependency-free vanilla SPA (`frontend/`), so
+> The frontend is intentionally a dependency-free vanilla SPA
+> (`apps/deckbuilder/frontend/`), so
 > there is no Node/Vite build step — "built to static" is already static. Keeping
 > it lean was an explicit goal of the brief.
 
@@ -51,16 +52,41 @@ cards are rejected; and the Scryfall→Card mapping via a **mocked** fetch.
 
 ## Layout
 
+A monorepo with a **shared core** and **separate apps**. Both apps depend on
+`core`; the apps never depend on each other. The validated **loadout JSON is the
+contract**: the Deckbuilder *emits* it, Combat *consumes* it.
+
 ```
-backend/
-  schema.py     Pydantic models — effects, Card, Character, Loadout, deck_status
-  mappings.py   translation registry + effects→text renderer + Scryfall→Card builder
-  scryfall.py   throttled Scryfall client (User-Agent, ~100ms between calls)
-  app.py        FastAPI: search / add / validate / save / load / schema + static serve
-frontend/       index.html, app.js, styles.css  (no build step)
-examples/       four fixture cards + one full sample loadout
-tests/          pytest
-loadouts/        created at runtime by Save
+core/                          shared library — the single source of truth
+  ltg_core/
+    schema.py      Pydantic models — effects, target descriptors, keyword registry,
+                   Card, Character, Loadout, deck_status (the validator)
+    translation.py translation registry (text→effects) + effects→text renderer
+    lints.py       advisory, non-blocking validation lints
+apps/
+  deckbuilder/                 designer-facing authoring app (imports core)
+    ltg_deckbuilder/
+      app.py       FastAPI: search / add / validate / save / load / schema + static serve
+      ingest.py    Scryfall→Card builder (uses core's translation registry)
+      scryfall.py  throttled Scryfall client (User-Agent, ~100ms between calls)
+    frontend/      index.html, app.js, styles.css  (no build step)
+    loadouts/      created at runtime by Save
+  combat/                      player-facing runtime — LTG Combat (SCAFFOLD ONLY)
+    ltg_combat/
+      loader.py    load a loadout JSON and validate it through core (JSON-in)
+      engine.py    placeholder entry point — TODO: combat engine
+      __main__.py  `python -m ltg_combat <loadout.json>`
+examples/          fixture cards + a full sample loadout (shared test fixtures)
+tests/             pytest (monorepo-level suite, covers core + deckbuilder)
+```
+
+**LTG Combat** is a scaffold this phase: it imports `core`, loads a loadout JSON,
+runs it through `core`'s validator, then stops at the `TODO: combat engine`
+placeholder. It never imports the Deckbuilder, touches Scryfall, or uses an LLM —
+it consumes only the validated JSON artifact. Run the validating stub with:
+
+```bash
+python -m ltg_combat examples/sample_loadout.json
 ```
 
 ## Backend API
@@ -357,28 +383,28 @@ character's identity; count of untranslated cards; starting-mana outside identit
 
 ## How to add a new effect primitive
 
-One localized change in `backend/schema.py`:
+One localized change in `core/ltg_core/schema.py`:
 
 1. Add a model class with a `Literal` `kind` and its params/defaults.
 2. Add the class to the `Effect` union.
-3. Add a one-line renderer to `RENDERERS` in `backend/mappings.py` so it produces
-   translated text.
+3. Add a one-line renderer to `RENDERERS` in `core/ltg_core/translation.py` so it
+   produces translated text.
 
 ```python
-# schema.py
+# core/ltg_core/schema.py
 class Silence(BaseModel):
     kind: Literal["silence"] = "silence"
     target: TargetOrSlot
 
 # add Silence to EFFECT_CLASSES (the Effect union is built from it)
 
-# mappings.py
+# core/ltg_core/translation.py
 RENDERERS["silence"] = lambda e: f"Silence {_tgt(e.target)}."
 ```
 
 ## How to add a translation mapping
 
-One `@register` call in `backend/mappings.py` — regex → effect builder. Targets
+One `@register` call in `core/ltg_core/translation.py` — regex → effect builder. Targets
 are descriptors; use the `t_self` / `t_chosen` / `t_all` constructors:
 
 ```python

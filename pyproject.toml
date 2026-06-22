@@ -1,0 +1,13 @@
+# LTG monorepo root — workspace marker + shared dev/test config.
+#
+# This is not an installable package. The three real packages live in
+# core/, apps/deckbuilder/ and apps/combat/, each with its own pyproject.toml.
+# Install the whole workspace (editable) with:
+#
+#     pip install -r requirements.txt
+#
+# Dependency direction (load-bearing): both apps depend on `ltg-core`; the apps
+# never depend on each other; `ltg-core` depends on neither app.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
