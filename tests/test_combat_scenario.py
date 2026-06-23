@@ -80,10 +80,10 @@ def test_text_ui_plays_scenario_to_victory():
     no rules. We feed the §A choices as menu numbers via injected I/O — a human
     making these same picks reaches the same deterministic victory.
 
-    Multi-target casts sit behind a 'choose target' sub-menu, so casting Unmake
-    is two picks: the card, then the target."""
+    Attack is "Attack" then choose an enemy; multi-target casts sit behind a
+    'choose target' sub-menu — so each is two picks when there's a choice."""
     script = [
-        "Attack Skitterling",   # T1 Soren attacks (inline, target in the label)
+        "Attack", "Skitterling", # T1 Soren: Attack, then choose Skitterling
         "Pass", "Pass",          # resolve the attack
         "End turn",              # Soren ends
         "Cast Unmake", "Brute", # T1 Ys: pick Unmake, then its target Brute
@@ -91,7 +91,9 @@ def test_text_ui_plays_scenario_to_victory():
         "End turn",              # Ys ends
         "Cast Guard", "Ys",     # T1 Soren reacts to Claw: Guard, then target Ys
         "Pass", "Pass", "Pass", "Pass",  # resolve Guard then Claw
-        "Attack Skitterling",   # T2 Soren attacks (lethal)
+        "Green",                 # T2 Soren locks +1 capacity colour (G)
+        "Blue",                  # T2 Ys locks +1 capacity colour (U)
+        "Attack Skitterling",   # T2 Soren attacks (only one enemy -> inline)
         "Pass", "Pass",          # resolve -> victory
         "Quit",                  # decline the restart menu
     ]

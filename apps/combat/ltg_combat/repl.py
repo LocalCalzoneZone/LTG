@@ -124,6 +124,8 @@ def _decision_line(state: GameState, acting_id: str) -> str:
     who = actor.name if actor else "?"
     if state.stack:
         return f"\n» {who}'s reaction window — react or pass:"
+    if state.phase == "capacity":
+        return f"\n» {who} — lock the colour of your +1 mana capacity (before drawing):"
     return f"\n» {who}'s turn — choose an action:"
 
 
@@ -154,16 +156,26 @@ def _target_label(state: GameState, action: Action) -> str:
 
 
 def _build_menu(state: GameState, actions: List[Action]) -> List[_Entry]:
-    """Group the engine's actions for legibility — attacks inline, multi-target
-    casts behind a 'choose target' sub-menu. Pure presentation: every entry maps
-    back to an Action the engine already offered."""
+    """Group the engine's actions for legibility — Attack then choose an enemy,
+    multi-target casts behind a 'choose target' sub-menu. Pure presentation:
+    every entry maps back to an Action the engine already offered."""
+    mana = [a for a in actions if a.kind == "choose_mana"]
     attacks = [a for a in actions if a.kind == "attack"]
     casts = [a for a in actions if a.kind == "cast"]
     others = [a for a in actions if a.kind in ("defend", "parry", "pass", "end_turn")]
 
     entries: List[_Entry] = []
-    for a in attacks:
+    for a in mana:
         entries.append(_Entry(a.label, action=a))
+
+    # Attack is one menu item; the enemy is chosen in a sub-menu (choosing which
+    # enemy to attack is a separate step from any targeting an effect does).
+    if len(attacks) == 1:
+        entries.append(_Entry(attacks[0].label, action=attacks[0]))
+    elif len(attacks) > 1:
+        sub = [(_target_label(state, a), a) for a in attacks]
+        sub.append(("← Back", None))
+        entries.append(_Entry("Attack — choose enemy", submenu=sub))
 
     seen: List[str] = []
     for a in casts:

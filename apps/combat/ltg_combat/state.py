@@ -56,6 +56,7 @@ class CharacterState:
     used_parry: bool = False
     proactive_spent: bool = False
     turn_ended: bool = False
+    capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
 
     @property
     def alive(self) -> bool:
@@ -136,15 +137,16 @@ class Action:
     Clients never construct rules — they pick one of these verbatim.
     """
 
-    kind: str               # attack | cast | defend | parry | pass | end_turn
+    kind: str               # attack | cast | defend | parry | pass | end_turn | choose_mana
     actor_id: str
     card_id: Optional[str] = None
     target_id: Optional[str] = None
+    color: Optional[str] = None  # the locked colour, for choose_mana
     label: str = ""
 
     def key(self) -> tuple:
         """Identity used to match a chosen action against the legal set."""
-        return (self.kind, self.actor_id, self.card_id, self.target_id)
+        return (self.kind, self.actor_id, self.card_id, self.target_id, self.color)
 
 
 @dataclass

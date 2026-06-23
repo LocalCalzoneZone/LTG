@@ -136,7 +136,8 @@ def run_scenario(verbose: bool = False) -> GameState:
     _check("Soren mana now [G] (paid W for Guard)", mana(soren) == ["G"])
 
     # Guard resolves first (LIFO), then Claw — fully prevented. _pass_window
-    # carries through the End step and into Turn 2's automatic upkeep/intents.
+    # carries through the End step and pauses at Turn 2's first decision: the
+    # capacity-colour choice (which comes BEFORE the draw).
     state = _pass_window(state)
     soren, ys = state.party
 
@@ -147,10 +148,24 @@ def run_scenario(verbose: bool = False) -> GameState:
     _check("Skitterling HP 1", state.enemy("skitterling").hp == 1)
     _check("Brute dead", state.enemy("brute") is None)
     _check("Not won yet (Skitterling alive)", state.result is None)
-
-    # --- TURN 2 — Upkeep + Intents ----------------------------------------- #
-    _say("§A.4 — Turn 2 upkeep")
     _check("Turn is 2", state.turn == 2)
+
+    # --- TURN 2 — Capacity colour choice, BEFORE the draw ------------------ #
+    _say("§A.4 — Turn 2 capacity choice (pre-draw)")
+    opening = legal_actions(state)
+    _check("Turn 2 opens on Soren's capacity choice",
+           bool(opening) and all(a.kind == "choose_mana" for a in opening)
+           and opening[0].actor_id == "soren")
+    _check("Choice precedes the draw: Soren still capacity 2, no Mend yet",
+           soren.capacity == 2 and "Mend" not in hand_names(soren))
+    # Each character locks a colour (the colour doesn't affect §A's asserted
+    # values; the draw/refresh/intents then run automatically).
+    state, _ = _do(state, kind="choose_mana", actor_id="soren", color="G")
+    state, _ = _do(state, kind="choose_mana", actor_id="ys", color="U")
+    soren, ys = state.party
+
+    # --- TURN 2 — Upkeep (draw + refresh) + Intents ------------------------ #
+    _say("§A.4 — Turn 2 upkeep")
     _check("Soren drew Mend -> [Sunlance, Steady Blade, Mend]",
            hand_names(soren) == ["Sunlance", "Steady Blade", "Mend"])
     _check("Ys drew Leech -> [Mind Spike, Whispers, Sift, Nightcreep, Leech]",

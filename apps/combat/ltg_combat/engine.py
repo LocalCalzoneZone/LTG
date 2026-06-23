@@ -115,7 +115,23 @@ def _advance(st: GameState) -> None:
 
         # Stack empty -> walk the turn structure (GDD §4.2).
         if st.phase == "upkeep":
-            _upkeep(st)
+            _begin_turn(st)
+            st.phase = "capacity"
+        elif st.phase == "capacity":
+            # From turn 2 on, capacity rises +1 and the player locks its colour
+            # — BEFORE the draw. A single-colour identity needs no choice (auto).
+            char = _next_capacity_choice(st)
+            if char is None:
+                st.phase = "draw"
+            else:
+                options = _distinct_identity(char)
+                if len(options) <= 1:
+                    _lock_capacity(st, char, options[0] if options else "C", auto=True)
+                else:
+                    st.priority = char.id  # pause for the colour choice
+                    return
+        elif st.phase == "draw":
+            _upkeep_draws(st)
             st.phase = "intents"
         elif st.phase == "intents":
             _declare_intents(st)
@@ -161,15 +177,50 @@ def _next_enemy(st: GameState) -> Optional[EnemyState]:
 # --------------------------------------------------------------------------- #
 # Turn-structure steps (GDD §4.2)
 # --------------------------------------------------------------------------- #
-def _upkeep(st: GameState) -> None:
-    """Each character draws 1; mana refreshes; +1 capacity from turn 2; per-round
-    ability uses and turn flags reset."""
+def _begin_turn(st: GameState) -> None:
+    """Open the turn: reset enemy-action tracking and the per-turn capacity flag."""
     st.acted_enemies = []
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
+    for c in st.party:
+        c.capacity_chosen = False
+
+
+def _next_capacity_choice(st: GameState) -> Optional[CharacterState]:
+    """The next living character that still owes this turn's +1 capacity colour
+    (only from turn 2 onward; no increase on turn 1)."""
+    if st.turn < 2:
+        return None
+    for c in st.party:
+        if c.alive and not c.capacity_chosen:
+            return c
+    return None
+
+
+def _distinct_identity(char: CharacterState) -> List[str]:
+    """The colour options for a capacity lock: the character's identity, deduped
+    in order (≤3 distinct by construction)."""
+    seen: List[str] = []
+    for c in char.identity:
+        if c not in seen:
+            seen.append(c)
+    return seen
+
+
+def _lock_capacity(st: GameState, char: CharacterState, color: str, auto: bool) -> None:
+    """Add the +1 colour-locked capacity slot the player (or, for a single-colour
+    identity, the engine) chose."""
+    char.mana_colors.append(color)
+    char.capacity_chosen = True
+    how = "auto-locks" if auto else "locks"
+    _log(st, "capacity_locked",
+         f"{char.name} {how} +1 mana capacity as {color} (capacity {char.capacity}).",
+         character=char.id, color=color, capacity=char.capacity, auto=auto)
+
+
+def _upkeep_draws(st: GameState) -> None:
+    """After capacity is set: mana refreshes, each character draws 1, and per-round
+    ability uses / turn flags reset."""
     for c in st.living_party():
-        # +1 colour-locked capacity from turn 2 onward (no increase on turn 1).
-        if st.turn >= 2 and c.identity:
-            c.mana_colors.append(c.identity[len(c.mana_colors) % len(c.identity)])
         c.pool = list(c.mana_colors)  # refresh: every locked colour spendable
         _draw(st, c, 1)
         c.used_attack = c.used_defend = c.used_parry = False
@@ -233,8 +284,16 @@ def _apply(st: GameState, action: Action) -> None:
         "cast": _do_cast,
         "defend": _do_defend,
         "parry": _do_parry,
+        "choose_mana": _do_choose_mana,
     }[action.kind]
     handler(st, action)
+
+
+def _do_choose_mana(st: GameState, action: Action) -> None:
+    """Lock the colour of this turn's +1 capacity slot (start of turn, pre-draw)."""
+    char = st.character(action.actor_id)
+    _lock_capacity(st, char, action.color, auto=False)
+    st.priority = None
 
 
 def _do_pass(st: GameState, action: Action) -> None:
@@ -539,11 +598,24 @@ def _check_end(st: GameState) -> None:
 # --------------------------------------------------------------------------- #
 # Legal-action enumeration
 # --------------------------------------------------------------------------- #
+_COLOR_NAME = {"W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green"}
+
+
 def _legal(st: GameState) -> List[Action]:
     actor = st.character(st.priority)
     if actor is None:
         return []
+    if st.phase == "capacity" and not st.stack:
+        return _legal_capacity(st, actor)
     return _legal_react(st, actor) if st.stack else _legal_main(st, actor)
+
+
+def _legal_capacity(st: GameState, actor: CharacterState) -> List[Action]:
+    """The start-of-turn choice: which colour to lock the +1 capacity as. A
+    mandatory choice (you always gain the capacity), so no pass/end here."""
+    return [Action("choose_mana", actor.id, color=c,
+                   label=f"Lock +1 mana capacity as {_COLOR_NAME.get(c, c)} ({c})")
+            for c in _distinct_identity(actor)]
 
 
 def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
@@ -574,12 +646,12 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
     top = st.stack[-1]
+    # Parry is self-defence: only the character the incoming hit is aimed at may
+    # parry it (an ally cannot parry a blow directed at someone else).
     if (not actor.used_parry and top.source_side == "enemy"
-            and top.kind in ("attack", "ability")):
-        tgt = st.combatant(top.target_id)
-        if tgt is not None:
-            actions.append(Action("parry", actor.id, target_id=top.target_id,
-                                  label=f"Parry the hit on {tgt.name} (-{_PARRY_REDUCE})"))
+            and top.kind in ("attack", "ability") and top.target_id == actor.id):
+        actions.append(Action("parry", actor.id, target_id=actor.id,
+                              label=f"Parry (reduce the incoming hit by {_PARRY_REDUCE})"))
     actions.append(Action("pass", actor.id, label="Pass"))
     return actions
 
