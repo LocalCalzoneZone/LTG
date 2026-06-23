@@ -18,6 +18,7 @@ from .loader import LoadoutError, load_loadout
 
 _USAGE = (
     "usage: python -m ltg_combat <command>\n"
+    "  cockpit [opts]     launch the web cockpit (FastAPI + browser GUI)\n"
     "  harness            run the §A scripted scenario (asserts; exits non-zero on failure)\n"
     "  repl [scenario]    play in the text UI (defaults to §A; or a scenario JSON path)\n"
     "  validate <path>    load + validate a loadout JSON through core"
@@ -31,6 +32,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     command = argv[0]
+    if command == "cockpit":
+        from .cockpit import main as cockpit_main
+        return cockpit_main(argv[1:])
     if command == "harness":
         from .harness import main as harness_main
         return harness_main()

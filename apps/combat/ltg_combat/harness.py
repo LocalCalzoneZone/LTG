@@ -64,12 +64,16 @@ def _events_of_type(events: List[Event], type_: str) -> List[Event]:
     return [e for e in events if e.type == type_]
 
 
-def run_scenario(verbose: bool = False) -> GameState:
-    """Play §A; assert every marked state. Raises AssertionError on any mismatch."""
+def run_scenario(verbose: bool = False, state: Optional[GameState] = None) -> GameState:
+    """Play §A; assert every marked state. Raises AssertionError on any mismatch.
+
+    `state` lets a caller inject an equivalent setup (e.g. one assembled from
+    Deckbuilder loadouts via the cockpit) and prove it plays to the same results;
+    it defaults to the canonical §A setup."""
     global _VERBOSE
     _VERBOSE = verbose
 
-    state = build_state()
+    state = build_state() if state is None else state
     soren, ys = state.party
     skitter = state.enemy("skitterling")
     brute = state.enemy("brute")
@@ -193,15 +197,18 @@ def run_scenario(verbose: bool = False) -> GameState:
     return state
 
 
-def run_channeling_scenario(verbose: bool = False) -> GameState:
+def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = None) -> GameState:
     """Play §C; assert every marked state (multi-channel casting, reservation, a
     continuous disable aura, a recurring upkeep engine, reduced-below-threshold
     does-not-break, and an all-or-nothing break that releases reserved mana as a
-    respondable trigger). Raises AssertionError on any mismatch."""
+    respondable trigger). Raises AssertionError on any mismatch.
+
+    `state` lets a caller inject an equivalent setup (e.g. assembled from a
+    Deckbuilder loadout via the cockpit); defaults to the canonical §C setup."""
     global _VERBOSE
     _VERBOSE = verbose
 
-    state = build_channeling_state()
+    state = build_channeling_state() if state is None else state
     (mira,) = state.party
     cinder, maul = state.enemies
 

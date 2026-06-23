@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ltg_core.schema import Card
+from ltg_core.schema import Card, Loadout
 
 from .state import CharacterState, EnemyState, GameState
 
@@ -194,6 +194,127 @@ def load_scenario(path) -> GameState:
 
 def scenario_name(spec: Dict[str, Any] = None) -> str:
     return (spec or SCENARIO_A).get("name", "scenario")
+
+
+# --------------------------------------------------------------------------- #
+# Cockpit assembly: Deckbuilder loadouts (party) + an enemies-only scenario.
+#
+# The cockpit loads characters and the encounter from SEPARATE files — the exact
+# Deckbuilder loadout JSON per party slot, and an enemies-only scenario JSON. The
+# helpers below adapt those two inputs into the one scenario dict `state_from_dict`
+# already understands. This is *loading* (resolving inputs the engine is handed),
+# not rules: every resolved number flows into the engine, which alone decides
+# legality, costs, damage and turn order.
+# --------------------------------------------------------------------------- #
+
+# A character's combat Power isn't carried by the Deckbuilder loadout yet (the GDD
+# §4.7 defines Power as the attack value; the archetype table has no Power column).
+# The cockpit supplies a starting default per archetype — an INPUT to the engine,
+# immediately tweakable via quick-setup, never a rule. These match the §A/§C casts.
+POWER_BY_ARCHETYPE = {"Fighter": 2, "Tactician": 1, "Caster": 1, "Channeler": 1}
+
+
+def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
+    """Adapt one Deckbuilder loadout export into an engine party-entry dict.
+
+    The loadout is validated through `core` (the single gate). Resolved starting
+    numbers come from the archetype stats table (HP / hand size / mana capacity);
+    Power is the cockpit's per-archetype default (see `POWER_BY_ARCHETYPE`). The
+    card-list order becomes the deterministic library order; the opening hand is
+    its top `hand_size`. `identity` is the starting-mana capacity (one entry per
+    slot), exactly as the §A/§C scenario party entries express it.
+    """
+    lo = Loadout.model_validate(raw_loadout)
+    char = lo.character
+    stats = char.stats
+    archetype = char.archetype.value
+    return {
+        "id": _slug(char.name),
+        "name": char.name,
+        "archetype": archetype,
+        "hp": stats["starting_hp"],
+        "power": POWER_BY_ARCHETYPE.get(archetype, 1),
+        "hand_size": stats["starting_hand"],
+        "identity": [c.value for c in char.starting_mana],
+        "parry_reduce": 2,
+        "library": [c.model_dump(mode="json") for c in lo.cards],
+    }
+
+
+def compose_spec(loadouts: List[Dict[str, Any]], scenario: Dict[str, Any],
+                 overrides: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Compose the combined scenario dict from N party loadouts + an enemies-only
+    scenario, applying any quick-setup overrides. Party-slot ids are de-duplicated
+    so two copies of the same character can share the board."""
+    party = [party_entry_from_loadout(lo) for lo in loadouts]
+    _dedupe_ids(party)
+    spec = {
+        "name": scenario.get("name", "encounter"),
+        "party": party,
+        "enemies": [dict(e) for e in scenario.get("enemies", [])],
+        "tokens": dict(scenario.get("tokens", {})),
+    }
+    if overrides:
+        _apply_overrides(spec, overrides)
+    return spec
+
+
+def state_from_loadouts(loadouts: List[Dict[str, Any]], scenario: Dict[str, Any],
+                        overrides: Dict[str, Any] = None) -> GameState:
+    """Build a setup `GameState` from party loadouts + an enemies-only scenario."""
+    return state_from_dict(compose_spec(loadouts, scenario, overrides))
+
+
+def _dedupe_ids(party: List[Dict[str, Any]]) -> None:
+    seen: Dict[str, int] = {}
+    for entry in party:
+        base = entry["id"]
+        if base in seen:
+            seen[base] += 1
+            entry["id"] = f"{base}_{seen[base]}"
+        else:
+            seen[base] = 1
+
+
+def _apply_overrides(spec: Dict[str, Any], overrides: Dict[str, Any]) -> None:
+    """Quick-setup tweaks, applied to the composed spec before it becomes state.
+
+    Shape: {"party": {char_id: {hp, power, mana:[...], library:[card_id,...]}},
+            "enemies": {enemy_id: {hp, intent_amount}}}.
+    """
+    party_ov = overrides.get("party", {})
+    for entry in spec["party"]:
+        ov = party_ov.get(entry["id"])
+        if not ov:
+            continue
+        if "hp" in ov and ov["hp"] is not None:
+            entry["hp"] = int(ov["hp"])
+        if "power" in ov and ov["power"] is not None:
+            entry["power"] = int(ov["power"])
+        if ov.get("mana"):
+            entry["identity"] = list(ov["mana"])
+        if ov.get("library"):
+            entry["library"] = _reorder_library(entry["library"], ov["library"])
+
+    enemy_ov = overrides.get("enemies", {})
+    for enemy in spec["enemies"]:
+        ov = enemy_ov.get(enemy.get("id", _slug(enemy["name"])))
+        if not ov:
+            continue
+        if "hp" in ov and ov["hp"] is not None:
+            enemy["hp"] = int(ov["hp"])
+        if "intent_amount" in ov and ov["intent_amount"] is not None:
+            enemy.setdefault("intent", {})["amount"] = int(ov["intent_amount"])
+
+
+def _reorder_library(library: List[Dict[str, Any]], order: List[str]) -> List[Dict[str, Any]]:
+    """Reorder a library by an explicit list of card ids (determinism control).
+    Listed ids come first in the given order; any unlisted cards keep their order."""
+    by_id = {c["id"]: c for c in library}
+    out = [by_id[cid] for cid in order if cid in by_id]
+    listed = set(order)
+    out.extend(c for c in library if c["id"] not in listed)
+    return out
 
 
 # --- small readers used by the harness / tests ----------------------------- #

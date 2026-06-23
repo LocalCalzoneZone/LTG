@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LTG Combat — Playtest Cockpit</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="title">LTG Combat — <span class="muted">Playtest Cockpit</span></div>
+    <div id="turnline" class="turnline"></div>
+    <div class="timetravel">
+      <button id="btn-back" title="Step back one state">⟲ Back</button>
+      <span id="history-meta" class="muted">—</span>
+      <button id="btn-forward" title="Step forward one state">Forward ⟳</button>
+      <button id="btn-setup" class="ghost">Setup ⚙</button>
+    </div>
+  </header>
+
+  <!-- Setup / loading panel -->
+  <section id="setup" class="panel">
+    <h2>Load a fight</h2>
+    <p class="muted">
+      Pick 1–4 character files (the Deckbuilder loadout JSON) and one scenario
+      file (enemies only), then start. Files are read through the browser file
+      picker — mix and match any characters against any encounter.
+    </p>
+    <div class="setup-grid">
+      <div class="setup-col">
+        <h3>Party slots</h3>
+        <div id="slots"></div>
+      </div>
+      <div class="setup-col">
+        <h3>Scenario (enemies)</h3>
+        <div class="scenario-load">
+          <input type="file" id="scenario-file" accept=".json" />
+          <div id="scenario-status" class="muted">No scenario loaded.</div>
+          <div class="builtins">
+            <span class="muted">or built-in:</span>
+            <button data-builtin="a" class="ghost">§A minions</button>
+            <button data-builtin="c" class="ghost">§C channeling</button>
+          </div>
+        </div>
+        <h3>Quick setup <span class="muted">(optional)</span></h3>
+        <div id="quick-setup" class="muted">Start a fight, then tweak values here.</div>
+        <button id="btn-start" class="primary">Start fight ▶</button>
+        <div id="setup-error" class="error"></div>
+        <p class="determinism muted" id="determinism"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- The board -->
+  <main id="board" class="hidden">
+    <section id="enemies" class="lane"></section>
+
+    <section id="middle">
+      <div id="active-panel" class="panel">
+        <h2>Active <span id="active-who" class="muted"></span></h2>
+        <div id="active-hand" class="hand"></div>
+        <div id="menu" class="menu"></div>
+      </div>
+      <div id="stack-panel" class="panel">
+        <h2>Stack <span class="muted">(top → bottom)</span></h2>
+        <div id="stack" class="stack"></div>
+      </div>
+    </section>
+
+    <section id="party" class="lane"></section>
+  </main>
+
+  <!-- Event log -->
+  <aside id="logpanel" class="panel hidden">
+    <div class="log-head">
+      <h2>Event log</h2>
+      <input id="log-filter" placeholder="filter…" />
+    </div>
+    <div id="log" class="log"></div>
+  </aside>
+
+  <!-- Inspector drawer -->
+  <div id="inspector" class="drawer hidden">
+    <div class="drawer-head">
+      <h2 id="inspector-title">Inspector</h2>
+      <button id="inspector-close" class="ghost">✕</button>
+    </div>
+    <pre id="inspector-body"></pre>
+  </div>
+
+  <!-- Character kit modal -->
+  <div id="kit" class="modal hidden">
+    <div class="modal-card">
+      <div class="drawer-head">
+        <h2 id="kit-title">Kit</h2>
+        <button id="kit-close" class="ghost">✕</button>
+      </div>
+      <div id="kit-body"></div>
+    </div>
+  </div>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

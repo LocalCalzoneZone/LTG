@@ -16,6 +16,10 @@ Double-click **`LTG-Deckbuilder.command`** in Finder. On first run it creates th
 environment, installs dependencies, then serves the app and opens your browser at
 <http://localhost:8000>. (macOS may ask you to confirm running it the first time.)
 
+To playtest combat instead, double-click **`LTG-Combat-Cockpit.command`** — the
+web GUI for playtesting and debugging the engine (opens at
+<http://localhost:8001>; see [The Playtest Cockpit](#the-playtest-cockpit-web-gui)).
+
 ## Run it (one command)
 
 ```bash
@@ -84,12 +88,16 @@ apps/
       state.py     the GameState value: party, enemies, stack, phase, event log
       engine.py    the pure engine: legal_actions / apply_action, resolver, stack,
                    turn loop, enemy AI, win-loss (one handler per effect primitive)
-      scenario.py  the §A encounter as explicit inputs (core cards + resolved stats)
-      harness.py   the scripted-scenario proof — drives §A, asserts every step
+      scenario.py  encounters as inputs (§A/§C dicts) + the loadout→engine adapter
+      harness.py   the scripted-scenario proof — drives §A/§C, asserts every step
       repl.py      the text UI: renders state + menus, drives the two engine fns
+      server.py    the cockpit FastAPI backend: state + history + load/step/raw
+      serialize.py state → JSON for the cockpit (panels, two-click menu, raw dump)
+      cockpit.py   `ltg-combat-cockpit` launcher (serves the GUI + opens a browser)
       loader.py    load a loadout JSON and validate it through core (JSON-in)
-      __main__.py  `python -m ltg_combat {harness|repl [scenario]|validate <path>}`
-examples/          fixture cards, a sample loadout, scenario_a.json (§A), scenario_c.json (§C)
+      __main__.py  `python -m ltg_combat {cockpit|harness|repl [scenario]|validate}`
+    frontend/      the cockpit web GUI (dependency-free vanilla page, no build step)
+examples/          fixture cards, loadout_*.json (party) + encounter_*.json (enemies)
 tests/             pytest (monorepo-level suite, covers core + deckbuilder + combat)
 ```
 
@@ -158,6 +166,82 @@ with `python -m ltg_combat validate examples/sample_loadout.json`.
 > generation, the LLM narrator (events are shown plainly), and the Channeler's
 > full card pool. `Defend`'s magnitude is a documented placeholder; `Parry` is a
 > per-character value (Mira's is 2 in §C).
+
+## The Playtest Cockpit (web GUI)
+
+The **cockpit** is a local web GUI for playtesting combat and debugging the
+engine — a *cockpit, not a game*. It optimises for visibility and control: every
+number, intent, and rule-trace on screen, every situation reachable fast. It is a
+**thin client over the engine and owns zero rules** — it renders the state and the
+`legal_actions` the engine reports, collects a click, calls `apply_action`, and
+renders the emitted events. Rewriting the front end changes no outcome.
+
+**Launch it.** Double-click **`LTG-Combat-Cockpit.command`** in Finder, or:
+
+```bash
+ltg-combat-cockpit                 # serve on 0.0.0.0:8001 and open a browser
+# equivalently: python -m ltg_combat cockpit   (flags: --port --host --reload --no-browser)
+```
+
+Then open <http://localhost:8001>.
+
+**Load a fight (file picker).** A fight is assembled from **separate files**, each
+chosen through the browser file picker — mix and match any characters against any
+encounter:
+
+- **Characters — one file per slot, up to 4.** The cockpit reads the **exact
+  Deckbuilder loadout export JSON** (character + the translated effect JSON for
+  every card); it invents no cockpit-specific format. Re-picking a slot swaps that
+  character. Resolved starting numbers come from the archetype stats table; a
+  character's combat **Power** (not yet carried by the loadout) gets a per-archetype
+  cockpit default, tweakable in quick-setup.
+- **Scenario — one file, enemies only.** A scenario JSON defines just the
+  encounter (enemies with HP / Level / row / intents + targeting, and any token
+  defs). It contains no characters. The **§A minions** and **§C channeling**
+  built-in buttons load those encounters without a file on hand.
+
+Ready-made examples (the §A / §C cast and encounters, split into the two file
+kinds the cockpit consumes):
+
+```
+examples/loadout_soren.json  examples/loadout_ys.json  examples/loadout_mira.json
+examples/encounter_a.json    examples/encounter_c.json
+```
+
+Load Soren + Ys + `encounter_a.json` to play §A; load Mira + `encounter_c.json`
+for §C. These reproduce the scripted traces exactly (a test asserts it).
+
+**Play.** The board shows enemies across the top (HP / Level / row / status and
+the **declared intent** on the panel), the party across the bottom (up to 4 panels
+— HP, **mana by colour with reserved mana shown distinctly**, row, status, and
+**held channels as attached tags**), the **active character clearly highlighted**
+with their hand and the engine's legal actions as buttons, the **stack** when
+non-empty, and the scrolling, filterable **event log**. **Targeting is two-click:**
+click an action → the engine returns its legal targets → click one. The UI never
+guesses targets.
+
+**Inspect.** Click any character → their full **kit** (the three evergreen
+abilities + the complete card list with cost / timing / rarity / effect text).
+Click any character, enemy, token, channel, or stack item's **raw** view → the raw
+underlying state (every field, every temp effect, every reserved-mana entry) — the
+"why did the engine do that" tool.
+
+**Time-travel.** The backend keeps the deterministic list of past states (the
+engine is pure, state is a value); **Back / Forward** step the exact state backward
+and forward. Rewinding a fight to the move before a bug is first-class.
+
+**Quick setup.** Once a fight is loaded, tweak starting values in-session — each
+character's HP / Power / mana, an enemy's HP / intent value — and **Apply** rebuilds
+the fight from turn 1, so "what if the boss hit for 6 instead of 5" takes seconds.
+There is **no RNG and no shuffle**: library order is the loadout's card order
+(re-orderable), so every fight is reproducible.
+
+Architecture: a thin FastAPI backend (`apps/combat/ltg_combat/server.py`) holds the
+live state + history and exposes get-state / apply-action / load / step / raw
+endpoints; it calls the engine and serializes the result, adding no rules. The
+front end is a dependency-free vanilla page (`apps/combat/frontend/`) — no build
+step. **Out of scope** (per the brief): art / theming / animation, manual enemy
+override, the LLM narrator, generation, and saving in-progress games.
 
 ## Backend API
 

@@ -9,10 +9,13 @@ description = "LTG Combat — player-facing deterministic runtime (scaffold). Co
 requires-python = ">=3.9"
 dependencies = [
     "ltg-core",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
 ]
 
 [project.scripts]
 ltg-combat = "ltg_combat.__main__:main"
+ltg-combat-cockpit = "ltg_combat.cockpit:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
