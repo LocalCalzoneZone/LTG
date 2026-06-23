@@ -1,41 +1,58 @@
-"""CLI entry point: validate a loadout JSON, then hand off to the engine stub.
+"""CLI entry point for LTG Combat.
 
-    python -m ltg_combat <loadout.json>
+    python -m ltg_combat harness          run the §A scripted scenario (asserts)
+    python -m ltg_combat repl             play the §A encounter in the text REPL
+    python -m ltg_combat validate <path>  load + validate a loadout JSON via core
 
-Proves the runtime skeleton: the loadout is loaded and validated through
-`ltg_core` (JSON-in), then `engine.run` takes over — which is currently the
-`TODO: combat engine` placeholder.
+The harness is the engine's correctness proof; the REPL is hands-on feel. Both
+drive the engine through only `legal_actions` / `apply_action`.
 """
 
 from __future__ import annotations
 
 import sys
+from typing import List, Optional
 
-from .engine import run
 from .loader import LoadoutError, load_loadout
 
 
-def main(argv: list[str] | None = None) -> int:
+_USAGE = (
+    "usage: python -m ltg_combat <command>\n"
+    "  harness          run the §A scripted scenario (asserts; exits non-zero on failure)\n"
+    "  repl             play the §A encounter in the text REPL\n"
+    "  validate <path>  load + validate a loadout JSON through core"
+)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
-        print("usage: python -m ltg_combat <loadout.json>", file=sys.stderr)
+    if not argv:
+        print(_USAGE, file=sys.stderr)
         return 2
 
-    try:
-        loadout = load_loadout(argv[0])
-    except LoadoutError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-
-    print(f"[ltg-combat] loadout OK: {argv[0]}")
-    try:
+    command = argv[0]
+    if command == "harness":
+        from .harness import main as harness_main
+        return harness_main()
+    if command == "repl":
+        from .repl import main as repl_main
+        return repl_main(argv[1:])
+    if command == "validate":
+        if len(argv) != 2:
+            print("usage: python -m ltg_combat validate <loadout.json>", file=sys.stderr)
+            return 2
+        try:
+            loadout = load_loadout(argv[1])
+        except LoadoutError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        from .engine import run
+        print(f"[ltg-combat] loadout OK: {argv[1]}")
         run(loadout)
-    except NotImplementedError as exc:
-        # Expected while combat is a scaffold: the JSON-in path worked, the
-        # engine itself is the next brief.
-        print(f"[ltg-combat] {exc}")
         return 0
-    return 0
+
+    print(f"unknown command '{command}'\n\n{_USAGE}", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

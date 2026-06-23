@@ -53,7 +53,9 @@ python -m pytest -q
 ```
 
 Covers: the four fixtures validate; card↔JSON round-trips losslessly; malformed
-cards are rejected; and the Scryfall→Card mapping via a **mocked** fetch.
+cards are rejected; the Scryfall→Card mapping via a **mocked** fetch; and the
+**§A combat scenario** — the engine reproduces every hand-traced state, plays to
+the same result through the REPL, and never mutates the state value it's given.
 
 ## Layout
 
@@ -76,23 +78,64 @@ apps/
       scryfall.py  throttled Scryfall client (User-Agent, ~100ms between calls)
     frontend/      index.html, app.js, styles.css  (no build step)
     loadouts/      created at runtime by Save
-  combat/                      player-facing runtime — LTG Combat (SCAFFOLD ONLY)
+  combat/                      player-facing runtime — LTG Combat (the engine)
     ltg_combat/
+      state.py     the GameState value: party, enemies, stack, phase, event log
+      engine.py    the pure engine: legal_actions / apply_action, resolver, stack,
+                   turn loop, enemy AI, win-loss (one handler per effect primitive)
+      scenario.py  the §A encounter as explicit inputs (core cards + resolved stats)
+      harness.py   the scripted-scenario proof — drives §A, asserts every step
+      repl.py      Client B: a thin text/menu REPL over the two engine functions
       loader.py    load a loadout JSON and validate it through core (JSON-in)
-      engine.py    placeholder entry point — TODO: combat engine
-      __main__.py  `python -m ltg_combat <loadout.json>`
+      __main__.py  `python -m ltg_combat {harness|repl|validate <path>}`
 examples/          fixture cards + a full sample loadout (shared test fixtures)
-tests/             pytest (monorepo-level suite, covers core + deckbuilder)
+tests/             pytest (monorepo-level suite, covers core + deckbuilder + combat)
 ```
 
-**LTG Combat** is a scaffold this phase: it imports `core`, loads a loadout JSON,
-runs it through `core`'s validator, then stops at the `TODO: combat engine`
-placeholder. It never imports the Deckbuilder, touches Scryfall, or uses an LLM —
-it consumes only the validated JSON artifact. Run the validating stub with:
+### LTG Combat — the engine
+
+**LTG Combat** is a headless, deterministic combat runtime. Its entire contract is
+two pure functions over a single `GameState` value:
+
+- `legal_actions(state) -> [Action]` — the active character's legal choices now.
+- `apply_action(state, action) -> (state', events)` — the next state plus a
+  structured event log. Between player decisions it auto-runs the automatic flow
+  (upkeep, enemy intents/execution, end step) and **pauses at every reaction
+  window**. No I/O, no presentation, **no LLM**; state is treated as a value
+  (`apply_action` never mutates its input).
+
+Two clients drive the engine through *only* those two functions and own **zero**
+rules: a scripted-scenario harness (the correctness proof) and a text REPL.
+Effects only *declare* (`destroy` + a target); the resolver *decides* (a minion
+kill) — adding an effect handler is a localized change in `engine.RESOLVERS`. It
+imports `core`, never reaches into the Deckbuilder, and uses no LLM at runtime.
+
+**Run the scripted scenario (the proof).** Sets up the §A minions-only fight,
+applies the scripted action sequence, and asserts every expected state. Runs with
+zero input and passes deterministically:
 
 ```bash
-python -m ltg_combat examples/sample_loadout.json
+python -m ltg_combat harness          # prints a PASS/FAIL trace
+python -m pytest tests/test_combat_scenario.py -q   # the same proof, under pytest
 ```
+
+**Play a fight in the REPL.** Prints the state, prints `legal_actions` as a
+numbered menu, reads your pick, applies it, prints the emitted events, loops:
+
+```bash
+python -m ltg_combat repl             # pick numbers; 'q' to quit
+```
+
+A human making the §A choices reaches the same deterministic result the harness
+proves. **Validate a loadout** (JSON-in boundary; a loadout alone has no
+encounter) with `python -m ltg_combat validate examples/sample_loadout.json`.
+
+> **Scope (first milestone).** One minions-only encounter, run to completion.
+> Deferred to later scenarios: boss immunity / enrage / execute, the
+> channeling-break & mana-reservation runtime, the full enemy-AI heuristic
+> library, positioning, enemy generation, the narrator, and any graphical UI.
+> `Defend` / `Parry` magnitudes are documented placeholders (the GDD leaves them
+> to gear/flavour); the scenario does not exercise them.
 
 ## Backend API
 

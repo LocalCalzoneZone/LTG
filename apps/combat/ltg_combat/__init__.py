@@ -1,17 +1,31 @@
-"""LTG Combat — the player-facing deterministic runtime (SCAFFOLD ONLY).
+"""LTG Combat — the player-facing deterministic runtime.
 
-Combat ingests a finished, validated loadout JSON (the contract the Deckbuilder
-emits) and will execute deterministic rules over it. It depends only on
-`ltg_core`; it never imports the Deckbuilder, reads its live state, or uses
-Scryfall, translation, or an LLM at runtime.
+A headless, deterministic engine that ingests a loadout/encounter and executes
+LTG's combat rules. Its whole contract is two pure functions —
+`legal_actions(state)` and `apply_action(state, action)` — over a single
+`GameState` value; everything else (the scripted harness, the text REPL) drives
+the game through those two alone and owns zero rules.
 
-This task scaffolds the JSON-in path only: `loader.load_loadout` validates a
-loadout through `core`, and `engine.run` is a stub marked `TODO: combat engine`.
+It depends only on `ltg_core` (the effect vocabulary / card schema); it never
+imports the Deckbuilder, touches Scryfall, or uses an LLM at runtime.
 """
 
 from __future__ import annotations
 
+from .engine import apply_action, legal_actions, run
 from .loader import LoadoutError, load_loadout, validate_loadout
-from .engine import run
+from .scenario import build_state
+from .state import Action, Event, GameState
 
-__all__ = ["LoadoutError", "load_loadout", "validate_loadout", "run"]
+__all__ = [
+    "legal_actions",
+    "apply_action",
+    "build_state",
+    "GameState",
+    "Action",
+    "Event",
+    "run",
+    "LoadoutError",
+    "load_loadout",
+    "validate_loadout",
+]
