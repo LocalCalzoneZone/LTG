@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.mappings import build_card, parse_modal, render_effects
-from backend.schema import Card, effect_specs
+from ltg_core.translation import render_effects
+from ltg_deckbuilder.ingest import build_card, parse_modal
+from ltg_core.schema import Card, effect_specs
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 ENEMY = {"mode": "chosen", "side": "enemy", "targeted": True}

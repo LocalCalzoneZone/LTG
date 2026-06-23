@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 loadouts/
 .DS_Store
+# Python packaging / editable-install artifacts
+*.egg-info/
+build/
+dist/

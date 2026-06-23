@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.schema import Card, Loadout
+from ltg_core.schema import Card, Loadout
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 FIXTURES = ["giant_growth", "counterspell", "feed_the_swarm", "pacifism", "anthem"]
@@ -137,7 +137,7 @@ def test_starting_mana_length_must_match_archetype():
 
 
 def test_archetype_required_and_stats_derive():
-    from backend.schema import Character, archetype_stats
+    from ltg_core.schema import Character, archetype_stats
     with pytest.raises(ValidationError):
         Character.model_validate({"name": "X", "colors": ["U"], "starting_mana": ["U", "U"]})
     caster = Character.model_validate({

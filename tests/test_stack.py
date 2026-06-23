@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.mappings import render_effects
-from backend.schema import (
+from ltg_core.translation import render_effects
+from ltg_core.schema import (
     AbilityKind,
     Card,
     Speed,
@@ -72,7 +72,7 @@ def test_bad_filter_rejected():
 
 
 def test_counter_on_sorcery_flagged():
-    from backend.mappings import lint_card
+    from ltg_core.lints import lint_card
     c = card([{"kind": "counter", "filter": "action", "target": ACTION}],
              type="Sorcery", timing="sorcery")
     assert any("respond" in m for m in lint_card(c))

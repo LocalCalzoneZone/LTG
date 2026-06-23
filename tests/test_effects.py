@@ -3,8 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.mappings import lint_card, render_effects
-from backend.schema import Card, effect_specs
+from ltg_core.lints import lint_card
+from ltg_core.translation import render_effects
+from ltg_core.schema import Card, effect_specs
 
 BASE = {
     "id": "sign_in_blood",

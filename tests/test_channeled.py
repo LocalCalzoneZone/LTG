@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.mappings import build_card, render_effects
-from backend.schema import Card
+from ltg_core.translation import render_effects
+from ltg_deckbuilder.ingest import build_card
+from ltg_core.schema import Card
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -50,7 +51,7 @@ def test_bitterblossom_render():
 
 def test_mixed_continuous_and_upkeep_render_and_lint():
     # Regression: targetless effects (create_token) must not crash lints/render.
-    from backend.mappings import lint_card
+    from ltg_core.lints import lint_card
     c = chan_card(
         [
             {"kind": "disable", "intent_type": "attack", "target": "$T1", "duration": "while_channeled"},
