@@ -53,7 +53,10 @@ python -m pytest -q
 ```
 
 Covers: the four fixtures validate; card↔JSON round-trips losslessly; malformed
-cards are rejected; and the Scryfall→Card mapping via a **mocked** fetch.
+cards are rejected; the Scryfall→Card mapping via a **mocked** fetch; and the
+**§A combat scenario** — the engine reproduces every hand-traced state, plays to
+the same result through the text UI, loads from a scenario JSON, and never
+mutates the state value it's given.
 
 ## Layout
 
@@ -76,23 +79,85 @@ apps/
       scryfall.py  throttled Scryfall client (User-Agent, ~100ms between calls)
     frontend/      index.html, app.js, styles.css  (no build step)
     loadouts/      created at runtime by Save
-  combat/                      player-facing runtime — LTG Combat (SCAFFOLD ONLY)
+  combat/                      player-facing runtime — LTG Combat (the engine)
     ltg_combat/
+      state.py     the GameState value: party, enemies, stack, phase, event log
+      engine.py    the pure engine: legal_actions / apply_action, resolver, stack,
+                   turn loop, enemy AI, win-loss (one handler per effect primitive)
+      scenario.py  the §A encounter as explicit inputs (core cards + resolved stats)
+      harness.py   the scripted-scenario proof — drives §A, asserts every step
+      repl.py      the text UI: renders state + menus, drives the two engine fns
       loader.py    load a loadout JSON and validate it through core (JSON-in)
-      engine.py    placeholder entry point — TODO: combat engine
-      __main__.py  `python -m ltg_combat <loadout.json>`
-examples/          fixture cards + a full sample loadout (shared test fixtures)
-tests/             pytest (monorepo-level suite, covers core + deckbuilder)
+      __main__.py  `python -m ltg_combat {harness|repl [scenario]|validate <path>}`
+examples/          fixture cards, a sample loadout, scenario_a.json (§A), scenario_c.json (§C)
+tests/             pytest (monorepo-level suite, covers core + deckbuilder + combat)
 ```
 
-**LTG Combat** is a scaffold this phase: it imports `core`, loads a loadout JSON,
-runs it through `core`'s validator, then stops at the `TODO: combat engine`
-placeholder. It never imports the Deckbuilder, touches Scryfall, or uses an LLM —
-it consumes only the validated JSON artifact. Run the validating stub with:
+### LTG Combat — the engine
+
+**LTG Combat** is a headless, deterministic combat runtime. Its entire contract is
+two pure functions over a single `GameState` value:
+
+- `legal_actions(state) -> [Action]` — the active character's legal choices now.
+- `apply_action(state, action) -> (state', events)` — the next state plus a
+  structured event log. Between player decisions it auto-runs the automatic flow
+  (upkeep, enemy intents/execution, end step) and **pauses at every reaction
+  window**. No I/O, no presentation, **no LLM**; state is treated as a value
+  (`apply_action` never mutates its input).
+
+Two clients drive the engine through *only* those two functions and own **zero**
+rules: a scripted-scenario harness (the correctness proof) and a playable text UI.
+Effects only *declare* (`destroy` + a target); the resolver *decides* (a minion
+kill) — adding an effect handler is a localized change in `engine.RESOLVERS`. It
+imports `core`, never reaches into the Deckbuilder, and uses no LLM at runtime.
+(`settle(state)` is a read-only *view* — the same internal advance `legal_actions`
+runs — so a UI can render the exact decision-point without computing any rule.)
+
+**Run the scripted scenarios (the proof / regression spine).** Two fully
+hand-traced fights are asserted state-by-state, deterministically, with zero
+input: **§A** (the minions fight — turn loop, stack, reaction windows, mana,
+removal) and **§C** (channeling — multi-channel casting, mana reservation, a
+continuous `disable` aura, a recurring upkeep token engine, the
+reduced-below-threshold no-break rule, and an all-or-nothing break that releases
+reserved mana as a respondable trigger).
 
 ```bash
-python -m ltg_combat examples/sample_loadout.json
+python -m ltg_combat harness          # prints a PASS/FAIL trace for §A and §C
+python -m pytest tests/test_combat_scenario.py -q   # the same proofs, under pytest
 ```
+
+**Play a fight in the text UI.** One command launches it. Each decision-point
+renders a tidy snapshot — party (name + archetype, HP, mana by colour/capacity,
+hand with cost + timing, row, status, and a `▶` on the acting character), enemies
+(HP, Level, **declared intent + target**, row), and the stack when non-empty —
+then the engine's `legal_actions` as a numbered menu. Multi-target casts sit
+behind a "choose target" sub-menu (the targets are exactly the ones the engine
+offers — the UI computes none). It reads your pick, calls `apply_action`, prints
+the emitted events, and loops until win/loss, then offers **restart** (same
+deterministic setup) or **quit**.
+
+```bash
+python -m ltg_combat repl                          # defaults to the §A fight
+python -m ltg_combat repl examples/scenario_a.json # or load a scenario JSON
+python -m ltg_combat repl examples/scenario_c.json # the channeling fight
+```
+
+The UI surfaces channeling state too: held channels and the mana each reserves,
+ally tokens, and the start-of-turn capacity-colour choice.
+
+A human making the §A choices reaches the same deterministic victory the harness
+proves — entirely through the engine interface. A **scenario JSON** is a
+self-contained encounter (party loadouts with resolved stats + ordered libraries,
+and the minions); `examples/scenario_a.json` is the §A fight, ready to copy and
+edit. **Validate a loadout** (JSON-in boundary; a loadout alone has no encounter)
+with `python -m ltg_combat validate examples/sample_loadout.json`.
+
+> **Scope.** Two encounters proven: §A (minions) and §C (channeling). Deferred
+> to later scenarios: boss immunity / enrage / execute, channel interaction with
+> a boss's enrage, the full enemy-AI heuristic library, positioning, enemy
+> generation, the LLM narrator (events are shown plainly), and the Channeler's
+> full card pool. `Defend`'s magnitude is a documented placeholder; `Parry` is a
+> per-character value (Mira's is 2 in §C).
 
 ## Backend API
 

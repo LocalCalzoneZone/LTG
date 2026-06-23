@@ -1,0 +1,174 @@
+{
+  "name": "\u00a7C \u2014 Mira channels (Cinder & Maul)",
+  "party": [
+    {
+      "id": "mira",
+      "name": "Mira",
+      "archetype": "Channeler",
+      "hp": 15,
+      "power": 1,
+      "hand_size": 2,
+      "parry_reduce": 2,
+      "identity": [
+        "U",
+        "U",
+        "B",
+        "B"
+      ],
+      "library": [
+        {
+          "id": "still_the_blade",
+          "name": "Still the Blade",
+          "source_name": "Still the Blade",
+          "rarity": "uncommon",
+          "level": 2,
+          "type": "Enchantment",
+          "timing": "channeled",
+          "cost": {
+            "colors": {
+              "U": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "disable",
+              "intent_type": "attack",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              },
+              "duration": "while_channeled"
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "swarm_hex",
+          "name": "Swarm Hex",
+          "source_name": "Swarm Hex",
+          "rarity": "uncommon",
+          "level": 2,
+          "type": "Enchantment",
+          "timing": "channeled",
+          "cost": {
+            "colors": {
+              "B": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "create_token",
+              "token_id": "wisp",
+              "count": 1,
+              "trigger": "upkeep"
+            },
+            {
+              "kind": "lose_life",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              },
+              "trigger": "upkeep"
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "mind_spike",
+          "name": "Mind Spike",
+          "source_name": "Mind Spike",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "U": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "leech",
+          "name": "Leech",
+          "source_name": "Leech",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "B": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ],
+          "validated": true
+        }
+      ]
+    }
+  ],
+  "tokens": {
+    "wisp": {
+      "name": "Wisp",
+      "hp": 1,
+      "power": 1
+    }
+  },
+  "enemies": [
+    {
+      "id": "cinder",
+      "name": "Cinder",
+      "hp": 6,
+      "level": 2,
+      "intent": {
+        "name": "Ember",
+        "amount": 2,
+        "action_type": "ability",
+        "intent_type": "attack",
+        "targeting": "lowest_hp_party"
+      }
+    },
+    {
+      "id": "maul",
+      "name": "Maul",
+      "hp": 10,
+      "level": 4,
+      "intent": {
+        "name": "Crush",
+        "amount": 5,
+        "action_type": "ability",
+        "intent_type": "attack",
+        "targeting": "mira"
+      }
+    }
+  ]
+}
