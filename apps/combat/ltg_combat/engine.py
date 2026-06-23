@@ -25,11 +25,13 @@ Design seams the brief asks for:
 from __future__ import annotations
 
 import copy
+import math
 from typing import List, Optional, Tuple
 
 from ltg_core.schema import (
     Card,
     DealDamage,
+    Duration,
     Ref,
     TargetMode,
     Timing,
@@ -38,13 +40,19 @@ from ltg_core.schema import (
 
 from .state import (
     Action,
+    Channel,
     CharacterState,
     EnemyState,
     Event,
     GameState,
     Intent,
     StackItem,
+    TokenState,
 )
+
+# Spells castable as the proactive Cast action (sorcery-speed). A Cast turn may
+# cast several of these if mana allows (GDD §4.6), so they don't end the turn.
+_SORCERY_SPEED = (Timing.sorcery, Timing.channeled)
 
 # Deterministic order generic mana is paid from, when a cost has a generic pip.
 _PAY_ORDER = ["W", "U", "B", "R", "G"]
@@ -132,6 +140,7 @@ def _advance(st: GameState) -> None:
                     return
         elif st.phase == "draw":
             _upkeep_draws(st)
+            _fire_recurring(st)  # held channels' upkeep engines fire after the draw
             st.phase = "intents"
         elif st.phase == "intents":
             _declare_intents(st)
@@ -139,10 +148,16 @@ def _advance(st: GameState) -> None:
         elif st.phase == "player":
             actor = _next_player(st)
             if actor is None:
-                st.phase = "enemy"
+                st.phase = "allies"
             else:
                 st.priority = actor.id  # this character's main phase — pause
                 return
+        elif st.phase == "allies":
+            token = _next_ally(st)
+            if token is None:
+                st.phase = "enemy"
+            else:
+                _execute_ally(st, token)  # autonomous ally attacks (pushes to stack)
         elif st.phase == "enemy":
             enemy = _next_enemy(st)
             if enemy is None:
@@ -174,12 +189,21 @@ def _next_enemy(st: GameState) -> Optional[EnemyState]:
     return None
 
 
+def _next_ally(st: GameState) -> Optional[TokenState]:
+    """The next living ally token that has not yet acted this turn."""
+    for t in st.tokens:
+        if t.alive and t.id not in st.acted_tokens:
+            return t
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Turn-structure steps (GDD §4.2)
 # --------------------------------------------------------------------------- #
 def _begin_turn(st: GameState) -> None:
-    """Open the turn: reset enemy-action tracking and the per-turn capacity flag."""
+    """Open the turn: reset enemy/ally action tracking and the capacity flag."""
     st.acted_enemies = []
+    st.acted_tokens = []
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
@@ -218,24 +242,56 @@ def _lock_capacity(st: GameState, char: CharacterState, color: str, auto: bool) 
 
 
 def _upkeep_draws(st: GameState) -> None:
-    """After capacity is set: mana refreshes, each character draws 1, and per-round
-    ability uses / turn flags reset."""
+    """After capacity is set: mana refreshes (channels keep their reserve out of
+    the pool), each character draws 1, and per-round uses / turn flags reset."""
     for c in st.living_party():
-        c.pool = list(c.mana_colors)  # refresh: every locked colour spendable
+        c.pool = _refreshed_pool(c)  # every unreserved locked colour spendable
         _draw(st, c, 1)
         c.used_attack = c.used_defend = c.used_parry = False
-        c.proactive_spent = False
+        c.acted_mode = None
         c.turn_ended = False
         _log(st, "mana_refresh",
-             f"{c.name} mana refreshes to {_mana_str(c.pool)} (capacity {c.capacity}).",
-             character=c.id, capacity=c.capacity, pool=list(c.pool))
+             f"{c.name} mana refreshes to {_mana_str(c.pool)} (capacity {c.capacity}, "
+             f"reserved {len(c.reserved)}).",
+             character=c.id, capacity=c.capacity, pool=list(c.pool),
+             reserved=list(c.reserved))
+
+
+def _refreshed_pool(char: CharacterState) -> List[str]:
+    """Capacity minus the colours held channels reserve (reservation doesn't
+    refresh; the rest of capacity curves up around it — GDD §4.4, §8)."""
+    pool = list(char.mana_colors)
+    for color in char.reserved:
+        if color in pool:
+            pool.remove(color)
+    return pool
+
+
+def _fire_recurring(st: GameState) -> None:
+    """Recurring channel effects (`trigger: upkeep`) fire once at the start of
+    each holder's turn, in hold order (GDD §8)."""
+    for holder in st.living_party():
+        for ch in list(holder.channels):
+            item = StackItem(kind="ability", source_id=holder.id, source_side="party",
+                             label=ch.card.name, effects=[], target_id=ch.target_id,
+                             card=ch.card)
+            for effect in ch.card.effects:
+                if getattr(effect, "trigger", None) == "upkeep":
+                    _resolve_effect(st, item, effect, {})
 
 
 def _declare_intents(st: GameState) -> None:
-    """Each enemy declares its telegraphed intent against the current state."""
+    """Each enemy declares its telegraphed intent against the current state. A
+    disabled intent type (e.g. a `disable`-attack aura) declares nothing."""
     for e in st.living_enemies():
-        target = _lowest_hp_party(st)
         tmpl = e.intent_template
+        itype = tmpl.get("intent_type", "attack")
+        if itype in e.disabled_intent_types:
+            e.intent = None
+            _log(st, "intent_disabled", f"{e.name} is disabled and declares no {itype}.",
+                 enemy=e.id, intent_type=itype)
+            continue
+        target = _intent_target(st, tmpl)
         effects = [DealDamage(amount=tmpl["amount"], target=t_chosen("enemy", targeted=True))]
         e.intent = Intent(name=tmpl["name"], action_type=tmpl.get("action_type", "ability"),
                           effects=effects, target_id=target.id if target else None)
@@ -243,6 +299,15 @@ def _declare_intents(st: GameState) -> None:
         _log(st, "intent_declared",
              f"{e.name} declares {tmpl['name']} ({tmpl['amount']} dmg) → {tname}.",
              enemy=e.id, intent=tmpl["name"], amount=tmpl["amount"], target=e.intent.target_id)
+
+
+def _intent_target(st: GameState, tmpl: dict) -> Optional[CharacterState]:
+    """Resolve an intent's target rule: the lowest-HP party member (default), or
+    a fixed character id (e.g. Maul goes for the caster, ignoring tokens)."""
+    rule = tmpl.get("targeting", "lowest_hp_party")
+    if rule == "lowest_hp_party":
+        return _lowest_hp_party(st)
+    return st.character(rule)
 
 
 def _execute_intent(st: GameState, enemy: EnemyState) -> None:
@@ -258,7 +323,24 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     st.priority = None  # open a fresh reaction window (party order, set in _advance)
     st.passes = 0
     _log(st, "intent_execute", f"{enemy.name} executes {intent.name}.",
-         enemy=enemy.id, label=intent.label if hasattr(intent, "label") else intent.name)
+         enemy=enemy.id, label=intent.name)
+
+
+def _execute_ally(st: GameState, token: TokenState) -> None:
+    """An autonomous ally token attacks the lowest-HP enemy (ties by enemy order),
+    opening a reaction window like any other attack."""
+    st.acted_tokens.append(token.id)
+    target = _lowest_hp_enemy(st)
+    if target is None:
+        return
+    effects = [DealDamage(amount=token.power, target=t_chosen("enemy", targeted=True))]
+    st.stack.append(StackItem(kind="attack", source_id=token.id, source_side="party",
+                              label=f"{token.name}'s attack", effects=effects,
+                              target_id=target.id))
+    st.priority = None
+    st.passes = 0
+    _log(st, "ally_attack", f"{token.name} attacks {target.name} (Power {token.power}).",
+         token=token.id, target=target.id, power=token.power)
 
 
 def _end_step(st: GameState) -> None:
@@ -270,6 +352,9 @@ def _end_step(st: GameState) -> None:
     for e in st.enemies:
         e.temp_hp = 0
         e.prevent_pool = 0
+    for t in st.tokens:
+        t.temp_hp = 0
+        t.prevent_pool = 0
     _log(st, "end_step", "End step: temporary effects expire.")
 
 
@@ -285,6 +370,7 @@ def _apply(st: GameState, action: Action) -> None:
         "defend": _do_defend,
         "parry": _do_parry,
         "choose_mana": _do_choose_mana,
+        "drop_channels": _do_drop_channels,
     }[action.kind]
     handler(st, action)
 
@@ -304,6 +390,7 @@ def _do_pass(st: GameState, action: Action) -> None:
     st.passes += 1
     if st.passes >= len(st.living_party()):
         _resolve_top(st)
+        _process_breaks(st)  # a breaking hit just resolved? end channels, release mana
         st.passes = 0
         st.priority = None  # next item (or close) — re-seeded by _advance
     else:
@@ -320,7 +407,7 @@ def _do_end_turn(st: GameState, action: Action) -> None:
 def _do_attack(st: GameState, action: Action) -> None:
     """The free basic attack (the proactive Attack): deal damage = Power."""
     actor = st.character(action.actor_id)
-    actor.proactive_spent = True
+    actor.acted_mode = "attack"
     actor.used_attack = True
     effects = [DealDamage(amount=actor.current_power, target=t_chosen("enemy", targeted=True))]
     st.stack.append(StackItem(kind="attack", source_id=actor.id, source_side="party",
@@ -333,17 +420,20 @@ def _do_attack(st: GameState, action: Action) -> None:
 
 
 def _do_cast(st: GameState, action: Action) -> None:
-    """Cast a spell. Sorceries are the proactive action; instants are free."""
+    """Cast a spell. Sorcery-speed spells (sorceries/channeled) are the proactive
+    Cast — a Cast turn may cast several if mana allows; instants are free."""
     actor = st.character(action.actor_id)
     card = _card_in_hand(actor, action.card_id)
     reactive = bool(st.stack)  # a cast made inside an open window stacks above
-    _pay(actor, card)
+    paid = _pay(actor, card)
     actor.hand.remove(card)
-    if card.timing == Timing.sorcery:
-        actor.proactive_spent = True
+    if card.timing in _SORCERY_SPEED:
+        actor.acted_mode = "cast"  # choosing Cast; further sorcery-speed casts ok
+    reserved = list(paid) if card.timing == Timing.channeled else []
     st.stack.append(StackItem(kind="spell", source_id=actor.id, source_side="party",
                               label=card.name, effects=list(card.effects),
-                              target_id=action.target_id, card_id=card.id))
+                              target_id=action.target_id, card_id=card.id,
+                              card=card, reserved=reserved))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
     _log(st, "cast", f"{actor.name} casts {card.name}"
@@ -355,7 +445,7 @@ def _do_defend(st: GameState, action: Action) -> None:
     """The free defensive action: gain temporary HP. (Magnitude is a placeholder
     until gear/flavour set it; the scenario does not exercise Defend.)"""
     actor = st.character(action.actor_id)
-    actor.proactive_spent = True
+    actor.acted_mode = "defend"
     actor.used_defend = True
     actor.temp_hp += _DEFEND_TEMP_HP
     st.priority = None
@@ -364,20 +454,26 @@ def _do_defend(st: GameState, action: Action) -> None:
 
 
 def _do_parry(st: GameState, action: Action) -> None:
-    """The free defensive reaction: reduce an incoming hit. (Placeholder
-    magnitude; not exercised by the scenario.)"""
+    """The free defensive reaction: reduce the incoming hit by the character's
+    Parry value. Reduction lowers the hit's size (so it can keep a hit under a
+    channel-break threshold)."""
     actor = st.character(action.actor_id)
     actor.used_parry = True
-    target = st.combatant(action.target_id) or actor
-    target.prevent_pool += _PARRY_REDUCE
-    # Parry does not add to the stack; it just buffs the defender, then passes.
-    _log(st, "parry", f"{actor.name} parries for {target.name} (-{_PARRY_REDUCE} to the hit).",
-         character=actor.id, target=target.id if hasattr(target, "id") else None)
+    actor.prevent_pool += actor.parry_reduce
+    # Parry does not add to the stack; it buffs the defender, then passes.
+    _log(st, "parry", f"{actor.name} parries (reduces the incoming hit by {actor.parry_reduce}).",
+         character=actor.id)
     _do_pass(st, Action(kind="pass", actor_id=actor.id))
 
 
+def _do_drop_channels(st: GameState, action: Action) -> None:
+    """Voluntary drop (a free action): end all of the holder's channels at once."""
+    actor = st.character(action.actor_id)
+    _log(st, "drop_channels", f"{actor.name} drops concentration.", character=actor.id)
+    _break_channels(st, actor, reason="voluntary")
+
+
 _DEFEND_TEMP_HP = 3   # placeholder; GDD leaves Defend's amount to gear/flavour
-_PARRY_REDUCE = 2     # placeholder; likewise for Parry
 
 
 def _open_window(st: GameState, actor_id: str, reactive: bool) -> None:
@@ -402,9 +498,124 @@ def _next_priority_after(st: GameState, actor_id: str) -> str:
 def _resolve_top(st: GameState) -> None:
     item = st.stack.pop()
     _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
+    # A channeled card doesn't run its effects once — it becomes a held channel.
+    if item.card is not None and item.card.timing == Timing.channeled:
+        _start_channel(st, item)
+        return
     ctx: dict = {}  # dynamic references gathered during this resolution
     for effect in item.effects:
         _resolve_effect(st, item, effect, ctx)
+
+
+# --------------------------------------------------------------------------- #
+# Channels: hold, continuous effects, break/release (GDD §8)
+# --------------------------------------------------------------------------- #
+def _is_continuous(effect) -> bool:
+    return (getattr(effect, "trigger", None) is None
+            and getattr(effect, "duration", None) == Duration.while_channeled)
+
+
+def _start_channel(st: GameState, item: StackItem) -> None:
+    """Hold a resolved channeled card on its caster: reserve its mana and apply
+    its continuous effects. Recurring effects are armed (they fire at upkeep)."""
+    holder = st.character(item.source_id)
+    channel = Channel(card=item.card, holder_id=holder.id,
+                      reserved=list(item.reserved), target_id=item.target_id)
+    holder.channels.append(channel)
+    _log(st, "channel_start",
+         f"{holder.name} channels {item.card.name} (reserves {_mana_str(channel.reserved)}).",
+         character=holder.id, card=item.card.id, reserved=list(channel.reserved))
+    for effect in item.card.effects:
+        if _is_continuous(effect):
+            _apply_continuous(st, channel, effect)
+    # An aura whose target is already gone ends at once (Layer 1 -> break).
+    if channel.target_id is not None and _aura_target_lost(st, channel):
+        _note_break(st, holder, "aura_loss")
+
+
+def _aura_target_lost(st: GameState, channel: Channel) -> bool:
+    """True if this channel targets a creature that is no longer a legal target."""
+    if channel.target_id is None:
+        return False
+    needs_target = any(getattr(e, "target", None) is not None and _is_continuous(e)
+                       for e in channel.card.effects)
+    if not needs_target:
+        return False
+    tgt = st.combatant(channel.target_id)
+    return tgt is None or not getattr(tgt, "alive", False)
+
+
+def _apply_continuous(st: GameState, channel: Channel, effect) -> None:
+    """Apply a `while_channeled` effect when the channel starts."""
+    if effect.kind == "disable":
+        enemy = st.enemy(channel.target_id)
+        if enemy is not None:
+            enemy.disabled_intent_types.append(effect.intent_type)
+            # Strip a matching intent already declared this turn.
+            if (enemy.intent is not None
+                    and enemy.intent_template.get("intent_type", "attack") == effect.intent_type):
+                enemy.intent = None
+            _log(st, "disable_apply",
+                 f"{enemy.name} can't {effect.intent_type} while {channel.card.name} holds.",
+                 enemy=enemy.id, intent_type=effect.intent_type)
+    # Other continuous shapes (anthems/auras) plug in here — localized additions.
+
+
+def _remove_continuous(st: GameState, channel: Channel, effect) -> None:
+    """Lift a `while_channeled` effect when the channel ends."""
+    if effect.kind == "disable":
+        enemy = st.enemy(channel.target_id)
+        if enemy is not None and effect.intent_type in enemy.disabled_intent_types:
+            enemy.disabled_intent_types.remove(effect.intent_type)
+            _log(st, "disable_lift", f"{enemy.name} is no longer disabled.",
+                 enemy=enemy.id, intent_type=effect.intent_type)
+
+
+def _note_break(st: GameState, char: CharacterState, reason: str) -> None:
+    if char.channels and char.id not in st.pending_break:
+        st.pending_break.append(char.id)
+
+
+def _break_threshold(char: CharacterState) -> int:
+    """A hit of ≥25% of max HP breaks concentration (round up)."""
+    return math.ceil(char.max_hp / 4)
+
+
+def _process_breaks(st: GameState) -> None:
+    """After a resolution, end the channels of any channeler owed a break."""
+    for cid in list(st.pending_break):
+        st.pending_break.remove(cid)
+        char = st.character(cid)
+        if char is not None and char.channels:
+            _break_channels(st, char, reason="break")
+
+
+def _break_channels(st: GameState, char: CharacterState, reason: str) -> None:
+    """End ALL of a character's channels at once (all-or-nothing): lift continuous
+    effects, spend the cards, and release all reserved mana into the pool as a
+    respondable stack trigger (GDD §8)."""
+    if not char.channels:
+        return
+    released: List[str] = []
+    for channel in char.channels:
+        for effect in channel.card.effects:
+            if _is_continuous(effect):
+                _remove_continuous(st, channel, effect)
+        released.extend(channel.reserved)
+        _log(st, "channel_end", f"{channel.card.name} ends and is spent.",
+             character=char.id, card=channel.card.id, reason=reason)
+    char.channels = []
+    # Release the reserved mana immediately so it can fund a reaction this window,
+    # and put a respondable trigger on the stack (GDD §8).
+    char.pool.extend(released)
+    st.stack.append(StackItem(kind="ability", source_id=char.id, source_side="party",
+                              label="Mana Release", effects=[], target_id=None))
+    st.priority = None
+    st.passes = 0
+    _log(st, "mana_released",
+         f"{char.name}'s channels break ({reason}); {_mana_str(released)} released "
+         f"(pool now {_mana_str(char.pool)}).",
+         character=char.id, released=list(released), reason=reason)
 
 
 def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
@@ -513,6 +724,21 @@ def _r_scry(st, item, effect, target, ctx):
          target=_tid(target), amount=n, revealed=top)
 
 
+def _r_create_token(st, item, effect, target, ctx):
+    # Create autonomous ally token(s) from the scenario's token definition.
+    tdef = st.token_defs.get(effect.token_id, {})
+    for _ in range(effect.count):
+        st.token_seq += 1
+        token = TokenState(
+            id=f"{effect.token_id}_{st.token_seq}",
+            name=tdef.get("name", effect.token_id.replace("_", " ").title()),
+            max_hp=int(tdef.get("hp", 1)), hp=int(tdef.get("hp", 1)),
+            power=int(tdef.get("power", 1)))
+        st.tokens.append(token)
+        _log(st, "token_created", f"A {token.name} (HP {token.hp}/Power {token.power}) "
+             f"joins the party.", token=token.id, token_id=effect.token_id)
+
+
 RESOLVERS = {
     "deal_damage": _r_deal_damage,
     "heal": _r_heal,
@@ -522,6 +748,7 @@ RESOLVERS = {
     "prevent": _r_prevent,
     "draw": _r_draw,
     "scry": _r_scry,
+    "create_token": _r_create_token,
 }
 
 
@@ -537,6 +764,14 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "") -> None:
     if prevented:
         _log(st, "prevented", f"{prevented} damage to {target.name} prevented.",
              target=_tid(target), amount=prevented)
+
+    # The "hit size" for a channel break is the amount at the moment it lands —
+    # after prevention (which lowers it), but BEFORE temp HP (which only absorbs,
+    # so the hit still lands at full size) — GDD §8.
+    hit_size = amount
+    if (isinstance(target, CharacterState) and target.channels
+            and hit_size >= _break_threshold(target)):
+        _note_break(st, target, "hit")
 
     absorbed = min(target.temp_hp, amount)
     target.temp_hp -= absorbed
@@ -556,12 +791,16 @@ def _after_damage(st: GameState, target) -> None:
         return
     if isinstance(target, EnemyState):
         _kill_enemy(st, target)
-    else:
+    elif isinstance(target, TokenState):
+        _remove_token(st, target)
+    else:  # a player-character: incapacitated (its channels then break)
         _log(st, "incapacitated", f"{target.name} is incapacitated.", character=target.id)
+        _note_break(st, target, "incapacitated")
 
 
 def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
-    """A removed enemy leaves the board and its pending intent is discarded."""
+    """A removed enemy leaves the board and its pending intent is discarded. Any
+    channel aimed at it loses its target -> that holder's channels break."""
     if enemy in st.enemies:
         st.enemies.remove(enemy)
     if enemy.id in st.acted_enemies:
@@ -570,6 +809,17 @@ def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
         _log(st, "intent_discarded", f"{enemy.name}'s pending intent is discarded.",
              enemy=enemy.id)
     _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
+    for holder in st.party:
+        if any(ch.target_id == enemy.id for ch in holder.channels):
+            _note_break(st, holder, "aura_loss")
+
+
+def _remove_token(st: GameState, token: TokenState) -> None:
+    if token in st.tokens:
+        st.tokens.remove(token)
+    if token.id in st.acted_tokens:
+        st.acted_tokens.remove(token.id)
+    _log(st, "token_died", f"{token.name} is destroyed.", token=token.id)
 
 
 def _draw(st: GameState, char: CharacterState, n: int) -> None:
@@ -619,28 +869,32 @@ def _legal_capacity(st: GameState, actor: CharacterState) -> List[Action]:
 
 
 def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
-    """A character's own turn: one proactive action (Attack XOR Cast XOR Defend),
-    plus free instants, plus end turn."""
+    """A character's own turn: the proactive mode (Attack XOR Cast XOR Defend) —
+    where Cast may cast several sorcery-speed spells — plus free instants, the
+    free voluntary drop, and end turn."""
     actions: List[Action] = []
-    if not actor.proactive_spent:
+    mode = actor.acted_mode
+    if mode is None:
         for e in st.living_enemies():  # Attack (basic) — all front, melee reaches
             actions.append(Action("attack", actor.id, target_id=e.id,
                                   label=f"Attack {e.name} (Power {actor.current_power})"))
-        for card in actor.hand:        # Cast a sorcery (the proactive action)
-            if card.timing == Timing.sorcery and _can_pay(actor, card):
-                actions += _cast_actions(st, actor, card)
         if not actor.used_defend:       # Defend
             actions.append(Action("defend", actor.id,
                                   label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
+    if mode in (None, "cast"):          # Cast sorcery-speed spells (sorcery/channeled)
+        for card in actor.hand:
+            if card.timing in _SORCERY_SPEED and _can_pay(actor, card):
+                actions += _cast_actions(st, actor, card)
     for card in actor.hand:            # Free instants (mana-limited, any time)
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
+    actions += _drop_actions(actor)
     actions.append(Action("end_turn", actor.id, label="End turn"))
     return actions
 
 
 def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
-    """An open reaction window: free instants, Parry, or pass."""
+    """An open reaction window: free instants, Parry, voluntary drop, or pass."""
     actions: List[Action] = []
     for card in actor.hand:
         if card.timing == Timing.instant and _can_pay(actor, card):
@@ -651,9 +905,20 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     if (not actor.used_parry and top.source_side == "enemy"
             and top.kind in ("attack", "ability") and top.target_id == actor.id):
         actions.append(Action("parry", actor.id, target_id=actor.id,
-                              label=f"Parry (reduce the incoming hit by {_PARRY_REDUCE})"))
+                              label=f"Parry (reduce the incoming hit by {actor.parry_reduce})"))
+    actions += _drop_actions(actor)
     actions.append(Action("pass", actor.id, label="Pass"))
     return actions
+
+
+def _drop_actions(actor: CharacterState) -> List[Action]:
+    """Voluntary drop is a free action available whenever the holder has priority
+    and holds at least one channel (ends ALL of them)."""
+    if actor.channels:
+        n = len(actor.channels)
+        return [Action("drop_channels", actor.id,
+                       label=f"Drop concentration (end {n} channel{'s' if n > 1 else ''})")]
+    return []
 
 
 def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Action]:
@@ -697,16 +962,22 @@ def _can_pay(actor: CharacterState, card: Card) -> bool:
     return len(pool) >= card.cost.generic
 
 
-def _pay(actor: CharacterState, card: Card) -> None:
+def _pay(actor: CharacterState, card: Card) -> List[str]:
+    """Spend the cost from the pool; return the actual colours paid (so a channel
+    can reserve exactly those and release them on end)."""
     pool = actor.pool
+    paid: List[str] = []
     for color, n in card.cost.colors.items():
         for _ in range(n):
             pool.remove(color.value)
+            paid.append(color.value)
     for _ in range(card.cost.generic):
         for c in _PAY_ORDER:  # deterministic: spend generic in WUBRG order
             if c in pool:
                 pool.remove(c)
+                paid.append(c)
                 break
+    return paid
 
 
 # --------------------------------------------------------------------------- #
@@ -721,6 +992,18 @@ def _lowest_hp_party(st: GameState) -> Optional[CharacterState]:
     for c in living[1:]:
         if c.hp < best.hp:  # strict < preserves the earlier (party-order) tie-break
             best = c
+    return best
+
+
+def _lowest_hp_enemy(st: GameState) -> Optional[EnemyState]:
+    """An ally token's target heuristic: lowest-HP enemy, ties by enemy order."""
+    living = st.living_enemies()
+    if not living:
+        return None
+    best = living[0]
+    for e in living[1:]:
+        if e.hp < best.hp:
+            best = e
     return best
 
 

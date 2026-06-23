@@ -41,6 +41,12 @@ def _cost_str(card: Card) -> str:
     return pips or "{0}"
 
 
+def _pip_str(colors: List[str]) -> str:
+    """A list of colour letters as compact pips, e.g. ['U','B'] -> '{U}{B}'."""
+    counts = Counter(colors)
+    return "".join(("{" + c + "}") * counts[c] for c in _WUBRG if counts[c]) or "{0}"
+
+
 def _mana_str(char) -> str:
     """Available-by-colour over capacity, e.g. 'W:1/1 G:0/1'."""
     avail = Counter(char.pool)
@@ -58,8 +64,8 @@ def _status_str(char) -> str:
         bits.append(f"prevent {char.prevent_pool}")
     if char.power_bonus:
         bits.append(f"+{char.power_bonus} Pow")
-    if char.proactive_spent and char.alive and not char.turn_ended:
-        bits.append("acted")
+    if char.acted_mode and char.alive and not char.turn_ended:
+        bits.append(char.acted_mode)
     if char.turn_ended:
         bits.append("turn done")
     return ", ".join(bits)
@@ -70,9 +76,10 @@ def _phase_label(state: GameState) -> str:
         return "game over"
     if state.stack:
         return "reaction window"
-    return {"upkeep": "upkeep", "intents": "enemy intents",
-            "player": "player actions", "enemy": "enemy actions",
-            "end": "end step"}.get(state.phase, state.phase)
+    return {"upkeep": "upkeep", "capacity": "start of turn — lock mana",
+            "draw": "upkeep", "intents": "enemy intents",
+            "player": "player actions", "allies": "ally actions",
+            "enemy": "enemy actions", "end": "end step"}.get(state.phase, state.phase)
 
 
 def _render(state: GameState, acting_id: Optional[str]) -> str:
@@ -88,14 +95,24 @@ def _render(state: GameState, acting_id: Optional[str]) -> str:
         incap = "  [INCAPACITATED]" if not c.alive else ""
         lines.append(f"{head}{incap}")
         status = _status_str(c)
-        statline = f"     HP {c.hp}/{c.max_hp}   mana {_mana_str(c)}   row {c.row}"
+        reserved = f"   reserved {_pip_str(c.reserved)}" if c.reserved else ""
+        statline = f"     HP {c.hp}/{c.max_hp}   mana {_mana_str(c)}{reserved}   row {c.row}"
         lines.append(statline + (f"   ({status})" if status else ""))
+        if c.channels:
+            chans = "  ".join(f"{ch.card.name} (holds {_pip_str(ch.reserved)})"
+                              for ch in c.channels)
+            lines.append(f"     channeling: {chans}")
         if c.hand:
             cards = "  ".join(f"{card.name} {_cost_str(card)}/{card.timing.value}"
                               for card in c.hand)
         else:
             cards = "(empty)"
         lines.append(f"     hand: {cards}")
+
+    if state.tokens:
+        lines.append("ALLIES")
+        for t in state.tokens:
+            lines.append(f"   {t.name}  HP {t.hp}/{t.max_hp}  Power {t.power}  row {t.row}")
 
     lines.append("ENEMIES")
     if not state.enemies:

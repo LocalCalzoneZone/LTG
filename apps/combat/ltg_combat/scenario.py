@@ -99,6 +99,45 @@ SCENARIO_A: Dict[str, Any] = {
 
 
 # --------------------------------------------------------------------------- #
+# §C — the channeling fight (Channeler Mira vs Cinder & Maul)
+# --------------------------------------------------------------------------- #
+SCENARIO_C: Dict[str, Any] = {
+    "name": "§C — Mira channels (Cinder & Maul)",
+    "party": [
+        {
+            "id": "mira", "name": "Mira", "archetype": "Channeler",
+            "hp": 15, "power": 1, "hand_size": 2, "parry_reduce": 2,
+            "identity": ["U", "U", "B", "B"],
+            "library": [
+                _cd("still_the_blade", "Still the Blade", "channeled", {"colors": {"U": 1}}, 2,
+                    [{"kind": "disable", "intent_type": "attack", "target": TARGETED_ENEMY,
+                      "duration": "while_channeled"}], rarity="uncommon"),
+                _cd("swarm_hex", "Swarm Hex", "channeled", {"colors": {"B": 1}}, 2,
+                    [{"kind": "create_token", "token_id": "wisp", "count": 1, "trigger": "upkeep"},
+                     {"kind": "lose_life", "amount": 1, "target": SELF, "trigger": "upkeep"}],
+                    rarity="uncommon"),
+                _cd("mind_spike", "Mind Spike", "instant", {"colors": {"U": 1}}, 1,
+                    [{"kind": "deal_damage", "amount": 2, "target": TARGETED_ENEMY}]),
+                _cd("leech", "Leech", "instant", {"colors": {"B": 1}}, 1,
+                    [{"kind": "deal_damage", "amount": 1, "target": TARGETED_ENEMY},
+                     {"kind": "heal", "amount": 1, "target": SELF}]),
+            ],
+        },
+    ],
+    "tokens": {"wisp": {"name": "Wisp", "hp": 1, "power": 1}},
+    "enemies": [
+        {"id": "cinder", "name": "Cinder", "hp": 6, "level": 2,
+         "intent": {"name": "Ember", "amount": 2, "action_type": "ability",
+                    "intent_type": "attack", "targeting": "lowest_hp_party"}},
+        # Maul goes for the caster directly, ignoring tokens.
+        {"id": "maul", "name": "Maul", "hp": 10, "level": 4,
+         "intent": {"name": "Crush", "amount": 5, "action_type": "ability",
+                    "intent_type": "attack", "targeting": "mira"}},
+    ],
+}
+
+
+# --------------------------------------------------------------------------- #
 # Build / load
 # --------------------------------------------------------------------------- #
 def _slug(name: str) -> str:
@@ -122,7 +161,7 @@ def state_from_dict(spec: Dict[str, Any]) -> GameState:
             archetype=p.get("archetype", ""), max_hp=int(p["hp"]), hp=int(p["hp"]),
             power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
-            row=p.get("row", "front"),
+            parry_reduce=int(p.get("parry_reduce", 2)), row=p.get("row", "front"),
         ))
 
     enemies: List[EnemyState] = []
@@ -133,12 +172,18 @@ def state_from_dict(spec: Dict[str, Any]) -> GameState:
             row=e.get("row", "front"), intent_template=dict(e["intent"]),
         ))
 
-    return GameState(party=party, enemies=enemies, turn=1, phase="upkeep")
+    return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",
+                     token_defs=dict(spec.get("tokens", {})))
 
 
 def build_state() -> GameState:
     """The §A.3 setup state: encounter start, before Turn 1's upkeep."""
     return state_from_dict(SCENARIO_A)
+
+
+def build_channeling_state() -> GameState:
+    """The §C.3 setup state: the channeling fight, before Turn 1's upkeep."""
+    return state_from_dict(SCENARIO_C)
 
 
 def load_scenario(path) -> GameState:

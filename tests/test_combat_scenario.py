@@ -9,9 +9,9 @@ from __future__ import annotations
 import copy
 
 from ltg_combat.engine import apply_action, legal_actions
-from ltg_combat.harness import run_scenario
+from ltg_combat.harness import run_channeling_scenario, run_scenario
 from ltg_combat.repl import play
-from ltg_combat.scenario import build_state
+from ltg_combat.scenario import build_channeling_state, build_state
 
 
 def test_scenario_passes():
@@ -19,6 +19,55 @@ def test_scenario_passes():
     state = run_scenario(verbose=False)
     assert state.result == "victory"
     assert state.turn == 2
+
+
+def test_channeling_scenario_passes():
+    """The §C channeling hand-trace reproduces every asserted state (the proof)."""
+    state = run_channeling_scenario(verbose=False)
+    # Channeling-specific end state: channels broke, mira survived the hit.
+    assert state.party[0].hp == 7
+    assert state.party[0].channels == []
+
+
+def test_channeling_scenario_is_deterministic():
+    a = run_channeling_scenario(verbose=False)
+    b = run_channeling_scenario(verbose=False)
+    assert [(c.name, c.hp) for c in a.party] == [(c.name, c.hp) for c in b.party]
+    assert [(e.name, e.hp) for e in a.enemies] == [(e.name, e.hp) for e in b.enemies]
+
+
+def test_voluntary_drop_ends_all_channels_and_releases_mana():
+    """Voluntary drop appears in legal_actions, ends ALL channels at once, spends
+    the cards, and releases the reserved mana into the pool."""
+    state = build_channeling_state()
+
+    def do(**kw):
+        nonlocal state
+        a = next(a for a in legal_actions(state)
+                 if all(getattr(a, k) == v for k, v in kw.items()))
+        state, _ = apply_action(state, a)
+
+    # Turn 1: hold both channels.
+    do(kind="cast", card_id="still_the_blade", target_id="cinder")
+    do(kind="pass")
+    do(kind="cast", card_id="swarm_hex")
+    do(kind="pass")
+    mira = state.party[0]
+    assert len(mira.channels) == 2
+    pool_before = sorted(mira.pool)
+
+    # Drop must be offered now (Mira holds channels) and end them all.
+    drop = [a for a in legal_actions(state) if a.kind == "drop_channels"]
+    assert len(drop) == 1
+    state, events = apply_action(state, drop[0])
+    mira = state.party[0]
+    assert mira.channels == []                       # all channels ended at once
+    assert "still the blade" not in [c.name.lower() for c in mira.hand]  # spent, not returned
+    # Reserved U+B released back into the pool (a respondable trigger opened).
+    assert sorted(mira.pool) == sorted(pool_before + ["U", "B"])
+    assert any(e.type == "mana_released" for e in events)
+    # Cinder's disable was lifted with the channel.
+    assert "attack" not in state.enemy("cinder").disabled_intent_types
 
 
 def test_scenario_is_deterministic():

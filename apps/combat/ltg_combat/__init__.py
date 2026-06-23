@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .engine import apply_action, legal_actions, run, settle
 from .loader import LoadoutError, load_loadout, validate_loadout
-from .scenario import build_state
+from .scenario import build_channeling_state, build_state
 from .state import Action, Event, GameState
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "apply_action",
     "settle",
     "build_state",
+    "build_channeling_state",
     "GameState",
     "Action",
     "Event",

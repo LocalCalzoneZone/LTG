@@ -89,7 +89,7 @@ apps/
       repl.py      the text UI: renders state + menus, drives the two engine fns
       loader.py    load a loadout JSON and validate it through core (JSON-in)
       __main__.py  `python -m ltg_combat {harness|repl [scenario]|validate <path>}`
-examples/          fixture cards, a sample loadout, and scenario_a.json (the §A fight)
+examples/          fixture cards, a sample loadout, scenario_a.json (§A), scenario_c.json (§C)
 tests/             pytest (monorepo-level suite, covers core + deckbuilder + combat)
 ```
 
@@ -113,13 +113,17 @@ imports `core`, never reaches into the Deckbuilder, and uses no LLM at runtime.
 (`settle(state)` is a read-only *view* — the same internal advance `legal_actions`
 runs — so a UI can render the exact decision-point without computing any rule.)
 
-**Run the scripted scenario (the proof).** Sets up the §A minions-only fight,
-applies the scripted action sequence, and asserts every expected state. Runs with
-zero input and passes deterministically:
+**Run the scripted scenarios (the proof / regression spine).** Two fully
+hand-traced fights are asserted state-by-state, deterministically, with zero
+input: **§A** (the minions fight — turn loop, stack, reaction windows, mana,
+removal) and **§C** (channeling — multi-channel casting, mana reservation, a
+continuous `disable` aura, a recurring upkeep token engine, the
+reduced-below-threshold no-break rule, and an all-or-nothing break that releases
+reserved mana as a respondable trigger).
 
 ```bash
-python -m ltg_combat harness          # prints a PASS/FAIL trace
-python -m pytest tests/test_combat_scenario.py -q   # the same proof, under pytest
+python -m ltg_combat harness          # prints a PASS/FAIL trace for §A and §C
+python -m pytest tests/test_combat_scenario.py -q   # the same proofs, under pytest
 ```
 
 **Play a fight in the text UI.** One command launches it. Each decision-point
@@ -135,7 +139,11 @@ deterministic setup) or **quit**.
 ```bash
 python -m ltg_combat repl                          # defaults to the §A fight
 python -m ltg_combat repl examples/scenario_a.json # or load a scenario JSON
+python -m ltg_combat repl examples/scenario_c.json # the channeling fight
 ```
+
+The UI surfaces channeling state too: held channels and the mana each reserves,
+ally tokens, and the start-of-turn capacity-colour choice.
 
 A human making the §A choices reaches the same deterministic victory the harness
 proves — entirely through the engine interface. A **scenario JSON** is a
@@ -144,12 +152,12 @@ and the minions); `examples/scenario_a.json` is the §A fight, ready to copy and
 edit. **Validate a loadout** (JSON-in boundary; a loadout alone has no encounter)
 with `python -m ltg_combat validate examples/sample_loadout.json`.
 
-> **Scope.** One minions-only encounter, run to completion. Deferred to later
-> scenarios: boss immunity / enrage / execute, the channeling-break &
-> mana-reservation runtime, the full enemy-AI heuristic library, positioning,
-> enemy generation, the LLM narrator (events are shown plainly), and any
-> graphical UI. `Defend` / `Parry` magnitudes are documented placeholders (the
-> GDD leaves them to gear/flavour); the scenario does not exercise them.
+> **Scope.** Two encounters proven: §A (minions) and §C (channeling). Deferred
+> to later scenarios: boss immunity / enrage / execute, channel interaction with
+> a boss's enrage, the full enemy-AI heuristic library, positioning, enemy
+> generation, the LLM narrator (events are shown plainly), and the Channeler's
+> full card pool. `Defend`'s magnitude is a documented placeholder; `Parry` is a
+> per-character value (Mira's is 2 in §C).
 
 ## Backend API
 
