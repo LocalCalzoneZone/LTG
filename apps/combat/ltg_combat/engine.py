@@ -63,6 +63,18 @@ def legal_actions(state: GameState) -> List[Action]:
     return _legal(st)
 
 
+def settle(state: GameState) -> GameState:
+    """A read-only view: advance the automatic flow to the decision-point the
+    engine will present next, and return that display-ready copy. Emits nothing
+    and never mutates the caller's state. This is the same prelude `legal_actions`
+    runs internally — it lets a UI render exactly the state a decision is about
+    (e.g. the post-upkeep hand the menu offers), with no rules in the UI."""
+    st = copy.deepcopy(state)
+    _advance(st)
+    st.log = []  # a view carries no new events
+    return st
+
+
 def apply_action(state: GameState, action: Action) -> Tuple[GameState, List[Event]]:
     """Apply `action`, then run forward to the next player decision.
 

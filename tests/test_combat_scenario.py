@@ -75,33 +75,37 @@ def test_illegal_action_is_rejected():
         apply_action(state, bogus)
 
 
-def test_repl_plays_scenario_to_victory():
-    """Client B reaches the same result through the engine interface, owning no
-    rules. We feed the §A choices as menu numbers via injected I/O."""
-    # The scripted picks: each step selects a legal menu option by matching label
-    # substrings, so the test fails loudly if the menu shape drifts.
+def test_text_ui_plays_scenario_to_victory():
+    """The text UI reaches the same result through the engine interface, owning
+    no rules. We feed the §A choices as menu numbers via injected I/O — a human
+    making these same picks reaches the same deterministic victory.
+
+    Multi-target casts sit behind a 'choose target' sub-menu, so casting Unmake
+    is two picks: the card, then the target."""
     script = [
-        "Attack Skitterling",   # T1 Soren attacks
+        "Attack Skitterling",   # T1 Soren attacks (inline, target in the label)
         "Pass", "Pass",          # resolve the attack
         "End turn",              # Soren ends
-        "Unmake on Brute",      # T1 Ys casts Unmake on Brute (engine offers both enemies)
+        "Cast Unmake", "Brute", # T1 Ys: pick Unmake, then its target Brute
         "Pass", "Pass",          # resolve Unmake
         "End turn",              # Ys ends
-        "Guard on Ys",          # T1 Soren reacts to Claw with Guard on Ys
+        "Cast Guard", "Ys",     # T1 Soren reacts to Claw: Guard, then target Ys
         "Pass", "Pass", "Pass", "Pass",  # resolve Guard then Claw
         "Attack Skitterling",   # T2 Soren attacks (lethal)
         "Pass", "Pass",          # resolve -> victory
+        "Quit",                  # decline the restart menu
     ]
-    outputs: list = []
     pending_menu: list = []
 
     def fake_out(line):
-        outputs.append(line)
         # Track the most recently printed numbered menu so we can map a label.
-        if line.strip().startswith("1. "):
-            pending_menu.clear()
+        # _render is emitted as one multi-line blob; menu items are one line each.
+        if "\n" in line:
+            return
         m = line.strip()
-        if m[:2].rstrip(".").isdigit() and ". " in m:
+        if m.startswith("1. "):
+            pending_menu.clear()
+        if ". " in m and m.split(".", 1)[0].isdigit():
             num, label = m.split(". ", 1)
             pending_menu.append((int(num), label))
 
@@ -110,7 +114,6 @@ def test_repl_plays_scenario_to_victory():
     def fake_read():
         want = script[step["i"]]
         step["i"] += 1
-        # Find the menu entry whose label contains the wanted substring.
         for num, label in pending_menu:
             if want in label:
                 return str(num)
@@ -119,3 +122,18 @@ def test_repl_plays_scenario_to_victory():
     final = play(state=build_state(), read=fake_read, out=fake_out)
     assert final.result == "victory"
     assert step["i"] == len(script)  # every scripted choice was consumed
+
+
+def test_text_ui_can_load_scenario_json(tmp_path):
+    """The UI can launch a scenario JSON; a loaded §A equals the built default."""
+    import json
+    from ltg_combat.scenario import SCENARIO_A, load_scenario
+
+    path = tmp_path / "scen.json"
+    path.write_text(json.dumps(SCENARIO_A))
+    loaded = load_scenario(str(path))
+    built = build_state()
+    assert [(c.name, c.hp, c.archetype, [x.id for x in c.hand]) for c in loaded.party] \
+        == [(c.name, c.hp, c.archetype, [x.id for x in c.hand]) for c in built.party]
+    assert [(e.name, e.hp, e.level) for e in loaded.enemies] \
+        == [(e.name, e.hp, e.level) for e in built.enemies]

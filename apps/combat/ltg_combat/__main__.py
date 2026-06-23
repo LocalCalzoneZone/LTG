@@ -18,9 +18,9 @@ from .loader import LoadoutError, load_loadout
 
 _USAGE = (
     "usage: python -m ltg_combat <command>\n"
-    "  harness          run the §A scripted scenario (asserts; exits non-zero on failure)\n"
-    "  repl             play the §A encounter in the text REPL\n"
-    "  validate <path>  load + validate a loadout JSON through core"
+    "  harness            run the §A scripted scenario (asserts; exits non-zero on failure)\n"
+    "  repl [scenario]    play in the text UI (defaults to §A; or a scenario JSON path)\n"
+    "  validate <path>    load + validate a loadout JSON through core"
 )
 
 

@@ -37,6 +37,7 @@ class CharacterState:
     hp: int
     power: int
     hand_size: int
+    archetype: str = ""  # display-only label; the engine derives no stats from it
     hand: List[Card] = field(default_factory=list)
     library: List[Card] = field(default_factory=list)  # ordered; top == index 0
     identity: List[str] = field(default_factory=list)   # colours the +1 may lock

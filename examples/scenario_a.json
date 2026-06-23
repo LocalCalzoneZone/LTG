@@ -1,0 +1,386 @@
+{
+  "name": "\u00a7A \u2014 Skitterling & Brute (minions)",
+  "party": [
+    {
+      "id": "soren",
+      "name": "Soren",
+      "archetype": "Fighter",
+      "hp": 25,
+      "power": 2,
+      "hand_size": 2,
+      "identity": [
+        "G",
+        "W"
+      ],
+      "library": [
+        {
+          "id": "guard",
+          "name": "Guard",
+          "source_name": "Guard",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "W": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "prevent",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              },
+              "duration": "this_turn"
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "sunlance",
+          "name": "Sunlance",
+          "source_name": "Sunlance",
+          "rarity": "common",
+          "level": 1,
+          "type": "Sorcery",
+          "timing": "sorcery",
+          "cost": {
+            "colors": {
+              "W": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "steady_blade",
+          "name": "Steady Blade",
+          "source_name": "Steady Blade",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "G": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              },
+              "duration": "end_of_turn"
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "mend",
+          "name": "Mend",
+          "source_name": "Mend",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "W": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "heal",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "valors_edge",
+          "name": "Valor's Edge",
+          "source_name": "Valor's Edge",
+          "rarity": "uncommon",
+          "level": 2,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "G": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "pump",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              },
+              "duration": "end_of_turn"
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "bulwark",
+          "name": "Bulwark",
+          "source_name": "Bulwark",
+          "rarity": "common",
+          "level": 1,
+          "type": "Sorcery",
+          "timing": "sorcery",
+          "cost": {
+            "colors": {
+              "W": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "pump",
+              "power": 0,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              },
+              "duration": "end_of_turn"
+            }
+          ],
+          "validated": true
+        }
+      ]
+    },
+    {
+      "id": "ys",
+      "name": "Ys",
+      "archetype": "Tactician",
+      "hp": 15,
+      "power": 1,
+      "hand_size": 4,
+      "identity": [
+        "U",
+        "B"
+      ],
+      "library": [
+        {
+          "id": "unmake",
+          "name": "Unmake",
+          "source_name": "Unmake",
+          "rarity": "uncommon",
+          "level": 2,
+          "type": "Sorcery",
+          "timing": "sorcery",
+          "cost": {
+            "generic": 1,
+            "colors": {
+              "B": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "destroy",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "lose_life",
+              "amount": {
+                "ref": "destroyed_target.level"
+              },
+              "target": {
+                "mode": "self"
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "mind_spike",
+          "name": "Mind Spike",
+          "source_name": "Mind Spike",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "U": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "whispers",
+          "name": "Whispers",
+          "source_name": "Whispers",
+          "rarity": "common",
+          "level": 1,
+          "type": "Sorcery",
+          "timing": "sorcery",
+          "cost": {
+            "colors": {
+              "U": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "draw",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "sift",
+          "name": "Sift",
+          "source_name": "Sift",
+          "rarity": "common",
+          "level": 1,
+          "type": "Sorcery",
+          "timing": "sorcery",
+          "cost": {
+            "colors": {
+              "U": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "scry",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "nightcreep",
+          "name": "Nightcreep",
+          "source_name": "Nightcreep",
+          "rarity": "common",
+          "level": 1,
+          "type": "Sorcery",
+          "timing": "sorcery",
+          "cost": {
+            "colors": {
+              "B": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ],
+          "validated": true
+        },
+        {
+          "id": "leech",
+          "name": "Leech",
+          "source_name": "Leech",
+          "rarity": "common",
+          "level": 1,
+          "type": "Instant",
+          "timing": "instant",
+          "cost": {
+            "colors": {
+              "B": 1
+            }
+          },
+          "effects": [
+            {
+              "kind": "deal_damage",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ],
+          "validated": true
+        }
+      ]
+    }
+  ],
+  "enemies": [
+    {
+      "id": "skitterling",
+      "name": "Skitterling",
+      "hp": 3,
+      "level": 1,
+      "intent": {
+        "name": "Claw",
+        "amount": 2,
+        "action_type": "ability"
+      }
+    },
+    {
+      "id": "brute",
+      "name": "Brute",
+      "hp": 8,
+      "level": 3,
+      "intent": {
+        "name": "Smash",
+        "amount": 4,
+        "action_type": "ability"
+      }
+    }
+  ]
+}

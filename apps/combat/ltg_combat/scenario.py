@@ -1,19 +1,22 @@
-"""The §A encounter, built as explicit engine inputs.
+"""Encounters as explicit engine inputs — the §A default, plus a JSON loader.
 
-This is the *scenario* (a loadout/encounter), not the engine. It supplies the
-resolved starting stats (HP / Power / hand size / mana colours), the exact
-library order, the opening hands, and the two minions — everything the engine
-treats as input. Cards are real `core` models (schema-validated), so the engine
-reads the same effect vocabulary the Deckbuilder emits.
+A *scenario* (a loadout/encounter) is data the engine consumes, not rules. It
+supplies resolved starting stats (HP / Power / hand size / mana colours), the
+exact ordered library (determinism depends on it), the opening hand size, and the
+minions. Cards are real `core` models, schema-validated on the way in.
 
-`build_state()` returns the raw pre-upkeep state (the §A.3 setup, before the
-turn-1 draw). Handing that straight to `legal_actions` / `apply_action` lets the
-engine bootstrap the opening automatically.
+One dict shape is the single source of truth: `SCENARIO_A` is the §A fight, and
+`state_from_dict` turns any such dict (default or loaded from a file) into a
+`GameState`. `build_state()` is the §A default; `load_scenario(path)` reads a
+scenario JSON in the same shape.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List
+import json
+import re
+from pathlib import Path
+from typing import Any, Dict, List
 
 from ltg_core.schema import Card
 
@@ -24,84 +27,131 @@ TARGETED_ENEMY = {"mode": "chosen", "side": "enemy", "targeted": True}
 TARGETED_ALLY = {"mode": "chosen", "side": "ally", "targeted": True}
 SELF = {"mode": "self"}
 
+_TIMING_TYPE = {"instant": "Instant", "sorcery": "Sorcery", "channeled": "Enchantment"}
 
-def _card(cid, name, timing, cost, level, effects, rarity="common") -> Card:
-    """Validate one scenario card through `core`'s schema."""
-    type_ = {"instant": "Instant", "sorcery": "Sorcery", "channeled": "Enchantment"}[timing]
-    return Card.model_validate({
+
+def _cd(cid, name, timing, cost, level, effects, rarity="common") -> Dict[str, Any]:
+    """A card as a plain dict (validated to a `core` Card by `state_from_dict`)."""
+    return {
         "id": cid, "name": name, "source_name": name, "rarity": rarity,
-        "level": level, "type": type_, "timing": timing, "cost": cost,
-        "effects": effects, "validated": True,
-    })
+        "level": level, "type": _TIMING_TYPE[timing], "timing": timing,
+        "cost": cost, "effects": effects, "validated": True,
+    }
 
 
 # --------------------------------------------------------------------------- #
-# §A.1 — the loadouts (ordered libraries, top -> bottom)
+# §A — the canonical minions fight (the single source of truth for the default)
 # --------------------------------------------------------------------------- #
-SOREN_LIBRARY: List[Card] = [
-    _card("guard", "Guard", "instant", {"colors": {"W": 1}}, 1,
-          [{"kind": "prevent", "amount": 2, "target": TARGETED_ALLY, "duration": "this_turn"}]),
-    _card("sunlance", "Sunlance", "sorcery", {"colors": {"W": 1}}, 1,
-          [{"kind": "deal_damage", "amount": 3, "target": TARGETED_ENEMY}]),
-    _card("steady_blade", "Steady Blade", "instant", {"colors": {"G": 1}}, 1,
-          [{"kind": "pump", "power": 1, "toughness": 1, "target": TARGETED_ALLY,
-            "duration": "end_of_turn"}]),
-    _card("mend", "Mend", "instant", {"colors": {"W": 1}}, 1,
-          [{"kind": "heal", "amount": 3, "target": TARGETED_ALLY}]),
-    _card("valors_edge", "Valor's Edge", "instant", {"colors": {"G": 1}}, 2,
-          [{"kind": "pump", "power": 2, "toughness": 2, "target": TARGETED_ALLY,
-            "duration": "end_of_turn"}], rarity="uncommon"),
-    _card("bulwark", "Bulwark", "sorcery", {"colors": {"W": 1}}, 1,
-          [{"kind": "pump", "power": 0, "toughness": 3, "target": SELF,
-            "duration": "end_of_turn"}]),
-]
+SCENARIO_A: Dict[str, Any] = {
+    "name": "§A — Skitterling & Brute (minions)",
+    "party": [
+        {
+            "id": "soren", "name": "Soren", "archetype": "Fighter",
+            "hp": 25, "power": 2, "hand_size": 2, "identity": ["G", "W"],
+            "library": [
+                _cd("guard", "Guard", "instant", {"colors": {"W": 1}}, 1,
+                    [{"kind": "prevent", "amount": 2, "target": TARGETED_ALLY,
+                      "duration": "this_turn"}]),
+                _cd("sunlance", "Sunlance", "sorcery", {"colors": {"W": 1}}, 1,
+                    [{"kind": "deal_damage", "amount": 3, "target": TARGETED_ENEMY}]),
+                _cd("steady_blade", "Steady Blade", "instant", {"colors": {"G": 1}}, 1,
+                    [{"kind": "pump", "power": 1, "toughness": 1, "target": TARGETED_ALLY,
+                      "duration": "end_of_turn"}]),
+                _cd("mend", "Mend", "instant", {"colors": {"W": 1}}, 1,
+                    [{"kind": "heal", "amount": 3, "target": TARGETED_ALLY}]),
+                _cd("valors_edge", "Valor's Edge", "instant", {"colors": {"G": 1}}, 2,
+                    [{"kind": "pump", "power": 2, "toughness": 2, "target": TARGETED_ALLY,
+                      "duration": "end_of_turn"}], rarity="uncommon"),
+                _cd("bulwark", "Bulwark", "sorcery", {"colors": {"W": 1}}, 1,
+                    [{"kind": "pump", "power": 0, "toughness": 3, "target": SELF,
+                      "duration": "end_of_turn"}]),
+            ],
+        },
+        {
+            "id": "ys", "name": "Ys", "archetype": "Tactician",
+            "hp": 15, "power": 1, "hand_size": 4, "identity": ["U", "B"],
+            "library": [
+                _cd("unmake", "Unmake", "sorcery", {"generic": 1, "colors": {"B": 1}}, 2,
+                    [{"kind": "destroy", "target": TARGETED_ENEMY},
+                     {"kind": "lose_life", "amount": {"ref": "destroyed_target.level"},
+                      "target": SELF}], rarity="uncommon"),
+                _cd("mind_spike", "Mind Spike", "instant", {"colors": {"U": 1}}, 1,
+                    [{"kind": "deal_damage", "amount": 2, "target": TARGETED_ENEMY}]),
+                _cd("whispers", "Whispers", "sorcery", {"colors": {"U": 1}}, 1,
+                    [{"kind": "draw", "amount": 1, "target": SELF}]),
+                _cd("sift", "Sift", "sorcery", {"colors": {"U": 1}}, 1,
+                    [{"kind": "scry", "amount": 1, "target": SELF}]),
+                _cd("nightcreep", "Nightcreep", "sorcery", {"colors": {"B": 1}}, 1,
+                    [{"kind": "deal_damage", "amount": 2, "target": TARGETED_ENEMY}]),
+                _cd("leech", "Leech", "instant", {"colors": {"B": 1}}, 1,
+                    [{"kind": "deal_damage", "amount": 1, "target": TARGETED_ENEMY},
+                     {"kind": "heal", "amount": 1, "target": SELF}]),
+            ],
+        },
+    ],
+    "enemies": [
+        {"id": "skitterling", "name": "Skitterling", "hp": 3, "level": 1,
+         "intent": {"name": "Claw", "amount": 2, "action_type": "ability"}},
+        {"id": "brute", "name": "Brute", "hp": 8, "level": 3,
+         "intent": {"name": "Smash", "amount": 4, "action_type": "ability"}},
+    ],
+}
 
-YS_LIBRARY: List[Card] = [
-    _card("unmake", "Unmake", "sorcery", {"generic": 1, "colors": {"B": 1}}, 2,
-          [{"kind": "destroy", "target": TARGETED_ENEMY},
-           {"kind": "lose_life", "amount": {"ref": "destroyed_target.level"}, "target": SELF}],
-          rarity="uncommon"),
-    _card("mind_spike", "Mind Spike", "instant", {"colors": {"U": 1}}, 1,
-          [{"kind": "deal_damage", "amount": 2, "target": TARGETED_ENEMY}]),
-    _card("whispers", "Whispers", "sorcery", {"colors": {"U": 1}}, 1,
-          [{"kind": "draw", "amount": 1, "target": SELF}]),
-    _card("sift", "Sift", "sorcery", {"colors": {"U": 1}}, 1,
-          [{"kind": "scry", "amount": 1, "target": SELF}]),
-    _card("nightcreep", "Nightcreep", "sorcery", {"colors": {"B": 1}}, 1,
-          [{"kind": "deal_damage", "amount": 2, "target": TARGETED_ENEMY}]),
-    _card("leech", "Leech", "instant", {"colors": {"B": 1}}, 1,
-          [{"kind": "deal_damage", "amount": 1, "target": TARGETED_ENEMY},
-           {"kind": "heal", "amount": 1, "target": SELF}]),
-]
+
+# --------------------------------------------------------------------------- #
+# Build / load
+# --------------------------------------------------------------------------- #
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def _member(cid, name, hp, power, hand_size, identity, library: List[Card]) -> CharacterState:
-    """Deal the opening hand off the top of the ordered library (the rest is the
-    draw pile). Mana starts empty; the turn-1 upkeep refreshes it."""
-    hand = [c.model_copy(deep=True) for c in library[:hand_size]]
-    draw_pile = [c.model_copy(deep=True) for c in library[hand_size:]]
-    return CharacterState(
-        id=cid, name=name, max_hp=hp, hp=hp, power=power, hand_size=hand_size,
-        hand=hand, library=draw_pile, identity=list(identity),
-        mana_colors=list(identity), pool=[],
-    )
+def state_from_dict(spec: Dict[str, Any]) -> GameState:
+    """Build the pre-upkeep setup state from a scenario dict.
+
+    The opening hand is the top `hand_size` of the ordered library (the rest is
+    the draw pile). Mana starts empty; the turn-1 upkeep refreshes it.
+    """
+    party: List[CharacterState] = []
+    for p in spec["party"]:
+        library = [Card.model_validate(c) for c in p["library"]]
+        hand_size = int(p["hand_size"])
+        hand = [c.model_copy(deep=True) for c in library[:hand_size]]
+        draw_pile = [c.model_copy(deep=True) for c in library[hand_size:]]
+        party.append(CharacterState(
+            id=p.get("id", _slug(p["name"])), name=p["name"],
+            archetype=p.get("archetype", ""), max_hp=int(p["hp"]), hp=int(p["hp"]),
+            power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
+            identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
+            row=p.get("row", "front"),
+        ))
+
+    enemies: List[EnemyState] = []
+    for e in spec["enemies"]:
+        enemies.append(EnemyState(
+            id=e.get("id", _slug(e["name"])), name=e["name"],
+            max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
+            row=e.get("row", "front"), intent_template=dict(e["intent"]),
+        ))
+
+    return GameState(party=party, enemies=enemies, turn=1, phase="upkeep")
 
 
 def build_state() -> GameState:
     """The §A.3 setup state: encounter start, before Turn 1's upkeep."""
-    soren = _member("soren", "Soren", hp=25, power=2, hand_size=2,
-                    identity=["G", "W"], library=SOREN_LIBRARY)
-    ys = _member("ys", "Ys", hp=15, power=1, hand_size=4,
-                 identity=["U", "B"], library=YS_LIBRARY)
-
-    skitterling = EnemyState(id="skitterling", name="Skitterling", max_hp=3, hp=3, level=1,
-                             intent_template={"name": "Claw", "amount": 2, "action_type": "ability"})
-    brute = EnemyState(id="brute", name="Brute", max_hp=8, hp=8, level=3,
-                       intent_template={"name": "Smash", "amount": 4, "action_type": "ability"})
-
-    return GameState(party=[soren, ys], enemies=[skitterling, brute], turn=1, phase="upkeep")
+    return state_from_dict(SCENARIO_A)
 
 
+def load_scenario(path) -> GameState:
+    """Load a scenario JSON (same shape as `SCENARIO_A`) into a setup state."""
+    raw = json.loads(Path(path).read_text())
+    return state_from_dict(raw)
+
+
+def scenario_name(spec: Dict[str, Any] = None) -> str:
+    return (spec or SCENARIO_A).get("name", "scenario")
+
+
+# --- small readers used by the harness / tests ----------------------------- #
 def hand_names(char) -> List[str]:
     return [c.name for c in char.hand]
 

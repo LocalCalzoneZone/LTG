@@ -1,102 +1,204 @@
-"""Client B — a thin text/menu REPL over the engine (brief §B).
+"""The LTG Combat text UI — a thin, playable terminal client (Step 2).
 
-It prints the state, prints `legal_actions` as a numbered menu, reads a pick,
-calls `apply_action`, prints the emitted events, and loops. It owns ZERO rules:
-every legal move and every number it shows comes from the engine. If it ever
-computed legality or damage itself, that would be a bug.
+It is a thin wrapper over the engine and owns ZERO rules. Its whole job each
+decision-point is: render the state the engine reports, render the legal actions
+the engine reports, collect the player's choice and build the exact `Action` the
+engine expects, call `apply_action`, render the events the engine emits. It never
+computes legality, targets, costs, damage, or turn order — every such question is
+answered by `legal_actions` / `apply_action`. Rewriting this file changes no
+outcome.
 
-Driven with the same choices a player would make, it plays the §A encounter to
-the same deterministic result the harness proves.
+Launch it with `python -m ltg_combat repl [scenario.json]` (defaults to the §A
+fight). Pick menu numbers; `q` quits.
 """
 
 from __future__ import annotations
 
-import sys
+import copy
+from collections import Counter
 from typing import Callable, List, Optional
 
-from .engine import apply_action, legal_actions
-from .scenario import build_state
+from ltg_core.schema import Card
+
+from .engine import apply_action, legal_actions, settle
+from .scenario import SCENARIO_A, build_state, load_scenario, scenario_name
 from .state import Action, GameState
 
+_WUBRG = ["W", "U", "B", "R", "G"]
+_RULE = "─" * 60
 
-def _render(state: GameState) -> str:
+
+# --------------------------------------------------------------------------- #
+# Rendering the state
+# --------------------------------------------------------------------------- #
+def _cost_str(card: Card) -> str:
+    pips = ""
+    if card.cost.generic:
+        pips += "{" + str(card.cost.generic) + "}"
+    counts = {c.value: n for c, n in card.cost.colors.items()}
+    for color in _WUBRG:
+        pips += ("{" + color + "}") * counts.get(color, 0)
+    return pips or "{0}"
+
+
+def _mana_str(char) -> str:
+    """Available-by-colour over capacity, e.g. 'W:1/1 G:0/1'."""
+    avail = Counter(char.pool)
+    cap = Counter(char.mana_colors)
+    parts = [f"{color}:{avail.get(color, 0)}/{cap[color]}"
+             for color in _WUBRG if cap[color]]
+    return " ".join(parts) or "(no mana)"
+
+
+def _status_str(char) -> str:
+    bits = []
+    if char.temp_hp:
+        bits.append(f"+{char.temp_hp} tempHP")
+    if char.prevent_pool:
+        bits.append(f"prevent {char.prevent_pool}")
+    if char.power_bonus:
+        bits.append(f"+{char.power_bonus} Pow")
+    if char.proactive_spent and char.alive and not char.turn_ended:
+        bits.append("acted")
+    if char.turn_ended:
+        bits.append("turn done")
+    return ", ".join(bits)
+
+
+def _phase_label(state: GameState) -> str:
+    if state.result is not None:
+        return "game over"
+    if state.stack:
+        return "reaction window"
+    return {"upkeep": "upkeep", "intents": "enemy intents",
+            "player": "player actions", "enemy": "enemy actions",
+            "end": "end step"}.get(state.phase, state.phase)
+
+
+def _render(state: GameState, acting_id: Optional[str]) -> str:
     lines: List[str] = []
-    lines.append(f"\n=== Turn {state.turn} · phase: {state.phase} ===")
-    lines.append("Party:")
+    lines.append(_RULE)
+    lines.append(f" TURN {state.turn}  ·  {_phase_label(state)}")
+    lines.append(_RULE)
+
+    lines.append("PARTY")
     for c in state.party:
-        status = "" if c.alive else " (incapacitated)"
-        pool = "[" + ",".join(c.pool) + "]" if c.pool else "(empty)"
-        flags = []
-        if c.proactive_spent:
-            flags.append("acted")
-        if c.temp_hp:
-            flags.append(f"+{c.temp_hp} tempHP")
-        if c.prevent_pool:
-            flags.append(f"prevent {c.prevent_pool}")
-        extra = f"  {{{', '.join(flags)}}}" if flags else ""
-        lines.append(f"  {c.name:6} HP {c.hp:>2}/{c.max_hp}  Pow {c.current_power}  "
-                     f"mana {pool} (cap {c.capacity}){status}{extra}")
-        lines.append(f"         hand: {', '.join(card.name for card in c.hand) or '(empty)'}")
-    lines.append("Enemies:")
+        marker = "▶" if c.id == acting_id else " "
+        head = f" {marker} {c.name} — {c.archetype or 'character'}"
+        incap = "  [INCAPACITATED]" if not c.alive else ""
+        lines.append(f"{head}{incap}")
+        status = _status_str(c)
+        statline = f"     HP {c.hp}/{c.max_hp}   mana {_mana_str(c)}   row {c.row}"
+        lines.append(statline + (f"   ({status})" if status else ""))
+        if c.hand:
+            cards = "  ".join(f"{card.name} {_cost_str(card)}/{card.timing.value}"
+                              for card in c.hand)
+        else:
+            cards = "(empty)"
+        lines.append(f"     hand: {cards}")
+
+    lines.append("ENEMIES")
+    if not state.enemies:
+        lines.append("   (none remaining)")
     for e in state.enemies:
-        intent = ""
+        intent = "no intent"
         if e.intent is not None:
             tgt = state.combatant(e.intent.target_id)
-            tname = tgt.name if tgt else "?"
             amt = e.intent.effects[0].amount if e.intent.effects else "?"
-            intent = f"  intent: {e.intent.name} ({amt}) → {tname}"
-        lines.append(f"  {e.name:11} HP {e.hp:>2}/{e.max_hp}  (Level {e.level}){intent}")
+            intent = f"{e.intent.name} ({amt}) → {tgt.name if tgt else '?'}"
+        lines.append(f"   {e.name}  HP {e.hp}/{e.max_hp}  Lv{e.level}  row {e.row}"
+                     f"   intent: {intent}")
+
     if state.stack:
-        top = " | ".join(f"{i.label} (by {state.combatant(i.source_id).name})"
-                         for i in reversed(state.stack))
-        lines.append(f"Stack (top→bottom): {top}")
+        lines.append("STACK (top → bottom)")
+        for item in reversed(state.stack):
+            src = state.combatant(item.source_id)
+            tgt = state.combatant(item.target_id)
+            ts = f" → {tgt.name}" if tgt else ""
+            lines.append(f"   • {item.label} (by {src.name if src else '?'}{ts})")
     return "\n".join(lines)
 
 
-def _decision_line(state: GameState, actor_id: str) -> str:
-    # The acting character comes from the legal actions (all share one actor),
-    # not state.priority: before the first apply_action settles the opening
-    # upkeep, the raw setup state has no priority assigned yet.
-    actor = state.character(actor_id)
+def _decision_line(state: GameState, acting_id: str) -> str:
+    actor = state.character(acting_id)
     who = actor.name if actor else "?"
     if state.stack:
-        return f"\n{who} has priority (reaction window). Choose a reaction or pass:"
-    return f"\n{who}'s turn. Choose an action:"
+        return f"\n» {who}'s reaction window — react or pass:"
+    return f"\n» {who}'s turn — choose an action:"
 
 
-def play(state: Optional[GameState] = None,
-         read: Callable[[], str] = input,
-         out: Callable[[str], None] = print) -> GameState:
-    """Run the interactive loop until the game ends. `read`/`out` are injectable
-    so the loop can be scripted in a test."""
-    state = state if state is not None else build_state()
-    out("LTG Combat — text REPL. Pick a number; Ctrl-D / 'q' to quit.")
+# --------------------------------------------------------------------------- #
+# Building the menu from the engine's legal actions (presentation only)
+# --------------------------------------------------------------------------- #
+class _Entry:
+    """A top-level menu entry: a single action, or a target sub-menu."""
 
-    while state.result is None:
-        actions = legal_actions(state)
-        if not actions:  # no decision pending (shouldn't happen at a pause)
-            break
-        out(_render(state))
-        out(_decision_line(state, actions[0].actor_id))
-        for i, a in enumerate(actions, 1):
-            out(f"  {i}. {a.label}")
-
-        choice = _read_choice(read, out, len(actions))
-        if choice is None:
-            out("Quit.")
-            return state
-        action: Action = actions[choice]
-        state, events = apply_action(state, action)
-        out("")
-        for e in events:
-            out(f"  · {e.msg}")
-
-    out(_render(state))
-    out(f"\n*** Game over: {state.result} (turn {state.turn}) ***")
-    return state
+    def __init__(self, label: str, action: Optional[Action] = None,
+                 submenu: Optional[List] = None):
+        self.label = label
+        self.action = action
+        self.submenu = submenu  # list of (label, Action|None) — None == Back
 
 
-def _read_choice(read, out, n: int) -> Optional[int]:
+def _hand_card(state: GameState, actor_id: str, card_id: str) -> Optional[Card]:
+    actor = state.character(actor_id)
+    return next((c for c in actor.hand if c.id == card_id), None) if actor else None
+
+
+def _target_label(state: GameState, action: Action) -> str:
+    tgt = state.combatant(action.target_id)
+    if tgt is None:
+        return "self"
+    hp = f" (HP {tgt.hp}/{tgt.max_hp})"
+    return f"{tgt.name}{hp}"
+
+
+def _build_menu(state: GameState, actions: List[Action]) -> List[_Entry]:
+    """Group the engine's actions for legibility — attacks inline, multi-target
+    casts behind a 'choose target' sub-menu. Pure presentation: every entry maps
+    back to an Action the engine already offered."""
+    attacks = [a for a in actions if a.kind == "attack"]
+    casts = [a for a in actions if a.kind == "cast"]
+    others = [a for a in actions if a.kind in ("defend", "parry", "pass", "end_turn")]
+
+    entries: List[_Entry] = []
+    for a in attacks:
+        entries.append(_Entry(a.label, action=a))
+
+    seen: List[str] = []
+    for a in casts:
+        if a.card_id in seen:
+            continue
+        seen.append(a.card_id)
+        group = [c for c in casts if c.card_id == a.card_id]
+        card = _hand_card(state, a.actor_id, a.card_id)
+        name = card.name if card else (group[0].label)
+        cost = _cost_str(card) if card else ""
+        timing = card.timing.value if card else ""
+        if len(group) == 1:
+            entries.append(_Entry(group[0].label, action=group[0]))
+        else:
+            sub = [(_target_label(state, g), g) for g in group]
+            sub.append(("← Back", None))
+            entries.append(_Entry(f"Cast {name} {cost} ({timing}) — choose target",
+                                  submenu=sub))
+
+    for a in others:
+        entries.append(_Entry(a.label, action=a))
+    return entries
+
+
+# --------------------------------------------------------------------------- #
+# Input
+# --------------------------------------------------------------------------- #
+def _print_menu(out: Callable[[str], None], labels: List[str]) -> None:
+    for i, label in enumerate(labels, 1):
+        out(f"  {i}. {label}")
+
+
+def _read_index(read: Callable[[], str], out: Callable[[str], None],
+                n: int) -> Optional[int]:
+    """Read a 1..n choice; return 0-based index, or None to quit."""
     while True:
         try:
             raw = read()
@@ -107,15 +209,108 @@ def _read_choice(read, out, n: int) -> Optional[int]:
             return None
         if raw.isdigit() and 1 <= int(raw) <= n:
             return int(raw) - 1
-        out(f"Enter 1-{n} (or q to quit).")
+        out(f"  (enter 1-{n}, or q to quit)")
+
+
+def _select_action(state: GameState, actions: List[Action],
+                   read, out) -> Optional[Action]:
+    """Render the menu (with any sub-menu) and return the chosen Action, or None
+    to quit. Targets shown are exactly those the engine offered."""
+    menu = _build_menu(state, actions)
+    while True:
+        _print_menu(out, [e.label for e in menu])
+        idx = _read_index(read, out, len(menu))
+        if idx is None:
+            return None
+        entry = menu[idx]
+        if entry.action is not None:
+            return entry.action
+        # Drill into the target sub-menu.
+        out("   choose target:")
+        _print_menu(out, [label for label, _ in entry.submenu])
+        sidx = _read_index(read, out, len(entry.submenu))
+        if sidx is None:
+            return None
+        _, action = entry.submenu[sidx]
+        if action is None:  # Back
+            continue
+        return action
+
+
+# --------------------------------------------------------------------------- #
+# The loop
+# --------------------------------------------------------------------------- #
+def _run_game(state: GameState, read, out):
+    """Play one game to its end (or quit). Returns (final_state, quit?)."""
+    while state.result is None:
+        actions = legal_actions(state)
+        if not actions:
+            break
+        # Render the settled view the engine's decision is about, so the panel
+        # (e.g. the just-drawn hand) always matches the menu. Drive the real
+        # `state` through apply_action below.
+        view = settle(state)
+        acting_id = actions[0].actor_id
+        out(_render(view, acting_id))
+        out(_decision_line(view, acting_id))
+        action = _select_action(view, actions, read, out)
+        if action is None:
+            out("\nQuit.")
+            return state, True
+        state, events = apply_action(state, action)
+        out("\n  events:")
+        for e in events:
+            out(f"    • {e.msg}")
+        out("")
+
+    out(_render(state, None))
+    banner = {"victory": "*** VICTORY — the party wins! ***",
+              "defeat": "*** DEFEAT — the party falls. ***"}.get(state.result, "*** game ended ***")
+    out(f"\n{banner}  (turn {state.turn})")
+    return state, False
+
+
+def play(state: Optional[GameState] = None, read: Callable[[], str] = input,
+         out: Callable[[str], None] = print, scenario_path: Optional[str] = None,
+         title: Optional[str] = None) -> GameState:
+    """Run the text UI: play, then offer restart (same deterministic setup) or
+    quit. `read` / `out` are injectable so the loop can be scripted in a test."""
+    if state is None:
+        state = load_scenario(scenario_path) if scenario_path else build_state()
+    initial = copy.deepcopy(state)
+    name = title or (scenario_name() if scenario_path is None else scenario_path)
+
+    out(_RULE)
+    out(" LTG Combat — text UI")
+    out(f" scenario: {name}")
+    out(" pick a number at each prompt; q quits.")
+    out(_RULE)
+
+    final = state
+    while True:
+        final, quit_now = _run_game(copy.deepcopy(initial), read, out)
+        if quit_now:
+            return final
+        out("\nPlay again?")
+        _print_menu(out, ["Restart this fight (same deterministic setup)", "Quit"])
+        idx = _read_index(read, out, 2)
+        if idx != 0:  # Quit or EOF
+            out("\nThanks for playing.")
+            return final
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    import sys
+    argv = sys.argv[1:] if argv is None else argv
+    scenario_path = argv[0] if argv else None
     try:
-        play()
+        play(scenario_path=scenario_path)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         return 130
+    except FileNotFoundError:
+        print(f"error: no scenario file at {scenario_path}", file=sys.stderr)
+        return 1
     return 0
 
 

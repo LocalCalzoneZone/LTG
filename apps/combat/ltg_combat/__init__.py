@@ -12,7 +12,7 @@ imports the Deckbuilder, touches Scryfall, or uses an LLM at runtime.
 
 from __future__ import annotations
 
-from .engine import apply_action, legal_actions, run
+from .engine import apply_action, legal_actions, run, settle
 from .loader import LoadoutError, load_loadout, validate_loadout
 from .scenario import build_state
 from .state import Action, Event, GameState
@@ -20,6 +20,7 @@ from .state import Action, Event, GameState
 __all__ = [
     "legal_actions",
     "apply_action",
+    "settle",
     "build_state",
     "GameState",
     "Action",
