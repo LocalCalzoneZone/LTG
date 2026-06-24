@@ -85,3 +85,47 @@ def fetch_best(name: str) -> dict:
         raise ValueError(f"Card not found on Scryfall: {name!r}")
     resp.raise_for_status()
     return resp.json()
+
+
+# Scryfall's batch endpoint accepts at most 75 identifiers per request.
+_COLLECTION_CHUNK = 75
+
+
+def fetch_collection(names: List[str]) -> tuple[dict[str, dict], List[str]]:
+    """Resolve many card names in one request each (75 per call) via
+    `/cards/collection`, instead of 1-2 requests per card.
+
+    Returns ``(found, not_found)`` where ``found`` maps each *input* name to its
+    Scryfall payload and ``not_found`` lists the names Scryfall couldn't match.
+    Matching is by exact name only — callers wanting a fuzzy fallback should run
+    one over the returned ``not_found`` list.
+    """
+    found: dict[str, dict] = {}
+    not_found: List[str] = []
+    for start in range(0, len(names), _COLLECTION_CHUNK):
+        chunk = names[start : start + _COLLECTION_CHUNK]
+        _throttle()
+        resp = requests.post(
+            f"{BASE}/cards/collection",
+            json={"identifiers": [{"name": n} for n in chunk]},
+            headers=HEADERS,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        # Map results back to the input names. Scryfall matches case-insensitively
+        # and may return a double-faced card by a single face name (input "Fire",
+        # card name "Fire // Ice"), so index every face of each returned card.
+        by_name: dict[str, dict] = {}
+        for c in payload.get("data", []):
+            full = c.get("name", "")
+            by_name.setdefault(full.lower(), c)
+            for face in full.split("//"):
+                by_name.setdefault(face.strip().lower(), c)
+        for n in chunk:
+            card = by_name.get(n.strip().lower())
+            if card is not None:
+                found[n] = card
+            else:
+                not_found.append(n)
+    return found, not_found

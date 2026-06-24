@@ -81,10 +81,32 @@ def api_import(body: ImportBody) -> dict:
     gate) so nothing interrupts the import; problems are flagged in the UI, not
     blocked. Names that Scryfall can't resolve are reported in `not_found`.
     """
-    out, not_found = [], []
-    for name in body.names:
+    # Resolve the whole list in batches of 75 (one request each) instead of
+    # 1-2 requests per card; firing ~80 rapid requests for a 40-card list got us
+    # rate-limited (HTTP 429) partway through, silently dropping most cards.
+    # A batch failure (rate limit, timeout, bad identifier) must not 500 the
+    # whole import — fall back to treating every name as unmatched and let the
+    # per-name fuzzy path below sort them out.
+    try:
+        found, unmatched = scryfall.fetch_collection(body.names)
+    except Exception:
+        found, unmatched = {}, list(body.names)
+
+    # The batch endpoint is exact-match only; recover the rest with a per-name
+    # fuzzy fallback (the throttled, slower path — but only for the few misses).
+    not_found = []
+    for name in unmatched:
         try:
-            data = scryfall.fetch_best(name)
+            found[name] = scryfall.fetch_best(name)
+        except Exception:
+            not_found.append(name)
+
+    out = []
+    for name in body.names:
+        data = found.get(name)
+        if data is None:
+            continue
+        try:
             card = ingest.build_card(data)
         except Exception:
             not_found.append(name)

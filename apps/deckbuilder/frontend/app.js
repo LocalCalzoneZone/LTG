@@ -1128,8 +1128,19 @@ function parseDeckList(text) {
   return text.split(/\r?\n/).map((line) => {
     let s = line.trim();
     if (!s || s.startsWith("//") || s.startsWith("#")) return null;
-    s = s.replace(/^\s*\d+\s*x?\s+/i, "");        // leading quantity ("1 ", "2x ")
-    s = s.replace(/\s*\([^)]*\)\s*\d*\s*$/, "");   // trailing "(SET) 123"
+    if (/^(deck|sideboard|commander|maybeboard)\b/i.test(s)) return null; // section headers
+    s = s.replace(/^\s*\d+\s*x?\s+/i, "");          // leading quantity ("1 ", "2x ")
+    // Moxfield/Archidekt/Goldfish glue export metadata onto the end in varying
+    // order: "(SET) 123", foil markers "*F*"/"*E*", category tags "[...]"/"<...>".
+    // Strip trailing metadata tokens repeatedly until the name is clean.
+    let prev;
+    do {
+      prev = s;
+      s = s.replace(/\s*\*[^*]*\*\s*$/, "");                 // *F*, *E* foil/etch markers
+      s = s.replace(/\s*\[[^\]]*\]\s*$/, "");                // [Maybeboard], [Foil] tags
+      s = s.replace(/\s*<[^>]*>\s*$/, "");                   // <tag>
+      s = s.replace(/\s*\([^)]*\)\s*[\w-]*\s*$/i, "");      // (SET) 123 / (PLST) MH1-48
+    } while (s !== prev);
     return s.trim();
   }).filter(Boolean);
 }
