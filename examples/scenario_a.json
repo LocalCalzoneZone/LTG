@@ -6,7 +6,9 @@
       "name": "Soren",
       "archetype": "Fighter",
       "hp": 25,
-      "power": 2,
+      "power": 3,
+      "attack_mode": "melee",
+      "level": 1,
       "hand_size": 2,
       "identity": [
         "G",
@@ -29,7 +31,7 @@
           "effects": [
             {
               "kind": "prevent",
-              "amount": 2,
+              "parameter": "combat_damage",
               "target": {
                 "mode": "chosen",
                 "side": "ally",
@@ -182,6 +184,8 @@
       "archetype": "Tactician",
       "hp": 15,
       "power": 1,
+      "attack_mode": "ranged",
+      "level": 1,
       "hand_size": 4,
       "identity": [
         "U",
@@ -368,7 +372,8 @@
       "intent": {
         "name": "Claw",
         "amount": 2,
-        "action_type": "ability"
+        "action_type": "ability",
+        "mode": "melee"
       }
     },
     {
@@ -379,7 +384,8 @@
       "intent": {
         "name": "Smash",
         "amount": 4,
-        "action_type": "ability"
+        "action_type": "ability",
+        "mode": "melee"
       }
     }
   ]

@@ -11,7 +11,8 @@
         "amount": 2,
         "action_type": "ability",
         "intent_type": "attack",
-        "targeting": "lowest_hp_party"
+        "targeting": "lowest_hp_party",
+        "mode": "melee"
       }
     },
     {
@@ -24,7 +25,8 @@
         "amount": 5,
         "action_type": "ability",
         "intent_type": "attack",
-        "targeting": "mira"
+        "targeting": "mira",
+        "mode": "melee"
       }
     }
   ],
@@ -32,7 +34,8 @@
     "wisp": {
       "name": "Wisp",
       "hp": 1,
-      "power": 1
+      "power": 1,
+      "attack_mode": "melee"
     }
   }
 }

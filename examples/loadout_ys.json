@@ -2,7 +2,7 @@
   "ltg_version": "0.1",
   "character": {
     "name": "Ys",
-    "description": "A cunning Tactician \u2014 removal, card draw, and life-paid power.",
+    "description": "A cunning ranged Tactician \u2014 removal, draw, and life-paid power.",
     "archetype": "Tactician",
     "level": 1,
     "colors": [
@@ -12,7 +12,9 @@
     "starting_mana": [
       "U",
       "B"
-    ]
+    ],
+    "attack_mode": "ranged",
+    "row": "front"
   },
   "cards": [
     {

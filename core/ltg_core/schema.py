@@ -54,6 +54,21 @@ class Timing(str, Enum):
     channeled = "channeled"
 
 
+class AttackMode(str, Enum):
+    """How a combatant's basic attack reaches (Design Update R-1/R-3)."""
+
+    melee = "melee"
+    ranged = "ranged"
+
+
+class Row(str, Enum):
+    """Battlefield row. Reach/melee reachability is keyed to these (R-1)."""
+
+    front = "front"
+    mid = "mid"
+    rear = "rear"
+
+
 class TargetMode(str, Enum):
     self_ = "self"
     chosen = "chosen"
@@ -197,16 +212,16 @@ Value = Union[int, Literal["all"], Ref]
 # rule. Retired keywords are kept here but can't be granted.
 # --------------------------------------------------------------------------- #
 KEYWORDS = {
-    "flying": {"display": "Flight", "gloss": "airborne — ignores rows; only reach/ranged can hit it", "grantable": True, "params": []},
-    "reach": {"display": "Reach", "gloss": "can hit flyers; guards the row behind", "grantable": True, "params": []},
-    "first_strike": {"display": "First Strike", "gloss": "may hold its attack and use it as a reaction", "grantable": True, "params": []},
-    "double_strike": {"display": "Double Strike", "gloss": "strikes twice — hits first (as a reaction) and again on its normal attack", "grantable": True, "params": []},
+    "flying": {"display": "Flight", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1)", "grantable": True, "params": []},
+    "reach": {"display": "Reach", "gloss": "its melee may strike flyers, and pins an enemy melee-flyer to rows not behind it (R-1)", "grantable": True, "params": []},
+    "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
+    "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
-    "hexproof": {"display": "Hexproof", "gloss": "can't be spell-targeted by enemies", "grantable": True, "params": []},
-    "indestructible": {"display": "Indestructible", "gloss": "can't drop below 1 HP from damage", "grantable": True, "params": []},
+    "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
+    "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
     "protection": {"display": "Protection", "gloss": "prevents the next spell or attack", "grantable": True, "params": ["from"]},
     # Retired — not grantable.
     "menace": {"display": "Menace", "gloss": "", "grantable": False, "params": []},
@@ -339,8 +354,12 @@ class Counters(EffectBase):
 
 
 class Prevent(EffectBase):
+    """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
+    `prevent combat_damage` makes attack actions against the target deal no damage.
+    The parameter names what is nullified; scope is defined by that parameter."""
+
     kind: Literal["prevent"] = "prevent"
-    amount: Value
+    parameter: str = "combat_damage"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
@@ -371,13 +390,6 @@ class CreateToken(EffectBase):
 
 class Taunt(EffectBase):
     kind: Literal["taunt"] = "taunt"
-    target: TargetOrSlot
-    duration: Duration = Duration.this_turn
-
-
-class Disable(EffectBase):
-    kind: Literal["disable"] = "disable"
-    intent_type: str
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
@@ -467,7 +479,6 @@ LEAF_EFFECT_CLASSES = [
     Scry,
     CreateToken,
     Taunt,
-    Disable,
     Revive,
     GrantKeyword,
     RemoveKeyword,
@@ -753,6 +764,27 @@ ARCHETYPE_STATS = {
     Archetype.Channeler: {"starting_hp": 15, "starting_hand": 2, "starting_mana": 4},
 }
 
+# Attack profile = (mode, power), sitting alongside HP/hand/mana (Design Update R-3).
+# Basic-attack damage = Power. Fighter is melee-only; the others choose one profile
+# at creation, fixed thereafter. The first key listed is the archetype's default.
+ARCHETYPE_ATTACK = {
+    Archetype.Fighter: {AttackMode.melee: 3},
+    Archetype.Tactician: {AttackMode.ranged: 1, AttackMode.melee: 2},
+    Archetype.Channeler: {AttackMode.ranged: 1, AttackMode.melee: 2},
+    Archetype.Caster: {AttackMode.ranged: 2, AttackMode.melee: 1},
+}
+
+
+def default_attack_mode(archetype: Archetype) -> AttackMode:
+    """The archetype's default attack mode (first profile listed)."""
+    return next(iter(ARCHETYPE_ATTACK[Archetype(archetype)]))
+
+
+def attack_power(archetype: Archetype, mode: AttackMode, level: int = 1) -> int:
+    """Basic-attack Power for an (archetype, attack mode). Level-flat for now (R-3)."""
+    profiles = ARCHETYPE_ATTACK[Archetype(archetype)]
+    return profiles[AttackMode(mode)]
+
 
 def archetype_stats(archetype: Archetype, level: int = 1) -> dict:
     """Resolved stats for an (archetype, level). Level is a placeholder for now."""
@@ -769,6 +801,10 @@ class Character(BaseModel):
     level: int = 1
     colors: List[Color]
     starting_mana: List[Color]
+    # Attack profile (R-3) and default battlefield row (R-1). `attack_mode` is
+    # chosen at creation; `row` is the character's starting row.
+    attack_mode: Optional[AttackMode] = None
+    row: Row = Row.front
 
     @field_validator("colors")
     @classmethod
@@ -796,10 +832,33 @@ class Character(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _attack_mode_valid(self) -> "Character":
+        """Fill the archetype default when unset; reject a mode the archetype
+        can't take (e.g. Fighter is melee-only) — R-3."""
+        allowed = ARCHETYPE_ATTACK[Archetype(self.archetype)]
+        if self.attack_mode is None:
+            object.__setattr__(self, "attack_mode", default_attack_mode(self.archetype))
+        elif AttackMode(self.attack_mode) not in allowed:
+            raise ValueError(
+                f"{self.archetype.value} has no {self.attack_mode.value} attack profile; "
+                f"choose one of {[m.value for m in allowed]}"
+            )
+        return self
+
+    @property
+    def power(self) -> int:
+        """Basic-attack Power, from the (archetype, attack mode) profile (R-3)."""
+        return attack_power(self.archetype, self.attack_mode or default_attack_mode(self.archetype),
+                            self.level)
+
     @property
     def stats(self) -> dict:
-        """Derived HP / hand size / mana amount — read-only, from the table."""
-        return archetype_stats(self.archetype, self.level)
+        """Derived HP / hand size / mana amount / Power — read-only, from the tables."""
+        s = archetype_stats(self.archetype, self.level)
+        s["power"] = self.power
+        s["attack_mode"] = (self.attack_mode or default_attack_mode(self.archetype)).value
+        return s
 
 
 class Loadout(BaseModel):

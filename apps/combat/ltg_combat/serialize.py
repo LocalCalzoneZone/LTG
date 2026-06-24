@@ -94,15 +94,21 @@ def _mana_by_color(char) -> List[Dict[str, Any]]:
 
 def _status_tags(char) -> List[str]:
     tags = []
-    if char.temp_hp:
-        tags.append(f"+{char.temp_hp} temp HP")
+    if getattr(char, "temp_mod", 0):
+        tags.append(f"{'+' if char.temp_mod >= 0 else ''}{char.temp_mod} temp HP")
     if char.prevent_pool:
-        tags.append(f"prevent {char.prevent_pool}")
-    if char.power_bonus:
-        tags.append(f"+{char.power_bonus} Power")
-    if char.acted_mode and char.alive and not char.turn_ended:
+        tags.append(f"reduce {char.prevent_pool}")
+    for tag in getattr(char, "prevent_tags", []):
+        tags.append(f"prevent {tag}")
+    if getattr(char, "power_bonus", 0):
+        tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
+    if getattr(char, "protection", 0):
+        tags.append(f"protection ×{char.protection}")
+    for kw in getattr(char, "keywords", {}):
+        tags.append(f"⚜ {kw}")
+    if getattr(char, "acted_mode", None) and char.alive and not char.turn_ended:
         tags.append(char.acted_mode)
-    if char.turn_ended:
+    if getattr(char, "turn_ended", False):
         tags.append("turn done")
     if not char.alive:
         tags.append("incapacitated")
@@ -116,13 +122,16 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "archetype": char.archetype or "character",
         "hp": char.hp,
         "max_hp": char.max_hp,
+        "effective_hp": char.effective_hp,
         "alive": char.alive,
         "power": char.current_power,
         "base_power": char.power,
         "power_bonus": char.power_bonus,
+        "attack_mode": char.attack_mode,
+        "level": char.level,
         "capacity": char.capacity,
         "row": char.row,
-        "temp_hp": char.temp_hp,
+        "temp_mod": char.temp_mod,
         "prevent_pool": char.prevent_pool,
         "parry_reduce": char.parry_reduce,
         "acted_mode": char.acted_mode,
@@ -142,7 +151,7 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "library": [card_dict(c) for c in char.library],
         "evergreen": {
             "offensive": {"name": "Basic Attack",
-                          "text": f"Deal damage equal to Power ({char.current_power})."},
+                          "text": f"Deal {char.attack_mode} damage equal to Power ({char.current_power})."},
             "defensive_action": {"name": "Defend",
                                  "text": "Gain temporary HP — a buffer that fades at end of turn."},
             "defensive_reaction": {"name": "Parry",
@@ -167,12 +176,17 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "name": enemy.name,
         "hp": enemy.hp,
         "max_hp": enemy.max_hp,
+        "effective_hp": enemy.effective_hp,
         "level": enemy.level,
         "row": enemy.row,
+        "attack_mode": enemy.attack_mode,
         "alive": enemy.alive,
-        "temp_hp": enemy.temp_hp,
+        "temp_mod": enemy.temp_mod,
         "prevent_pool": enemy.prevent_pool,
-        "disabled_intent_types": list(enemy.disabled_intent_types),
+        "protection": enemy.protection,
+        "stunned": enemy.stunned,
+        "power_bonus": enemy.power_bonus,
+        "keywords": list(enemy.keywords.keys()),
         "intent": intent,
         "raw": to_jsonable(enemy),
     }
@@ -262,7 +276,11 @@ def serialize_state(view: GameState, log_source: GameState) -> Dict[str, Any]:
 # Action menu (two-click targeting) — pure layout over the engine's actions
 # --------------------------------------------------------------------------- #
 def _target_label(state: GameState, action: Action) -> str:
-    tgt = state.combatant(action.target_id)
+    tid = action.target_id
+    if isinstance(tid, str) and tid.startswith("#"):  # a counter naming a stack action
+        item = next((s for s in state.stack if f"#{s.uid}" == tid), None)
+        return item.label if item is not None else "the action"
+    tgt = state.combatant(tid)
     if tgt is None:
         return "self"
     return f"{tgt.name} (HP {tgt.hp}/{tgt.max_hp})"
@@ -291,21 +309,25 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
                         "targets": [{"label": _target_label(state, a), "index": i}
                                     for i, a in attacks]})
 
-    seen: List[str] = []
+    # Group by (card, modal mode): a modal card offers one entry per mode (chosen
+    # at cast), and a multi-target card collapses its targets into a sub-menu.
+    seen: List[tuple] = []
     for i, a in casts:
-        if a.card_id in seen:
+        key = (a.card_id, a.mode)
+        if key in seen:
             continue
-        seen.append(a.card_id)
-        group = [(j, g) for j, g in casts if g.card_id == a.card_id]
+        seen.append(key)
+        group = [(j, g) for j, g in casts if (g.card_id, g.mode) == key]
         card = _hand_card(state, a.actor_id, a.card_id)
         name = card.name if card else a.card_id
         cost = cost_pips(card) if card else ""
         timing = card.timing.value if card else ""
+        mode_tag = f" [mode {a.mode + 1}]" if a.mode is not None else ""
         if len(group) == 1:
             j, g = group[0]
             entries.append({"label": g.label, "index": j, "kind": "cast"})
         else:
-            entries.append({"label": f"Cast {name} {cost} ({timing}) — choose target",
+            entries.append({"label": f"Cast {name} {cost} ({timing}){mode_tag} — choose target",
                             "kind": "cast",
                             "targets": [{"label": _target_label(state, g), "index": j}
                                         for j, g in group]})
@@ -326,5 +348,5 @@ def serialize_actions(state: GameState, actions: List[Action]) -> List[Dict[str,
     """The flat legal list (index-addressable), for reference / debugging."""
     return [{
         "index": i, "kind": a.kind, "actor_id": a.actor_id, "card_id": a.card_id,
-        "target_id": a.target_id, "color": a.color, "label": a.label,
+        "target_id": a.target_id, "color": a.color, "mode": a.mode, "label": a.label,
     } for i, a in enumerate(actions)]

@@ -27,7 +27,6 @@ from .schema import (
     DealDamage,
     Destroy,
     Draw,
-    Disable,
     Duration,
     Effect,
     Exile,
@@ -133,7 +132,7 @@ def _stat_change(m, ctx):
 
 @register(r"prevent .* damage|^fog\b|prevent all combat damage")
 def _prevent(m, ctx):
-    return [Prevent(amount="all", target=t_all("ally"))]
+    return [Prevent(parameter="combat_damage", target=t_all("ally"))]
 
 
 @register(r"scry (\w+)")
@@ -149,11 +148,6 @@ def _deal_damage(m, ctx):
 @register(r"gains? (\w+) life")
 def _gain_life(m, ctx):
     return [Heal(amount=_word_to_int(m.group(1)), target=t_chosen("ally"))]
-
-
-@register(r"can't attack(?: or block)?")
-def _pacify(m, ctx):
-    return [Disable(intent_type="attack", target=t_chosen("enemy", targeted=True))]
 
 
 # --- Granting / removing keywords (names match the registry) --------------- #
@@ -369,6 +363,12 @@ def _render_add_mana(e) -> str:
     return f"Add {e.amount} {colour} to your pool this turn."
 
 
+def _prevent_phrase(parameter: str) -> str:
+    """A `prevent [parameter]` nullification, in player-facing words (R-11)."""
+    return {"combat_damage": "combat damage", "damage": "all damage",
+            "all": "all damage"}.get(parameter, parameter.replace("_", " "))
+
+
 # Counter filter → player-facing phrase (filter matches a node + its descendants).
 _FILTER_PHRASE = {
     "action": "an enemy action (spell or ability)",
@@ -462,7 +462,7 @@ RENDERERS = {
     "pump": _render_pump,
     "wound": _render_wound,
     "counters": _render_counters,
-    "prevent": lambda e: f"Prevent {_value(e.amount)} damage to {_tgt(e.target)}.",
+    "prevent": lambda e: f"Prevent {_prevent_phrase(e.parameter)} to {_tgt(e.target)}.",
     "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
@@ -474,7 +474,6 @@ RENDERERS = {
     ),
     "create_token": lambda e: f"Create {e.count} {e.token_id} token(s).",
     "taunt": lambda e: f"Force {_tgt(e.target)} to target you this turn.",
-    "disable": lambda e: f"{_tgt(e.target).capitalize()} can't {e.intent_type}.",
     "revive": lambda e: f"Revive {_tgt(e.target)} at {int(e.to_fraction * 100)}% HP.",
     "ramp": _render_ramp,
     "add_mana": _render_add_mana,
@@ -583,8 +582,6 @@ def _channeled_body(e, targets) -> str:
     if k == "wound":
         verb = "have" if _plural(e.target, targets) else "has"
         return f"{_subject(e.target, targets, True)} {verb} -{e.power} attack and -{e.toughness} HP"
-    if k == "disable":
-        return f"{_subject(e.target, targets, True)} can't {e.intent_type}"
     if k == "grant_keyword":
         verb = "have" if _plural(e.target, targets) else "has"
         return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
@@ -594,7 +591,7 @@ def _channeled_body(e, targets) -> str:
     if k == "taunt":
         return f"{_subject(e.target, targets, True)} must target you"
     if k == "prevent":
-        return f"prevent {_value(e.amount)} damage to {_subject(e.target, targets, True)}"
+        return f"prevent {_prevent_phrase(e.parameter)} to {_subject(e.target, targets, True)}"
     if k == "protection":
         return f"{_subject(e.target, targets, True)} has protection"
     if k == "stun":

@@ -7,6 +7,8 @@
       "archetype": "Channeler",
       "hp": 15,
       "power": 1,
+      "attack_mode": "ranged",
+      "level": 1,
       "hand_size": 2,
       "parry_reduce": 2,
       "identity": [
@@ -31,8 +33,9 @@
           },
           "effects": [
             {
-              "kind": "disable",
-              "intent_type": "attack",
+              "kind": "wound",
+              "power": 2,
+              "toughness": 0,
               "target": {
                 "mode": "chosen",
                 "side": "enemy",
@@ -140,7 +143,8 @@
     "wisp": {
       "name": "Wisp",
       "hp": 1,
-      "power": 1
+      "power": 1,
+      "attack_mode": "melee"
     }
   },
   "enemies": [
@@ -154,7 +158,8 @@
         "amount": 2,
         "action_type": "ability",
         "intent_type": "attack",
-        "targeting": "lowest_hp_party"
+        "targeting": "lowest_hp_party",
+        "mode": "melee"
       }
     },
     {
@@ -167,7 +172,8 @@
         "amount": 5,
         "action_type": "ability",
         "intent_type": "attack",
-        "targeting": "mira"
+        "targeting": "mira",
+        "mode": "melee"
       }
     }
   ]

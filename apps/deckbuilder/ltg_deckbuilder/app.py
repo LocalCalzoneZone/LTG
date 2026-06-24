@@ -19,13 +19,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from ltg_core.schema import (
+    ARCHETYPE_ATTACK,
     ARCHETYPE_STATS,
     Card,
     Character,
     Loadout,
     MODE_VALUES,
+    Row,
     SIDE_VALUES,
     deck_status,
+    default_attack_mode,
     effect_specs,
 )
 from ltg_core.lints import lint_card
@@ -140,8 +143,14 @@ def api_effect_specs() -> dict:
 
 @app.get("/api/archetypes")
 def api_archetypes() -> dict:
-    """The archetype → stats table (single source of truth for the picker)."""
-    return {a.value: stats for a, stats in ARCHETYPE_STATS.items()}
+    """The archetype → stats table plus each archetype's attack profile options
+    and the row list (single source of truth for the character pickers)."""
+    out = {}
+    for a, stats in ARCHETYPE_STATS.items():
+        attacks = {mode.value: power for mode, power in ARCHETYPE_ATTACK[a].items()}
+        out[a.value] = {**stats, "attacks": attacks,
+                        "default_mode": default_attack_mode(a).value}
+    return {"archetypes": out, "rows": [r.value for r in Row]}
 
 
 @app.post("/api/cards/validate")

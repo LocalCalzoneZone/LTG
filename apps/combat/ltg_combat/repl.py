@@ -58,12 +58,16 @@ def _mana_str(char) -> str:
 
 def _status_str(char) -> str:
     bits = []
-    if char.temp_hp:
-        bits.append(f"+{char.temp_hp} tempHP")
+    if char.temp_mod:
+        bits.append(f"{'+' if char.temp_mod >= 0 else ''}{char.temp_mod} tempHP")
     if char.prevent_pool:
-        bits.append(f"prevent {char.prevent_pool}")
+        bits.append(f"reduce {char.prevent_pool}")
+    for tag in char.prevent_tags:
+        bits.append(f"prevent {tag}")
     if char.power_bonus:
-        bits.append(f"+{char.power_bonus} Pow")
+        bits.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Pow")
+    for kw in char.keywords:
+        bits.append(kw)
     if char.acted_mode and char.alive and not char.turn_ended:
         bits.append(char.acted_mode)
     if char.turn_ended:

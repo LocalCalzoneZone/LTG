@@ -188,14 +188,18 @@ function renderEnemies() {
       const dmg = e.intent.amount != null ? ` (${e.intent.amount})` : "";
       intent.textContent = `▶ ${e.intent.name}${dmg} → ${e.intent.target_name || "—"}`;
     } else {
-      intent.textContent = e.disabled_intent_types.length ? "disabled — no intent" : "no intent declared";
+      intent.textContent = "no intent declared";
     }
     box.append(intent);
 
     const tags = el("div", "tags");
-    e.disabled_intent_types.forEach((t) => tags.append(el("span", "tag disabled", `can't ${t}`)));
-    if (e.temp_hp) tags.append(el("span", "tag", `+${e.temp_hp} temp HP`));
-    if (e.prevent_pool) tags.append(el("span", "tag", `prevent ${e.prevent_pool}`));
+    tags.append(el("span", "tag", e.attack_mode));
+    if (e.stunned) tags.append(el("span", "tag disabled", `stunned ×${e.stunned}`));
+    if (e.temp_mod) tags.append(el("span", "tag", `${e.temp_mod > 0 ? "+" : ""}${e.temp_mod} temp HP`));
+    if (e.power_bonus) tags.append(el("span", "tag", `${e.power_bonus > 0 ? "+" : ""}${e.power_bonus} Power`));
+    if (e.prevent_pool) tags.append(el("span", "tag", `reduce ${e.prevent_pool}`));
+    if (e.protection) tags.append(el("span", "tag", `protection ×${e.protection}`));
+    (e.keywords || []).forEach((k) => tags.append(el("span", "tag", `⚜ ${k}`)));
     if (tags.children.length) box.append(tags);
     lane.append(box);
   });

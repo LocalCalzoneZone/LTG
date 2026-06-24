@@ -2,7 +2,7 @@
   "ltg_version": "0.1",
   "character": {
     "name": "Soren",
-    "description": "A steadfast frontline Fighter \u2014 shields allies and strikes true.",
+    "description": "A steadfast frontline Fighter \u2014 shields allies and strikes hard in melee.",
     "archetype": "Fighter",
     "level": 1,
     "colors": [
@@ -12,7 +12,9 @@
     "starting_mana": [
       "G",
       "W"
-    ]
+    ],
+    "attack_mode": "melee",
+    "row": "front"
   },
   "cards": [
     {
@@ -30,12 +32,12 @@
       },
       "timing": "instant",
       "original_text": "",
-      "translated_text": "Prevent 2 damage to an ally.",
+      "translated_text": "Prevent combat damage to an ally.",
       "effects": [
         {
           "trigger": null,
           "kind": "prevent",
-          "amount": 2,
+          "parameter": "combat_damage",
           "target": {
             "mode": "chosen",
             "side": "ally",

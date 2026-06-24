@@ -47,10 +47,11 @@ SCENARIO_A: Dict[str, Any] = {
     "party": [
         {
             "id": "soren", "name": "Soren", "archetype": "Fighter",
-            "hp": 25, "power": 2, "hand_size": 2, "identity": ["G", "W"],
+            "hp": 25, "power": 3, "attack_mode": "melee", "level": 1,
+            "hand_size": 2, "identity": ["G", "W"],
             "library": [
                 _cd("guard", "Guard", "instant", {"colors": {"W": 1}}, 1,
-                    [{"kind": "prevent", "amount": 2, "target": TARGETED_ALLY,
+                    [{"kind": "prevent", "parameter": "combat_damage", "target": TARGETED_ALLY,
                       "duration": "this_turn"}]),
                 _cd("sunlance", "Sunlance", "sorcery", {"colors": {"W": 1}}, 1,
                     [{"kind": "deal_damage", "amount": 3, "target": TARGETED_ENEMY}]),
@@ -69,7 +70,8 @@ SCENARIO_A: Dict[str, Any] = {
         },
         {
             "id": "ys", "name": "Ys", "archetype": "Tactician",
-            "hp": 15, "power": 1, "hand_size": 4, "identity": ["U", "B"],
+            "hp": 15, "power": 1, "attack_mode": "ranged", "level": 1,
+            "hand_size": 4, "identity": ["U", "B"],
             "library": [
                 _cd("unmake", "Unmake", "sorcery", {"generic": 1, "colors": {"B": 1}}, 2,
                     [{"kind": "destroy", "target": TARGETED_ENEMY},
@@ -91,9 +93,9 @@ SCENARIO_A: Dict[str, Any] = {
     ],
     "enemies": [
         {"id": "skitterling", "name": "Skitterling", "hp": 3, "level": 1,
-         "intent": {"name": "Claw", "amount": 2, "action_type": "ability"}},
+         "intent": {"name": "Claw", "amount": 2, "action_type": "ability", "mode": "melee"}},
         {"id": "brute", "name": "Brute", "hp": 8, "level": 3,
-         "intent": {"name": "Smash", "amount": 4, "action_type": "ability"}},
+         "intent": {"name": "Smash", "amount": 4, "action_type": "ability", "mode": "melee"}},
     ],
 }
 
@@ -106,11 +108,13 @@ SCENARIO_C: Dict[str, Any] = {
     "party": [
         {
             "id": "mira", "name": "Mira", "archetype": "Channeler",
-            "hp": 15, "power": 1, "hand_size": 2, "parry_reduce": 2,
-            "identity": ["U", "U", "B", "B"],
+            "hp": 15, "power": 1, "attack_mode": "ranged", "level": 1,
+            "hand_size": 2, "parry_reduce": 2, "identity": ["U", "U", "B", "B"],
             "library": [
+                # With `disable` retired (R-11), Still the Blade now blunts the
+                # enemy's attack: a continuous −2/−0 wound aura while channeled.
                 _cd("still_the_blade", "Still the Blade", "channeled", {"colors": {"U": 1}}, 2,
-                    [{"kind": "disable", "intent_type": "attack", "target": TARGETED_ENEMY,
+                    [{"kind": "wound", "power": 2, "toughness": 0, "target": TARGETED_ENEMY,
                       "duration": "while_channeled"}], rarity="uncommon"),
                 _cd("swarm_hex", "Swarm Hex", "channeled", {"colors": {"B": 1}}, 2,
                     [{"kind": "create_token", "token_id": "wisp", "count": 1, "trigger": "upkeep"},
@@ -124,15 +128,15 @@ SCENARIO_C: Dict[str, Any] = {
             ],
         },
     ],
-    "tokens": {"wisp": {"name": "Wisp", "hp": 1, "power": 1}},
+    "tokens": {"wisp": {"name": "Wisp", "hp": 1, "power": 1, "attack_mode": "melee"}},
     "enemies": [
         {"id": "cinder", "name": "Cinder", "hp": 6, "level": 2,
          "intent": {"name": "Ember", "amount": 2, "action_type": "ability",
-                    "intent_type": "attack", "targeting": "lowest_hp_party"}},
+                    "intent_type": "attack", "targeting": "lowest_hp_party", "mode": "melee"}},
         # Maul goes for the caster directly, ignoring tokens.
         {"id": "maul", "name": "Maul", "hp": 10, "level": 4,
          "intent": {"name": "Crush", "amount": 5, "action_type": "ability",
-                    "intent_type": "attack", "targeting": "mira"}},
+                    "intent_type": "attack", "targeting": "mira", "mode": "melee"}},
     ],
 }
 
@@ -162,6 +166,7 @@ def state_from_dict(spec: Dict[str, Any]) -> GameState:
             power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
             parry_reduce=int(p.get("parry_reduce", 2)), row=p.get("row", "front"),
+            attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
         ))
 
     enemies: List[EnemyState] = []
@@ -170,6 +175,7 @@ def state_from_dict(spec: Dict[str, Any]) -> GameState:
             id=e.get("id", _slug(e["name"])), name=e["name"],
             max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
             row=e.get("row", "front"), intent_template=dict(e["intent"]),
+            attack_mode=e.get("intent", {}).get("mode", "melee"),
         ))
 
     return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",
@@ -207,33 +213,28 @@ def scenario_name(spec: Dict[str, Any] = None) -> str:
 # legality, costs, damage and turn order.
 # --------------------------------------------------------------------------- #
 
-# A character's combat Power isn't carried by the Deckbuilder loadout yet (the GDD
-# §4.7 defines Power as the attack value; the archetype table has no Power column).
-# The cockpit supplies a starting default per archetype — an INPUT to the engine,
-# immediately tweakable via quick-setup, never a rule. These match the §A/§C casts.
-POWER_BY_ARCHETYPE = {"Fighter": 2, "Tactician": 1, "Caster": 1, "Channeler": 1}
-
-
 def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
     """Adapt one Deckbuilder loadout export into an engine party-entry dict.
 
     The loadout is validated through `core` (the single gate). Resolved starting
-    numbers come from the archetype stats table (HP / hand size / mana capacity);
-    Power is the cockpit's per-archetype default (see `POWER_BY_ARCHETYPE`). The
-    card-list order becomes the deterministic library order; the opening hand is
-    its top `hand_size`. `identity` is the starting-mana capacity (one entry per
-    slot), exactly as the §A/§C scenario party entries express it.
+    numbers come from the archetype tables (HP / hand size / mana capacity), and
+    Power + attack mode from the character's chosen attack profile (Design Update
+    R-3). The card-list order becomes the deterministic library order; the opening
+    hand is its top `hand_size`. `identity` is the starting-mana capacity (one entry
+    per slot), exactly as the §A/§C scenario party entries express it.
     """
     lo = Loadout.model_validate(raw_loadout)
     char = lo.character
     stats = char.stats
-    archetype = char.archetype.value
     return {
         "id": _slug(char.name),
         "name": char.name,
-        "archetype": archetype,
+        "archetype": char.archetype.value,
         "hp": stats["starting_hp"],
-        "power": POWER_BY_ARCHETYPE.get(archetype, 1),
+        "power": char.power,                 # from the (archetype, attack mode) profile
+        "attack_mode": stats["attack_mode"],
+        "row": char.row.value,
+        "level": char.level,
         "hand_size": stats["starting_hand"],
         "identity": [c.value for c in char.starting_mana],
         "parry_reduce": 2,

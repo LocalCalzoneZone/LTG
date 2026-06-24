@@ -58,19 +58,30 @@ class CharacterState:
     power: int
     hand_size: int
     archetype: str = ""  # display-only label; the engine derives no stats from it
+    attack_mode: str = "melee"  # melee | ranged (R-1/R-3) — drives reachability
+    level: int = 1              # ordering / level-gates (R-6)
     parry_reduce: int = 2  # how much this character's Parry reduces a hit by
     hand: List[Card] = field(default_factory=list)
     library: List[Card] = field(default_factory=list)  # ordered; top == index 0
+    graveyard: List[Card] = field(default_factory=list)  # spent / channelled cards (R-9)
     identity: List[str] = field(default_factory=list)   # colours the +1 may lock
     mana_colors: List[str] = field(default_factory=list)  # one per capacity slot
     pool: List[str] = field(default_factory=list)        # spendable mana this turn
     channels: List[Channel] = field(default_factory=list)
     row: str = "front"
 
-    # Temporary defensive layers (all expire at end step in this milestone).
-    temp_hp: int = 0          # absorbs damage after prevention (pump toughness / Defend)
-    prevent_pool: int = 0     # reduces the next damage this turn (prevent / Parry)
-    power_bonus: int = 0      # temporary Power (pump)
+    # Unified HP model (Design Update R-7): damage reduces `hp` directly; `temp_mod`
+    # is the net of end-of-turn pump (+) / wound (−) modifiers and expires at End.
+    # Lethality is checked on effective_hp = hp + temp_mod.
+    temp_mod: int = 0
+    prevent_pool: int = 0     # numeric pre-damage reduction (Parry)
+    prevent_tags: List[str] = field(default_factory=list)  # nullifiers (R-11 prevent)
+    power_bonus: int = 0      # temporary Power (pump +, wound −)
+    protection: int = 0       # negates the next N spells/attacks (protection)
+    # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
+    # end step (end_of_turn/this_turn) or channel break (while_channeled); 'encounter'
+    # / 'permanent' persist. The engine reads these for keyword behaviour (GDD §7).
+    keywords: Dict[str, str] = field(default_factory=dict)
 
     # Per-round / per-turn flags (reset at upkeep).
     used_attack: bool = False
@@ -81,12 +92,18 @@ class CharacterState:
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
 
     @property
+    def effective_hp(self) -> int:
+        return self.hp + self.temp_mod
+
+    @property
     def alive(self) -> bool:
-        return self.hp > 0
+        # A player-character is "up" while effective_hp > 0; ≤ 0 is incapacitated
+        # (recoverable — R-7). Lethality everywhere is keyed to effective_hp.
+        return self.effective_hp > 0
 
     @property
     def current_power(self) -> int:
-        return self.power + self.power_bonus
+        return max(0, self.power + self.power_bonus)
 
     @property
     def capacity(self) -> int:
@@ -109,12 +126,27 @@ class TokenState:
     hp: int
     power: int
     row: str = "front"
-    temp_hp: int = 0
+    attack_mode: str = "melee"
+    level: int = 1
+    intent: Optional["Intent"] = None  # telegraphed in the Intents step (R-5)
+    temp_mod: int = 0
     prevent_pool: int = 0
+    prevent_tags: List[str] = field(default_factory=list)
+    protection: int = 0
+    power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
+    keywords: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def effective_hp(self) -> int:
+        return self.hp + self.temp_mod
 
     @property
     def alive(self) -> bool:
-        return self.hp > 0
+        return self.effective_hp > 0
+
+    @property
+    def current_power(self) -> int:
+        return max(0, self.power + self.power_bonus)
 
 
 @dataclass
@@ -137,17 +169,28 @@ class EnemyState:
     hp: int
     level: int
     row: str = "front"
+    attack_mode: str = "melee"  # melee | ranged (R-1) — enemy attacks are classified too
     intent: Optional[Intent] = None
     intent_template: Dict[str, Any] = field(default_factory=dict)
-    disabled_intent_types: List[str] = field(default_factory=list)  # e.g. ["attack"]
+    stunned: int = 0           # intents to skip (stun); decremented as they would declare
+    taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
 
-    # Mirror the character's defensive layers so one damage routine serves both.
-    temp_hp: int = 0
+    # Mirror the character's HP model so one damage routine serves both. An enemy's
+    # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
+    temp_mod: int = 0
     prevent_pool: int = 0
+    prevent_tags: List[str] = field(default_factory=list)
+    protection: int = 0
+    power_bonus: int = 0
+    keywords: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def effective_hp(self) -> int:
+        return self.hp + self.temp_mod
 
     @property
     def alive(self) -> bool:
-        return self.hp > 0
+        return self.effective_hp > 0
 
 
 # --------------------------------------------------------------------------- #
@@ -170,6 +213,10 @@ class StackItem:
     card_id: Optional[str] = None
     card: Optional[Card] = None
     reserved: List[str] = field(default_factory=list)
+    uid: int = 0            # unique stack id (so a counter can name the action it answers)
+    mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
+    cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
+    attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
 
 
 # --------------------------------------------------------------------------- #
@@ -187,11 +234,12 @@ class Action:
     card_id: Optional[str] = None
     target_id: Optional[str] = None
     color: Optional[str] = None  # the locked colour, for choose_mana
+    mode: Optional[int] = None   # chosen modal mode index, for a modal cast
     label: str = ""
 
     def key(self) -> tuple:
         """Identity used to match a chosen action against the legal set."""
-        return (self.kind, self.actor_id, self.card_id, self.target_id, self.color)
+        return (self.kind, self.actor_id, self.card_id, self.target_id, self.color, self.mode)
 
 
 @dataclass
@@ -211,6 +259,8 @@ class GameState:
     tokens: List[TokenState] = field(default_factory=list)
     token_defs: Dict[str, Any] = field(default_factory=dict)  # token_id -> stats
     token_seq: int = 0                # for unique created-token ids
+    stack_seq: int = 0                # for unique StackItem.uid
+    pending_ramp: List[Dict[str, Any]] = field(default_factory=list)  # deferred capacity, applied at begin_turn
     turn: int = 1
     phase: str = "upkeep"             # upkeep|capacity|draw|intents|player|allies|enemy|end
     stack: List[StackItem] = field(default_factory=list)

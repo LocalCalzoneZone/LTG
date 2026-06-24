@@ -6,13 +6,15 @@ const COLORS = ["W", "U", "B", "R", "G"];
 const SPEED_BY_TIMING = { instant: "reactive", sorcery: "active", channeled: "sustained" };
 const derivedSpeed = (timing) => SPEED_BY_TIMING[timing] || "—";
 const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster", "Channeler"];
-let ARCHETYPES = {}; // {Fighter:{starting_hp,starting_hand,starting_mana}, …} from backend
+let ARCHETYPES = {}; // {Fighter:{starting_hp,…,attacks:{melee:3},default_mode}, …} from backend
+let ROWS = ["front", "mid", "rear"];
 
 const blankLoadout = () => ({
   ltg_version: "0.1",
   character: {
     name: "New Character", description: "", portrait: "",
     archetype: "Fighter", level: 1, colors: ["U"], starting_mana: ["U", "U"],
+    attack_mode: "melee", row: "front",
   },
   cards: [],
 });
@@ -81,6 +83,25 @@ function manaAmount() {
   return ARCHETYPES[state.character.archetype]?.starting_mana || 2;
 }
 
+// The {mode: power} attack profiles the current archetype allows.
+function attackOptions() {
+  return ARCHETYPES[state.character.archetype]?.attacks || { melee: 0 };
+}
+
+// Keep attack_mode valid for the archetype (Fighter is melee-only); default if not.
+function reconcileAttackMode() {
+  const ch = state.character;
+  const opts = attackOptions();
+  if (!(ch.attack_mode in opts)) {
+    ch.attack_mode = ARCHETYPES[ch.archetype]?.default_mode || Object.keys(opts)[0];
+  }
+}
+
+// Power is derived from (archetype, attack_mode) — never set directly.
+function currentPower() {
+  return attackOptions()[state.character.attack_mode];
+}
+
 // Keep starting_mana the right length for the archetype and within `colors`.
 function reconcileStartingMana() {
   const ch = state.character;
@@ -112,13 +133,40 @@ function renderCharacter() {
     archPick.appendChild(btn);
   });
 
-  // Derived stat block (read-only)
+  // Derived stat block (read-only) — Power follows the chosen attack profile.
   const stats = ARCHETYPES[ch.archetype];
   $("#stat-block").innerHTML = stats
     ? `<span class="stat"><b>${stats.starting_hp}</b> HP</span>
        <span class="stat"><b>${stats.starting_hand}</b> hand</span>
-       <span class="stat"><b>${stats.starting_mana}</b> mana</span>`
+       <span class="stat"><b>${stats.starting_mana}</b> mana</span>
+       <span class="stat"><b>${currentPower()}</b> Power</span>`
     : "";
+
+  // Attack type: one button per profile the archetype offers (mode + Power).
+  const attackPick = $("#attack-pick");
+  attackPick.innerHTML = "";
+  const opts = attackOptions();
+  Object.keys(opts).forEach((mode) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "archetype-btn" + (ch.attack_mode === mode ? " on" : "");
+    btn.textContent = `${mode} ${opts[mode]}`;
+    btn.disabled = Object.keys(opts).length === 1;  // fixed (e.g. Fighter)
+    btn.onclick = () => setAttackMode(mode);
+    attackPick.appendChild(btn);
+  });
+
+  // Default row.
+  const rowPick = $("#row-pick");
+  rowPick.innerHTML = "";
+  ROWS.forEach((r) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "archetype-btn" + (ch.row === r ? " on" : "");
+    btn.textContent = r;
+    btn.onclick = () => setRow(r);
+    rowPick.appendChild(btn);
+  });
 
   // Colours
   const colorPick = $("#color-pick");
@@ -148,6 +196,19 @@ function renderCharacter() {
 function setArchetype(a) {
   state.character.archetype = a;
   reconcileStartingMana();
+  reconcileAttackMode();  // archetypes differ in which attack profiles they allow
+  renderCharacter();
+  scheduleValidate();
+}
+
+function setAttackMode(mode) {
+  state.character.attack_mode = mode;
+  renderCharacter();
+  scheduleValidate();
+}
+
+function setRow(r) {
+  state.character.row = r;
   renderCharacter();
   scheduleValidate();
 }
@@ -363,8 +424,11 @@ async function loadSpecs() {
 
 async function loadArchetypes() {
   try {
-    ARCHETYPES = await api("GET", "/api/archetypes");
+    const resp = await api("GET", "/api/archetypes");
+    ARCHETYPES = resp.archetypes || resp;  // tolerate either shape
+    if (resp.rows) ROWS = resp.rows;
     reconcileStartingMana();
+    reconcileAttackMode();
     renderCharacter();
     scheduleValidate();
   } catch (e) { /* picker falls back to defaults */ }
@@ -990,9 +1054,11 @@ function applyLoadedText(text, handle, name) {
   let data;
   try { data = JSON.parse(text); } catch (e) { toast("Load failed: invalid JSON"); return; }
   state = data;
+  if (!state.character.row) state.character.row = "front";  // older loadouts
   currentFileHandle = handle || null;
   currentFileName = name || null;
   reconcileStartingMana();
+  reconcileAttackMode();
   renderAll();
   toast(`Loaded ${name || "loadout"}`);
 }

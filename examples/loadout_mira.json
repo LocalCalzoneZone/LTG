@@ -2,7 +2,7 @@
   "ltg_version": "0.1",
   "character": {
     "name": "Mira",
-    "description": "A Channeler who holds enchantments \u2014 disabling foes and summoning wisps.",
+    "description": "A Channeler who holds enchantments \u2014 blunting foes and summoning wisps.",
     "archetype": "Channeler",
     "level": 1,
     "colors": [
@@ -14,7 +14,9 @@
       "U",
       "B",
       "B"
-    ]
+    ],
+    "attack_mode": "ranged",
+    "row": "front"
   },
   "cards": [
     {
@@ -32,12 +34,13 @@
       },
       "timing": "channeled",
       "original_text": "",
-      "translated_text": "While channeled: the chosen enemy can't attack.",
+      "translated_text": "While channeled: the chosen enemy has -2 attack and -0 HP.",
       "effects": [
         {
           "trigger": null,
-          "kind": "disable",
-          "intent_type": "attack",
+          "kind": "wound",
+          "power": 2,
+          "toughness": 0,
           "target": {
             "mode": "chosen",
             "side": "enemy",

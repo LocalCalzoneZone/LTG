@@ -9,7 +9,8 @@
       "intent": {
         "name": "Claw",
         "amount": 2,
-        "action_type": "ability"
+        "action_type": "ability",
+        "mode": "melee"
       }
     },
     {
@@ -20,7 +21,8 @@
       "intent": {
         "name": "Smash",
         "amount": 4,
-        "action_type": "ability"
+        "action_type": "ability",
+        "mode": "melee"
       }
     }
   ],

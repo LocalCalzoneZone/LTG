@@ -167,6 +167,64 @@ with `python -m ltg_combat validate examples/sample_loadout.json`.
 > full card pool. `Defend`'s magnitude is a documented placeholder; `Parry` is a
 > per-character value (Mira's is 2 in §C).
 
+### Effect & keyword coverage (the full Deckbuilder vocabulary)
+
+The engine executes **every effect primitive, container, and keyword the
+Deckbuilder can emit** — a card that validates can be played end-to-end. Proven by
+`tests/test_vocabulary.py` (which also asserts every example card in `examples/`
+resolves without error):
+
+- **All 23 effect primitives:** `deal_damage, heal, lose_life, destroy, exile,
+  bounce, counter, strip_intent, stun, pump, wound, counters, prevent, protection,
+  draw, scry, create_token, taunt, revive, grant_keyword, remove_keyword, ramp,
+  add_mana`. (`disable` was retired in Design Update R-11; `prevent` now nullifies a
+  **named parameter**, e.g. `prevent combat_damage`.)
+- **Containers:** **modal** — the mode is *chosen at cast* (the engine offers one
+  legal cast per mode, and only that mode resolves); **conditional** — the branch
+  fires only when its condition (`cast_mode` / target `has_keyword` / target `side`)
+  holds.
+- **Targeting:** `self` / `chosen` / `all` (anthems hit the whole side) × `ally` /
+  `enemy` / `any`, the `targeted` fizzle/hexproof rule, shared `$slot`s, and
+  **counters that name an enemy action on the stack** (filtered by the
+  action-type lattice). **Two-click targeting** in the cockpit reflects exactly
+  these options. Value refs `mana_capacity` and `destroyed_target.level` resolve
+  at resolution time.
+- **Triggers on channels:** `upkeep` (each turn) and `capacity_increase` (landfall
+  — fires on the +1/turn lock and on `ramp`).
+- **Keywords** with engine-modelled semantics: **flying / reach** drive row
+  reachability (below), **deathtouch** (its damage executes a minion), **lifelink**
+  (source heals for damage dealt), **indestructible** (damage can't drop it below 1
+  HP; exile or a −X/−X to effective-HP ≤ 0 still kills it), **hexproof** (an enemy
+  can't target it — intents retarget), **vigilance** (attack *and* cast in one
+  turn), **double_strike** (the basic attack strikes twice). `grant_keyword` /
+  `remove_keyword` add and remove these for a duration; channel-held grants/auras
+  (anthems, a *Still the Blade* wound) lift on break. **trample / first_strike** are
+  stored and grantable but inert pending their combat-step model.
+
+### Design Update 01 (attack modes, rows, the unified HP model)
+
+The engine and Deckbuilder implement [Design Update 01](#) — proven by
+`tests/test_design_update.py` and the rewritten §A/§C harness:
+
+- **Attack modes + rows (R-1).** Every attack is `melee` or `ranged`. **Melee**
+  strikes only the **front-most occupied** enemy row; **ranged** hits any row and
+  flyers; **reach** lets melee hit flyers and pins an attacking melee-flyer. This
+  gates the player's basic-attack targets, enemy intents, and ally intents.
+- **Attack profiles + Power (R-3).** Power is a base stat from the
+  `(archetype, attack mode)` profile (Fighter melee/3; Tactician & Channeler
+  ranged/1 or melee/2; Caster ranged/2 or melee/1). The Deckbuilder sets the
+  **attack type** and **default row**; the engine reads them.
+- **Unified HP model (R-7).** `effective_hp = hp + temp_mod`; damage reduces `hp`
+  directly, `pump`/`wound` move `temp_mod` (which expires at End), a heal fills a
+  wound first, and lethality is checked on `effective_hp` (a PC is *incapacitated*,
+  and recovers the instant it climbs back above 0).
+- Plus **deterministic ordering** (row > level > name, R-6), **ally intents** in
+  their own step (R-5), enchantment-to-graveyard-on-cast (R-9), and
+  front-default token rows (R-13).
+- **Deferred & flagged** (would break or exceed scope): `first_strike`'s
+  held-attack flow (R-12) and `scry`'s leave/​bottom choice (R-11) are stored/inert
+  pending a decision point; boss enrage ordering (R-10) is moot until bosses exist.
+
 ## The Playtest Cockpit (web GUI)
 
 The **cockpit** is a local web GUI for playtesting combat and debugging the
