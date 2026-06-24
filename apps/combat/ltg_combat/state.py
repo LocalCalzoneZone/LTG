@@ -16,7 +16,7 @@ effect schema.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ltg_core.schema import Card, Effect
 
@@ -64,6 +64,7 @@ class CharacterState:
     hand: List[Card] = field(default_factory=list)
     library: List[Card] = field(default_factory=list)  # ordered; top == index 0
     graveyard: List[Card] = field(default_factory=list)  # spent / channelled cards (R-9)
+    exile: List[Card] = field(default_factory=list)      # cards removed from the game (move_card)
     identity: List[str] = field(default_factory=list)   # colours the +1 may lock
     mana_colors: List[str] = field(default_factory=list)  # one per capacity slot
     pool: List[str] = field(default_factory=list)        # spendable mana this turn
@@ -210,6 +211,9 @@ class StackItem:
     label: str              # display name (card name / "Basic Attack" / "Claw")
     effects: List[Effect]
     target_id: Optional[str] = None
+    # Per-site targets for independent multi-target cards (see Action.targets);
+    # ordered by target site, with targets[0] == target_id. Empty otherwise.
+    targets: Tuple[str, ...] = ()
     card_id: Optional[str] = None
     card: Optional[Card] = None
     reserved: List[str] = field(default_factory=list)
@@ -235,11 +239,16 @@ class Action:
     target_id: Optional[str] = None
     color: Optional[str] = None  # the locked colour, for choose_mana
     mode: Optional[int] = None   # chosen modal mode index, for a modal cast
+    # Per-site targets for a card whose effects target independently (e.g. Agony
+    # Warp). Ordered by target site; targets[0] mirrors target_id (the primary).
+    # Empty for single-target cards, which use target_id alone.
+    targets: Tuple[str, ...] = ()
     label: str = ""
 
     def key(self) -> tuple:
         """Identity used to match a chosen action against the legal set."""
-        return (self.kind, self.actor_id, self.card_id, self.target_id, self.color, self.mode)
+        return (self.kind, self.actor_id, self.card_id, self.target_id,
+                self.color, self.mode, self.targets)
 
 
 @dataclass

@@ -282,6 +282,25 @@ function handCard(card) {
   return c;
 }
 
+// One target node: a leaf (carries `index` → posts the action) or an inner node
+// (carries its own `targets` → expands to the next target's choices). Recursion
+// gives the stepwise picker for independent multi-target cards (pick target 1,
+// then target 2, …). All nodes come from the engine — the UI never guesses them.
+function targetNode(node) {
+  if (node.targets) {
+    const wrap = el("div", "menu-entry");
+    const b = el("button", null, node.label);
+    const kids = el("div", "targets hidden");
+    node.targets.forEach((c) => kids.append(targetNode(c)));
+    b.onclick = () => kids.classList.toggle("hidden");
+    wrap.append(b, kids);
+    return wrap;
+  }
+  const tb = el("button", null, node.label);
+  tb.onclick = () => act(node.index);
+  return tb;
+}
+
 function menuEntry(entry) {
   const wrap = el("div", "menu-entry");
   if (entry.index != null && !entry.targets) {
@@ -290,15 +309,10 @@ function menuEntry(entry) {
     wrap.append(b);
     return wrap;
   }
-  // Submenu: click reveals legal targets (two-click flow). Targets come from the
-  // engine — the UI never guesses them.
+  // Submenu: click reveals legal targets (two-click flow, nested for multi-target).
   const b = el("button", "act", entry.label);
   const targets = el("div", "targets hidden");
-  entry.targets.forEach((t) => {
-    const tb = el("button", null, t.label);
-    tb.onclick = () => act(t.index);
-    targets.append(tb);
-  });
+  entry.targets.forEach((t) => targets.append(targetNode(t)));
   b.onclick = () => targets.classList.toggle("hidden");
   wrap.append(b, targets);
   return wrap;

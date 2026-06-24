@@ -286,6 +286,34 @@ def _target_label(state: GameState, action: Action) -> str:
     return f"{tgt.name} (HP {tgt.hp}/{tgt.max_hp})"
 
 
+def _combatant_label(state: GameState, tid: Optional[str]) -> str:
+    tgt = state.combatant(tid)
+    return f"{tgt.name} (HP {tgt.hp}/{tgt.max_hp})" if tgt is not None else "self"
+
+
+def _target_tree(state: GameState, group: List[tuple], depth: int) -> List[Dict[str, Any]]:
+    """Nested target submenu for an independent multi-target cast: one level per
+    target site. `group` is [(index, action)] sharing card/mode; each action's
+    `targets` tuple gives this site's pick at `depth`. A leaf (last site) carries
+    the action `index`; an inner node carries a further `targets` list."""
+    last = depth == len(group[0][1].targets) - 1
+    nodes: List[Dict[str, Any]] = []
+    seen: List[str] = []
+    for j, a in group:
+        tid = a.targets[depth]
+        if tid in seen:
+            continue
+        seen.append(tid)
+        sub = [(k, b) for k, b in group if b.targets[depth] == tid]
+        node = {"label": _combatant_label(state, tid)}
+        if last:
+            node["index"] = sub[0][0]
+        else:
+            node["targets"] = _target_tree(state, sub, depth + 1)
+        nodes.append(node)
+    return nodes
+
+
 def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
     """Group the engine's legal actions into menu entries. A direct entry carries
     an `index` into the legal list; a submenu entry carries `targets` (each with
@@ -326,6 +354,10 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
         if len(group) == 1:
             j, g = group[0]
             entries.append({"label": g.label, "index": j, "kind": "cast"})
+        elif group[0][1].targets:  # independent multi-target: stepwise picker
+            entries.append({"label": f"Cast {name} {cost} ({timing}){mode_tag} — choose targets",
+                            "kind": "cast",
+                            "targets": _target_tree(state, group, 0)})
         else:
             entries.append({"label": f"Cast {name} {cost} ({timing}){mode_tag} — choose target",
                             "kind": "cast",

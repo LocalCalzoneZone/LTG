@@ -411,7 +411,23 @@ def _condition_phrase(cond) -> str:
     if cond.property == "side":
         s = cond.side.value if hasattr(cond.side, "value") else cond.side
         return {"ally": "the target is an ally", "enemy": "the target is an enemy"}.get(s, "the target qualifies")
+    if cond.property == "level":
+        suffix = {"or_more": " or more", "or_less": " or less"}.get(getattr(cond, "compare", "exactly"), "")
+        return f"the target is level {cond.level}{suffix}"
     return "the condition holds"
+
+
+def _token_phrase(e) -> str:
+    """'a 2/3 Wisp ally with flying' / '2 2/3 Wisp allies' — name, stats, keywords.
+
+    Stats are omitted when the effect leaves them to the scenario's token def.
+    """
+    name = e.token_id.replace("_", " ").title()
+    stats = f"{e.power}/{e.hp} " if e.power is not None and e.hp is not None else ""
+    kw = f" with {_keyword_phrase(e.keywords)}" if getattr(e, "keywords", None) else ""
+    if e.count == 1:
+        return f"a {stats}{name} ally{kw}"
+    return f"{e.count} {stats}{name} allies{kw}"
 
 
 def _render_modal(e) -> str:
@@ -422,8 +438,104 @@ def _render_modal(e) -> str:
     return "Choose one — " + " ".join(parts)
 
 
+# --------------------------------------------------------------------------- #
+# move_card rendering — phrase a zone move from source + destination + filter.
+_MOVE_DEST_PHRASE = {
+    "hand": "into your hand",
+    "library_top": "on top of your library",
+    "library_bottom": "on the bottom of your library",
+    "library_shuffle": "shuffled into your library",
+    "graveyard": "into your graveyard",
+    "exile": "into exile",
+}
+_MOVE_TYPE_WORD = {"instant": "instant", "sorcery": "sorcery", "channeled": "channeled"}
+
+
+def _move_level_suffix(e) -> str:
+    if e.filter_level_compare == "any":  # "any level" → no level filter
+        return ""
+    rel = {"or_more": " or more", "or_less": " or less"}.get(e.filter_level_compare, "")
+    return f" of level {e.filter_level}{rel}"
+
+
+def _move_search_object(e) -> str:
+    """The thing a library search looks for, e.g. 'an instant', 'a card of level 2 or more'."""
+    t = _MOVE_TYPE_WORD.get(e.filter_type)
+    base = {"instant": "an instant", "sorcery": "a sorcery",
+            "channeled": "a channeled card"}.get(e.filter_type, "a card")
+    return base + _move_level_suffix(e)
+
+
+def _move_noun(e, n: int) -> str:
+    """The card noun for a non-search source, e.g. '1 instant card', '2 cards of level 3 or less'."""
+    t = _MOVE_TYPE_WORD.get(e.filter_type)
+    noun = f"{t} card" if t else "card"
+    if n != 1:
+        noun += "s"
+    return noun + _move_level_suffix(e)
+
+
+def _render_move_card(e) -> str:
+    n = e.count
+    dest = _MOVE_DEST_PHRASE.get(e.destination, "into your hand")
+    if e.source == "library":  # search anywhere → tutor
+        pronoun = "it" if n == 1 else "them"
+        obj = _move_search_object(e) if n == 1 else f"{n} {_move_noun(e, n)}"
+        body = f"Search your library for {obj}, put {pronoun} {dest}"
+    else:
+        place = "top" if e.source == "library_top" else "bottom"
+        src = {
+            "drawn": f"{n} of the drawn cards",
+            "hand": f"{n} {_move_noun(e, n)} from your hand",
+            "graveyard": f"{n} {_move_noun(e, n)} from your graveyard",
+            "exile": f"{n} {_move_noun(e, n)} from exile",
+            "library_top": f"the {place} {n} card{'s' if n != 1 else ''} of your library",
+            "library_bottom": f"the {place} {n} card{'s' if n != 1 else ''} of your library",
+        }.get(e.source, f"{n} {_move_noun(e, n)}")
+        body = f"Put {src} {dest}"
+    # 'shuffled into your library' already implies the shuffle; don't say it twice.
+    if e.shuffle_after and e.destination != "library_shuffle":
+        body += ", then shuffle your library"
+    return body + "."
+
+
+def _target_condition_qualifier(cond) -> str:
+    """A noun-phrase qualifier for a target_property condition — the bit that
+    attaches to 'a target' so the SAME target is clearly meant (not a new one)."""
+    if cond.property == "has_keyword":
+        return f"with {KEYWORDS.get(cond.keyword, {}).get('display', cond.keyword).lower()}"
+    if cond.property == "level":
+        suffix = {"or_more": " or more", "or_less": " or less"}.get(getattr(cond, "compare", "exactly"), "")
+        return f"with level {cond.level}{suffix}"
+    if cond.property == "side":
+        s = cond.side.value if hasattr(cond.side, "value") else cond.side
+        return {"ally": "that is an ally", "enemy": "that is an enemy"}.get(s, "that qualifies")
+    return "that qualifies"
+
+
+def _targets_external(effect) -> bool:
+    """True when an effect acts on a chosen/external target (not 'self') — i.e. the
+    'a target' that a target_property qualifier can attach to."""
+    tgt = getattr(effect, "target", None)
+    if tgt is None:
+        return False
+    if isinstance(tgt, str):  # "$slot" ref — a shared chosen target
+        return True
+    mode = getattr(tgt, "mode", None)
+    mode = mode.value if hasattr(mode, "value") else mode
+    return mode != "self"
+
+
 def _render_conditional(e) -> str:
     inner = render_effects(e.effects)
+    # A target_property condition qualifies the SAME target the effect already
+    # acts on, so phrase it as "<effect> a target with <condition>." rather than
+    # "If the target …, <effect> a target." (which reads as two distinct targets).
+    # Only when the effect actually has an external target; cast-mode conditions
+    # (and target-less effects) keep the "If …" form.
+    if getattr(e.condition, "kind", None) == "target_property" and e.effects and _targets_external(e.effects[-1]):
+        body = inner.rstrip().rstrip(".")
+        return f"{body} {_target_condition_qualifier(e.condition)}."
     return f"If {_condition_phrase(e.condition)}, {_lc_first(inner)}"
 
 
@@ -472,7 +584,8 @@ RENDERERS = {
         "Scry 1 for each point of mana capacity." if _is_capacity(e.amount)
         else f"Scry {e.amount}."
     ),
-    "create_token": lambda e: f"Create {e.count} {e.token_id} token(s).",
+    "move_card": _render_move_card,
+    "create_token": lambda e: f"Create {_token_phrase(e)}.",
     "taunt": lambda e: f"Force {_tgt(e.target)} to target you this turn.",
     "revive": lambda e: f"Revive {_tgt(e.target)} at {int(e.to_fraction * 100)}% HP.",
     "ramp": _render_ramp,
@@ -603,9 +716,7 @@ def _upkeep_clause(e, targets) -> str:
     """A recurring (upkeep) effect's body — imperative, lowercase, no period."""
     k = e.kind
     if k == "create_token":
-        token = e.token_id.replace("_", " ").title()
-        article = "an" if token[:1].lower() in "aeiou" else "a"
-        return f"create {article} {token} ally" if e.count == 1 else f"create {e.count} {token} allies"
+        return f"create {_token_phrase(e)}"
     if k == "lose_life":
         amt = _value(e.amount) if isinstance(e.amount, Ref) else e.amount
         if _is_self(_resolve(e.target, targets) or e.target):

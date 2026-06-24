@@ -212,7 +212,7 @@ Value = Union[int, Literal["all"], Ref]
 # rule. Retired keywords are kept here but can't be granted.
 # --------------------------------------------------------------------------- #
 KEYWORDS = {
-    "flying": {"display": "Flight", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1)", "grantable": True, "params": []},
+    "flying": {"display": "Flying", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1)", "grantable": True, "params": []},
     "reach": {"display": "Reach", "gloss": "its melee may strike flyers, and pins an enemy melee-flyer to rows not behind it (R-1)", "grantable": True, "params": []},
     "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
     "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
@@ -382,10 +382,47 @@ class Scry(EffectBase):
     target: TargetOrSlot = Field(default_factory=t_self)
 
 
+# Card-logistics zones. `library` as a *source* means "search anywhere in it"; `drawn`
+# means "among the cards drawn earlier this resolution". `library_shuffle` is a
+# destination meaning "shuffled into the library".
+MoveSource = Literal["drawn", "library_top", "library_bottom", "library", "hand", "graveyard", "exile"]
+MoveDest = Literal["hand", "library_top", "library_bottom", "library_shuffle", "graveyard", "exile"]
+
+
+class MoveCard(EffectBase):
+    """Move card(s) between zones — the general card-logistics primitive (draw is the
+    common special case). Optionally filtered by type/level; can shuffle after (e.g. a
+    library search). You move your own cards, so the target is always yourself."""
+
+    kind: Literal["move_card"] = "move_card"
+    count: int = 1
+    source: MoveSource = "library"
+    destination: MoveDest = "hand"
+    filter_type: Optional[Literal["instant", "sorcery", "channeled"]] = None
+    # Level filtering is off unless the comparator is set to something other than
+    # 'any' (which means "any level — no filter"); filter_level is read only then.
+    filter_level_compare: Literal["any", "exactly", "or_more", "or_less"] = "any"
+    filter_level: int = 1
+    shuffle_after: bool = False
+    target: TargetOrSlot = Field(default_factory=t_self)
+
+
 class CreateToken(EffectBase):
     kind: Literal["create_token"] = "create_token"
     token_id: str
     count: int = 1
+    # The token's stats. None means "inherit from the scenario's token def" (legacy
+    # scenarios that declare a top-level `tokens` map); the deckbuilder authors them
+    # explicitly so a card is self-contained.
+    power: Optional[int] = None
+    hp: Optional[int] = None
+    keywords: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check(self) -> "CreateToken":
+        if self.keywords:
+            _check_grant_keywords(self.keywords, None, for_grant=True)
+        return self
 
 
 class Taunt(EffectBase):
@@ -477,6 +514,7 @@ LEAF_EFFECT_CLASSES = [
     Protection,
     Draw,
     Scry,
+    MoveCard,
     CreateToken,
     Taunt,
     Revive,
@@ -514,12 +552,15 @@ class CastModeCondition(BaseModel):
 
 
 class TargetPropertyCondition(BaseModel):
-    """True when the (main) target has a property — a keyword, or a side."""
+    """True when the (main) target has a property — a keyword, a side, or a level
+    (compared with exactly / or_more / or_less)."""
 
     kind: Literal["target_property"] = "target_property"
-    property: Literal["has_keyword", "side"]
+    property: Literal["has_keyword", "side", "level"]
     keyword: Optional[str] = None
     side: Optional[Side] = None
+    level: Optional[int] = None
+    compare: Literal["exactly", "or_more", "or_less"] = "exactly"
 
     @model_validator(mode="after")
     def _coherent(self) -> "TargetPropertyCondition":
@@ -530,6 +571,8 @@ class TargetPropertyCondition(BaseModel):
                 raise ValueError(f"unknown keyword '{self.keyword}'")
         if self.property == "side" and self.side is None:
             raise ValueError("target_property 'side' requires a side")
+        if self.property == "level" and self.level is None:
+            raise ValueError("target_property 'level' requires a level")
         return self
 
 
@@ -597,6 +640,10 @@ def _control_for(annotation) -> dict:
                 return {"control": "enum", "options": list(_t.get_args(inner)), "optional": True}
             if isinstance(inner, type) and issubclass(inner, Enum):
                 return {"control": "enum", "options": [e.value for e in inner], "optional": True}
+            if inner is int:
+                return {"control": "int", "optional": True}
+            if inner is float:
+                return {"control": "float", "optional": True}
         return {"control": "value"}  # Value = int | "all" | {ref}
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         return {"control": "enum", "options": [e.value for e in annotation]}
@@ -622,8 +669,10 @@ def effect_specs() -> dict:
                     opts.append("all")
                 labels = {k: KEYWORDS.get(k, {}).get("display", k) for k in opts}
                 labels["all"] = "All abilities"
+                # grant/remove require at least one keyword; create_token's are optional.
                 params.append({"name": "keywords", "control": "keyword_list",
-                               "options": opts, "labels": labels, "required": True})
+                               "options": opts, "labels": labels,
+                               "required": finfo.is_required()})
                 continue
             if fname in ("modes", "condition", "effects"):
                 # Container fields (modal modes / conditional branch). The guided
@@ -711,7 +760,7 @@ class Card(BaseModel):
                 raise ValueError(
                     f"effect references undeclared slot '${name}'; declare it in 'targets'"
                 )
-            if effect.kind in ("draw", "scry"):
+            if effect.kind in ("draw", "scry", "move_card"):
                 desc = self.resolved_target(effect)
                 if desc is not None and desc.side == Side.enemy:
                     raise ValueError(

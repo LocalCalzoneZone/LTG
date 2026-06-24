@@ -71,7 +71,7 @@ def test_conditional_target_property_render():
     c = card([{"kind": "conditional",
                "condition": {"kind": "target_property", "property": "has_keyword", "keyword": "flying"},
                "effects": [{"kind": "deal_damage", "amount": 2, "target": ENEMY}]}])
-    assert render_effects(c.effects) == "If the target has Flight, deal 2 damage to an enemy."
+    assert render_effects(c.effects) == "Deal 2 damage to an enemy with flying."
 
 
 def test_conditional_side_render():

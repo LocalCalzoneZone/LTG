@@ -455,7 +455,7 @@ function normTarget(d) {
   return out;
 }
 
-const KINDS = () => Object.keys(EFFECT_SPECS);
+const KINDS = () => Object.keys(EFFECT_SPECS).sort();
 
 // A fresh editor row (flat). modal/conditional are bare markers — the rows below
 // them supply the grouped effects (see flatten/rebuild). Leaves are full effects.
@@ -469,13 +469,16 @@ function newItem(kind) {
 function defaultEffect(kind) {
   const eff = { kind };
   (EFFECT_SPECS[kind]?.params || []).forEach((p) => {
-    if ("default" in p) eff[p.name] = clone(p.default);
+    // An optional number (e.g. token power/hp) defaults to null in the schema for
+    // back-compat, but the editor should seed a concrete value so the author sets it.
+    const nullishNum = (p.control === "int" || p.control === "float") && p.default === null;
+    if ("default" in p && !nullishNum) eff[p.name] = clone(p.default);
     else if (p.control === "bool") eff[p.name] = false;
     else if (p.control === "int" || p.control === "float" || p.control === "value") eff[p.name] = 1;
     else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
     else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
     else if (p.control === "action_target") eff[p.name] = { class: "action", side: "enemy" };
-    else if (p.control === "keyword_list") eff[p.name] = (p.options || []).length ? [p.options[0]] : [];
+    else if (p.control === "keyword_list") eff[p.name] = (p.required && (p.options || []).length) ? [p.options[0]] : [];
     else eff[p.name] = "";
   });
   return eff;
@@ -634,12 +637,19 @@ function conditionControlHtml(i, cond) {
     const prop = cond.property || "has_keyword";
     rest = `<select class="cond-prop" data-i="${i}">
         <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>has keyword</option>
-        <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option></select>`;
+        <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option>
+        <option value="level" ${prop === "level" ? "selected" : ""}>is level</option></select>`;
     if (prop === "has_keyword") {
       const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
       const opts = kwSpec.options || [];
       rest += `<select class="cond-keyword" data-i="${i}">${opts.map((o) =>
         `<option value="${o}" ${cond.keyword === o ? "selected" : ""}>${escapeHtml((kwSpec.labels && kwSpec.labels[o]) || o)}</option>`).join("")}</select>`;
+    } else if (prop === "level") {
+      rest += `<input type="number" class="cond-level" data-i="${i}" min="1" value="${cond.level ?? 1}" />
+        <select class="cond-compare" data-i="${i}">
+          <option value="exactly" ${cond.compare === "exactly" || !cond.compare ? "selected" : ""}>exactly</option>
+          <option value="or_more" ${cond.compare === "or_more" ? "selected" : ""}>or more</option>
+          <option value="or_less" ${cond.compare === "or_less" ? "selected" : ""}>or less</option></select>`;
     } else {
       rest += `<select class="cond-side" data-i="${i}">${["ally", "enemy"].map((s) =>
         `<option value="${s}" ${cond.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
@@ -671,7 +681,10 @@ function effectRowHtml(e, i, card, scoped) {
   }
 
   const spec = EFFECT_SPECS[e.kind];
-  const params = (spec?.params || []).map((p) => {
+  const params = (spec?.params || []).filter((p) =>
+    // The level value is meaningless until a level comparator is chosen.
+    !(e.kind === "move_card" && p.name === "filter_level" && (e.filter_level_compare ?? "any") === "any")
+  ).map((p) => {
     if (p.name === "target" && p.control === "action_target")
       return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
     if (p.name === "target") return `<span class="param"><label class="inline">target</label> ${targetControlHtml(i, e.target, card)}</span>`;
@@ -808,7 +821,7 @@ function wireDetail(idx) {
         : spec.control === "float" ? (parseFloat(inp.value) || 0)
         : (spec.control === "enum" && spec.optional && inp.value === "") ? null
         : inp.value;
-      commitEffects(idx, p === "trigger" || p === "duration");
+      commitEffects(idx, p === "trigger" || p === "duration" || p === "filter_level_compare");
     };
   });
   document.querySelectorAll(".kw-check").forEach((cb) => {
@@ -857,14 +870,19 @@ function wireDetail(idx) {
   document.querySelectorAll(".cond-mode").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.mode = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-prop").forEach((sel) => {
     sel.onchange = () => {
-      editorItems[+sel.dataset.i].condition = sel.value === "has_keyword"
-        ? { kind: "target_property", property: "has_keyword", keyword: "flying" }
-        : { kind: "target_property", property: "side", side: "enemy" };
+      const byProp = {
+        has_keyword: { kind: "target_property", property: "has_keyword", keyword: "flying" },
+        side: { kind: "target_property", property: "side", side: "enemy" },
+        level: { kind: "target_property", property: "level", level: 1, compare: "exactly" },
+      };
+      editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.has_keyword;
       commitEffects(idx, true);
     };
   });
   document.querySelectorAll(".cond-keyword").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.keyword = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-side").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.side = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-level").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].condition.level = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-compare").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.compare = sel.value; commitEffects(idx, true); }; });
 
   document.querySelectorAll(".eff-up").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, -1));
   document.querySelectorAll(".eff-down").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, 1));

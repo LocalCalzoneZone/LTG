@@ -25,6 +25,7 @@ Design seams the brief asks for:
 from __future__ import annotations
 
 import copy
+import itertools
 import math
 from typing import List, Optional, Tuple
 
@@ -541,7 +542,8 @@ def _do_cast(st: GameState, action: Action) -> None:
     reserved = list(paid) if card.timing == Timing.channeled else []
     _push(st, StackItem(kind="spell", source_id=actor.id, source_side="party",
                         label=card.name, effects=list(card.effects),
-                        target_id=action.target_id, card_id=card.id,
+                        target_id=action.target_id, targets=action.targets,
+                        card_id=card.id,
                         card=card, reserved=reserved, mode=action.mode,
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
@@ -624,6 +626,15 @@ def _resolve_top(st: GameState) -> None:
     ctx: dict = {}  # dynamic references gathered during this resolution
     src = st.character(item.source_id)
     ctx["capacity"] = src.capacity if src is not None else 0  # for `mana_capacity` values
+    # Independent multi-target card: bind each top-level site to its own chosen
+    # target (the order matches enumeration's `_target_sites`).
+    if item.targets:
+        top = item.effects
+        modal = next((e for e in item.effects if e.kind == "modal"), None)
+        if modal is not None:
+            top = _effects_of_mode(item, modal)
+        ctx["site_target"] = {key: tid for (key, _side), tid
+                              in zip(_target_sites(top, item.card), item.targets)}
     for effect in item.effects:
         _resolve_effect(st, item, effect, ctx)
 
@@ -823,7 +834,7 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
         return
 
     # One effect can hit a SET (mode 'all') or a single creature; resolve per target.
-    for target in _resolution_targets(st, item, effect):
+    for target in _resolution_targets(st, item, effect, ctx):
         if _is_targeted(effect) and (target is None or not _legal_target(target)):
             _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no legal target).",
                  kind=effect.kind)
@@ -838,19 +849,32 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
         handler(st, item, effect, target, ctx)
 
 
-def _resolution_targets(st: GameState, item: StackItem, effect) -> List:
+def _site_target(item: StackItem, ctx, effect, desc) -> Optional[str]:
+    """The target id for an effect's site: its own independent target when the
+    effect is a top-level multi-target site (recorded in ctx['site_target']),
+    otherwise the primary target_id (conditional-nested effects, single-target
+    cards). Slot refs key by slot name; direct descriptors by effect identity."""
+    if ctx is not None and "site_target" in ctx:
+        key = ("slot", desc[1:]) if isinstance(desc, str) else ("eff", id(effect))
+        if key in ctx["site_target"]:
+            return ctx["site_target"][key]
+    return item.target_id
+
+
+def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> List:
     """The combatant(s) an effect lands on. `self` -> the source; `all` -> every
-    creature in the side; otherwise the item's single chosen target."""
+    creature in the side; otherwise the effect's chosen target (its own per-site
+    target for independent multi-target cards, else the item's primary target)."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) or desc is None:
-        return [st.combatant(item.target_id)]
+        return [st.combatant(_site_target(item, ctx, effect, desc))]
     mode = getattr(desc, "mode", None)
     if mode == TargetMode.self_:
         return [st.combatant(item.source_id)]
     if mode == TargetMode.all:
         side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
         return _creatures_on_side(st, side, item, desc)
-    return [st.combatant(item.target_id)]
+    return [st.combatant(_site_target(item, ctx, effect, desc))]
 
 
 def _creatures_on_side(st: GameState, side: str, item: StackItem, desc) -> List:
@@ -880,6 +904,16 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
             return False
         is_ally = isinstance(target, (CharacterState, TokenState))
         return (want == "ally") == is_ally
+    if cond.property == "level":
+        lvl = getattr(target, "level", None)
+        if lvl is None:
+            return False
+        compare = getattr(cond, "compare", "exactly")
+        if compare == "or_more":
+            return lvl >= cond.level
+        if compare == "or_less":
+            return lvl <= cond.level
+        return lvl == cond.level
     return False
 
 
@@ -956,7 +990,7 @@ def _r_pump(st, item, effect, target, ctx):
 
 
 def _r_draw(st, item, effect, target, ctx):
-    _draw(st, target, _value(effect.amount, ctx))
+    _draw(st, target, _value(effect.amount, ctx), ctx)
 
 
 def _r_scry(st, item, effect, target, ctx):
@@ -968,18 +1002,94 @@ def _r_scry(st, item, effect, target, ctx):
          target=_tid(target), amount=n, revealed=top)
 
 
+def _move_card_matches(card, effect) -> bool:
+    """Type/level filter for move_card. A card's LTG type is its `timing`."""
+    if effect.filter_type is not None and card.timing.value != effect.filter_type:
+        return False
+    cmp, want = effect.filter_level_compare, effect.filter_level
+    if cmp != "any":  # "any" = no level filter
+        if cmp == "or_more" and not card.level >= want:
+            return False
+        if cmp == "or_less" and not card.level <= want:
+            return False
+        if cmp == "exactly" and card.level != want:
+            return False
+    return True
+
+
+def _r_move_card(st, item, effect, target, ctx):
+    """Move card(s) between this character's zones. The engine is deterministic, so a
+    'search' picks matching cards in source order (no interactive choice)."""
+    char = target
+    src = effect.source
+    # Candidate cards (still in their source list) for each source zone.
+    if src == "drawn":
+        drawn = ctx.get("drawn_cards", [])
+        candidates = [c for c in drawn if c in char.hand]
+    elif src == "library_top":
+        candidates = list(char.library[: effect.count])
+    elif src == "library_bottom":
+        candidates = list(char.library[-effect.count:]) if effect.count else []
+    elif src == "library":              # search anywhere
+        candidates = list(char.library)
+    elif src in ("hand", "graveyard", "exile"):
+        candidates = list(getattr(char, src))
+    else:
+        candidates = []
+
+    chosen = [c for c in candidates if _move_card_matches(c, effect)][: effect.count]
+    if not chosen:
+        _log(st, "move_card_empty",
+             f"{char.name} finds no matching card to move ({src} → {effect.destination}).",
+             character=char.id, source=src, destination=effect.destination)
+        return
+
+    # Remove from whichever zone each chosen card currently lives in, then place it.
+    dest_list = {
+        "hand": char.hand, "graveyard": char.graveyard, "exile": char.exile,
+        "library_top": char.library, "library_bottom": char.library,
+        "library_shuffle": char.library,
+    }[effect.destination]
+    for card in chosen:
+        for zone in (char.hand, char.library, char.graveyard, char.exile):
+            if card in zone:
+                zone.remove(card)
+                break
+        if src == "drawn" and card in ctx.get("drawn_cards", []):
+            ctx["drawn_cards"].remove(card)
+        if effect.destination == "library_top":
+            dest_list.insert(0, card)
+        else:
+            dest_list.append(card)
+        _log(st, "move_card",
+             f"{char.name} moves {card.name} ({src} → {effect.destination}).",
+             character=char.id, card=card.id, card_name=card.name,
+             source=src, destination=effect.destination)
+
+    if effect.shuffle_after or effect.destination == "library_shuffle":
+        # Deterministic engine: a shuffle is a logged no-op (order already fixed).
+        _log(st, "shuffle", f"{char.name} shuffles their library.", character=char.id)
+
+
 def _r_create_token(st, item, effect, target, ctx):
-    # Create autonomous ally token(s) from the scenario's token definition.
+    # Create autonomous ally token(s). The effect carries the stats/keywords the
+    # card author chose; anything it leaves unset falls back to the scenario's
+    # token definition (legacy `tokens` map).
     tdef = st.token_defs.get(effect.token_id, {})
+    hp = int(effect.hp) if getattr(effect, "hp", None) is not None else int(tdef.get("hp", 1))
+    power = int(effect.power) if getattr(effect, "power", None) is not None else int(tdef.get("power", 1))
+    keywords = ({k: "" for k in effect.keywords} if getattr(effect, "keywords", None)
+                else dict(tdef.get("keywords", {})))
     for _ in range(effect.count):
         st.token_seq += 1
         token = TokenState(
             id=f"{effect.token_id}_{st.token_seq}",
             name=tdef.get("name", effect.token_id.replace("_", " ").title()),
-            max_hp=int(tdef.get("hp", 1)), hp=int(tdef.get("hp", 1)),
-            power=int(tdef.get("power", 1)),
+            max_hp=hp, hp=hp,
+            power=power,
             row=tdef.get("row", "front"),  # tokens default to front; a def may name a row (R-13)
-            attack_mode=tdef.get("attack_mode", "melee"))
+            attack_mode=tdef.get("attack_mode", "melee"),
+            keywords=dict(keywords))
         st.tokens.append(token)
         _log(st, "token_created", f"A {token.name} (HP {token.hp}/Power {token.power}) "
              f"joins the party.", token=token.id, token_id=effect.token_id)
@@ -1163,6 +1273,7 @@ RESOLVERS = {
     "protection": _r_protection,
     "draw": _r_draw,
     "scry": _r_scry,
+    "move_card": _r_move_card,
     "create_token": _r_create_token,
     "taunt": _r_taunt,
     "revive": _r_revive,
@@ -1334,7 +1445,7 @@ def _remove_token(st: GameState, token: TokenState) -> None:
     _log(st, "token_died", f"{token.name} is destroyed.", token=token.id)
 
 
-def _draw(st: GameState, char: CharacterState, n: int) -> None:
+def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None:
     for _ in range(n):
         if not char.library:
             _log(st, "draw_empty", f"{char.name} has no cards left to draw.",
@@ -1342,6 +1453,10 @@ def _draw(st: GameState, char: CharacterState, n: int) -> None:
             return
         card = char.library.pop(0)
         char.hand.append(card)
+        # Record the draw so a later move_card with source='drawn' (same resolution)
+        # can act on exactly these cards (e.g. "draw 3, put one on top").
+        if ctx is not None:
+            ctx.setdefault("drawn_cards", []).append(card)
         _log(st, "draw", f"{char.name} draws {card.name}.",
              character=char.id, card=card.id, card_name=card.name)
 
@@ -1500,10 +1615,23 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
         prefix = f"Cast {card.name}"
         if mlabel:
             prefix += f" — {mlabel}"
-        for tid, tlabel in _target_options_for(st, effects):
-            label = prefix + (f" on {tlabel}" if tlabel else "")
-            out.append(Action("cast", actor.id, card_id=card.id, target_id=tid,
-                              mode=mode_idx, label=label))
+        # A card whose effects target independently (≥2 sites, e.g. Agony Warp)
+        # offers one cast per COMBINATION of per-site targets. A counter or a
+        # single-site card keeps one cast per primary target.
+        sites = _target_sites(effects, card)
+        if _counter_filter(effects) is None and len(sites) >= 2:
+            per_site = [_side_options(st, side) for _key, side in sites]
+            for combo in itertools.product(*per_site):
+                tids = tuple(tid for tid, _ in combo)
+                labels = ", ".join(tl for _, tl in combo)
+                out.append(Action("cast", actor.id, card_id=card.id, target_id=tids[0],
+                                  targets=tids, mode=mode_idx,
+                                  label=prefix + f" on {labels}"))
+        else:
+            for tid, tlabel in _target_options_for(st, effects):
+                label = prefix + (f" on {tlabel}" if tlabel else "")
+                out.append(Action("cast", actor.id, card_id=card.id, target_id=tid,
+                                  mode=mode_idx, label=label))
     return out
 
 
@@ -1534,10 +1662,22 @@ def _counter_filter(effects) -> Optional[str]:
     return None
 
 
+def _side_options(st: GameState, side):
+    """[(creature_id, label)] of the living creatures a target on `side` may pick."""
+    if side == "enemy":
+        return [(e.id, e.name) for e in st.living_enemies()]
+    if side == "ally":
+        return [(c.id, c.name) for c in (st.living_party() + st.living_tokens())]
+    if side == "any":
+        return [(c.id, c.name) for c in
+                (st.living_enemies() + st.living_party() + st.living_tokens())]
+    return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)
+
+
 def _target_options_for(st: GameState, effects):
-    """[(target_id, target_label)] for one set of effects. A counter targets a
-    matching enemy action on the stack; otherwise the primary targeted effect's
-    side decides the creature options; self/all/untargeted needs no choice."""
+    """[(target_id, target_label)] for the card's single primary target. A counter
+    targets a matching enemy action on the stack; otherwise the first targeted
+    effect's side decides the creature options; self/all/untargeted needs none."""
     filt = _counter_filter(effects)
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
@@ -1548,14 +1688,35 @@ def _target_options_for(st: GameState, effects):
         if desc is not None and not isinstance(desc, str) and getattr(desc, "targeted", False):
             side = desc.side.value
             break
-    if side == "enemy":
-        return [(e.id, e.name) for e in st.living_enemies()]
-    if side == "ally":
-        return [(c.id, c.name) for c in (st.living_party() + st.living_tokens())]
-    if side == "any":
-        return [(c.id, c.name) for c in
-                (st.living_enemies() + st.living_party() + st.living_tokens())]
-    return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)
+    return _side_options(st, side)
+
+
+def _target_sites(effects, card: Card):
+    """Ordered independent target sites for a mode's TOP-LEVEL effects. Each
+    top-level chosen+targeted direct descriptor is its own site (an independent
+    target — e.g. Agony Warp's two wounds); each distinct slot ref is one shared
+    site. conditional/modal/self/all/untargeted contribute none, so a conditional's
+    nested effects reuse the primary (first) target. Returns [(key, side)] where
+    key is ('slot', name) or ('eff', id(effect)). Used by enumeration AND
+    resolution, so site order matches between them."""
+    sites = []
+    seen_slots = set()
+    for e in effects:
+        if e.kind in ("conditional", "modal"):
+            continue
+        desc = getattr(e, "target", None)
+        if isinstance(desc, str):  # "$T1" slot ref
+            name = desc[1:]
+            if name in seen_slots:
+                continue
+            seen_slots.add(name)
+            sd = card.targets.get(name) if card is not None else None
+            side = sd.side.value if sd is not None and sd.side is not None else "any"
+            sites.append((("slot", name), side))
+        elif (desc is not None and getattr(desc, "targeted", False)
+              and getattr(desc, "mode", None) == TargetMode.chosen):
+            sites.append((("eff", id(e)), desc.side.value))
+    return sites
 
 
 # --------------------------------------------------------------------------- #
