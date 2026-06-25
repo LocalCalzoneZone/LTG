@@ -31,6 +31,39 @@ def test_modal_render():
         "Choose one — • Deal 3 damage to an enemy. • Draw 2 card(s)."
 
 
+def test_modal_choose_count_render():
+    modes = [
+        {"effects": [{"kind": "deal_damage", "amount": 3, "target": ENEMY}]},
+        {"effects": [{"kind": "draw", "amount": 2, "target": {"mode": "self"}}]},
+        {"effects": [{"kind": "scry", "amount": 1, "target": {"mode": "self"}}]},
+    ]
+    assert render_effects(card([{"kind": "modal", "choose": 2, "modes": modes}]).effects) \
+        .startswith("Choose two — ")
+    assert render_effects(card([{"kind": "modal", "choose": 1, "or_more": True,
+                                 "modes": modes}]).effects).startswith("Choose one or more — ")
+
+
+def test_modal_choose_cannot_exceed_modes():
+    with pytest.raises(ValidationError):
+        card([{"kind": "modal", "choose": 3, "modes": [
+            {"effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]},
+            {"effects": [{"kind": "scry", "amount": 1, "target": {"mode": "self"}}]},
+        ]}])
+
+
+def test_strip_intent_shared_slot_render():
+    """Recoil-style: strip_intent in a shared slot reads grammatically and never
+    leaks the raw '$slot' reference (regression for the reported bug)."""
+    c = card([{"kind": "bounce", "target": "$T1"},
+              {"kind": "strip_intent", "target": "$T2"}],
+             targets={"T1": {"mode": "chosen", "side": "any"},
+                      "T2": {"mode": "chosen", "side": "any", "exclude_self": True}})
+    out = render_effects(c.effects, c.targets)
+    assert out == ("Choose a target: they are returned to hand. "
+                   "Choose another target: they lose their telegraphed intent.")
+    assert "$" not in out
+
+
 def test_modal_requires_two_modes():
     with pytest.raises(ValidationError):
         card([{"kind": "modal", "modes": [

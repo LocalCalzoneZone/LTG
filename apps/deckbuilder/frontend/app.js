@@ -460,7 +460,7 @@ const KINDS = () => Object.keys(EFFECT_SPECS).sort();
 // A fresh editor row (flat). modal/conditional are bare markers — the rows below
 // them supply the grouped effects (see flatten/rebuild). Leaves are full effects.
 function newItem(kind) {
-  if (kind === "modal") return { kind: "modal", label: "" };
+  if (kind === "modal") return { kind: "modal", label: "", choose: 1, or_more: false };
   if (kind === "conditional") return { kind: "conditional", condition: { kind: "cast_mode", mode: "reaction" } };
   return defaultEffect(kind);
 }
@@ -580,8 +580,11 @@ function flattenEffects(effects) {
   const items = [];
   for (const e of effects || []) {
     if (e.kind === "modal") {
+      // The 'choose' count belongs to the whole modal; replicate it onto every
+      // mode-marker so the controls (shown on the first marker) round-trip.
       for (const m of e.modes || []) {
-        items.push({ kind: "modal", label: m.label || "" });
+        items.push({ kind: "modal", label: m.label || "",
+                     choose: e.choose ?? 1, or_more: e.or_more ?? false });
         (m.effects || []).forEach((inner) => items.push(clone(inner)));
       }
     } else if (e.kind === "conditional") {
@@ -602,7 +605,12 @@ function rebuildEffects(items) {
       cond = null;
       mode = { label: it.label || "", effects: [] };
       if (modal) { modal.modes.push(mode); }
-      else { modal = { kind: "modal", modes: [mode] }; out.push(modal); }
+      else {
+        // First marker of the group carries the modal's choose count.
+        modal = { kind: "modal", modes: [mode],
+                  choose: it.choose ?? 1, or_more: it.or_more ?? false };
+        out.push(modal);
+      }
     } else if (it.kind === "conditional") {
       modal = null; mode = null;
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
@@ -666,11 +674,17 @@ function effectRowHtml(e, i, card, scoped) {
       <button class="eff-remove danger" data-i="${i}" title="Remove">✕</button></span>`;
 
   if (e.kind === "modal") {
+    // The "choose N" count applies to the whole modal — show it on the first
+    // mode-marker of the group only.
+    const isFirstModal = !editorItems.slice(0, i).some((x) => x.kind === "modal");
+    const chooseCtl = isFirstModal ? `
+          <label class="inline">choose <input type="number" min="1" class="modal-choose" data-i="${i}" value="${e.choose ?? 1}" /></label>
+          <label class="inline mini"><input type="checkbox" class="modal-ormore" data-i="${i}" ${e.or_more ? "checked" : ""}/> or more</label>` : "";
     return `<div class="effect-row marker">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">
-          <span class="marker-note">choose-one option — effects below (until the next block) are this option</span>
-          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>
+          <span class="marker-note">choose option — effects below (until the next block) are this option</span>
+          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}
         </div></div>`;
   }
   if (e.kind === "conditional") {
@@ -859,6 +873,8 @@ function wireDetail(idx) {
 
   // Modal label + conditional condition builder
   document.querySelectorAll(".modal-label").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].label = inp.value; commitEffects(idx, false); }; });
+  document.querySelectorAll(".modal-choose").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].choose = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
+  document.querySelectorAll(".modal-ormore").forEach((cb) => { cb.onchange = () => { editorItems[+cb.dataset.i].or_more = cb.checked; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-kind").forEach((sel) => {
     sel.onchange = () => {
       editorItems[+sel.dataset.i].condition = sel.value === "cast_mode"

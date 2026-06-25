@@ -303,6 +303,11 @@ function targetNode(node) {
 
 function menuEntry(entry) {
   const wrap = el("div", "menu-entry");
+  if (entry.kind === "prompt" || (entry.index == null && !entry.targets)) {
+    // A non-clickable header — e.g. "Choose a card to move (N more)".
+    wrap.append(el("div", "menu-prompt muted", entry.label));
+    return wrap;
+  }
   if (entry.index != null && !entry.targets) {
     const b = el("button", "act", entry.label);
     b.onclick = () => act(entry.index);

@@ -319,6 +319,15 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
     an `index` into the legal list; a submenu entry carries `targets` (each with
     its own index). Mirrors the text UI's grouping — presentation, no rules."""
     indexed = list(enumerate(actions))
+    # A mid-resolution card-move choice replaces the whole menu with its picks.
+    card_choices = [(i, a) for i, a in indexed if a.kind == "choose_card"]
+    if card_choices:
+        pc = state.pending_choice
+        prompt = (f"Choose a card to move ({pc.need} more)" if pc is not None
+                  else "Choose a card to move")
+        return [{"label": prompt, "kind": "prompt"}] + [
+            {"label": a.label, "index": i, "kind": "choose_card"} for i, a in card_choices]
+
     mana = [(i, a) for i, a in indexed if a.kind == "choose_mana"]
     attacks = [(i, a) for i, a in indexed if a.kind == "attack"]
     casts = [(i, a) for i, a in indexed if a.kind == "cast"]

@@ -430,12 +430,23 @@ def _token_phrase(e) -> str:
     return f"{e.count} {stats}{name} allies{kw}"
 
 
+_NUM_WORD = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+             6: "six", 7: "seven", 8: "eight", 9: "nine"}
+
+
+def _count_word(n: int) -> str:
+    return _NUM_WORD.get(n, str(n))
+
+
 def _render_modal(e) -> str:
     parts = []
     for m in e.modes:
         label = f"{m.label}: " if m.label else ""
         parts.append(f"• {label}{render_effects(m.effects)}")
-    return "Choose one — " + " ".join(parts)
+    choose = _count_word(getattr(e, "choose", 1))
+    if getattr(e, "or_more", False):
+        choose += " or more"
+    return f"Choose {choose} — " + " ".join(parts)
 
 
 # --------------------------------------------------------------------------- #
@@ -627,6 +638,15 @@ _CLAUSE = {
     "stun": lambda e: f"are stunned for {e.intents} intent(s)",
     "grant_keyword": lambda e: f"gain {_keyword_phrase(e.keywords, e.params)}",
     "remove_keyword": lambda e: f"lose {_keyword_phrase(e.keywords, e.params)}",
+    # Other targetable effects need subjectless phrases too, or the shared-target
+    # ("Choose X: they …") path falls back to the direct renderer and leaks the
+    # raw "$slot" reference with the wrong subject.
+    "strip_intent": lambda e: "lose their telegraphed intent",
+    "taunt": lambda e: "must target you this turn",
+    "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
+    "protection": lambda e: f"gain protection ({e.scope})",
+    "counters": lambda e: f"gain +{e.power}/+{e.toughness} counters",
+    "prevent": lambda e: f"have {_prevent_phrase(e.parameter)} prevented",
 }
 
 

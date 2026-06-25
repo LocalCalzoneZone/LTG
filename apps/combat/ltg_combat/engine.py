@@ -47,6 +47,7 @@ from .state import (
     Event,
     GameState,
     Intent,
+    PendingChoice,
     StackItem,
     TokenState,
 )
@@ -112,6 +113,11 @@ def _advance(st: GameState) -> None:
     while True:
         _check_end(st)
         if st.result is not None:
+            return
+
+        # A mid-resolution card-move choice pauses everything until it is made.
+        if st.pending_choice is not None:
+            st.priority = st.pending_choice.chooser_id
             return
 
         # A non-empty stack means a reaction window is open: a player must
@@ -475,6 +481,7 @@ def _apply(st: GameState, action: Action) -> None:
         "defend": _do_defend,
         "parry": _do_parry,
         "choose_mana": _do_choose_mana,
+        "choose_card": _do_choose_card,
         "drop_channels": _do_drop_channels,
     }[action.kind]
     handler(st, action)
@@ -485,6 +492,28 @@ def _do_choose_mana(st: GameState, action: Action) -> None:
     char = st.character(action.actor_id)
     _lock_capacity(st, char, action.color, auto=False)
     st.priority = None
+
+
+def _do_choose_card(st: GameState, action: Action) -> None:
+    """Apply one pick of a mid-resolution card-move choice. Moves the chosen card,
+    then either keeps prompting (more to move) or resumes the rest of the spell."""
+    pc = st.pending_choice
+    char = st.character(pc.chooser_id)
+    card = pc.candidates[action.choice]
+    _place_card(st, char, pc.effect, card)
+    pc.candidates = [c for c in pc.candidates if c is not card]
+    pc.need -= 1
+    if pc.need > 0 and pc.candidates:
+        return  # still choosing — pending_choice stays (picked card removed)
+    # This move is done: shuffle if asked, then resume the item's remaining effects
+    # (which may itself raise the next choice).
+    item, eff, remaining = pc.item, pc.effect, pc.remaining
+    st.pending_choice = None
+    _move_shuffle(st, char, eff)
+    _resolve_effect_list(st, item, remaining, _new_ctx(st, item))
+    if st.pending_choice is None:
+        _process_breaks(st)
+        st.priority = None
 
 
 def _do_pass(st: GameState, action: Action) -> None:
@@ -623,11 +652,16 @@ def _resolve_top(st: GameState) -> None:
     if item.card is not None and item.card.timing == Timing.channeled:
         _start_channel(st, item)
         return
-    ctx: dict = {}  # dynamic references gathered during this resolution
+    ctx = _new_ctx(st, item)
+    _resolve_effect_list(st, item, item.effects, ctx)
+
+
+def _new_ctx(st: GameState, item: StackItem) -> dict:
+    """A fresh per-resolution context: mana capacity for `mana_capacity` values and
+    the per-site target bindings for an independent multi-target card."""
+    ctx: dict = {}
     src = st.character(item.source_id)
-    ctx["capacity"] = src.capacity if src is not None else 0  # for `mana_capacity` values
-    # Independent multi-target card: bind each top-level site to its own chosen
-    # target (the order matches enumeration's `_target_sites`).
+    ctx["capacity"] = src.capacity if src is not None else 0
     if item.targets:
         top = item.effects
         modal = next((e for e in item.effects if e.kind == "modal"), None)
@@ -635,7 +669,25 @@ def _resolve_top(st: GameState) -> None:
             top = _effects_of_mode(item, modal)
         ctx["site_target"] = {key: tid for (key, _side), tid
                               in zip(_target_sites(top, item.card), item.targets)}
-    for effect in item.effects:
+    return ctx
+
+
+def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> None:
+    """Resolve a stack item's top-level effects in order. When a top-level
+    move_card needs the player to pick which cards move (more legal candidates than
+    it moves), pause: record a PendingChoice with the not-yet-resolved effects and
+    return. `_do_choose_card` performs the move and resumes here. Effects nested in
+    a conditional/modal keep auto-picking (handled inside `_resolve_effect`)."""
+    for i, effect in enumerate(effects):
+        if getattr(effect, "kind", None) == "move_card" and getattr(effect, "trigger", None) is None:
+            char = st.character(item.source_id)
+            if char is not None:
+                cands = _move_candidates(char, effect, ctx)
+                if len(cands) > effect.count:  # a genuine "which cards?" choice
+                    st.pending_choice = PendingChoice(
+                        chooser_id=char.id, effect=effect, candidates=cands,
+                        need=effect.count, remaining=list(effects[i + 1:]), item=item)
+                    return
         _resolve_effect(st, item, effect, ctx)
 
 
@@ -1017,58 +1069,70 @@ def _move_card_matches(card, effect) -> bool:
     return True
 
 
-def _r_move_card(st, item, effect, target, ctx):
-    """Move card(s) between this character's zones. The engine is deterministic, so a
-    'search' picks matching cards in source order (no interactive choice)."""
-    char = target
+def _move_candidates(char, effect, ctx):
+    """Filter-matched cards eligible to move for `effect`, in source order. The
+    interactive picker and the deterministic auto path share this."""
     src = effect.source
-    # Candidate cards (still in their source list) for each source zone.
     if src == "drawn":
-        drawn = ctx.get("drawn_cards", [])
-        candidates = [c for c in drawn if c in char.hand]
+        pool = [c for c in ctx.get("drawn_cards", []) if c in char.hand]
     elif src == "library_top":
-        candidates = list(char.library[: effect.count])
+        pool = list(char.library[: effect.count])
     elif src == "library_bottom":
-        candidates = list(char.library[-effect.count:]) if effect.count else []
+        pool = list(char.library[-effect.count:]) if effect.count else []
     elif src == "library":              # search anywhere
-        candidates = list(char.library)
+        pool = list(char.library)
     elif src in ("hand", "graveyard", "exile"):
-        candidates = list(getattr(char, src))
+        pool = list(getattr(char, src))
     else:
-        candidates = []
+        pool = []
+    return [c for c in pool if _move_card_matches(c, effect)]
 
-    chosen = [c for c in candidates if _move_card_matches(c, effect)][: effect.count]
-    if not chosen:
-        _log(st, "move_card_empty",
-             f"{char.name} finds no matching card to move ({src} → {effect.destination}).",
-             character=char.id, source=src, destination=effect.destination)
-        return
 
-    # Remove from whichever zone each chosen card currently lives in, then place it.
+def _place_card(st, char, effect, card, ctx=None):
+    """Remove `card` from whichever zone it lives in and place it at the effect's
+    destination, logging the move."""
+    for zone in (char.hand, char.library, char.graveyard, char.exile):
+        if card in zone:
+            zone.remove(card)
+            break
+    if ctx is not None and card in ctx.get("drawn_cards", []):
+        ctx["drawn_cards"].remove(card)
     dest_list = {
         "hand": char.hand, "graveyard": char.graveyard, "exile": char.exile,
         "library_top": char.library, "library_bottom": char.library,
         "library_shuffle": char.library,
     }[effect.destination]
-    for card in chosen:
-        for zone in (char.hand, char.library, char.graveyard, char.exile):
-            if card in zone:
-                zone.remove(card)
-                break
-        if src == "drawn" and card in ctx.get("drawn_cards", []):
-            ctx["drawn_cards"].remove(card)
-        if effect.destination == "library_top":
-            dest_list.insert(0, card)
-        else:
-            dest_list.append(card)
-        _log(st, "move_card",
-             f"{char.name} moves {card.name} ({src} → {effect.destination}).",
-             character=char.id, card=card.id, card_name=card.name,
-             source=src, destination=effect.destination)
+    if effect.destination == "library_top":
+        dest_list.insert(0, card)
+    else:
+        dest_list.append(card)
+    _log(st, "move_card",
+         f"{char.name} moves {card.name} ({effect.source} → {effect.destination}).",
+         character=char.id, card=card.id, card_name=card.name,
+         source=effect.source, destination=effect.destination)
 
+
+def _move_shuffle(st, char, effect):
     if effect.shuffle_after or effect.destination == "library_shuffle":
         # Deterministic engine: a shuffle is a logged no-op (order already fixed).
         _log(st, "shuffle", f"{char.name} shuffles their library.", character=char.id)
+
+
+def _r_move_card(st, item, effect, target, ctx):
+    """Move card(s) between this character's zones — the deterministic auto path
+    (no genuine choice, or nested in a conditional/modal): take matching cards in
+    source order. The interactive prompt is handled by `_resolve_effect_list`."""
+    char = target
+    chosen = _move_candidates(char, effect, ctx)[: effect.count]
+    if not chosen:
+        _log(st, "move_card_empty",
+             f"{char.name} finds no matching card to move "
+             f"({effect.source} → {effect.destination}).",
+             character=char.id, source=effect.source, destination=effect.destination)
+        return
+    for card in chosen:
+        _place_card(st, char, effect, card, ctx)
+    _move_shuffle(st, char, effect)
 
 
 def _r_create_token(st, item, effect, target, ctx):
@@ -1532,12 +1596,40 @@ _COLOR_NAME = {"W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green"
 
 
 def _legal(st: GameState) -> List[Action]:
+    if st.pending_choice is not None:
+        return _legal_choice(st)
     actor = st.character(st.priority)
     if actor is None:
         return []
     if st.phase == "capacity" and not st.stack:
         return _legal_capacity(st, actor)
     return _legal_react(st, actor) if st.stack else _legal_main(st, actor)
+
+
+# Destination phrasing for a card-move choice's button label.
+_MOVE_DEST_LABEL = {
+    "hand": "into your hand", "library_top": "on top of your library",
+    "library_bottom": "on the bottom of your library",
+    "library_shuffle": "into your library", "graveyard": "into your graveyard",
+    "exile": "into exile",
+}
+
+
+def _move_choice_label(effect, card) -> str:
+    """The button text for picking `card` for a move_card choice — 'Discard X' for
+    a hand→graveyard move, otherwise 'Move X <destination>'."""
+    if effect.source == "hand" and effect.destination == "graveyard":
+        return f"Discard {card.name}"
+    return f"Move {card.name} {_MOVE_DEST_LABEL.get(effect.destination, '')}".strip()
+
+
+def _legal_choice(st: GameState) -> List[Action]:
+    """A mandatory mid-resolution card pick: one action per candidate (no pass —
+    the move must be made while legal cards remain)."""
+    pc = st.pending_choice
+    return [Action("choose_card", pc.chooser_id, choice=i,
+                   label=_move_choice_label(pc.effect, card))
+            for i, card in enumerate(pc.candidates)]
 
 
 def _legal_capacity(st: GameState, actor: CharacterState) -> List[Action]:

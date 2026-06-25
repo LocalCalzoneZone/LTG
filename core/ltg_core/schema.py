@@ -538,10 +538,21 @@ class Mode(BaseModel):
 
 
 class Modal(EffectBase):
-    """Choose one — the card may be cast for any one of its modes."""
+    """A 'Choose N' card: pick `choose` of its modes at cast (or `choose` or more
+    when `or_more` is set). Defaults to the classic 'Choose one'."""
 
     kind: Literal["modal"] = "modal"
     modes: List[Mode] = Field(min_length=2)
+    choose: int = 1            # how many modes the caster picks
+    or_more: bool = False      # "choose N or more" (choose is then the minimum)
+
+    @model_validator(mode="after")
+    def _check_choose(self) -> "Modal":
+        if self.choose < 1:
+            raise ValueError("modal 'choose' must be >= 1")
+        if self.choose > len(self.modes):
+            raise ValueError("modal 'choose' cannot exceed the number of modes")
+        return self
 
 
 class CastModeCondition(BaseModel):

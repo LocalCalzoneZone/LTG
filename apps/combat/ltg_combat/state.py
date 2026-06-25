@@ -243,12 +243,13 @@ class Action:
     # Warp). Ordered by target site; targets[0] mirrors target_id (the primary).
     # Empty for single-target cards, which use target_id alone.
     targets: Tuple[str, ...] = ()
+    choice: Optional[int] = None  # picked candidate handle, for a choose_card action
     label: str = ""
 
     def key(self) -> tuple:
         """Identity used to match a chosen action against the legal set."""
         return (self.kind, self.actor_id, self.card_id, self.target_id,
-                self.color, self.mode, self.targets)
+                self.color, self.mode, self.targets, self.choice)
 
 
 @dataclass
@@ -259,6 +260,25 @@ class Event:
     type: str
     msg: str
     data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PendingChoice:
+    """A mid-resolution prompt: the chooser must pick which card(s) a move_card
+    effect moves. Set on the GameState to pause the flow (like the capacity-colour
+    choice); cleared once `need` picks are made, then resolution of `remaining`
+    (the stack item's not-yet-resolved top-level effects) resumes.
+
+    `candidates` holds live references to the same Card objects that sit in the
+    chooser's zones — `copy.deepcopy(state)` preserves that sharing via its memo,
+    so a picked card is removed from the right zone by identity."""
+
+    chooser_id: str
+    effect: "Effect"                     # the move_card effect being resolved
+    candidates: List["Card"]             # the cards the chooser may pick from
+    need: int                            # cards still to move
+    remaining: List["Effect"]            # effects to resolve after this move completes
+    item: "StackItem"                    # the originating stack item (to resume on)
 
 
 @dataclass
@@ -278,6 +298,7 @@ class GameState:
     acted_enemies: List[str] = field(default_factory=list)
     acted_tokens: List[str] = field(default_factory=list)
     pending_break: List[str] = field(default_factory=list)  # channelers owed a break
+    pending_choice: Optional["PendingChoice"] = None  # mid-resolution card-move choice
     result: Optional[str] = None      # None | "victory" | "defeat"
     log: List[Event] = field(default_factory=list)
 
