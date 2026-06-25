@@ -217,6 +217,7 @@ KEYWORDS = {
     "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
     "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
+    "haste": {"display": "Haste", "gloss": "may take its proactive action and also make a free voluntary move this turn (the move still resolves at End step)", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},

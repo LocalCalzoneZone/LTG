@@ -60,7 +60,6 @@ class CharacterState:
     archetype: str = ""  # display-only label; the engine derives no stats from it
     attack_mode: str = "melee"  # melee | ranged (R-1/R-3) — drives reachability
     level: int = 1              # ordering / level-gates (R-6)
-    parry_reduce: int = 2  # how much this character's Parry reduces a hit by
     hand: List[Card] = field(default_factory=list)
     library: List[Card] = field(default_factory=list)  # ordered; top == index 0
     graveyard: List[Card] = field(default_factory=list)  # spent / channelled cards (R-9)
@@ -69,13 +68,20 @@ class CharacterState:
     mana_colors: List[str] = field(default_factory=list)  # one per capacity slot
     pool: List[str] = field(default_factory=list)        # spendable mana this turn
     channels: List[Channel] = field(default_factory=list)
+    # Position model (Design Update 02 §M-B). `row` is the *current* (physical) row —
+    # what intents and the melee wall read; it changes only at End step. `committed`
+    # is what this character's OWN actions/reactions read (Mitigate adjacency); forced
+    # moves write it immediately. `pending_voluntary` holds a chosen Move's destination,
+    # resolved into `row` at End step (it grants no reach mid-turn).
     row: str = "front"
+    committed: str = "front"
+    pending_voluntary: Optional[str] = None
 
     # Unified HP model (Design Update R-7): damage reduces `hp` directly; `temp_mod`
     # is the net of end-of-turn pump (+) / wound (−) modifiers and expires at End.
     # Lethality is checked on effective_hp = hp + temp_mod.
     temp_mod: int = 0
-    prevent_pool: int = 0     # numeric pre-damage reduction (Parry)
+    prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
     prevent_tags: List[str] = field(default_factory=list)  # nullifiers (R-11 prevent)
     power_bonus: int = 0      # temporary Power (pump +, wound −)
     protection: int = 0       # negates the next N spells/attacks (protection)
@@ -87,8 +93,8 @@ class CharacterState:
     # Per-round / per-turn flags (reset at upkeep).
     used_attack: bool = False
     used_defend: bool = False
-    used_parry: bool = False
-    acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" this turn
+    used_mitigate: bool = False
+    acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" | "move" this turn
     turn_ended: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
 
@@ -221,6 +227,11 @@ class StackItem:
     mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
     attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
+    # A declared Mitigate on this attack (Update 02 §M-A): `mitigate_by` is the
+    # mitigator's id, `mitigate_for` the protected character (== mitigate_by for self
+    # mode, an ally's id for interception). Applied per hit at resolution.
+    mitigate_by: Optional[str] = None
+    mitigate_for: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #

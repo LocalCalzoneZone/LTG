@@ -25,7 +25,7 @@ def test_channeling_scenario_passes():
     """The §C channeling hand-trace reproduces every asserted state (the proof)."""
     state = run_channeling_scenario(verbose=False)
     # Channeling-specific end state: channels broke, Mira survived the breaking hit.
-    assert state.party[0].hp == 4
+    assert state.party[0].hp == 5
     assert state.party[0].channels == []
 
 

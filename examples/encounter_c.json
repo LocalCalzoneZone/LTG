@@ -22,7 +22,7 @@
       "level": 4,
       "intent": {
         "name": "Crush",
-        "amount": 5,
+        "amount": 4,
         "action_type": "ability",
         "intent_type": "attack",
         "targeting": "mira",

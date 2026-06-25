@@ -10,6 +10,7 @@ layout. It also emits a raw, recursive dump of every entity for the inspector.
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections import Counter
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -115,6 +116,11 @@ def _status_tags(char) -> List[str]:
     return tags
 
 
+def _mitigate_value(char) -> int:
+    """X = ceil(current Power / 2) — the per-hit Mitigate reduction (Update 02 §M-A.2)."""
+    return math.ceil(max(0, char.current_power) / 2)
+
+
 def _character_dict(state: GameState, char) -> Dict[str, Any]:
     return {
         "id": char.id,
@@ -131,9 +137,11 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "level": char.level,
         "capacity": char.capacity,
         "row": char.row,
+        "committed": char.committed,
+        "pending_voluntary": char.pending_voluntary,
+        "mitigate_value": _mitigate_value(char),
         "temp_mod": char.temp_mod,
         "prevent_pool": char.prevent_pool,
-        "parry_reduce": char.parry_reduce,
         "acted_mode": char.acted_mode,
         "turn_ended": char.turn_ended,
         "mana": _mana_by_color(char),
@@ -154,8 +162,9 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
                           "text": f"Deal {char.attack_mode} damage equal to Power ({char.current_power})."},
             "defensive_action": {"name": "Defend",
                                  "text": "Gain temporary HP — a buffer that fades at end of turn."},
-            "defensive_reaction": {"name": "Parry",
-                                   "text": f"Reduce an incoming hit aimed at you by {char.parry_reduce}."},
+            "defensive_reaction": {"name": "Mitigate",
+                                   "text": f"Reduce each hit of an incoming attack by ceil(Power/2) = "
+                                           f"{_mitigate_value(char)}; or intercept for an adjacent ally."},
         },
         "raw": to_jsonable(char),
     }
@@ -330,9 +339,11 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
 
     mana = [(i, a) for i, a in indexed if a.kind == "choose_mana"]
     attacks = [(i, a) for i, a in indexed if a.kind == "attack"]
+    moves = [(i, a) for i, a in indexed if a.kind == "move"]
+    mitigates = [(i, a) for i, a in indexed if a.kind == "mitigate"]
     casts = [(i, a) for i, a in indexed if a.kind == "cast"]
     others = [(i, a) for i, a in indexed
-              if a.kind in ("defend", "parry", "pass", "end_turn", "drop_channels")]
+              if a.kind in ("defend", "pass", "end_turn", "drop_channels")]
 
     entries: List[Dict[str, Any]] = []
     for i, a in mana:
@@ -345,6 +356,17 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
         entries.append({"label": "Attack — choose enemy", "kind": "attack",
                         "targets": [{"label": _target_label(state, a), "index": i}
                                     for i, a in attacks]})
+
+    # Mitigate (self / adjacent ally) and Move (choose row) — each a target submenu.
+    if len(mitigates) == 1:
+        i, a = mitigates[0]
+        entries.append({"label": a.label, "index": i, "kind": "mitigate"})
+    elif mitigates:
+        entries.append({"label": "Mitigate — choose who", "kind": "mitigate",
+                        "targets": [{"label": a.label, "index": i} for i, a in mitigates]})
+    if moves:
+        entries.append({"label": "Move — choose row", "kind": "move",
+                        "targets": [{"label": a.label, "index": i} for i, a in moves]})
 
     # Group by (card, modal mode): a modal card offers one entry per mode (chosen
     # at cast), and a multi-target card collapses its targets into a sub-menu.

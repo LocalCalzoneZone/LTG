@@ -205,6 +205,16 @@ function renderEnemies() {
   });
 }
 
+// Position readout (Update 02 §M-B): current row, plus the committed row (⊕) when it
+// differs and a queued voluntary move (→) when one is pending.
+function posLabel(c) {
+  const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+  let s = cap(c.row);
+  if (c.committed && c.committed !== c.row) s += ` ⊕${cap(c.committed)}`;
+  if (c.pending_voluntary) s += ` →${cap(c.pending_voluntary)}`;
+  return s;
+}
+
 function renderParty() {
   const lane = $("#party"); lane.innerHTML = "";
   STATE.party.forEach((c) => {
@@ -213,7 +223,10 @@ function renderParty() {
 
     const head = el("div", "unit-head");
     const left = el("span", "unit-name", (c.id === STATE.acting_id ? "▶ " : "") + c.name);
-    head.append(left, el("span", "unit-sub", `${c.archetype} · ${c.row}`));
+    const sub = el("span", "unit-sub", `${c.archetype} · ${posLabel(c)}`);
+    sub.title = "Position — current row (what intents/the wall hit). ⊕ = committed row "
+              + "(reach/Mitigate adjacency). → = a queued move that resolves at End step.";
+    head.append(left, sub);
     box.append(head, hpbar(c.hp, c.max_hp, false));
 
     box.append(manaRow(c));

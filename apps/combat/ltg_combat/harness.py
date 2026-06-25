@@ -187,10 +187,11 @@ def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = 
     _say("TURN 1 — Cinder's Ember lands; Mira parries Maul's Crush (no break)")
     state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 2 → Mira 13
     _check("Mira HP 13 after Ember 2", state.character("mira").hp == 13)
-    state, _ = _do(state, kind="parry", actor_id="mira")  # Crush 5 → reduced to 3
+    # Crush 4, mitigated by X=ceil(Mira Power 1 / 2)=1 → 3 lands (under the break threshold).
+    state, _ = _do(state, kind="mitigate", actor_id="mira", target_id="mira")
     state = _pass_window(state)
     (mira,) = state.party
-    _check("Mira HP 10 after the parried Crush", mira.hp == 10)
+    _check("Mira HP 10 after the mitigated Crush", mira.hp == 10)
     _check("Both channels survive (3 < break threshold 4)", len(mira.channels) == 2)
     _check("Now Turn 2", state.turn == 2)
 
@@ -216,9 +217,9 @@ def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = 
     _say("TURN 2 — Cinder's Ember does 0; Mira takes Maul's Crush (break)")
     state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 0 → Mira unchanged
     _check("Mira HP 9 after Ember 0", state.character("mira").hp == 9)
-    state, _ = _do(state, kind="pass", actor_id="mira")  # take Crush 5 → break (5 ≥ 4)
+    state, _ = _do(state, kind="pass", actor_id="mira")  # take Crush 4 unmitigated → break (4 ≥ 4)
     (mira,) = state.party
-    _check("Mira HP 4 after Crush 5", mira.hp == 4)
+    _check("Mira HP 5 after Crush 4", mira.hp == 5)
     _check("All channels broke (0 held)", len(mira.channels) == 0)
     _check("Cinder's wound lifted on break (Power back to 0)",
            state.enemy("cinder").power_bonus == 0)

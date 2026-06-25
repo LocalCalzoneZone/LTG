@@ -135,7 +135,7 @@ SCENARIO_C: Dict[str, Any] = {
                     "intent_type": "attack", "targeting": "lowest_hp_party", "mode": "melee"}},
         # Maul goes for the caster directly, ignoring tokens.
         {"id": "maul", "name": "Maul", "hp": 10, "level": 4,
-         "intent": {"name": "Crush", "amount": 5, "action_type": "ability",
+         "intent": {"name": "Crush", "amount": 4, "action_type": "ability",
                     "intent_type": "attack", "targeting": "mira", "mode": "melee"}},
     ],
 }
@@ -165,7 +165,7 @@ def state_from_dict(spec: Dict[str, Any]) -> GameState:
             archetype=p.get("archetype", ""), max_hp=int(p["hp"]), hp=int(p["hp"]),
             power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
-            parry_reduce=int(p.get("parry_reduce", 2)), row=p.get("row", "front"),
+            row=p.get("row", "front"), committed=p.get("row", "front"),
             attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
         ))
 

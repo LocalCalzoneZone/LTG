@@ -216,6 +216,7 @@ def _begin_turn(st: GameState) -> None:
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
+        c.committed = c.row  # Update 02 §M-B.5: begin the turn committed to where you stand
     for pending in list(st.pending_ramp):
         char = st.character(pending["char"])
         if char is not None:
@@ -279,7 +280,7 @@ def _upkeep_draws(st: GameState) -> None:
     for c in st.living_party():
         c.pool = _refreshed_pool(c)  # every unreserved locked colour spendable
         _draw(st, c, 1)
-        c.used_attack = c.used_defend = c.used_parry = False
+        c.used_attack = c.used_defend = c.used_mitigate = False
         c.acted_mode = None
         c.turn_ended = False
         _log(st, "mana_refresh",
@@ -431,6 +432,10 @@ def _end_step(st: GameState) -> None:
     for c in st.party:
         c.temp_mod = c.power_bonus = c.prevent_pool = 0
         c.prevent_tags = []
+        # Update 02 §M-B.5: the body catches up — a queued voluntary move wins, else
+        # wherever forced commitments left `committed`. Then clear the voluntary slot.
+        c.row = c.pending_voluntary if c.pending_voluntary is not None else c.committed
+        c.pending_voluntary = None
         _expire_keywords(c)
     for e in st.enemies:
         e.temp_mod = e.prevent_pool = e.power_bonus = 0
@@ -479,7 +484,8 @@ def _apply(st: GameState, action: Action) -> None:
         "attack": _do_attack,
         "cast": _do_cast,
         "defend": _do_defend,
-        "parry": _do_parry,
+        "mitigate": _do_mitigate,
+        "move": _do_move,
         "choose_mana": _do_choose_mana,
         "choose_card": _do_choose_card,
         "drop_channels": _do_drop_channels,
@@ -543,6 +549,8 @@ def _do_attack(st: GameState, action: Action) -> None:
     actor = st.character(action.actor_id)
     actor.acted_mode = "attack"
     actor.used_attack = True
+    if actor.attack_mode == "melee":  # Update 02 §M-B.3: stepping up commits you to Front
+        actor.committed = "front"
     hits = 2 if _has_kw(actor, "double_strike") else 1  # double strike: strikes twice
     effects = [DealDamage(amount=actor.current_power, target=t_chosen("enemy", targeted=True))
                for _ in range(hits)]
@@ -595,17 +603,59 @@ def _do_defend(st: GameState, action: Action) -> None:
          character=actor.id, temp_mod=actor.temp_mod)
 
 
-def _do_parry(st: GameState, action: Action) -> None:
-    """The free defensive reaction: reduce the incoming hit by the character's
-    Parry value. Reduction lowers the hit's size (so it can keep a hit under a
-    channel-break threshold)."""
+def _mitigate_value(combatant) -> int:
+    """X = ceil(current Power / 2) (Update 02 §M-A.2) — read at resolution, never 0
+    for a Power-1 character."""
+    return math.ceil(max(0, combatant.current_power) / 2)
+
+
+def _do_move(st: GameState, action: Action) -> None:
+    """The voluntary Move: queue a destination row (Update 02 §M-B.4). It writes the
+    `pending_voluntary` slot only — it grants no reach and the body relocates at End
+    step. Costs the proactive action unless the mover has haste (then it is free)."""
     actor = st.character(action.actor_id)
-    actor.used_parry = True
-    actor.prevent_pool += actor.parry_reduce
-    # Parry does not add to the stack; it buffs the defender, then passes.
-    _log(st, "parry", f"{actor.name} parries (reduces the incoming hit by {actor.parry_reduce}).",
-         character=actor.id)
+    actor.pending_voluntary = action.target_id  # the chosen destination row
+    if not _has_kw(actor, "haste"):
+        actor.acted_mode = "move"
+    st.priority = None
+    _log(st, "move", f"{actor.name} will move to {action.target_id} (resolves at End step).",
+         character=actor.id, destination=action.target_id)
+
+
+def _do_mitigate(st: GameState, action: Action) -> None:
+    """The free, once-per-turn defensive reaction (Update 02 §M-A): record the
+    declared Mitigate on the answered attack (applied per hit at resolution). In ally
+    mode it forces the mitigator's committed position onto the protected ally's row."""
+    actor = st.character(action.actor_id)
+    actor.used_mitigate = True
+    top = st.stack[-1]
+    top.mitigate_by = actor.id
+    top.mitigate_for = action.target_id
+    if action.target_id != actor.id:  # ally mode: interceding pulls you off position (§M-A.6)
+        ally = st.character(action.target_id)
+        if ally is not None:
+            actor.committed = ally.row
+        _log(st, "mitigate", f"{actor.name} mitigates for {ally.name if ally else action.target_id} "
+             f"(X={_mitigate_value(actor)}, moves to {actor.committed}).", character=actor.id,
+             target=action.target_id, value=_mitigate_value(actor))
+    else:
+        _log(st, "mitigate", f"{actor.name} mitigates (X={_mitigate_value(actor)}).",
+             character=actor.id, value=_mitigate_value(actor))
     _do_pass(st, Action(kind="pass", actor_id=actor.id))
+
+
+def _apply_mitigation(st: GameState, item: StackItem, target, amount: int):
+    """Apply a declared Mitigate to one attack hit (Update 02 §M-A.3). Returns the
+    (possibly redirected) target and the post-mitigation amount. Only the hits aimed
+    at the protected character are affected; X is read now (Power can have shifted)."""
+    if item.mitigate_by is None or target is None or _tid(target) != item.mitigate_for:
+        return target, amount
+    mitigator = st.character(item.mitigate_by)
+    if mitigator is None:
+        return target, amount
+    x = _mitigate_value(mitigator)
+    landing = mitigator if item.mitigate_for != item.mitigate_by else target  # ally → redirect
+    return landing, max(0, amount - x)
 
 
 def _do_drop_channels(st: GameState, action: Action) -> None:
@@ -1004,7 +1054,10 @@ def _value(amount, ctx: dict) -> int:
 
 # ---- one handler per effect primitive --------------------------------------- #
 def _r_deal_damage(st, item, effect, target, ctx):
-    _deal_damage(st, target, _value(effect.amount, ctx), source=item.label,
+    amount = _value(effect.amount, ctx)
+    if item.kind == "attack":  # Mitigate answers attack-type hits only (Update 02 §M-A.1)
+        target, amount = _apply_mitigation(st, item, target, amount)
+    _deal_damage(st, target, amount, source=item.label,
                  source_obj=st.combatant(item.source_id), damage_kind=item.kind)
 
 
@@ -1656,6 +1709,14 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
                                         f"Power {actor.current_power}){dbl}"))
     if mode is None and not actor.used_defend:  # Defend (the defensive action)
         actions.append(Action("defend", actor.id, label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
+    # Move (Update 02 §M-B.4): the proactive Move costs the action; haste makes one
+    # voluntary move free (offered alongside the normal action). Once per turn.
+    if actor.pending_voluntary is None and (mode is None or _has_kw(actor, "haste")):
+        free = " (free, haste)" if _has_kw(actor, "haste") else ""
+        for row in ("front", "mid", "rear"):
+            if row != actor.row:
+                actions.append(Action("move", actor.id, target_id=row,
+                                      label=f"Move to {row.capitalize()}{free}"))
     # Cast sorcery-speed spells (sorcery/channeled): after an Attack only if vigilant.
     if mode in (None, "cast") or (vig and mode == "attack"):
         for card in actor.hand:
@@ -1670,18 +1731,26 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
 
 
 def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
-    """An open reaction window: free instants, Parry, voluntary drop, or pass."""
+    """An open reaction window: free instants, Mitigate (self / adjacent ally),
+    voluntary drop, or pass."""
     actions: List[Action] = []
     for card in actor.hand:
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
     top = st.stack[-1]
-    # Parry is self-defence: only the character the incoming hit is aimed at may
-    # parry it (an ally cannot parry a blow directed at someone else).
-    if (not actor.used_parry and top.source_side == "enemy"
-            and top.kind in ("attack", "ability") and top.target_id == actor.id):
-        actions.append(Action("parry", actor.id, target_id=actor.id,
-                              label=f"Parry (reduce the incoming hit by {actor.parry_reduce})"))
+    # Mitigate (Update 02 §M-A): once per turn, answers an enemy attack-type action.
+    # Self mode if it targets the actor; ally mode for an ally it targets that is in
+    # an adjacent row to the actor's COMMITTED position (§M-A.5, §M-B.2).
+    x = _mitigate_value(actor)
+    if not actor.used_mitigate and top.source_side == "enemy" and top.kind == "attack":
+        if top.target_id == actor.id:
+            actions.append(Action("mitigate", actor.id, target_id=actor.id,
+                                  label=f"Mitigate self (−{x} per hit)"))
+        for ally in st.living_party():
+            if (ally.id != actor.id and top.target_id == ally.id
+                    and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
+                actions.append(Action("mitigate", actor.id, target_id=ally.id,
+                                      label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
     actions += _drop_actions(actor)
     actions.append(Action("pass", actor.id, label="Pass"))
     return actions
