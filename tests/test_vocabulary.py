@@ -111,6 +111,32 @@ def test_modal_other_mode_draws_instead_of_damaging():
     assert "filler" in [c.id for c in hero(after).hand]  # drew into hand
 
 
+def _modal_with_conditional():
+    # Choose one — [0] deal 2; [1] if the target is level 3+, destroy it.
+    return C("verdict", "instant", [{"kind": "modal", "choose": 1, "modes": [
+        {"label": "Singe", "effects": [
+            {"kind": "deal_damage", "amount": 2, "target": {"mode": "chosen", "side": "enemy", "targeted": True}}]},
+        {"label": "Smite", "effects": [
+            {"kind": "conditional",
+             "condition": {"kind": "target_property", "property": "level", "level": 3, "compare": "or_more"},
+             "effects": [{"kind": "destroy", "target": {"mode": "chosen", "side": "enemy", "targeted": True}}]}]},
+    ]}], colors={"W": 1})
+
+
+def test_modal_conditional_branch_fires_when_condition_holds():
+    # Pick mode 1 (Smite) on a level-3 orc → the nested conditional's destroy fires.
+    state = make_state([_modal_with_conditional()], enemy_hp=10, enemy_level=3)
+    after, _ = do(state, kind="cast", card_id="verdict", mode=1, target_id="orc")
+    assert after.enemy("orc") is None and after.result == "victory"
+
+
+def test_modal_conditional_branch_skips_when_condition_false():
+    # Same mode, but a level-2 orc fails the "level 3+" gate → it survives untouched.
+    state = make_state([_modal_with_conditional()], enemy_hp=10, enemy_level=2)
+    after, _ = do(state, kind="cast", card_id="verdict", mode=1, target_id="orc")
+    assert orc(after).hp == 10 and after.result is None
+
+
 def test_conditional_fires_only_when_condition_holds():
     # Deal 2; if cast as an action (proactively), deal 2 more.
     card = C("surge", "instant", [
@@ -161,11 +187,72 @@ def test_exile_removes_the_enemy():
     assert after.enemy("orc") is None and after.result == "victory"
 
 
+def _banish():
+    return C("banish_light", "channeled",
+             [{"kind": "exile", "target": "$T1", "duration": "while_channeled"}],
+             colors={"W": 1},
+             targets={"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
+
+
+def _enemy(eid, name, hp=10, level=3):
+    return {"id": eid, "name": name, "hp": hp, "level": level,
+            "intent": {"name": "Hit", "amount": 2, "action_type": "ability",
+                       "intent_type": "attack", "targeting": "lowest_hp_party"}}
+
+
+def test_channeled_exile_suspends_then_returns_on_break():
+    # A channeled exile suspends the enemy (out of play, but alive) while the channel
+    # holds; breaking concentration brings it back. A second enemy keeps the fight on.
+    state = make_state([_banish()], enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    after, _ = do(state, kind="cast", card_id="banish_light", target_id="orc")
+    assert after.enemy("orc") is not None and after.enemy("orc").exiled  # suspended, not killed
+    assert "orc" not in [e.id for e in after.living_enemies()]           # out of play
+    assert len(hero(after).channels) == 1 and after.result is None       # the Goblin fights on
+
+    after, _ = do(after, kind="drop_channels")                           # break the channel
+    assert not after.enemy("orc").exiled                                 # the Orc returns
+    assert "orc" in [e.id for e in after.living_enemies()]
+    assert hero(after).channels == []
+
+
+def test_channeled_exile_becomes_permanent_when_the_encounter_ends():
+    # Exiling the last enemy ends the encounter — it is permanently exiled, never
+    # restored (the rule: defeat everyone else while one is suspended → it's gone).
+    after, _ = do(make_state([_banish()]), kind="cast", card_id="banish_light", target_id="orc")
+    assert after.result == "victory"
+    assert after.enemy("orc").exiled and not after.living_enemies()
+    assert any(e.type == "permanent_exile" for e in after.log)
+
+
 def test_bounce_removes_the_enemy():
     card = C("unsummon", "instant", [{"kind": "bounce",
         "target": {"mode": "chosen", "side": "enemy", "targeted": True}}], colors={"U": 1})
     after, _ = do(make_state([card]), kind="cast", card_id="unsummon", target_id="orc")
     assert after.enemy("orc") is None
+
+
+def _pit_fight():
+    return C("pit_fight", "sorcery", [{"kind": "fight", "target": "$T1", "other": "$T2"}],
+             colors={"G": 1},
+             targets={"T1": {"mode": "chosen", "side": "ally", "targeted": True},
+                      "T2": {"mode": "chosen", "side": "enemy", "targeted": True}})
+
+
+def test_fight_deals_mutual_damage_equal_to_power():
+    # Each fighter deals its power to the other: hero(4) ↔ orc(power 2, from intent).
+    state = make_state([_pit_fight()], hero_power=4, enemy_hp=10, intent_amount=2)
+    after, _ = do(state, kind="cast", card_id="pit_fight", targets=("hero", "orc"))
+    assert after.enemy("orc").hp == 6   # took the hero's Power 4
+    assert hero(after).hp == 18         # took the orc's Power 2
+
+
+def test_fight_is_simultaneous_a_dying_creature_still_hits_back():
+    # Hero(10) kills the orc(5 HP), but the orc still deals its Power 3 back — fight
+    # damage is simultaneous (both powers are snapshotted before any HP changes).
+    state = make_state([_pit_fight()], hero_power=10, enemy_hp=5, intent_amount=3)
+    after, _ = do(state, kind="cast", card_id="pit_fight", targets=("hero", "orc"))
+    assert after.enemy("orc") is None and after.result == "victory"  # orc died
+    assert hero(after).hp == 17                                      # but hit back for 3
 
 
 def test_strip_intent_clears_the_declared_intent():

@@ -1,0 +1,20 @@
+{
+  "id": "pit_fight",
+  "name": "Pit Fight",
+  "source_name": "Pit Fight",
+  "rarity": "common",
+  "level": 2,
+  "type": "Sorcery",
+  "cost": { "generic": 1, "colors": { "G": 1 } },
+  "timing": "sorcery",
+  "original_text": "Target creature you control fights target creature you don't control. (Each deals damage equal to its power to the other.)",
+  "translated_text": "An ally fights an enemy.",
+  "targets": {
+    "T1": { "mode": "chosen", "side": "ally", "targeted": true },
+    "T2": { "mode": "chosen", "side": "enemy", "targeted": true }
+  },
+  "effects": [
+    { "kind": "fight", "target": "$T1", "other": "$T2" }
+  ],
+  "validated": true
+}

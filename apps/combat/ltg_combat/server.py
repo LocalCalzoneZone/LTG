@@ -14,6 +14,7 @@ turn order, or break/reservation logic. Rewriting the front end changes no outco
 from __future__ import annotations
 
 import copy
+import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -68,7 +69,9 @@ class Session:
         if self.scenario is None:
             raise HTTPException(400, "load a scenario (enemies) before starting")
         spec = compose_spec(loadouts, self.scenario, self.overrides)
-        self.history = [state_from_dict(spec)]
+        # Each fight shuffles every library before the opening hand (a fresh seed per
+        # start); the seed is recorded on the state so the timeline still replays.
+        self.history = [state_from_dict(spec, seed=random.randrange(2**31))]
         self.cursor = 0
 
     def push(self, state: GameState) -> None:
@@ -139,8 +142,9 @@ def _render(session: Session) -> Dict[str, Any]:
         "slots": _slots_summary(session),
         "scenario_name": session.scenario_name,
         "overrides": session.overrides,
-        "determinism": "Fully deterministic — no RNG / no shuffle. Library order is "
-                       "the loadout's card order (re-orderable in quick-setup).",
+        "determinism": "Each fight shuffles every library before the opening hand; "
+                       "draws then come from that shuffled order (a shuffle effect "
+                       "re-randomises). The shuffle is seeded, so the timeline replays.",
     })
     return payload
 

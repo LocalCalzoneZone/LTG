@@ -496,9 +496,10 @@ function nextSlotName(card) {
 
 // --- HTML builders --------------------------------------------------------
 // The target descriptor builder: link select + (when direct) mode/side/toggles.
-function targetControlHtml(i, current, card) {
+function targetControlHtml(i, current, card, field = "target") {
   const isSlot = typeof current === "string";
   const slots = Object.keys(card.targets);
+  const f = `data-i="${i}" data-field="${field}"`;
   const linkOpts = [`<option value="__direct__" ${isSlot ? "" : "selected"}>Build target…</option>`];
   if (slots.length) {
     linkOpts.push(`<optgroup label="Shared slot">`);
@@ -506,18 +507,18 @@ function targetControlHtml(i, current, card) {
     linkOpts.push(`</optgroup>`);
   }
   linkOpts.push(`<option value="__new_slot__">＋ New shared slot</option>`);
-  const link = `<select class="tgt-link" data-i="${i}">${linkOpts.join("")}</select>`;
+  const link = `<select class="tgt-link" ${f}>${linkOpts.join("")}</select>`;
 
   if (isSlot) return `<span class="tgt-builder">${link}<span class="tgt-summary">↪ ${describeTargetJS(current)}</span></span>`;
 
   const d = current || { mode: "chosen", side: "any" };
-  const modeSel = `<select class="tgt-mode" data-i="${i}">${MODES.map((m) => `<option value="${m}" ${d.mode === m ? "selected" : ""}>${MODE_LABEL[m] || m}</option>`).join("")}</select>`;
+  const modeSel = `<select class="tgt-mode" ${f}>${MODES.map((m) => `<option value="${m}" ${d.mode === m ? "selected" : ""}>${MODE_LABEL[m] || m}</option>`).join("")}</select>`;
   const sideSel = d.mode === "self" ? "" :
-    `<select class="tgt-side" data-i="${i}">${SIDES.map((s) => `<option value="${s}" ${d.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
+    `<select class="tgt-side" ${f}>${SIDES.map((s) => `<option value="${s}" ${d.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
   const exclude = d.mode === "self" ? "" :
-    `<label class="inline mini"><input type="checkbox" class="tgt-exclude" data-i="${i}" ${d.exclude_self ? "checked" : ""}/> another</label>`;
+    `<label class="inline mini"><input type="checkbox" class="tgt-exclude" ${f} ${d.exclude_self ? "checked" : ""}/> another</label>`;
   const targeted = d.mode === "chosen" ?
-    `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" data-i="${i}" ${d.targeted ? "checked" : ""}/> targets</label>` : "";
+    `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" ${f} ${d.targeted ? "checked" : ""}/> targets</label>` : "";
   return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}</span>`;
 }
 
@@ -578,20 +579,28 @@ let editorItems = [];
 
 function flattenEffects(effects) {
   const items = [];
-  for (const e of effects || []) {
-    if (e.kind === "modal") {
-      // The 'choose' count belongs to the whole modal; replicate it onto every
-      // mode-marker so the controls (shown on the first marker) round-trip.
-      for (const m of e.modes || []) {
-        items.push({ kind: "modal", label: m.label || "",
-                     choose: e.choose ?? 1, or_more: e.or_more ?? false });
-        (m.effects || []).forEach((inner) => items.push(clone(inner)));
-      }
-    } else if (e.kind === "conditional") {
+  // A conditional flattens to its marker followed by its (leaf) effects; a plain
+  // leaf flattens to itself. Used at top level AND inside a modal mode.
+  const pushEffect = (e) => {
+    if (e.kind === "conditional") {
       items.push({ kind: "conditional", condition: clone(e.condition) });
       (e.effects || []).forEach((inner) => items.push(clone(inner)));
     } else {
       items.push(clone(e));
+    }
+  };
+  for (const e of effects || []) {
+    if (e.kind === "modal") {
+      // The 'choose' count belongs to the whole modal; replicate it onto every
+      // mode-marker so the controls (shown on the first marker) round-trip. A mode
+      // may itself hold a conditional, so flatten each mode effect recursively.
+      for (const m of e.modes || []) {
+        items.push({ kind: "modal", label: m.label || "",
+                     choose: e.choose ?? 1, or_more: e.or_more ?? false });
+        (m.effects || []).forEach(pushEffect);
+      }
+    } else {
+      pushEffect(e);
     }
   }
   return items;
@@ -602,7 +611,7 @@ function rebuildEffects(items) {
   let modal = null, mode = null, cond = null;
   for (const it of items) {
     if (it.kind === "modal") {
-      cond = null;
+      cond = null;  // a new mode starts; close any open conditional
       mode = { label: it.label || "", effects: [] };
       if (modal) { modal.modes.push(mode); }
       else {
@@ -612,13 +621,14 @@ function rebuildEffects(items) {
         out.push(modal);
       }
     } else if (it.kind === "conditional") {
-      modal = null; mode = null;
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
-      out.push(cond);
+      // Nest the conditional inside the open modal mode (modal > conditional >
+      // effect); only a conditional with no modal above it sits at top level.
+      if (mode) mode.effects.push(cond);
+      else out.push(cond);
     } else {
-      if (mode) mode.effects.push(clone(it));
-      else if (cond) cond.effects.push(clone(it));
-      else out.push(clone(it));
+      const dest = cond ? cond.effects : (mode ? mode.effects : out);
+      dest.push(clone(it));
     }
   }
   return out;
@@ -666,7 +676,8 @@ function conditionControlHtml(i, cond) {
   return `<span class="cond-builder">if ${kindSel} ${rest}</span>`;
 }
 
-function effectRowHtml(e, i, card, scoped) {
+function effectRowHtml(e, i, card, depth = 0) {
+  const indent = depth >= 2 ? " scoped scoped2" : depth === 1 ? " scoped" : "";
   const kindSel = `<select class="eff-kind" data-i="${i}">${KINDS().map((k) => `<option ${k === e.kind ? "selected" : ""}>${k}</option>`).join("")}</select>`;
   const tools = `<span class="effect-tools">
       <button class="eff-up" data-i="${i}" title="Move up">↑</button>
@@ -688,7 +699,7 @@ function effectRowHtml(e, i, card, scoped) {
         </div></div>`;
   }
   if (e.kind === "conditional") {
-    return `<div class="effect-row marker">
+    return `<div class="effect-row marker${indent}">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">${conditionControlHtml(i, e.condition)}
           <span class="marker-note">applies to the effects below</span></div></div>`;
@@ -701,23 +712,29 @@ function effectRowHtml(e, i, card, scoped) {
   ).map((p) => {
     if (p.name === "target" && p.control === "action_target")
       return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
-    if (p.name === "target") return `<span class="param"><label class="inline">target</label> ${targetControlHtml(i, e.target, card)}</span>`;
+    if (p.control === "target") {
+      const label = p.name === "other" ? "vs" : p.name;  // fight's 2nd target reads "vs"
+      return `<span class="param"><label class="inline">${label}</label> ${targetControlHtml(i, e[p.name], card, p.name)}</span>`;
+    }
     return `<span class="param">${paramHtml(i, p, e[p.name])}</span>`;
   }).join("");
   return `
-    <div class="effect-row${scoped ? " scoped" : ""}">
+    <div class="effect-row${indent}">
       <div class="effect-head">${kindSel}${tools}</div>
       <div class="effect-params">${params}</div>
     </div>`;
 }
 
-// Render the flat editor rows, indenting leaves that fall under a marker's scope.
+// Render the flat editor rows, indenting by nesting depth: a modal mode is depth 1,
+// a conditional nested in a mode pushes its effects to depth 2 (modal > conditional
+// > effect). A top-level conditional scopes its effects to depth 1.
 function renderEffectRows(card) {
   if (!editorItems.length) return "<div class='meta'>No effects yet.</div>";
-  let inScope = false;
+  let inMode = false, inCond = false;
   return editorItems.map((e, i) => {
-    if (e.kind === "modal" || e.kind === "conditional") { inScope = true; return effectRowHtml(e, i, card, false); }
-    return effectRowHtml(e, i, card, inScope);
+    if (e.kind === "modal") { inMode = true; inCond = false; return effectRowHtml(e, i, card, 0); }
+    if (e.kind === "conditional") { const d = inMode ? 1 : 0; inCond = true; return effectRowHtml(e, i, card, d); }
+    return effectRowHtml(e, i, card, (inMode ? 1 : 0) + (inCond ? 1 : 0));
   }).join("");
 }
 
@@ -865,11 +882,11 @@ function wireDetail(idx) {
     };
   });
   // Target descriptor builder
-  document.querySelectorAll(".tgt-link").forEach((sel) => { sel.onchange = () => onTargetLink(idx, +sel.dataset.i, sel.value); });
-  document.querySelectorAll(".tgt-mode").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i]; e.target = normTarget({ ...e.target, mode: sel.value }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i]; e.target = normTarget({ ...e.target, side: sel.value }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i]; e.target = normTarget({ ...e.target, exclude_self: cb.checked }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i]; e.target = normTarget({ ...e.target, targeted: cb.checked }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-link").forEach((sel) => { sel.onchange = () => onTargetLink(idx, +sel.dataset.i, sel.value, sel.dataset.field || "target"); });
+  document.querySelectorAll(".tgt-mode").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], mode: sel.value }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], side: sel.value }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], exclude_self: cb.checked }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], targeted: cb.checked }); commitEffects(idx, true); }; });
 
   // Modal label + conditional condition builder
   document.querySelectorAll(".modal-label").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].label = inp.value; commitEffects(idx, false); }; });
@@ -917,7 +934,11 @@ function wireDetail(idx) {
   document.querySelectorAll(".slot-remove").forEach((b) => {
     b.onclick = () => {
       const s = b.dataset.slot;
-      editorItems.forEach((e) => { if (e.target === "$" + s) e.target = clone(card.targets[s]); });
+      // Re-materialize the descriptor into every field that linked this slot (a
+      // fight links two: target + other).
+      editorItems.forEach((e) => ["target", "other"].forEach((f) => {
+        if (e[f] === "$" + s) e[f] = clone(card.targets[s]);
+      }));
       delete card.targets[s];
       commitEffects(idx, true);
     };
@@ -929,22 +950,22 @@ function wireDetail(idx) {
 }
 
 // The link dropdown: build inline, link to an existing slot, or make a new one.
-function onTargetLink(idx, i, value) {
+function onTargetLink(idx, i, value, field = "target") {
   const card = state.cards[idx];
   const e = editorItems[i];
   if (value === "__direct__") {
     // unlink: materialize the current descriptor (copy the slot's, or default)
-    e.target = typeof e.target === "string"
-      ? clone(card.targets[e.target.slice(1)]) || { mode: "chosen", side: "any" }
-      : e.target;
+    e[field] = typeof e[field] === "string"
+      ? clone(card.targets[e[field].slice(1)]) || { mode: "chosen", side: "any" }
+      : e[field];
   } else if (value === "__new_slot__") {
     const name = nextSlotName(card);
-    const cur = e.target;
+    const cur = e[field];
     const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: false };
     card.targets[name] = seed;
-    e.target = "$" + name;
+    e[field] = "$" + name;
   } else {
-    e.target = value; // "$T1"
+    e[field] = value; // "$T1"
   }
   commitEffects(idx, true);
 }

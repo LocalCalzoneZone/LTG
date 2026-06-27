@@ -18,8 +18,10 @@ Design seams the brief asks for:
   * Effects DECLARE, the resolver DECIDES — `destroy` on a minion resolves as a
     kill here, not in the card (GDD §11). One handler per primitive in RESOLVERS;
     adding a handler is a localized change.
-  * Library order is an explicit input (the scenario supplies it); nothing here
-    shuffles or randomises. The engine is fully deterministic.
+  * Library order is an explicit input (the scenario supplies it). The engine is
+    deterministic by default; if the scenario is built with a seed (`state.rng_seed`)
+    the only randomness is the opening shuffle and any in-game `shuffle` effect, both
+    keyed to that seed so a seeded fight still replays identically.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from __future__ import annotations
 import copy
 import itertools
 import math
+import random
 from typing import List, Optional, Tuple
 
 from ltg_core.schema import (
@@ -331,22 +334,100 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
         _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
              enemy=e.id, intents=e.stunned)
         return
-    target = _intent_target(st, tmpl, e)
+    target, mode, amount, name = _choose_enemy_attack(st, e)
     if target is None:
         e.intent = None
         _log(st, "no_target", f"{e.name} has no reachable target and declares nothing.",
              enemy=e.id)
         return
-    amount = max(0, int(tmpl["amount"]) + e.power_bonus)  # a wound blunts its attack (R-7)
+    e.attack_mode = mode  # the chosen attack carries onto the stack (R-1) and the panel
     effects = [DealDamage(amount=amount, target=t_chosen("ally", targeted=True))]
     # An attack-type intent lands on the stack as an `attack` (so combat_damage
     # prevention and ability/attack counters answer it — R-1/R-11).
     kind = "attack" if tmpl.get("intent_type", "attack") == "attack" else tmpl.get("action_type", "ability")
-    e.intent = Intent(name=tmpl["name"], action_type=kind,
-                      effects=effects, target_id=target.id)
+    e.intent = Intent(name=name, action_type=kind, effects=effects, target_id=target.id)
     _log(st, "intent_declared",
-         f"{e.name} declares {tmpl['name']} ({amount} dmg) → {target.name}.",
-         enemy=e.id, intent=tmpl["name"], amount=amount, target=target.id)
+         f"{e.name} declares {name} ({mode} {amount} dmg) → {target.name}.",
+         enemy=e.id, intent=name, amount=amount, target=target.id, mode=mode)
+
+
+def _attack_amount(e: EnemyState, tmpl: dict) -> int:
+    """An attack's damage from its template, blunted by any wound on the enemy (R-7).
+    Never negative."""
+    return max(0, int(tmpl.get("amount", 0)) + e.power_bonus)
+
+
+def _choose_enemy_attack(st: GameState, e: EnemyState):
+    """Pick this enemy's target AND attack for the turn (the R-1 heuristics).
+
+    Returns (target, mode, amount, name), or (None, …) when nothing is reachable.
+    An enemy's *primary* attack is its `intent_template` (melee or ranged). A
+    melee-primary enemy may also carry a weaker `ranged_template`, used ONLY as a
+    fallback when melee can't reach the character the rule wants:
+
+      * "front_lowest_hp" (Skitterling): claw the lowest-HP character on the
+        front-most reachable row; spit (ranged) only if melee reaches no one.
+      * "lowest_hp" (Brute): hunt the globally lowest-HP character; smash it in melee
+        if it stands in reach, else hurl (ranged) at it.
+      * a fixed character id (e.g. §C's Maul → "mira"): aim there if reachable.
+      * "lowest_hp_party" (default): the classic lowest-HP reachable target.
+
+    Reach is computed per mode without mutating the enemy; hexproof targets are
+    excluded (an enemy's targeted attack can't land on them — GDD §6/§7)."""
+    party = st.living_party()
+    tmpl = e.intent_template
+    primary_mode = tmpl.get("mode", "melee")
+    primary = [c for c in _reachable_targets(e, party, mode=primary_mode)
+               if not _has_kw(c, "hexproof")]
+    primary_amount, primary_name = _attack_amount(e, tmpl), tmpl["name"]
+    # The weaker ranged attack is a fallback only a melee-primary enemy can have.
+    has_fallback = bool(e.ranged_template) and primary_mode == "melee"
+    fallback = ([c for c in _reachable_targets(e, party, mode="ranged")
+                 if not _has_kw(c, "hexproof")] if has_fallback else [])
+    fb_amount = _attack_amount(e, e.ranged_template) if has_fallback else 0
+    fb_name = e.ranged_template.get("name", primary_name) if has_fallback else primary_name
+    none = (None, None, 0, None)
+
+    def aim(target):
+        """Resolve a chosen target: the primary attack when in reach, else the ranged
+        fallback, else (unreachable) nothing."""
+        if target is None:
+            return none
+        if target in primary:
+            return target, primary_mode, primary_amount, primary_name
+        if has_fallback and target in fallback:
+            return target, "ranged", fb_amount, fb_name
+        return none
+
+    # Taunt overrides target selection and lands regardless of reach/row (R-11); the
+    # mode still falls back to ranged when the primary attack can't reach the target.
+    if e.taunted_by is not None:
+        forced = st.character(e.taunted_by)
+        if forced is not None and forced.alive and not _has_kw(forced, "hexproof"):
+            if forced in primary or not has_fallback:
+                return forced, primary_mode, primary_amount, primary_name
+            return forced, "ranged", fb_amount, fb_name
+
+    rule = tmpl.get("targeting", "lowest_hp_party")
+
+    if rule == "lowest_hp":  # the Brute: always the globally lowest-HP character
+        return aim(_lowest_hp(fallback if has_fallback else primary))
+
+    if rule not in ("lowest_hp_party", "front_lowest_hp"):  # a fixed character id
+        cand = st.character(rule)
+        if cand is not None and cand.alive and not _has_kw(cand, "hexproof"):
+            chosen = aim(cand)
+            if chosen[0] is not None:
+                return chosen
+        # fixed target unreachable -> fall through to the default lowest-HP behaviour
+
+    # Default / "front_lowest_hp" (the Skitterling): the lowest-HP character on the
+    # front-most reachable row; only fall back to ranged when the primary reaches no one.
+    if primary:
+        return _lowest_hp(primary), primary_mode, primary_amount, primary_name
+    if has_fallback and fallback:
+        return _lowest_hp(fallback), "ranged", fb_amount, fb_name
+    return none
 
 
 def _declare_ally_intent(st: GameState, token: TokenState) -> None:
@@ -362,27 +443,6 @@ def _declare_ally_intent(st: GameState, token: TokenState) -> None:
                           effects=effects, target_id=target.id)
     _log(st, "ally_intent", f"{token.name} intends to attack {target.name} "
          f"(Power {token.current_power}).", token=token.id, target=target.id)
-
-
-def _intent_target(st: GameState, tmpl: dict, enemy: EnemyState) -> Optional[CharacterState]:
-    """An enemy intent's target: a taunt overrides everything (lands regardless of
-    row/reach — R-11); otherwise the lowest-effective-HP reachable party member
-    (default) or a fixed id, skipping hexproof characters and respecting melee
-    reachability (R-1)."""
-    if enemy.taunted_by is not None:
-        forced = st.character(enemy.taunted_by)
-        if forced is not None and forced.alive and not _has_kw(forced, "hexproof"):
-            return forced  # taunt overrides reach/row and lands regardless (R-11)
-    reachable = [c for c in _reachable_targets(enemy, st.living_party())
-                 if not _has_kw(c, "hexproof")]
-    if not reachable:
-        return None
-    rule = tmpl.get("targeting", "lowest_hp_party")
-    if rule != "lowest_hp_party":
-        cand = st.character(rule)
-        if cand is not None and cand in reachable:
-            return cand
-    return _lowest_hp(reachable)
 
 
 def _execute_intent(st: GameState, enemy: EnemyState) -> None:
@@ -825,6 +885,26 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True)
             verb = "gains" if sign > 0 else "loses"
             _log(st, "grant_keyword", f"{target.name} {verb} {', '.join(effect.keywords)} (channel).",
                  target=_tid(target), keywords=list(effect.keywords))
+    elif k == "exile":
+        # A channeled exile suspends the target while the channel holds (sign +1)
+        # and returns it when the channel breaks (sign −1). Spell exile never reaches
+        # here — it resolves once through `_r_exile` and removes the enemy for good.
+        if isinstance(target, EnemyState):
+            if sign > 0:
+                target.exiled = True
+                target.intent = None  # a suspended enemy telegraphs nothing
+                if target.id in st.acted_enemies:
+                    st.acted_enemies.remove(target.id)
+                if log_it:
+                    _log(st, "exiled", f"{target.name} is exiled while the channel holds.",
+                         target=target.id, level=target.level, channeled=True)
+            else:
+                target.exiled = False
+                if log_it:
+                    _log(st, "returns", f"{target.name} returns from exile.", target=target.id)
+        elif log_it:
+            _log(st, "unhandled",
+                 "(channeled exile is only modelled for enemies this milestone)", kind=k)
     elif k in _STAT_CONTINUOUS and hasattr(target, "power_bonus"):
         polarity = -1 if k == "wound" else 1  # wound is a −X/−X aura (R-7)
         target.power_bonus += sign * polarity * effect.power
@@ -961,6 +1041,17 @@ def _site_target(item: StackItem, ctx, effect, desc) -> Optional[str]:
         if key in ctx["site_target"]:
             return ctx["site_target"][key]
     return item.target_id
+
+
+def _site_id(item: StackItem, ctx, desc, eff_key) -> Optional[str]:
+    """Like `_site_target`, but for a secondary target field (e.g. fight's `other`):
+    slot refs key by name, an inline descriptor by the caller-supplied `eff_key`
+    (so two target fields on the same effect don't collide on id())."""
+    if ctx is not None and "site_target" in ctx:
+        key = ("slot", desc[1:]) if isinstance(desc, str) else eff_key
+        if key in ctx["site_target"]:
+            return ctx["site_target"][key]
+    return None
 
 
 def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> List:
@@ -1167,7 +1258,11 @@ def _place_card(st, char, effect, card, ctx=None):
 
 def _move_shuffle(st, char, effect):
     if effect.shuffle_after or effect.destination == "library_shuffle":
-        # Deterministic engine: a shuffle is a logged no-op (order already fixed).
+        # A shuffle effect re-randomises the library when the fight was seeded; with
+        # no seed (the deterministic default) it stays a logged no-op (order fixed).
+        if st.rng_seed is not None:
+            st.shuffle_count += 1
+            random.Random((st.rng_seed, st.shuffle_count)).shuffle(char.library)
         _log(st, "shuffle", f"{char.name} shuffles their library.", character=char.id)
 
 
@@ -1235,6 +1330,30 @@ def _r_bounce(st, item, effect, target, ctx):
         _kill_enemy(st, target)
     elif isinstance(target, TokenState):
         _remove_token(st, target)
+
+
+def _power_of(c) -> int:
+    """A creature's attack power (party/token/enemy all expose current_power)."""
+    return max(0, getattr(c, "current_power", 0))
+
+
+def _r_fight(st, item, effect, target, ctx):
+    # `target` is the primary creature (the one you control); resolve the `other`
+    # from its own site. Each deals damage equal to its power to the other,
+    # SIMULTANEOUSLY — snapshot both powers before any HP changes, so a creature
+    # that dies still lands its blow (MTG fight, GDD §7).
+    other_id = _site_id(item, ctx, getattr(effect, "other", None), ("eff_other", id(effect)))
+    other = st.combatant(other_id)
+    if target is None or other is None or not _legal_target(target) or not _legal_target(other):
+        _log(st, "fizzle", f"{item.label}'s fight fizzles (a creature is gone).", kind="fight")
+        return
+    p_target, p_other = _power_of(target), _power_of(other)
+    _log(st, "fight", f"{target.name} (Power {p_target}) fights {other.name} (Power {p_other}).",
+         target=_tid(target), other=_tid(other), power=p_target, other_power=p_other)
+    _deal_damage(st, other, p_target, source=f"{target.name} (fight)",
+                 source_obj=target, damage_kind="fight")
+    _deal_damage(st, target, p_other, source=f"{other.name} (fight)",
+                 source_obj=other, damage_kind="fight")
 
 
 def _r_counter(st, item, effect, target, ctx):
@@ -1380,6 +1499,7 @@ RESOLVERS = {
     "destroy": _r_destroy,
     "exile": _r_exile,
     "bounce": _r_bounce,
+    "fight": _r_fight,
     "counter": _r_counter,
     "strip_intent": _r_strip_intent,
     "stun": _r_stun,
@@ -1582,6 +1702,13 @@ def _check_end(st: GameState) -> None:
     if st.result is not None:
         return
     if not st.living_enemies():
+        # Any enemy still suspended by a channeled exile is now gone for good — the
+        # encounter ends before the channel could break and bring it back (GDD §8).
+        for e in st.enemies:
+            if e.exiled:
+                _log(st, "permanent_exile",
+                     f"{e.name} is permanently exiled — the encounter ends with it suspended.",
+                     target=e.id)
         st.result = "victory"
         _log(st, "win", "All enemies defeated — the party wins.", result="victory")
     elif not st.living_party():
@@ -1605,15 +1732,19 @@ def _ordered(combatants: List) -> List:
     return sorted(combatants, key=lambda c: (_row_rank(c.row), getattr(c, "level", 1), c.name))
 
 
-def _reachable_targets(attacker, defenders: List) -> List:
+def _reachable_targets(attacker, defenders: List, mode: Optional[str] = None) -> List:
     """The opposing creatures `attacker` may legally strike, per R-1.
 
     Ranged hits any row (incl. flyers). Ground melee hits the front-most occupied
     row, and can't touch flyers without reach. A flying melee attacker ignores the
-    front-line but is pinned by a defender with reach to rows not behind it."""
+    front-line but is pinned by a defender with reach to rows not behind it.
+
+    `mode` overrides the attacker's own attack mode — the enemy heuristic uses it to
+    ask "what could I hit in melee?" vs "…in ranged?" without mutating the enemy."""
     if not defenders:
         return []
-    mode = getattr(attacker, "attack_mode", "melee")
+    if mode is None:
+        mode = getattr(attacker, "attack_mode", "melee")
     akw = getattr(attacker, "keywords", {})
     if mode == "ranged":
         return list(defenders)
@@ -1789,7 +1920,7 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
                                   targets=tids, mode=mode_idx,
                                   label=prefix + f" on {labels}"))
         else:
-            for tid, tlabel in _target_options_for(st, effects):
+            for tid, tlabel in _target_options_for(st, effects, card):
                 label = prefix + (f" on {tlabel}" if tlabel else "")
                 out.append(Action("cast", actor.id, card_id=card.id, target_id=tid,
                                   mode=mode_idx, label=label))
@@ -1835,10 +1966,12 @@ def _side_options(st: GameState, side):
     return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)
 
 
-def _target_options_for(st: GameState, effects):
+def _target_options_for(st: GameState, effects, card: Card = None):
     """[(target_id, target_label)] for the card's single primary target. A counter
     targets a matching enemy action on the stack; otherwise the first targeted
-    effect's side decides the creature options; self/all/untargeted needs none."""
+    effect's side decides the creature options; self/all/untargeted needs none.
+    A `$T1` slot ref resolves its side via the card's `targets` map (the form the
+    Deckbuilder emits), so single-target slot cards enumerate targets too."""
     filt = _counter_filter(effects)
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
@@ -1846,7 +1979,13 @@ def _target_options_for(st: GameState, effects):
     side = None
     for e in _iter_leaf(effects):
         desc = getattr(e, "target", None)
-        if desc is not None and not isinstance(desc, str) and getattr(desc, "targeted", False):
+        if isinstance(desc, str):  # "$T1" slot ref — resolve its side from the card
+            sd = card.targets.get(desc[1:]) if card is not None else None
+            if sd is not None and getattr(sd, "targeted", False):
+                side = sd.side.value if sd.side is not None else "any"
+                break
+            continue
+        if desc is not None and getattr(desc, "targeted", False):
             side = desc.side.value
             break
     return _side_options(st, side)
@@ -1862,21 +2001,30 @@ def _target_sites(effects, card: Card):
     resolution, so site order matches between them."""
     sites = []
     seen_slots = set()
-    for e in effects:
-        if e.kind in ("conditional", "modal"):
-            continue
-        desc = getattr(e, "target", None)
-        if isinstance(desc, str):  # "$T1" slot ref
+
+    def add(desc, eff_key, forced=False):
+        if isinstance(desc, str):  # "$T1" slot ref — one shared site per slot name
             name = desc[1:]
             if name in seen_slots:
-                continue
+                return
             seen_slots.add(name)
             sd = card.targets.get(name) if card is not None else None
             side = sd.side.value if sd is not None and sd.side is not None else "any"
             sites.append((("slot", name), side))
-        elif (desc is not None and getattr(desc, "targeted", False)
-              and getattr(desc, "mode", None) == TargetMode.chosen):
-            sites.append((("eff", id(e)), desc.side.value))
+        elif desc is not None and (forced or (getattr(desc, "targeted", False)
+                                   and getattr(desc, "mode", None) == TargetMode.chosen)):
+            sites.append((eff_key, desc.side.value))
+
+    for e in effects:
+        if e.kind in ("conditional", "modal"):
+            continue
+        if e.kind == "fight":
+            # Fight's two targets are always chosen (even authored inline). Force both
+            # sites, keying `other` apart from the primary so each binds independently.
+            add(getattr(e, "target", None), ("eff", id(e)), forced=True)
+            add(getattr(e, "other", None), ("eff_other", id(e)), forced=True)
+            continue
+        add(getattr(e, "target", None), ("eff", id(e)))
     return sites
 
 

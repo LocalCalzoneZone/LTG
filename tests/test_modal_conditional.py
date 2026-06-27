@@ -121,6 +121,30 @@ def test_has_keyword_requires_known_keyword():
                "effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]}])
 
 
+def test_modal_mode_may_hold_a_conditional():
+    # modal > conditional > effect: the condition applies to the mode's effect.
+    c = card([{"kind": "modal", "modes": [
+        {"effects": [{"kind": "deal_damage", "amount": 2, "target": ENEMY}]},
+        {"effects": [{"kind": "conditional",
+                      "condition": {"kind": "target_property", "property": "level", "level": 4, "compare": "or_more"},
+                      "effects": [{"kind": "destroy", "target": ENEMY}]}]},
+    ]}])
+    assert c.effects[0].modes[1].effects[0].kind == "conditional"
+    assert render_effects(c.effects) == \
+        "Choose one — • Deal 2 damage to an enemy. • Destroy an enemy with level 4 or more."
+    assert Card.model_validate(c.model_dump()) == c  # round-trips
+
+
+def test_modal_mode_rejects_nested_modal():
+    # No modal-in-modal — a mode may hold a conditional, but not another modal.
+    with pytest.raises(ValidationError):
+        card([{"kind": "modal", "modes": [
+            {"effects": [{"kind": "modal", "modes": [
+                {"effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]},
+                {"effects": [{"kind": "scry", "amount": 1, "target": {"mode": "self"}}]}]}]},
+            {"effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]}]}])
+
+
 def test_nested_draw_enemy_rejected_in_mode():
     # iter_effects descends into modes, so the illegal nested draw is caught.
     with pytest.raises(ValidationError):

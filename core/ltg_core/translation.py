@@ -579,6 +579,7 @@ RENDERERS = {
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
     "exile": lambda e: f"Exile {_tgt(e.target)}.",
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",
+    "fight": lambda e: f"{_tgt(e.target).capitalize()} fights {_tgt(e.other)}.",
     "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
     "strip_intent": lambda e: f"Remove {_subject(e.target, None, True)}'s telegraphed intent.",
     "stun": lambda e: f"{_subject(e.target, None, True).capitalize()} skips its next intent.",
@@ -672,14 +673,25 @@ def render_effects(effects: List[Effect], targets=None, channeled: bool = False)
     handled = set()
     parts = []
 
+    # Fight reads as one sentence over its two targets — never grouped with slots.
+    for e in effects:
+        if getattr(e, "kind", None) == "fight":
+            handled.add(id(e))
+            a = _subject(getattr(e, "target", None), targets)
+            b = _subject(getattr(e, "other", None), targets)
+            parts.append(f"{a.capitalize()} fights {b}.")
+
     # One sentence per shared-target slot (in first-appearance order).
     seen_slots = []
     for e in effects:
+        if id(e) in handled:
+            continue
         s = slot_name(getattr(e, "target", None))
         if s and s not in seen_slots:
             seen_slots.append(s)
     for s in seen_slots:
-        group = [e for e in effects if slot_name(getattr(e, "target", None)) == s]
+        group = [e for e in effects
+                 if id(e) not in handled and slot_name(getattr(e, "target", None)) == s]
         for e in group:
             handled.add(id(e))
         slot_type = targets.get(s)
@@ -729,6 +741,11 @@ def _channeled_body(e, targets) -> str:
         return f"{_subject(e.target, targets, True)} has protection"
     if k == "stun":
         return f"{_subject(e.target, targets, True)} is stunned"
+    if k == "exile":
+        return f"exile {_subject(e.target, targets, True)}"
+    if k == "fight":
+        return (f"{_subject(e.target, targets, True)} fights "
+                f"{_subject(getattr(e, 'other', None), targets, True)}")
     return _lc_first(_render_one(e).rstrip("."))
 
 

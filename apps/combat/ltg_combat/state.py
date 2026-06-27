@@ -175,12 +175,23 @@ class EnemyState:
     max_hp: int
     hp: int
     level: int
+    # The enemy's attack power (its basic damage). Drives `fight`; its telegraphed
+    # intent still carries its own `amount`. Defaults to the intent amount at build.
+    power: int = 0
     row: str = "front"
     attack_mode: str = "melee"  # melee | ranged (R-1) — enemy attacks are classified too
     intent: Optional[Intent] = None
     intent_template: Dict[str, Any] = field(default_factory=dict)
+    # An optional weaker ranged attack (R-1 heuristics): the enemy falls back to it
+    # when its melee attack can't reach the target the heuristic wants. Same shape as
+    # `intent_template` (name/amount/action_type); empty == melee-only.
+    ranged_template: Dict[str, Any] = field(default_factory=dict)
     stunned: int = 0           # intents to skip (stun); decremented as they would declare
     taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
+    # Suspended by a channeled `exile` (GDD §8): off the board (not targetable, can't
+    # act, doesn't block victory) but still alive — it returns when the channel breaks.
+    # A spell's exile removes the enemy outright instead, so this stays False there.
+    exiled: bool = False
 
     # Mirror the character's HP model so one damage routine serves both. An enemy's
     # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
@@ -198,6 +209,10 @@ class EnemyState:
     @property
     def alive(self) -> bool:
         return self.effective_hp > 0
+
+    @property
+    def current_power(self) -> int:
+        return max(0, self.power + self.power_bonus)
 
 
 # --------------------------------------------------------------------------- #
@@ -300,6 +315,11 @@ class GameState:
     token_defs: Dict[str, Any] = field(default_factory=dict)  # token_id -> stats
     token_seq: int = 0                # for unique created-token ids
     stack_seq: int = 0                # for unique StackItem.uid
+    # Randomness (opt-in): when a scenario is built with a seed the library is
+    # shuffled at setup and stays shuffled; `rng_seed` (+ a bump per shuffle effect)
+    # makes any in-game shuffle reproducible. None == the deterministic fixed order.
+    rng_seed: Optional[int] = None
+    shuffle_count: int = 0            # bumped each time a shuffle effect re-randomises a library
     pending_ramp: List[Dict[str, Any]] = field(default_factory=list)  # deferred capacity, applied at begin_turn
     turn: int = 1
     phase: str = "upkeep"             # upkeep|capacity|draw|intents|player|allies|enemy|end
@@ -330,7 +350,10 @@ class GameState:
         return [c for c in self.party if c.alive]
 
     def living_enemies(self) -> List[EnemyState]:
-        return [e for e in self.enemies if e.alive]
+        # Channel-exiled enemies are alive but out of play: not targetable, can't act,
+        # and don't count toward "are there enemies left" (so the encounter can end
+        # while one is suspended — it is then permanently exiled).
+        return [e for e in self.enemies if e.alive and not e.exiled]
 
     def living_tokens(self) -> List[TokenState]:
         return [t for t in self.tokens if t.alive]

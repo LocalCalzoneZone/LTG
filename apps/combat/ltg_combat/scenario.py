@@ -14,9 +14,10 @@ scenario JSON in the same shape.
 from __future__ import annotations
 
 import json
+import random
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ltg_core.schema import Card, Loadout
 
@@ -92,10 +93,18 @@ SCENARIO_A: Dict[str, Any] = {
         },
     ],
     "enemies": [
+        # Skitterling: claws the lowest-HP character on the front-most reachable row;
+        # only spits (the weaker ranged attack) when melee reaches no one.
         {"id": "skitterling", "name": "Skitterling", "hp": 3, "level": 1,
-         "intent": {"name": "Claw", "amount": 2, "action_type": "ability", "mode": "melee"}},
+         "intent": {"name": "Claw", "amount": 2, "action_type": "ability", "mode": "melee",
+                    "targeting": "front_lowest_hp"},
+         "ranged_intent": {"name": "Spit", "amount": 1, "action_type": "ability", "mode": "ranged"}},
+        # Brute: always hunts the globally lowest-HP character; smashes it in melee when
+        # it stands in reach, otherwise hurls (the weaker ranged attack) at it.
         {"id": "brute", "name": "Brute", "hp": 8, "level": 3,
-         "intent": {"name": "Smash", "amount": 4, "action_type": "ability", "mode": "melee"}},
+         "intent": {"name": "Smash", "amount": 4, "action_type": "ability", "mode": "melee",
+                    "targeting": "lowest_hp"},
+         "ranged_intent": {"name": "Hurl", "amount": 3, "action_type": "ability", "mode": "ranged"}},
     ],
 }
 
@@ -148,15 +157,22 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def state_from_dict(spec: Dict[str, Any]) -> GameState:
+def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameState:
     """Build the pre-upkeep setup state from a scenario dict.
 
-    The opening hand is the top `hand_size` of the ordered library (the rest is
-    the draw pile). Mana starts empty; the turn-1 upkeep refreshes it.
+    With no `seed` the library keeps its given order (the deterministic default the
+    tests rely on). When a `seed` is supplied each character's library is shuffled
+    BEFORE the opening hand is drawn, and the seed is recorded on the state so any
+    in-game shuffle effect re-randomises reproducibly. Either way the opening hand is
+    the top `hand_size` of the (now possibly shuffled) library and the rest is the
+    draw pile. Mana starts empty; the turn-1 upkeep refreshes it.
     """
+    rng = random.Random(seed) if seed is not None else None
     party: List[CharacterState] = []
     for p in spec["party"]:
         library = [Card.model_validate(c) for c in p["library"]]
+        if rng is not None:
+            rng.shuffle(library)  # randomise before the opening hand is drawn
         hand_size = int(p["hand_size"])
         hand = [c.model_copy(deep=True) for c in library[:hand_size]]
         draw_pile = [c.model_copy(deep=True) for c in library[hand_size:]]
@@ -174,28 +190,31 @@ def state_from_dict(spec: Dict[str, Any]) -> GameState:
         enemies.append(EnemyState(
             id=e.get("id", _slug(e["name"])), name=e["name"],
             max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
+            # Attack power defaults to the intent's damage when not given explicitly.
+            power=int(e.get("power", e.get("intent", {}).get("amount", 0))),
             row=e.get("row", "front"), intent_template=dict(e["intent"]),
+            ranged_template=dict(e.get("ranged_intent", {})),
             attack_mode=e.get("intent", {}).get("mode", "melee"),
         ))
 
     return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",
-                     token_defs=dict(spec.get("tokens", {})))
+                     token_defs=dict(spec.get("tokens", {})), rng_seed=seed)
 
 
-def build_state() -> GameState:
+def build_state(seed: Optional[int] = None) -> GameState:
     """The §A.3 setup state: encounter start, before Turn 1's upkeep."""
-    return state_from_dict(SCENARIO_A)
+    return state_from_dict(SCENARIO_A, seed=seed)
 
 
-def build_channeling_state() -> GameState:
+def build_channeling_state(seed: Optional[int] = None) -> GameState:
     """The §C.3 setup state: the channeling fight, before Turn 1's upkeep."""
-    return state_from_dict(SCENARIO_C)
+    return state_from_dict(SCENARIO_C, seed=seed)
 
 
-def load_scenario(path) -> GameState:
+def load_scenario(path, seed: Optional[int] = None) -> GameState:
     """Load a scenario JSON (same shape as `SCENARIO_A`) into a setup state."""
     raw = json.loads(Path(path).read_text())
-    return state_from_dict(raw)
+    return state_from_dict(raw, seed=seed)
 
 
 def scenario_name(spec: Dict[str, Any] = None) -> str:
@@ -261,9 +280,10 @@ def compose_spec(loadouts: List[Dict[str, Any]], scenario: Dict[str, Any],
 
 
 def state_from_loadouts(loadouts: List[Dict[str, Any]], scenario: Dict[str, Any],
-                        overrides: Dict[str, Any] = None) -> GameState:
+                        overrides: Dict[str, Any] = None,
+                        seed: Optional[int] = None) -> GameState:
     """Build a setup `GameState` from party loadouts + an enemies-only scenario."""
-    return state_from_dict(compose_spec(loadouts, scenario, overrides))
+    return state_from_dict(compose_spec(loadouts, scenario, overrides), seed=seed)
 
 
 def _dedupe_ids(party: List[Dict[str, Any]]) -> None:

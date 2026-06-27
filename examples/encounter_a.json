@@ -1,5 +1,5 @@
 {
-  "name": "\u00a7A \u2014 Skitterling & Brute (minions)",
+  "name": "§A — Skitterling & Brute (minions)",
   "enemies": [
     {
       "id": "skitterling",
@@ -10,7 +10,14 @@
         "name": "Claw",
         "amount": 2,
         "action_type": "ability",
-        "mode": "melee"
+        "mode": "melee",
+        "targeting": "front_lowest_hp"
+      },
+      "ranged_intent": {
+        "name": "Spit",
+        "amount": 1,
+        "action_type": "ability",
+        "mode": "ranged"
       }
     },
     {
@@ -22,7 +29,14 @@
         "name": "Smash",
         "amount": 4,
         "action_type": "ability",
-        "mode": "melee"
+        "mode": "melee",
+        "targeting": "lowest_hp"
+      },
+      "ranged_intent": {
+        "name": "Hurl",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "ranged"
       }
     }
   ],

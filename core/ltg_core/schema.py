@@ -302,13 +302,40 @@ class Destroy(EffectBase):
 
 
 class Exile(EffectBase):
+    """Remove a creature from play.
+
+    By default exile is permanent — a spell (instant/sorcery) that exiles puts the
+    creature out of the game for good. On a channeled card, `duration:
+    while_channeled` makes it reversible: the creature is suspended only while the
+    channel holds and returns if the channel breaks (GDD §8). It stays gone if the
+    encounter ends first — i.e. the last on-board enemies fall while it is exiled.
+    """
+
     kind: Literal["exile"] = "exile"
     target: TargetOrSlot
+    # Permanent when unset; `while_channeled` makes it reversible. Exile has no
+    # turn-scoped form, so the type offers only those two states (the editor then
+    # shows a "(none) / while_channeled" dropdown).
+    duration: Optional[Literal["while_channeled"]] = None
 
 
 class Bounce(EffectBase):
     kind: Literal["bounce"] = "bounce"
     target: TargetOrSlot
+
+
+class Fight(EffectBase):
+    """Two creatures fight (MTG's 'fight'): each deals damage equal to its power to
+    the other, simultaneously.
+
+    `target` is the creature you control, `other` the creature you don't. Both are
+    chosen at cast, so author them as two shared target slots (T1 ally, T2 enemy) —
+    the editor's "shared slot" link on each target field wires them up.
+    """
+
+    kind: Literal["fight"] = "fight"
+    target: TargetOrSlot  # the creature you control
+    other: TargetOrSlot   # the creature it fights
 
 
 class Counter(EffectBase):
@@ -505,6 +532,7 @@ LEAF_EFFECT_CLASSES = [
     Destroy,
     Exile,
     Bounce,
+    Fight,
     Counter,
     StripIntent,
     Stun,
@@ -531,31 +559,6 @@ LeafEffect = Annotated[Union[tuple(LEAF_EFFECT_CLASSES)], Field(discriminator="k
 # --------------------------------------------------------------------------- #
 # Container effects: modal ("Choose one") and conditional ("If …, then …").
 # --------------------------------------------------------------------------- #
-class Mode(BaseModel):
-    """One option of a modal card; the player picks exactly one mode at cast."""
-
-    label: str = ""
-    effects: List[LeafEffect] = Field(min_length=1)
-
-
-class Modal(EffectBase):
-    """A 'Choose N' card: pick `choose` of its modes at cast (or `choose` or more
-    when `or_more` is set). Defaults to the classic 'Choose one'."""
-
-    kind: Literal["modal"] = "modal"
-    modes: List[Mode] = Field(min_length=2)
-    choose: int = 1            # how many modes the caster picks
-    or_more: bool = False      # "choose N or more" (choose is then the minimum)
-
-    @model_validator(mode="after")
-    def _check_choose(self) -> "Modal":
-        if self.choose < 1:
-            raise ValueError("modal 'choose' must be >= 1")
-        if self.choose > len(self.modes):
-            raise ValueError("modal 'choose' cannot exceed the number of modes")
-        return self
-
-
 class CastModeCondition(BaseModel):
     """True when the card was cast at this speed (action = proactive, reaction = response)."""
 
@@ -599,6 +602,39 @@ class Conditional(EffectBase):
     kind: Literal["conditional"] = "conditional"
     condition: Condition
     effects: List[LeafEffect] = Field(min_length=1)
+
+
+# A modal mode holds leaf effects and, one level deeper, a conditional
+# (modal > conditional > effect). It may NOT hold another modal — the engine has
+# no modal-in-modal, and resolution expands only the chosen mode's effects.
+ModeEffect = Annotated[
+    Union[tuple(LEAF_EFFECT_CLASSES + [Conditional])], Field(discriminator="kind")
+]
+
+
+class Mode(BaseModel):
+    """One option of a modal card; the player picks exactly one mode at cast."""
+
+    label: str = ""
+    effects: List[ModeEffect] = Field(min_length=1)
+
+
+class Modal(EffectBase):
+    """A 'Choose N' card: pick `choose` of its modes at cast (or `choose` or more
+    when `or_more` is set). Defaults to the classic 'Choose one'."""
+
+    kind: Literal["modal"] = "modal"
+    modes: List[Mode] = Field(min_length=2)
+    choose: int = 1            # how many modes the caster picks
+    or_more: bool = False      # "choose N or more" (choose is then the minimum)
+
+    @model_validator(mode="after")
+    def _check_choose(self) -> "Modal":
+        if self.choose < 1:
+            raise ValueError("modal 'choose' must be >= 1")
+        if self.choose > len(self.modes):
+            raise ValueError("modal 'choose' cannot exceed the number of modes")
+        return self
 
 
 EFFECT_CLASSES = LEAF_EFFECT_CLASSES + [Modal, Conditional]
