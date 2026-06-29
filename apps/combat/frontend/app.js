@@ -177,14 +177,17 @@ function renderEnemies() {
   const lane = $("#enemies"); lane.innerHTML = "";
   if (!STATE.enemies.length) { lane.append(el("div", "muted", "(no enemies remaining)")); return; }
   STATE.enemies.forEach((e) => {
-    const box = el("div", "card-unit enemy" + (e.alive ? "" : " dead"));
+    const box = el("div", "card-unit enemy" + (e.alive ? "" : " dead") + (e.in_hand ? " bounced" : ""));
     box.onclick = () => inspect(`Enemy — ${e.name}`, e.raw);
     const head = el("div", "unit-head");
-    head.append(el("span", "unit-name", e.name), el("span", "unit-sub", `Lv${e.level} · ${e.row}`));
+    const sub = e.in_hand ? "in hand" : `Lv${e.level} · ${e.row}`;
+    head.append(el("span", "unit-name", e.name), el("span", "unit-sub", sub));
     box.append(head, hpbar(e.hp, e.max_hp, true));
 
     const intent = el("div", "intent" + (e.intent ? "" : " none"));
-    if (e.intent) {
+    if (e.in_hand) {
+      intent.textContent = "bounced — redeploys next turn";
+    } else if (e.intent) {
       const dmg = e.intent.amount != null ? ` (${e.intent.amount})` : "";
       intent.textContent = `▶ ${e.intent.name}${dmg} → ${e.intent.target_name || "—"}`;
     } else {
@@ -193,6 +196,7 @@ function renderEnemies() {
     box.append(intent);
 
     const tags = el("div", "tags");
+    if (e.in_hand) tags.append(el("span", "tag disabled", "bounced"));
     tags.append(el("span", "tag", e.attack_mode));
     if (e.stunned) tags.append(el("span", "tag disabled", `stunned ×${e.stunned}`));
     if (e.temp_mod) tags.append(el("span", "tag", `${e.temp_mod > 0 ? "+" : ""}${e.temp_mod} temp HP`));

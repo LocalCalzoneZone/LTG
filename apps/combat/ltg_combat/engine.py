@@ -320,10 +320,24 @@ def _declare_intents(st: GameState) -> None:
     """The Intents step (R-4/R-5): every enemy AND every ally token declares its
     telegraphed intent against the current state, in the canonical order. Allies
     use the same deterministic heuristic as enemies, applied on the party's side."""
+    _redeploy_bounced(st)  # bounced enemies return at the start of their next turn (§E-C)
     for e in _ordered(st.living_enemies()):
         _declare_enemy_intent(st, e)
     for t in _ordered(st.living_tokens()):
         _declare_ally_intent(st, t)
+
+
+def _redeploy_bounced(st: GameState) -> None:
+    """Update 03 §E-C redeploy: every in-hand (bounced) enemy moves `in hand → in
+    play` at the start of the Intents step, re-entering at its original row (its
+    `row` is preserved across the bounce). It then declares a fresh intent in the
+    normal pass below. Net: it lost exactly the one action cycle it was bounced on."""
+    for e in st.enemies:
+        if e.in_hand:
+            e.in_hand = False
+            _log(st, "redeploy",
+                 f"{e.name} redeploys to the battlefield ({e.row} row).",
+                 enemy=e.id, row=e.row)
 
 
 def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
@@ -548,6 +562,7 @@ def _apply(st: GameState, action: Action) -> None:
         "move": _do_move,
         "choose_mana": _do_choose_mana,
         "choose_card": _do_choose_card,
+        "choose_scry": _do_choose_scry,
         "drop_channels": _do_drop_channels,
     }[action.kind]
     handler(st, action)
@@ -558,6 +573,37 @@ def _do_choose_mana(st: GameState, action: Action) -> None:
     char = st.character(action.actor_id)
     _lock_capacity(st, char, action.color, auto=False)
     st.priority = None
+
+
+def _do_choose_scry(st: GameState, action: Action) -> None:
+    """Apply one pick of a scry: send the chosen revealed card to the top or bottom
+    of the library. `target_id` is the destination ('top' | 'bottom'). When every
+    revealed card has been placed, rebuild the library and resume the spell."""
+    pc = st.pending_choice
+    char = st.character(pc.chooser_id)
+    card = pc.candidates[action.choice]
+    pc.candidates = [c for c in pc.candidates if c is not card]
+    pile = pc.bottom if action.target_id == "bottom" else pc.top
+    pile.append(card)
+    _log(st, "scry_place",
+         f"{char.name} puts {card.name} on the {'bottom' if action.target_id == 'bottom' else 'top'} "
+         f"of their library.", character=char.id, card=card.id,
+         destination=("library_bottom" if action.target_id == "bottom" else "library_top"))
+    if pc.candidates:
+        return  # still placing the rest of the revealed cards
+    # Every revealed card is placed: the kept-on-top cards (pick order, first chosen
+    # drawn first), then the untouched rest, then the bottomed cards.
+    char.library = list(pc.top) + char.library[pc.looked:] + list(pc.bottom)
+    item, remaining = pc.item, pc.remaining
+    st.pending_choice = None
+    _log(st, "scry_done",
+         f"{char.name} reorders the top of their library (kept {len(pc.top)} on top, "
+         f"{len(pc.bottom)} on the bottom).", character=char.id,
+         top=[c.id for c in pc.top], bottom=[c.id for c in pc.bottom])
+    _resolve_effect_list(st, item, remaining, _new_ctx(st, item))
+    if st.pending_choice is None:
+        _process_breaks(st)
+        st.priority = None
 
 
 def _do_choose_card(st: GameState, action: Action) -> None:
@@ -789,7 +835,9 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
     return. `_do_choose_card` performs the move and resumes here. Effects nested in
     a conditional/modal keep auto-picking (handled inside `_resolve_effect`)."""
     for i, effect in enumerate(effects):
-        if getattr(effect, "kind", None) == "move_card" and getattr(effect, "trigger", None) is None:
+        kind = getattr(effect, "kind", None)
+        trigger = getattr(effect, "trigger", None)
+        if kind == "move_card" and trigger is None:
             char = st.character(item.source_id)
             if char is not None:
                 cands = _move_candidates(char, effect, ctx)
@@ -798,6 +846,11 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
                         chooser_id=char.id, effect=effect, candidates=cands,
                         need=effect.count, remaining=list(effects[i + 1:]), item=item)
                     return
+        # A top-level scry pauses for the player to order the revealed top cards
+        # (top/bottom, and the order on top). Nested scry (modal/conditional) keeps
+        # the non-interactive reveal in `_resolve_effect`.
+        if kind == "scry" and trigger is None and _raise_scry_choice(st, item, effect, ctx, i, effects):
+            return
         _resolve_effect(st, item, effect, ctx)
 
 
@@ -1122,7 +1175,14 @@ def _is_targeted(effect) -> bool:
 
 
 def _legal_target(target) -> bool:
-    return getattr(target, "alive", False)
+    # A legal target must be alive AND on the battlefield. An off-field enemy — bounced
+    # (in hand) or channel-suspended (exiled) — can't be targeted (Update 03 §E-D), so
+    # an effect aimed at one that has just left play fizzles.
+    if not getattr(target, "alive", False):
+        return False
+    if isinstance(target, EnemyState) and (target.in_hand or target.exiled):
+        return False
+    return True
 
 
 def _has_kw(combatant, kw: str) -> bool:
@@ -1189,13 +1249,40 @@ def _r_draw(st, item, effect, target, ctx):
     _draw(st, target, _value(effect.amount, ctx), ctx)
 
 
+def _raise_scry_choice(st: GameState, item: StackItem, effect, ctx: dict,
+                       idx: int, effects) -> bool:
+    """Set up the interactive scry: reveal the top N of the chooser's library and
+    pause so the player can place each card on top (in a chosen order) or the bottom.
+    Returns True if a choice was raised (the caller stops resolving), False to fall
+    through to the non-interactive reveal (no library / nothing to look at / a value
+    like 'all' that isn't a fixed count)."""
+    amt = getattr(effect, "amount", None)
+    if isinstance(amt, str):  # 'all' and friends have no fixed reveal count
+        return False
+    targets = _resolution_targets(st, item, effect, ctx)
+    char = targets[0] if targets else None
+    if not isinstance(char, CharacterState) or not char.library:
+        return False
+    n = min(_value(amt, ctx), len(char.library))
+    if n <= 0:
+        return False
+    revealed = list(char.library[:n])
+    st.pending_choice = PendingChoice(
+        kind="scry", chooser_id=char.id, effect=effect, candidates=revealed,
+        need=n, remaining=list(effects[idx + 1:]), item=item, looked=n)
+    _log(st, "scry", f"{char.name} scries {n}: {', '.join(c.name for c in revealed)}.",
+         target=char.id, amount=n, revealed=[c.name for c in revealed])
+    return True
+
+
 def _r_scry(st, item, effect, target, ctx):
-    # Minimal scry: reveal the top card; default-keep (no reorder). The REPL can
-    # surface the card; the scenario never casts a scry, so keep-on-top suffices.
+    # Non-interactive fallback (scry nested in a modal/conditional, or no library):
+    # reveal the top N and keep them in place. Top-level scry is interactive instead
+    # (see `_raise_scry_choice`), letting the player order top/bottom.
     n = _value(effect.amount, ctx)
-    top = [c.name for c in target.library[:n]]
-    _log(st, "scry", f"{target.name} scries {n}: {', '.join(top) or '(empty)'}.",
-         target=_tid(target), amount=n, revealed=top)
+    top = [c.name for c in target.library[:n]] if target is not None else []
+    _log(st, "scry", f"{target.name if target else '?'} scries {n}: {', '.join(top) or '(empty)'}.",
+         target=_tid(target) if target is not None else None, amount=n, revealed=top)
 
 
 def _move_card_matches(card, effect) -> bool:
@@ -1323,13 +1410,38 @@ def _r_exile(st, item, effect, target, ctx):
 
 
 def _r_bounce(st, item, effect, target, ctx):
-    # Bounce removes a minion (it re-enters after a reset, later — not modelled, so
-    # it leaves the board like a removal). Ally permanents have no hand to return to.
+    # Bounce sends a minion to the in-hand zone (Update 03 §E-C): a tempo tool, not a
+    # kill — it leaves the field, loses its next action, and redeploys a turn later.
+    # An ally token has no hand to return to, so for it bounce is removal (existing).
     if isinstance(target, EnemyState):
-        _log(st, "bounced", f"{target.name} is returned (removed).", target=target.id)
-        _kill_enemy(st, target)
+        _bounce_enemy(st, target)
     elif isinstance(target, TokenState):
         _remove_token(st, target)
+
+
+def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
+    """Update 03 §E-C: move an in-play enemy `in play → in hand`. It leaves the
+    battlefield (vacates its row, no intent), sheds its temporary modifiers and
+    attachments, but RETAINS its HP. It redeploys at the start of its next turn
+    (the Intents step). Fires no death triggers — bounce is not death (§E-D)."""
+    enemy.in_hand = True
+    enemy.intent = None                       # pending intent reset — declares fresh on redeploy
+    # Shed temporary modifiers (the pump/wound layers would expire at End anyway, R-7).
+    enemy.temp_mod = enemy.prevent_pool = enemy.power_bonus = 0
+    enemy.prevent_tags = []
+    enemy.taunted_by = None
+    for kw, dur in list(enemy.keywords.items()):  # temporary granted keywords fall off
+        if dur not in ("permanent", "encounter"):
+            del enemy.keywords[kw]
+    if enemy.id in st.acted_enemies:          # off the field — it takes no action this turn
+        st.acted_enemies.remove(enemy.id)
+    # Enchantments/channels attached to it fall off as it leaves play -> the holder breaks.
+    for holder in st.party:
+        if any(ch.target_id == enemy.id for ch in holder.channels):
+            _note_break(st, holder, "aura_loss")
+    _log(st, "bounced",
+         f"{enemy.name} is bounced to hand (redeploys next turn; HP {enemy.hp} retained).",
+         enemy=enemy.id, hp=enemy.hp, row=enemy.row)
 
 
 def _power_of(c) -> int:
@@ -1701,7 +1813,10 @@ def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None
 def _check_end(st: GameState) -> None:
     if st.result is not None:
         return
-    if not st.living_enemies():
+    # Victory (Update 03 §E-B): every roster enemy must be gone for good — in the
+    # graveyard or exile. A bounced enemy is "in hand" (alive, off-field), which keeps
+    # the encounter live: you cannot win by bouncing the last enemy; it will redeploy.
+    if not st.living_enemies() and not st.bounced_enemies():
         # Any enemy still suspended by a channeled exile is now gone for good — the
         # encounter ends before the channel could break and bring it back (GDD §8).
         for e in st.enemies:
@@ -1809,8 +1924,18 @@ def _move_choice_label(effect, card) -> str:
 
 def _legal_choice(st: GameState) -> List[Action]:
     """A mandatory mid-resolution card pick: one action per candidate (no pass —
-    the move must be made while legal cards remain)."""
+    the choice must be made while cards remain). For a scry each revealed card
+    offers two actions (top / bottom)."""
     pc = st.pending_choice
+    if pc.kind == "scry":
+        actions: List[Action] = []
+        draw_pos = len(pc.top) + 1  # the next 'on top' pick becomes draw position N
+        for i, card in enumerate(pc.candidates):
+            actions.append(Action("choose_scry", pc.chooser_id, choice=i, target_id="top",
+                                  label=f"Put {card.name} on top (draw #{draw_pos})"))
+            actions.append(Action("choose_scry", pc.chooser_id, choice=i, target_id="bottom",
+                                  label=f"Put {card.name} on the bottom"))
+        return actions
     return [Action("choose_card", pc.chooser_id, choice=i,
                    label=_move_choice_label(pc.effect, card))
             for i, card in enumerate(pc.candidates)]

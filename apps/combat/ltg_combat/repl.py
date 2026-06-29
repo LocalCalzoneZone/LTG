@@ -180,6 +180,12 @@ def _build_menu(state: GameState, actions: List[Action]) -> List[_Entry]:
     """Group the engine's actions for legibility — Attack then choose an enemy,
     multi-target casts behind a 'choose target' sub-menu. Pure presentation:
     every entry maps back to an Action the engine already offered."""
+    # A mid-resolution choice (card move / scry placement) is exclusive: list each
+    # pick as its own entry and nothing else.
+    choices = [a for a in actions if a.kind in ("choose_card", "choose_scry")]
+    if choices:
+        return [_Entry(a.label, action=a) for a in choices]
+
     mana = [a for a in actions if a.kind == "choose_mana"]
     attacks = [a for a in actions if a.kind == "attack"]
     casts = [a for a in actions if a.kind == "cast"]

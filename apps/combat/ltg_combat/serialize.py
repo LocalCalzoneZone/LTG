@@ -190,6 +190,8 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "row": enemy.row,
         "attack_mode": enemy.attack_mode,
         "alive": enemy.alive,
+        "in_hand": enemy.in_hand,   # bounced: off the battlefield, pending redeploy (Update 03)
+        "zone": "in_hand" if enemy.in_hand else ("exile" if enemy.exiled else "in_play"),
         "temp_mod": enemy.temp_mod,
         "prevent_pool": enemy.prevent_pool,
         "protection": enemy.protection,
@@ -336,6 +338,15 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
                   else "Choose a card to move")
         return [{"label": prompt, "kind": "prompt"}] + [
             {"label": a.label, "index": i, "kind": "choose_card"} for i, a in card_choices]
+
+    # A scry: place each revealed top card on top (in pick order) or the bottom.
+    scry_choices = [(i, a) for i, a in indexed if a.kind == "choose_scry"]
+    if scry_choices:
+        pc = state.pending_choice
+        left = len(pc.candidates) if pc is not None else 0
+        prompt = f"Scry — place each revealed card ({left} left)"
+        return [{"label": prompt, "kind": "prompt"}] + [
+            {"label": a.label, "index": i, "kind": "choose_scry"} for i, a in scry_choices]
 
     mana = [(i, a) for i, a in indexed if a.kind == "choose_mana"]
     attacks = [(i, a) for i, a in indexed if a.kind == "attack"]

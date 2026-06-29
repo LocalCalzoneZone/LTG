@@ -78,6 +78,7 @@ input[type=file] { font: inherit; color: var(--muted); }
 .card-unit { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 9px; cursor: pointer; }
 .card-unit.acting { border-color: var(--active); box-shadow: 0 0 0 1px var(--active); }
 .card-unit.dead { opacity: .45; }
+.card-unit.bounced { opacity: .6; border-style: dashed; }
 .unit-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
 .unit-name { font-weight: bold; }
 .unit-sub { color: var(--muted); font-size: 11px; }

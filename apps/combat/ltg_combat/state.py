@@ -192,6 +192,11 @@ class EnemyState:
     # act, doesn't block victory) but still alive — it returns when the channel breaks.
     # A spell's exile removes the enemy outright instead, so this stays False there.
     exiled: bool = False
+    # Bounced to the "in hand" zone (Design Update 03 §E-C): off the battlefield (not
+    # targetable, occupies no row, declares nothing) but still on the roster, so it
+    # does NOT satisfy victory — it redeploys at the start of its next turn. Distinct
+    # from `exiled`, which counts as defeated. HP is retained across the bounce.
+    in_hand: bool = False
 
     # Mirror the character's HP model so one damage routine serves both. An enemy's
     # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
@@ -291,20 +296,31 @@ class Event:
 @dataclass
 class PendingChoice:
     """A mid-resolution prompt: the chooser must pick which card(s) a move_card
-    effect moves. Set on the GameState to pause the flow (like the capacity-colour
-    choice); cleared once `need` picks are made, then resolution of `remaining`
-    (the stack item's not-yet-resolved top-level effects) resumes.
+    effect moves, or (for a scry) where each revealed card goes. Set on the
+    GameState to pause the flow (like the capacity-colour choice); cleared once the
+    picks are made, then resolution of `remaining` (the stack item's not-yet-resolved
+    top-level effects) resumes.
 
     `candidates` holds live references to the same Card objects that sit in the
     chooser's zones — `copy.deepcopy(state)` preserves that sharing via its memo,
-    so a picked card is removed from the right zone by identity."""
+    so a picked card is removed from the right zone by identity.
+
+    For a scry (`kind == "scry"`) the chooser assigns each of the `looked` revealed
+    top cards to either `top` (in pick order — the first chosen is drawn first) or
+    `bottom`; the choice is complete once `candidates` is empty."""
 
     chooser_id: str
-    effect: "Effect"                     # the move_card effect being resolved
+    effect: "Effect"                     # the move_card / scry effect being resolved
     candidates: List["Card"]             # the cards the chooser may pick from
-    need: int                            # cards still to move
-    remaining: List["Effect"]            # effects to resolve after this move completes
+    need: int                            # cards still to move (move_card)
+    remaining: List["Effect"]            # effects to resolve after this choice completes
     item: "StackItem"                    # the originating stack item (to resume on)
+    kind: str = "move"                   # "move" (move_card) | "scry"
+    # Scry accumulators (kind == "scry"): the revealed cards the chooser has so far
+    # sent to the top / bottom of the library, in pick order.
+    top: List["Card"] = field(default_factory=list)
+    bottom: List["Card"] = field(default_factory=list)
+    looked: int = 0                      # how many top cards were revealed (scry X)
 
 
 @dataclass
@@ -350,10 +366,16 @@ class GameState:
         return [c for c in self.party if c.alive]
 
     def living_enemies(self) -> List[EnemyState]:
-        # Channel-exiled enemies are alive but out of play: not targetable, can't act,
-        # and don't count toward "are there enemies left" (so the encounter can end
-        # while one is suspended — it is then permanently exiled).
-        return [e for e in self.enemies if e.alive and not e.exiled]
+        # The enemies "in play" (Update 03 §E-A): on the battlefield, targetable, and
+        # acting. Channel-exiled enemies are alive but out of play (suspended), and
+        # bounced enemies are alive but "in hand" (off the field, pending redeploy);
+        # both are excluded here. Defeated enemies (graveyard/exile) leave the list.
+        return [e for e in self.enemies if e.alive and not e.exiled and not e.in_hand]
+
+    def bounced_enemies(self) -> List[EnemyState]:
+        """Roster enemies currently in the in-hand zone (bounced, pending redeploy).
+        They keep the encounter live — victory requires every enemy gone for good."""
+        return [e for e in self.enemies if e.in_hand]
 
     def living_tokens(self) -> List[TokenState]:
         return [t for t in self.tokens if t.alive]

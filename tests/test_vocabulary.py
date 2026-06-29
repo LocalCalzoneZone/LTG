@@ -224,11 +224,58 @@ def test_channeled_exile_becomes_permanent_when_the_encounter_ends():
     assert any(e.type == "permanent_exile" for e in after.log)
 
 
-def test_bounce_removes_the_enemy():
-    card = C("unsummon", "instant", [{"kind": "bounce",
+def _unsummon():
+    return C("unsummon", "instant", [{"kind": "bounce",
         "target": {"mode": "chosen", "side": "enemy", "targeted": True}}], colors={"U": 1})
-    after, _ = do(make_state([card]), kind="cast", card_id="unsummon", target_id="orc")
-    assert after.enemy("orc") is None
+
+
+def test_bounce_sends_the_enemy_to_hand_not_to_the_graveyard():
+    # Update 03 §E-C: bounce moves an in-play enemy to the in-hand zone (off the
+    # battlefield, untargetable) but it stays on the roster with its HP, so it is
+    # neither dead nor targetable — and a second enemy keeps the fight alive.
+    state = make_state([_unsummon()], enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    after, _ = do(state, kind="cast", card_id="unsummon", target_id="orc")
+    orc_e = after.enemy("orc")
+    assert orc_e is not None and orc_e.in_hand            # in hand, not removed
+    assert "orc" not in [e.id for e in after.living_enemies()]   # off the battlefield
+    assert orc_e.hp == 10                                 # HP retained (bounce does not heal/kill)
+    assert after.result is None                           # the Goblin keeps the encounter live
+
+
+def test_cannot_win_by_bouncing_the_last_enemy():
+    # Update 03 §E-B: a bounced last enemy is "in hand", which is not graveyard/exile,
+    # so victory stays false — bounce can only delay, never win.
+    after, _ = do(make_state([_unsummon()]), kind="cast", card_id="unsummon", target_id="orc")
+    assert after.result is None                           # NOT a victory
+    assert after.enemy("orc").in_hand and not after.living_enemies()
+
+
+def test_in_hand_enemy_is_not_a_legal_target():
+    # §E-D: you cannot bounce (or otherwise target) an in-hand enemy — it is off-field.
+    deck = [_unsummon(), C("unsummon2", "instant", [{"kind": "bounce",
+        "target": {"mode": "chosen", "side": "enemy", "targeted": True}}], colors={"U": 1})]
+    state = make_state(deck, enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    after, _ = do(state, kind="cast", card_id="unsummon", target_id="orc")  # orc → hand
+    # No action (bounce or any cast) can name the in-hand orc.
+    assert not has(after, kind="cast", card_id="unsummon2", target_id="orc")
+    assert all(a.target_id != "orc" for a in legal_actions(after))
+
+
+def test_bounced_enemy_redeploys_and_acts_next_turn():
+    # §E-C redeploy: at the start of its next turn the in-hand enemy returns to play
+    # (original row) and declares a fresh intent, having lost exactly one action cycle.
+    state = make_state([_unsummon()], enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    after, _ = do(state, kind="cast", card_id="unsummon", target_id="orc")
+    assert after.enemy("orc").in_hand
+    # End the turn; the enemy phase skips the in-hand orc. Next turn opens on the
+    # capacity colour-lock (the hero's 5-colour identity), which precedes the Intents
+    # step — resolve it so the flow reaches the redeploy.
+    after, _ = do(after, kind="end_turn")
+    after, _ = do(after, kind="choose_mana")             # lock turn-2's +1 capacity → Intents
+    orc_e = after.enemy("orc")
+    assert not orc_e.in_hand                              # back in play (redeployed)
+    assert "orc" in [e.id for e in after.living_enemies()]
+    assert orc_e.intent is not None                       # declared fresh
 
 
 def _pit_fight():
