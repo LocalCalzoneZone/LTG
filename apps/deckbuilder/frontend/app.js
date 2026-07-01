@@ -6,13 +6,15 @@ const COLORS = ["W", "U", "B", "R", "G"];
 const SPEED_BY_TIMING = { instant: "reactive", sorcery: "active", channeled: "sustained" };
 const derivedSpeed = (timing) => SPEED_BY_TIMING[timing] || "—";
 const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster", "Channeler"];
-let ARCHETYPES = {}; // {Fighter:{starting_hp,starting_hand,starting_mana}, …} from backend
+let ARCHETYPES = {}; // {Fighter:{starting_hp,…,attacks:{melee:3},default_mode}, …} from backend
+let ROWS = ["front", "mid", "rear"];
 
 const blankLoadout = () => ({
   ltg_version: "0.1",
   character: {
     name: "New Character", description: "", portrait: "",
     archetype: "Fighter", level: 1, colors: ["U"], starting_mana: ["U", "U"],
+    attack_mode: "melee", row: "front",
   },
   cards: [],
 });
@@ -81,6 +83,25 @@ function manaAmount() {
   return ARCHETYPES[state.character.archetype]?.starting_mana || 2;
 }
 
+// The {mode: power} attack profiles the current archetype allows.
+function attackOptions() {
+  return ARCHETYPES[state.character.archetype]?.attacks || { melee: 0 };
+}
+
+// Keep attack_mode valid for the archetype (Fighter is melee-only); default if not.
+function reconcileAttackMode() {
+  const ch = state.character;
+  const opts = attackOptions();
+  if (!(ch.attack_mode in opts)) {
+    ch.attack_mode = ARCHETYPES[ch.archetype]?.default_mode || Object.keys(opts)[0];
+  }
+}
+
+// Power is derived from (archetype, attack_mode) — never set directly.
+function currentPower() {
+  return attackOptions()[state.character.attack_mode];
+}
+
 // Keep starting_mana the right length for the archetype and within `colors`.
 function reconcileStartingMana() {
   const ch = state.character;
@@ -112,13 +133,40 @@ function renderCharacter() {
     archPick.appendChild(btn);
   });
 
-  // Derived stat block (read-only)
+  // Derived stat block (read-only) — Power follows the chosen attack profile.
   const stats = ARCHETYPES[ch.archetype];
   $("#stat-block").innerHTML = stats
     ? `<span class="stat"><b>${stats.starting_hp}</b> HP</span>
        <span class="stat"><b>${stats.starting_hand}</b> hand</span>
-       <span class="stat"><b>${stats.starting_mana}</b> mana</span>`
+       <span class="stat"><b>${stats.starting_mana}</b> mana</span>
+       <span class="stat"><b>${currentPower()}</b> Power</span>`
     : "";
+
+  // Attack type: one button per profile the archetype offers (mode + Power).
+  const attackPick = $("#attack-pick");
+  attackPick.innerHTML = "";
+  const opts = attackOptions();
+  Object.keys(opts).forEach((mode) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "archetype-btn" + (ch.attack_mode === mode ? " on" : "");
+    btn.textContent = `${mode} ${opts[mode]}`;
+    btn.disabled = Object.keys(opts).length === 1;  // fixed (e.g. Fighter)
+    btn.onclick = () => setAttackMode(mode);
+    attackPick.appendChild(btn);
+  });
+
+  // Default row.
+  const rowPick = $("#row-pick");
+  rowPick.innerHTML = "";
+  ROWS.forEach((r) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "archetype-btn" + (ch.row === r ? " on" : "");
+    btn.textContent = r;
+    btn.onclick = () => setRow(r);
+    rowPick.appendChild(btn);
+  });
 
   // Colours
   const colorPick = $("#color-pick");
@@ -148,6 +196,19 @@ function renderCharacter() {
 function setArchetype(a) {
   state.character.archetype = a;
   reconcileStartingMana();
+  reconcileAttackMode();  // archetypes differ in which attack profiles they allow
+  renderCharacter();
+  scheduleValidate();
+}
+
+function setAttackMode(mode) {
+  state.character.attack_mode = mode;
+  renderCharacter();
+  scheduleValidate();
+}
+
+function setRow(r) {
+  state.character.row = r;
   renderCharacter();
   scheduleValidate();
 }
@@ -363,8 +424,11 @@ async function loadSpecs() {
 
 async function loadArchetypes() {
   try {
-    ARCHETYPES = await api("GET", "/api/archetypes");
+    const resp = await api("GET", "/api/archetypes");
+    ARCHETYPES = resp.archetypes || resp;  // tolerate either shape
+    if (resp.rows) ROWS = resp.rows;
     reconcileStartingMana();
+    reconcileAttackMode();
     renderCharacter();
     scheduleValidate();
   } catch (e) { /* picker falls back to defaults */ }
@@ -391,12 +455,12 @@ function normTarget(d) {
   return out;
 }
 
-const KINDS = () => Object.keys(EFFECT_SPECS);
+const KINDS = () => Object.keys(EFFECT_SPECS).sort();
 
 // A fresh editor row (flat). modal/conditional are bare markers — the rows below
 // them supply the grouped effects (see flatten/rebuild). Leaves are full effects.
 function newItem(kind) {
-  if (kind === "modal") return { kind: "modal", label: "" };
+  if (kind === "modal") return { kind: "modal", label: "", choose: 1, or_more: false };
   if (kind === "conditional") return { kind: "conditional", condition: { kind: "cast_mode", mode: "reaction" } };
   return defaultEffect(kind);
 }
@@ -405,13 +469,16 @@ function newItem(kind) {
 function defaultEffect(kind) {
   const eff = { kind };
   (EFFECT_SPECS[kind]?.params || []).forEach((p) => {
-    if ("default" in p) eff[p.name] = clone(p.default);
+    // An optional number (e.g. token power/hp) defaults to null in the schema for
+    // back-compat, but the editor should seed a concrete value so the author sets it.
+    const nullishNum = (p.control === "int" || p.control === "float") && p.default === null;
+    if ("default" in p && !nullishNum) eff[p.name] = clone(p.default);
     else if (p.control === "bool") eff[p.name] = false;
     else if (p.control === "int" || p.control === "float" || p.control === "value") eff[p.name] = 1;
     else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
     else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
     else if (p.control === "action_target") eff[p.name] = { class: "action", side: "enemy" };
-    else if (p.control === "keyword_list") eff[p.name] = (p.options || []).length ? [p.options[0]] : [];
+    else if (p.control === "keyword_list") eff[p.name] = (p.required && (p.options || []).length) ? [p.options[0]] : [];
     else eff[p.name] = "";
   });
   return eff;
@@ -429,9 +496,10 @@ function nextSlotName(card) {
 
 // --- HTML builders --------------------------------------------------------
 // The target descriptor builder: link select + (when direct) mode/side/toggles.
-function targetControlHtml(i, current, card) {
+function targetControlHtml(i, current, card, field = "target") {
   const isSlot = typeof current === "string";
   const slots = Object.keys(card.targets);
+  const f = `data-i="${i}" data-field="${field}"`;
   const linkOpts = [`<option value="__direct__" ${isSlot ? "" : "selected"}>Build target…</option>`];
   if (slots.length) {
     linkOpts.push(`<optgroup label="Shared slot">`);
@@ -439,18 +507,18 @@ function targetControlHtml(i, current, card) {
     linkOpts.push(`</optgroup>`);
   }
   linkOpts.push(`<option value="__new_slot__">＋ New shared slot</option>`);
-  const link = `<select class="tgt-link" data-i="${i}">${linkOpts.join("")}</select>`;
+  const link = `<select class="tgt-link" ${f}>${linkOpts.join("")}</select>`;
 
   if (isSlot) return `<span class="tgt-builder">${link}<span class="tgt-summary">↪ ${describeTargetJS(current)}</span></span>`;
 
   const d = current || { mode: "chosen", side: "any" };
-  const modeSel = `<select class="tgt-mode" data-i="${i}">${MODES.map((m) => `<option value="${m}" ${d.mode === m ? "selected" : ""}>${MODE_LABEL[m] || m}</option>`).join("")}</select>`;
+  const modeSel = `<select class="tgt-mode" ${f}>${MODES.map((m) => `<option value="${m}" ${d.mode === m ? "selected" : ""}>${MODE_LABEL[m] || m}</option>`).join("")}</select>`;
   const sideSel = d.mode === "self" ? "" :
-    `<select class="tgt-side" data-i="${i}">${SIDES.map((s) => `<option value="${s}" ${d.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
+    `<select class="tgt-side" ${f}>${SIDES.map((s) => `<option value="${s}" ${d.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
   const exclude = d.mode === "self" ? "" :
-    `<label class="inline mini"><input type="checkbox" class="tgt-exclude" data-i="${i}" ${d.exclude_self ? "checked" : ""}/> another</label>`;
+    `<label class="inline mini"><input type="checkbox" class="tgt-exclude" ${f} ${d.exclude_self ? "checked" : ""}/> another</label>`;
   const targeted = d.mode === "chosen" ?
-    `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" data-i="${i}" ${d.targeted ? "checked" : ""}/> targets</label>` : "";
+    `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" ${f} ${d.targeted ? "checked" : ""}/> targets</label>` : "";
   return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}</span>`;
 }
 
@@ -511,17 +579,28 @@ let editorItems = [];
 
 function flattenEffects(effects) {
   const items = [];
-  for (const e of effects || []) {
-    if (e.kind === "modal") {
-      for (const m of e.modes || []) {
-        items.push({ kind: "modal", label: m.label || "" });
-        (m.effects || []).forEach((inner) => items.push(clone(inner)));
-      }
-    } else if (e.kind === "conditional") {
+  // A conditional flattens to its marker followed by its (leaf) effects; a plain
+  // leaf flattens to itself. Used at top level AND inside a modal mode.
+  const pushEffect = (e) => {
+    if (e.kind === "conditional") {
       items.push({ kind: "conditional", condition: clone(e.condition) });
       (e.effects || []).forEach((inner) => items.push(clone(inner)));
     } else {
       items.push(clone(e));
+    }
+  };
+  for (const e of effects || []) {
+    if (e.kind === "modal") {
+      // The 'choose' count belongs to the whole modal; replicate it onto every
+      // mode-marker so the controls (shown on the first marker) round-trip. A mode
+      // may itself hold a conditional, so flatten each mode effect recursively.
+      for (const m of e.modes || []) {
+        items.push({ kind: "modal", label: m.label || "",
+                     choose: e.choose ?? 1, or_more: e.or_more ?? false });
+        (m.effects || []).forEach(pushEffect);
+      }
+    } else {
+      pushEffect(e);
     }
   }
   return items;
@@ -532,18 +611,24 @@ function rebuildEffects(items) {
   let modal = null, mode = null, cond = null;
   for (const it of items) {
     if (it.kind === "modal") {
-      cond = null;
+      cond = null;  // a new mode starts; close any open conditional
       mode = { label: it.label || "", effects: [] };
       if (modal) { modal.modes.push(mode); }
-      else { modal = { kind: "modal", modes: [mode] }; out.push(modal); }
+      else {
+        // First marker of the group carries the modal's choose count.
+        modal = { kind: "modal", modes: [mode],
+                  choose: it.choose ?? 1, or_more: it.or_more ?? false };
+        out.push(modal);
+      }
     } else if (it.kind === "conditional") {
-      modal = null; mode = null;
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
-      out.push(cond);
+      // Nest the conditional inside the open modal mode (modal > conditional >
+      // effect); only a conditional with no modal above it sits at top level.
+      if (mode) mode.effects.push(cond);
+      else out.push(cond);
     } else {
-      if (mode) mode.effects.push(clone(it));
-      else if (cond) cond.effects.push(clone(it));
-      else out.push(clone(it));
+      const dest = cond ? cond.effects : (mode ? mode.effects : out);
+      dest.push(clone(it));
     }
   }
   return out;
@@ -570,12 +655,19 @@ function conditionControlHtml(i, cond) {
     const prop = cond.property || "has_keyword";
     rest = `<select class="cond-prop" data-i="${i}">
         <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>has keyword</option>
-        <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option></select>`;
+        <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option>
+        <option value="level" ${prop === "level" ? "selected" : ""}>is level</option></select>`;
     if (prop === "has_keyword") {
       const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
       const opts = kwSpec.options || [];
       rest += `<select class="cond-keyword" data-i="${i}">${opts.map((o) =>
         `<option value="${o}" ${cond.keyword === o ? "selected" : ""}>${escapeHtml((kwSpec.labels && kwSpec.labels[o]) || o)}</option>`).join("")}</select>`;
+    } else if (prop === "level") {
+      rest += `<input type="number" class="cond-level" data-i="${i}" min="1" value="${cond.level ?? 1}" />
+        <select class="cond-compare" data-i="${i}">
+          <option value="exactly" ${cond.compare === "exactly" || !cond.compare ? "selected" : ""}>exactly</option>
+          <option value="or_more" ${cond.compare === "or_more" ? "selected" : ""}>or more</option>
+          <option value="or_less" ${cond.compare === "or_less" ? "selected" : ""}>or less</option></select>`;
     } else {
       rest += `<select class="cond-side" data-i="${i}">${["ally", "enemy"].map((s) =>
         `<option value="${s}" ${cond.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
@@ -584,7 +676,8 @@ function conditionControlHtml(i, cond) {
   return `<span class="cond-builder">if ${kindSel} ${rest}</span>`;
 }
 
-function effectRowHtml(e, i, card, scoped) {
+function effectRowHtml(e, i, card, depth = 0) {
+  const indent = depth >= 2 ? " scoped scoped2" : depth === 1 ? " scoped" : "";
   const kindSel = `<select class="eff-kind" data-i="${i}">${KINDS().map((k) => `<option ${k === e.kind ? "selected" : ""}>${k}</option>`).join("")}</select>`;
   const tools = `<span class="effect-tools">
       <button class="eff-up" data-i="${i}" title="Move up">↑</button>
@@ -592,41 +685,56 @@ function effectRowHtml(e, i, card, scoped) {
       <button class="eff-remove danger" data-i="${i}" title="Remove">✕</button></span>`;
 
   if (e.kind === "modal") {
+    // The "choose N" count applies to the whole modal — show it on the first
+    // mode-marker of the group only.
+    const isFirstModal = !editorItems.slice(0, i).some((x) => x.kind === "modal");
+    const chooseCtl = isFirstModal ? `
+          <label class="inline">choose <input type="number" min="1" class="modal-choose" data-i="${i}" value="${e.choose ?? 1}" /></label>
+          <label class="inline mini"><input type="checkbox" class="modal-ormore" data-i="${i}" ${e.or_more ? "checked" : ""}/> or more</label>` : "";
     return `<div class="effect-row marker">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">
-          <span class="marker-note">choose-one option — effects below (until the next block) are this option</span>
-          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>
+          <span class="marker-note">choose option — effects below (until the next block) are this option</span>
+          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}
         </div></div>`;
   }
   if (e.kind === "conditional") {
-    return `<div class="effect-row marker">
+    return `<div class="effect-row marker${indent}">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">${conditionControlHtml(i, e.condition)}
           <span class="marker-note">applies to the effects below</span></div></div>`;
   }
 
   const spec = EFFECT_SPECS[e.kind];
-  const params = (spec?.params || []).map((p) => {
+  const params = (spec?.params || []).filter((p) =>
+    // The level value is meaningless until a level comparator is chosen.
+    !(e.kind === "move_card" && p.name === "filter_level" && (e.filter_level_compare ?? "any") === "any")
+  ).map((p) => {
     if (p.name === "target" && p.control === "action_target")
       return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
-    if (p.name === "target") return `<span class="param"><label class="inline">target</label> ${targetControlHtml(i, e.target, card)}</span>`;
+    if (p.control === "target") {
+      const label = p.name === "other" ? "vs" : p.name;  // fight's 2nd target reads "vs"
+      return `<span class="param"><label class="inline">${label}</label> ${targetControlHtml(i, e[p.name], card, p.name)}</span>`;
+    }
     return `<span class="param">${paramHtml(i, p, e[p.name])}</span>`;
   }).join("");
   return `
-    <div class="effect-row${scoped ? " scoped" : ""}">
+    <div class="effect-row${indent}">
       <div class="effect-head">${kindSel}${tools}</div>
       <div class="effect-params">${params}</div>
     </div>`;
 }
 
-// Render the flat editor rows, indenting leaves that fall under a marker's scope.
+// Render the flat editor rows, indenting by nesting depth: a modal mode is depth 1,
+// a conditional nested in a mode pushes its effects to depth 2 (modal > conditional
+// > effect). A top-level conditional scopes its effects to depth 1.
 function renderEffectRows(card) {
   if (!editorItems.length) return "<div class='meta'>No effects yet.</div>";
-  let inScope = false;
+  let inMode = false, inCond = false;
   return editorItems.map((e, i) => {
-    if (e.kind === "modal" || e.kind === "conditional") { inScope = true; return effectRowHtml(e, i, card, false); }
-    return effectRowHtml(e, i, card, inScope);
+    if (e.kind === "modal") { inMode = true; inCond = false; return effectRowHtml(e, i, card, 0); }
+    if (e.kind === "conditional") { const d = inMode ? 1 : 0; inCond = true; return effectRowHtml(e, i, card, d); }
+    return effectRowHtml(e, i, card, (inMode ? 1 : 0) + (inCond ? 1 : 0));
   }).join("");
 }
 
@@ -744,7 +852,7 @@ function wireDetail(idx) {
         : spec.control === "float" ? (parseFloat(inp.value) || 0)
         : (spec.control === "enum" && spec.optional && inp.value === "") ? null
         : inp.value;
-      commitEffects(idx, p === "trigger" || p === "duration");
+      commitEffects(idx, p === "trigger" || p === "duration" || p === "filter_level_compare");
     };
   });
   document.querySelectorAll(".kw-check").forEach((cb) => {
@@ -774,14 +882,16 @@ function wireDetail(idx) {
     };
   });
   // Target descriptor builder
-  document.querySelectorAll(".tgt-link").forEach((sel) => { sel.onchange = () => onTargetLink(idx, +sel.dataset.i, sel.value); });
-  document.querySelectorAll(".tgt-mode").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i]; e.target = normTarget({ ...e.target, mode: sel.value }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i]; e.target = normTarget({ ...e.target, side: sel.value }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i]; e.target = normTarget({ ...e.target, exclude_self: cb.checked }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i]; e.target = normTarget({ ...e.target, targeted: cb.checked }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-link").forEach((sel) => { sel.onchange = () => onTargetLink(idx, +sel.dataset.i, sel.value, sel.dataset.field || "target"); });
+  document.querySelectorAll(".tgt-mode").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], mode: sel.value }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], side: sel.value }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], exclude_self: cb.checked }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], targeted: cb.checked }); commitEffects(idx, true); }; });
 
   // Modal label + conditional condition builder
   document.querySelectorAll(".modal-label").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].label = inp.value; commitEffects(idx, false); }; });
+  document.querySelectorAll(".modal-choose").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].choose = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
+  document.querySelectorAll(".modal-ormore").forEach((cb) => { cb.onchange = () => { editorItems[+cb.dataset.i].or_more = cb.checked; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-kind").forEach((sel) => {
     sel.onchange = () => {
       editorItems[+sel.dataset.i].condition = sel.value === "cast_mode"
@@ -793,14 +903,19 @@ function wireDetail(idx) {
   document.querySelectorAll(".cond-mode").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.mode = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-prop").forEach((sel) => {
     sel.onchange = () => {
-      editorItems[+sel.dataset.i].condition = sel.value === "has_keyword"
-        ? { kind: "target_property", property: "has_keyword", keyword: "flying" }
-        : { kind: "target_property", property: "side", side: "enemy" };
+      const byProp = {
+        has_keyword: { kind: "target_property", property: "has_keyword", keyword: "flying" },
+        side: { kind: "target_property", property: "side", side: "enemy" },
+        level: { kind: "target_property", property: "level", level: 1, compare: "exactly" },
+      };
+      editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.has_keyword;
       commitEffects(idx, true);
     };
   });
   document.querySelectorAll(".cond-keyword").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.keyword = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-side").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.side = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-level").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].condition.level = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-compare").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.compare = sel.value; commitEffects(idx, true); }; });
 
   document.querySelectorAll(".eff-up").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, -1));
   document.querySelectorAll(".eff-down").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, 1));
@@ -819,7 +934,11 @@ function wireDetail(idx) {
   document.querySelectorAll(".slot-remove").forEach((b) => {
     b.onclick = () => {
       const s = b.dataset.slot;
-      editorItems.forEach((e) => { if (e.target === "$" + s) e.target = clone(card.targets[s]); });
+      // Re-materialize the descriptor into every field that linked this slot (a
+      // fight links two: target + other).
+      editorItems.forEach((e) => ["target", "other"].forEach((f) => {
+        if (e[f] === "$" + s) e[f] = clone(card.targets[s]);
+      }));
       delete card.targets[s];
       commitEffects(idx, true);
     };
@@ -831,22 +950,22 @@ function wireDetail(idx) {
 }
 
 // The link dropdown: build inline, link to an existing slot, or make a new one.
-function onTargetLink(idx, i, value) {
+function onTargetLink(idx, i, value, field = "target") {
   const card = state.cards[idx];
   const e = editorItems[i];
   if (value === "__direct__") {
     // unlink: materialize the current descriptor (copy the slot's, or default)
-    e.target = typeof e.target === "string"
-      ? clone(card.targets[e.target.slice(1)]) || { mode: "chosen", side: "any" }
-      : e.target;
+    e[field] = typeof e[field] === "string"
+      ? clone(card.targets[e[field].slice(1)]) || { mode: "chosen", side: "any" }
+      : e[field];
   } else if (value === "__new_slot__") {
     const name = nextSlotName(card);
-    const cur = e.target;
+    const cur = e[field];
     const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: false };
     card.targets[name] = seed;
-    e.target = "$" + name;
+    e[field] = "$" + name;
   } else {
-    e.target = value; // "$T1"
+    e[field] = value; // "$T1"
   }
   commitEffects(idx, true);
 }
@@ -990,9 +1109,11 @@ function applyLoadedText(text, handle, name) {
   let data;
   try { data = JSON.parse(text); } catch (e) { toast("Load failed: invalid JSON"); return; }
   state = data;
+  if (!state.character.row) state.character.row = "front";  // older loadouts
   currentFileHandle = handle || null;
   currentFileName = name || null;
   reconcileStartingMana();
+  reconcileAttackMode();
   renderAll();
   toast(`Loaded ${name || "loadout"}`);
 }
@@ -1062,8 +1183,19 @@ function parseDeckList(text) {
   return text.split(/\r?\n/).map((line) => {
     let s = line.trim();
     if (!s || s.startsWith("//") || s.startsWith("#")) return null;
-    s = s.replace(/^\s*\d+\s*x?\s+/i, "");        // leading quantity ("1 ", "2x ")
-    s = s.replace(/\s*\([^)]*\)\s*\d*\s*$/, "");   // trailing "(SET) 123"
+    if (/^(deck|sideboard|commander|maybeboard)\b/i.test(s)) return null; // section headers
+    s = s.replace(/^\s*\d+\s*x?\s+/i, "");          // leading quantity ("1 ", "2x ")
+    // Moxfield/Archidekt/Goldfish glue export metadata onto the end in varying
+    // order: "(SET) 123", foil markers "*F*"/"*E*", category tags "[...]"/"<...>".
+    // Strip trailing metadata tokens repeatedly until the name is clean.
+    let prev;
+    do {
+      prev = s;
+      s = s.replace(/\s*\*[^*]*\*\s*$/, "");                 // *F*, *E* foil/etch markers
+      s = s.replace(/\s*\[[^\]]*\]\s*$/, "");                // [Maybeboard], [Foil] tags
+      s = s.replace(/\s*<[^>]*>\s*$/, "");                   // <tag>
+      s = s.replace(/\s*\([^)]*\)\s*[\w-]*\s*$/i, "");      // (SET) 123 / (PLST) MH1-48
+    } while (s !== prev);
     return s.trim();
   }).filter(Boolean);
 }

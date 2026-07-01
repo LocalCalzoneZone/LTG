@@ -33,11 +33,12 @@ def test_anthem_render():
 
 
 def test_pacifism_render():
+    # `disable` was retired (R-11); Still the Blade now blunts the enemy's attack.
     c = chan_card(
-        [{"kind": "disable", "intent_type": "attack", "target": "$T1", "duration": "while_channeled"}],
+        [{"kind": "wound", "power": 2, "toughness": 0, "target": "$T1", "duration": "while_channeled"}],
         {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}},
     )
-    assert render(c) == "While channeled: the chosen enemy can't attack."
+    assert render(c) == "While channeled: the chosen enemy has -2 attack and -0 HP."
 
 
 def test_bitterblossom_render():
@@ -54,14 +55,14 @@ def test_mixed_continuous_and_upkeep_render_and_lint():
     from ltg_core.lints import lint_card
     c = chan_card(
         [
-            {"kind": "disable", "intent_type": "attack", "target": "$T1", "duration": "while_channeled"},
+            {"kind": "wound", "power": 2, "toughness": 0, "target": "$T1", "duration": "while_channeled"},
             {"kind": "create_token", "token_id": "faerie", "count": 1, "trigger": "upkeep"},
         ],
         {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}},
     )
     assert lint_card(c) == []
     text = render(c)
-    assert "While channeled: the chosen enemy can't attack." in text
+    assert "While channeled: the chosen enemy has -2 attack and -0 HP." in text
     assert "create a Faerie ally" in text
 
 
@@ -72,6 +73,20 @@ def test_enemy_debuff_render():
 
 
 # --- validation -------------------------------------------------------------- #
+def test_channeled_exile_render():
+    c = chan_card([{"kind": "exile", "target": "$T1", "duration": "while_channeled"}],
+                  {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
+    assert render(c) == "While channeled: exile the chosen enemy."
+
+
+def test_exile_duration_must_be_while_channeled():
+    # Exile is permanent (no duration) or reversible (while_channeled) — the
+    # turn-scoped durations are meaningless and rejected.
+    with pytest.raises(ValidationError):
+        chan_card([{"kind": "exile", "target": "$T1", "duration": "end_of_turn"}],
+                  {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
+
+
 def test_while_channeled_rejected_on_non_channeled():
     with pytest.raises(ValidationError):
         Card.model_validate({
@@ -110,7 +125,7 @@ def test_enchantment_builds_as_channeled_continuous():
 
 
 # --- fixtures validate & round-trip ----------------------------------------- #
-@pytest.mark.parametrize("name", ["anthem", "pacifism", "bitterblossom"])
+@pytest.mark.parametrize("name", ["anthem", "pacifism", "bitterblossom", "banishing_light"])
 def test_channeled_fixture_round_trips(name):
     data = json.loads((EXAMPLES / f"{name}.json").read_text())
     card = Card.model_validate(data)

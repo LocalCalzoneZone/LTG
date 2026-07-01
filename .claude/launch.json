@@ -2,10 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ltg",
-      "runtimeExecutable": ".venv/bin/uvicorn",
-      "runtimeArgs": ["backend.app:app", "--host", "0.0.0.0", "--port", "8000"],
-      "port": 8000
+      "name": "cockpit",
+      "runtimeExecutable": ".venv/bin/ltg-combat-cockpit",
+      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8011"],
+      "port": 8011
+    },
+    {
+      "name": "deckbuilder",
+      "runtimeExecutable": ".venv/bin/ltg-deckbuilder",
+      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8012"],
+      "port": 8012
     }
   ]
 }

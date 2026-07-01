@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from ltg_core.schema import Card, Loadout
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
-FIXTURES = ["giant_growth", "counterspell", "feed_the_swarm", "pacifism", "anthem"]
+FIXTURES = ["giant_growth", "counterspell", "feed_the_swarm", "trample_anthem", "anthem"]
 
 
 @pytest.mark.parametrize("name", FIXTURES)
@@ -145,5 +145,7 @@ def test_archetype_required_and_stats_derive():
         "starting_mana": ["U", "U", "B"],
     })
     assert caster.level == 1
-    assert caster.stats == {"starting_hp": 10, "starting_hand": 3, "starting_mana": 3}
+    # Stats now also carry the attack profile (R-3): a Caster defaults to ranged/2.
+    assert caster.stats == {"starting_hp": 10, "starting_hand": 3, "starting_mana": 3,
+                            "power": 2, "attack_mode": "ranged"}
     assert archetype_stats("Fighter") == {"starting_hp": 25, "starting_hand": 2, "starting_mana": 2}

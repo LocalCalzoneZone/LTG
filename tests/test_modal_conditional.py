@@ -31,6 +31,39 @@ def test_modal_render():
         "Choose one — • Deal 3 damage to an enemy. • Draw 2 card(s)."
 
 
+def test_modal_choose_count_render():
+    modes = [
+        {"effects": [{"kind": "deal_damage", "amount": 3, "target": ENEMY}]},
+        {"effects": [{"kind": "draw", "amount": 2, "target": {"mode": "self"}}]},
+        {"effects": [{"kind": "scry", "amount": 1, "target": {"mode": "self"}}]},
+    ]
+    assert render_effects(card([{"kind": "modal", "choose": 2, "modes": modes}]).effects) \
+        .startswith("Choose two — ")
+    assert render_effects(card([{"kind": "modal", "choose": 1, "or_more": True,
+                                 "modes": modes}]).effects).startswith("Choose one or more — ")
+
+
+def test_modal_choose_cannot_exceed_modes():
+    with pytest.raises(ValidationError):
+        card([{"kind": "modal", "choose": 3, "modes": [
+            {"effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]},
+            {"effects": [{"kind": "scry", "amount": 1, "target": {"mode": "self"}}]},
+        ]}])
+
+
+def test_strip_intent_shared_slot_render():
+    """Recoil-style: strip_intent in a shared slot reads grammatically and never
+    leaks the raw '$slot' reference (regression for the reported bug)."""
+    c = card([{"kind": "bounce", "target": "$T1"},
+              {"kind": "strip_intent", "target": "$T2"}],
+             targets={"T1": {"mode": "chosen", "side": "any"},
+                      "T2": {"mode": "chosen", "side": "any", "exclude_self": True}})
+    out = render_effects(c.effects, c.targets)
+    assert out == ("Choose a target: they are returned to hand. "
+                   "Choose another target: they lose their telegraphed intent.")
+    assert "$" not in out
+
+
 def test_modal_requires_two_modes():
     with pytest.raises(ValidationError):
         card([{"kind": "modal", "modes": [
@@ -71,7 +104,7 @@ def test_conditional_target_property_render():
     c = card([{"kind": "conditional",
                "condition": {"kind": "target_property", "property": "has_keyword", "keyword": "flying"},
                "effects": [{"kind": "deal_damage", "amount": 2, "target": ENEMY}]}])
-    assert render_effects(c.effects) == "If the target has Flight, deal 2 damage to an enemy."
+    assert render_effects(c.effects) == "Deal 2 damage to an enemy with flying."
 
 
 def test_conditional_side_render():
@@ -86,6 +119,30 @@ def test_has_keyword_requires_known_keyword():
         card([{"kind": "conditional",
                "condition": {"kind": "target_property", "property": "has_keyword", "keyword": "bogus"},
                "effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]}])
+
+
+def test_modal_mode_may_hold_a_conditional():
+    # modal > conditional > effect: the condition applies to the mode's effect.
+    c = card([{"kind": "modal", "modes": [
+        {"effects": [{"kind": "deal_damage", "amount": 2, "target": ENEMY}]},
+        {"effects": [{"kind": "conditional",
+                      "condition": {"kind": "target_property", "property": "level", "level": 4, "compare": "or_more"},
+                      "effects": [{"kind": "destroy", "target": ENEMY}]}]},
+    ]}])
+    assert c.effects[0].modes[1].effects[0].kind == "conditional"
+    assert render_effects(c.effects) == \
+        "Choose one — • Deal 2 damage to an enemy. • Destroy an enemy with level 4 or more."
+    assert Card.model_validate(c.model_dump()) == c  # round-trips
+
+
+def test_modal_mode_rejects_nested_modal():
+    # No modal-in-modal — a mode may hold a conditional, but not another modal.
+    with pytest.raises(ValidationError):
+        card([{"kind": "modal", "modes": [
+            {"effects": [{"kind": "modal", "modes": [
+                {"effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]},
+                {"effects": [{"kind": "scry", "amount": 1, "target": {"mode": "self"}}]}]}]},
+            {"effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]}]}])
 
 
 def test_nested_draw_enemy_rejected_in_mode():

@@ -1,10 +1,11 @@
 """The scripted-scenario harness — the engine's correctness proof.
 
 This drives the §A (minions) and §C (channeling) fights to completion through
-ONLY `legal_actions` / `apply_action`, asserting the expected state at every
-marked step. It owns zero rules: it reads state to decide which scripted choice
-to pick, and reads the event log to confirm what happened — but it never computes
-legality or damage. Both scenarios are the regression spine.
+ONLY `legal_actions` / `apply_action`, asserting the expected state at the marked
+steps. It owns zero rules: it reads state to decide which scripted choice to pick,
+and reads the event log to confirm what happened — but it never computes legality
+or damage. Both scenarios are the regression spine, rewritten for Design Update 01
+(attack modes + rows, the temp_mod HP model, parameterised prevent, no `disable`).
 
 Run it directly (`python -m ltg_combat harness`) for a readable PASS/FAIL trace,
 or call `run_scenario()` / `run_channeling_scenario()` from a test. Every
@@ -64,259 +65,171 @@ def _events_of_type(events: List[Event], type_: str) -> List[Event]:
     return [e for e in events if e.type == type_]
 
 
-def run_scenario(verbose: bool = False) -> GameState:
-    """Play §A; assert every marked state. Raises AssertionError on any mismatch."""
+def _locks(state: GameState) -> GameState:
+    """Resolve every pending capacity-colour lock at the start of a turn (Green for
+    Soren, Blue for the casters — colour is irrelevant to these asserted values)."""
+    while True:
+        choices = [a for a in legal_actions(state) if a.kind == "choose_mana"]
+        if not choices:
+            return state
+        state, _ = apply_action(state, choices[0])
+
+
+# --------------------------------------------------------------------------- #
+# §A — minions (Soren melee/3, Ys ranged/1)
+# --------------------------------------------------------------------------- #
+def run_scenario(verbose: bool = False, state: Optional[GameState] = None) -> GameState:
+    """Play §A; assert the marked states. Raises AssertionError on any mismatch.
+
+    `state` lets a caller inject an equivalent setup (e.g. one assembled from
+    Deckbuilder loadouts via the cockpit) and prove it plays to the same result;
+    it defaults to the canonical §A setup."""
     global _VERBOSE
     _VERBOSE = verbose
 
-    state = build_state()
+    state = build_state() if state is None else state
     soren, ys = state.party
-    skitter = state.enemy("skitterling")
-    brute = state.enemy("brute")
 
-    # --- §A.3 Setup (encounter start, before Turn 1) ----------------------- #
-    _say("§A.3 — setup")
-    _check("Soren HP 25", soren.hp == 25)
+    _say("§A.3 — setup (Design Update R-3 profiles)")
+    _check("Soren is melee/Power 3", soren.power == 3 and soren.attack_mode == "melee")
+    _check("Ys is ranged/Power 1", ys.power == 1 and ys.attack_mode == "ranged")
     _check("Soren opening hand [Guard, Sunlance]", hand_names(soren) == ["Guard", "Sunlance"])
-    _check("Ys HP 15", ys.hp == 15)
-    _check("Ys opening hand [Unmake, Mind Spike, Whispers, Sift]",
-           hand_names(ys) == ["Unmake", "Mind Spike", "Whispers", "Sift"])
-    _check("Skitterling HP 3", skitter.hp == 3)
-    _check("Brute HP 8", brute.hp == 8)
+    _check("Skitterling HP 3", state.enemy("skitterling").hp == 3)
+    _check("Brute HP 8", state.enemy("brute").hp == 8)
 
-    # --- TURN 1 — Upkeep + Enemy Intents (run automatically before Soren acts) #
-    # The first apply_action bootstraps the opening: its events carry the draws,
-    # the mana refresh, and the declared intents.
-    _say("\nTURN 1 — Soren attacks Skitterling")
+    # --- TURN 1 — Soren's melee one-shots Skitterling (Power 3 ≥ 3 HP) ------- #
+    _say("\nTURN 1 — Soren attacks Skitterling (melee 3, lethal)")
     state, ev = _do(state, kind="attack", target_id="skitterling")
-    soren, ys = state.party
-
-    _say("§A.4 — Turn 1 upkeep")
-    draws = {e.data["character"]: e.data["card_name"] for e in _events_of_type(ev, "draw")}
-    _check("Soren drew Steady Blade", draws.get("soren") == "Steady Blade")
-    _check("Ys drew Nightcreep", draws.get("ys") == "Nightcreep")
-    _check("Soren hand now [Guard, Sunlance, Steady Blade]",
-           hand_names(soren) == ["Guard", "Sunlance", "Steady Blade"])
-    _check("Ys hand now [Unmake, Mind Spike, Whispers, Sift, Nightcreep]",
-           hand_names(ys) == ["Unmake", "Mind Spike", "Whispers", "Sift", "Nightcreep"])
-    _check("Soren mana capacity 2", soren.capacity == 2)
-    _check("Ys mana capacity 2", ys.capacity == 2)
-
-    _say("§A.4 — Turn 1 intents")
     intents = {e.data["enemy"]: e.data["target"] for e in _events_of_type(ev, "intent_declared")}
-    _check("Skitterling Claw targets Ys", intents.get("skitterling") == "ys")
-    _check("Brute Smash targets Ys", intents.get("brute") == "ys")
-
-    # The attack is on the stack; nobody reacts -> resolve it.
+    _check("Both enemies declare against Ys (lowest effective HP)",
+           intents.get("skitterling") == "ys" and intents.get("brute") == "ys")
     state = _pass_window(state)
-    soren, ys = state.party
-    _check("Skitterling HP 1 after Soren's attack", state.enemy("skitterling").hp == 1)
-    _check("Soren proactive action spent", soren.acted_mode == "attack")
-    _check("Soren mana still [G, W]", mana(soren) == ["G", "W"])
+    _check("Skitterling dies to one melee hit", state.enemy("skitterling") is None)
 
+    _say("TURN 1 — Soren guards Ys (instant: prevent combat_damage)")
+    state, _ = _do(state, kind="cast", card_id="guard", target_id="ys")  # free instant
+    state = _pass_window(state)
+    _check("Ys holds a prevent(combat_damage) tag",
+           "combat_damage" in state.character("ys").prevent_tags)
     state, _ = _do(state, kind="end_turn", actor_id="soren")
-
-    # --- TURN 1 — Player action 2: Ys casts Unmake on Brute ---------------- #
-    _say("\nTURN 1 — Ys casts Unmake on Brute")
-    state, ev = _do(state, kind="cast", card_id="unmake", target_id="brute")
-    state = _pass_window(state)  # nobody counters -> Unmake resolves
-    soren, ys = state.party
-    _check("Brute removed", state.enemy("brute") is None)
-    _check("Ys HP 12 (lost destroyed_target.level = 3)", ys.hp == 12)
-    _check("Ys mana empty", mana(ys) == [])
-    _check("Brute's Smash intent discarded (Brute gone)",
-           all(e.id != "brute" for e in state.enemies))
-
     state, _ = _do(state, kind="end_turn", actor_id="ys")
 
-    # --- TURN 1 — Enemy actions: Skitterling executes Claw; Soren Guards Ys - #
-    _say("\nTURN 1 — Skitterling executes Claw; Soren reacts with Guard on Ys")
-    _check("Reaction window open on Claw", _in_window(state))
-    _check("Soren has priority", state.priority == "soren")
-    state, _ = _do(state, kind="cast", card_id="guard", target_id="ys")
-    soren, ys = state.party
-    _check("Soren mana now [G] (paid W for Guard)", mana(soren) == ["G"])
-
-    # Guard resolves first (LIFO), then Claw — fully prevented. _pass_window
-    # carries through the End step and pauses at Turn 2's first decision: the
-    # capacity-colour choice (which comes BEFORE the draw).
+    # Enemy step: Brute's Smash → Ys is fully nullified by Guard. Carry to Turn 2.
     state = _pass_window(state)
-    soren, ys = state.party
+    _check("Ys HP 15 — Brute's Smash was prevented", state.character("ys").hp == 15)
+    _check("Brute still up at 8", state.enemy("brute").hp == 8)
+    _check("Now Turn 2", state.turn == 2)
 
-    # --- TURN 1 — End step (HP-stable; observed at the next pause) ---------- #
-    _say("§A.4 — Turn 1 end step")
-    _check("Ys HP 12 (Claw fully prevented)", ys.hp == 12)
-    _check("Soren HP 25", soren.hp == 25)
-    _check("Skitterling HP 1", state.enemy("skitterling").hp == 1)
-    _check("Brute dead", state.enemy("brute") is None)
-    _check("Not won yet (Skitterling alive)", state.result is None)
-    _check("Turn is 2", state.turn == 2)
-
-    # --- TURN 2 — Capacity colour choice, BEFORE the draw ------------------ #
-    _say("§A.4 — Turn 2 capacity choice (pre-draw)")
-    opening = legal_actions(state)
-    _check("Turn 2 opens on Soren's capacity choice",
-           bool(opening) and all(a.kind == "choose_mana" for a in opening)
-           and opening[0].actor_id == "soren")
-    _check("Choice precedes the draw: Soren still capacity 2, no Mend yet",
-           soren.capacity == 2 and "Mend" not in hand_names(soren))
-    # Each character locks a colour (the colour doesn't affect §A's asserted
-    # values; the draw/refresh/intents then run automatically).
-    state, _ = _do(state, kind="choose_mana", actor_id="soren", color="G")
-    state, _ = _do(state, kind="choose_mana", actor_id="ys", color="U")
-    soren, ys = state.party
-
-    # --- TURN 2 — Upkeep (draw + refresh) + Intents ------------------------ #
-    _say("§A.4 — Turn 2 upkeep")
-    _check("Soren drew Mend -> [Sunlance, Steady Blade, Mend]",
-           hand_names(soren) == ["Sunlance", "Steady Blade", "Mend"])
-    _check("Ys drew Leech -> [Mind Spike, Whispers, Sift, Nightcreep, Leech]",
-           hand_names(ys) == ["Mind Spike", "Whispers", "Sift", "Nightcreep", "Leech"])
-    _check("Soren capacity 3 (+1 on turn 2)", soren.capacity == 3)
-    _check("Ys capacity 3 (+1 on turn 2)", ys.capacity == 3)
-    _check("Skitterling re-declares Claw -> Ys",
-           state.enemy("skitterling").intent is not None
-           and state.enemy("skitterling").intent.target_id == "ys")
-
-    # --- TURN 2 — Soren kills Skitterling; win check fires ------------------ #
-    _say("\nTURN 2 — Soren attacks Skitterling (lethal)")
-    state, _ = _do(state, kind="attack", target_id="skitterling")
+    # --- TURN 2 — Soren + Ys chip Brute; Guard has lapsed, so Smash lands ---- #
+    _say("\nTURN 2 — Soren attacks Brute, Ys Mind Spikes it")
+    state = _locks(state)
+    state, _ = _do(state, kind="attack", target_id="brute")  # melee 3 → Brute 5
     state = _pass_window(state)
-    soren, ys = state.party
-    _check("Skitterling dead", state.enemy("skitterling") is None)
+    _check("Brute HP 5 after Soren's melee", state.enemy("brute").hp == 5)
+    state, _ = _do(state, kind="end_turn", actor_id="soren")
+    state, _ = _do(state, kind="cast", card_id="mind_spike", target_id="brute")  # 2 → 3
+    state = _pass_window(state)
+    _check("Brute HP 3 after Mind Spike", state.enemy("brute").hp == 3)
+    state, _ = _do(state, kind="end_turn", actor_id="ys")
+    state = _pass_window(state)  # Brute's Smash 4 → Ys (no Guard this turn)
+    _check("Ys HP 11 — took Brute's Smash 4", state.character("ys").hp == 11)
+    _check("Now Turn 3", state.turn == 3)
+
+    # --- TURN 3 — Soren finishes Brute before it can act -------------------- #
+    _say("\nTURN 3 — Soren kills Brute (lethal)")
+    state = _locks(state)
+    state, _ = _do(state, kind="attack", target_id="brute")  # melee 3 → 0
+    state = _pass_window(state)
     _check("Result = party victory", state.result == "victory")
-    _check("Final Soren HP 25", soren.hp == 25)
-    _check("Final Ys HP 12", ys.hp == 12)
-    _check("Turns taken = 2", state.turn == 2)
+    _check("Final Soren HP 25", state.character("soren").hp == 25)
+    _check("Final Ys HP 11", state.character("ys").hp == 11)
 
-    _say("\nALL ASSERTIONS PASSED")
+    _say("\nALL §A ASSERTIONS PASSED")
     return state
 
 
-def run_channeling_scenario(verbose: bool = False) -> GameState:
-    """Play §C; assert every marked state (multi-channel casting, reservation, a
-    continuous disable aura, a recurring upkeep engine, reduced-below-threshold
-    does-not-break, and an all-or-nothing break that releases reserved mana as a
-    respondable trigger). Raises AssertionError on any mismatch."""
+# --------------------------------------------------------------------------- #
+# §C — channeling (Mira: a wound aura + a token engine, reservation, break)
+# --------------------------------------------------------------------------- #
+def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = None) -> GameState:
+    """Play §C; assert the marked states (two channels in one Cast turn, mana
+    reservation, a continuous wound aura that blunts an attacker, a recurring
+    upkeep token engine with an ally intent + Ally step, a parry that keeps a hit
+    under the break threshold, and an all-or-nothing break that lifts the aura and
+    releases the reserved mana). Raises AssertionError on any mismatch."""
     global _VERBOSE
     _VERBOSE = verbose
 
-    state = build_channeling_state()
+    state = build_channeling_state() if state is None else state
     (mira,) = state.party
-    cinder, maul = state.enemies
 
-    # --- §C.3 Setup ------------------------------------------------------- #
     _say("§C.3 — setup")
-    _check("Mira HP 15", mira.hp == 15)
+    _check("Mira is a ranged/1 Channeler", mira.power == 1 and mira.attack_mode == "ranged")
     _check("Mira hand [Still the Blade, Swarm Hex]",
            hand_names(mira) == ["Still the Blade", "Swarm Hex"])
     _check("Mira capacity 4 [U,U,B,B]", mira.mana_colors == ["U", "U", "B", "B"])
-    _check("No channels", mira.channels == [])
-    _check("No tokens", state.tokens == [])
-    _check("Cinder HP 6", cinder.hp == 6)
-    _check("Maul HP 10", maul.hp == 10)
+    _check("Cinder HP 6 / Maul HP 10", state.enemy("cinder").hp == 6 and state.enemy("maul").hp == 10)
 
-    # --- TURN 1 — Player: cast two sorcery-speed channels in one Cast turn -- #
-    _say("\nTURN 1 — Mira casts Still the Blade on Cinder")
-    state, ev = _do(state, kind="cast", card_id="still_the_blade", target_id="cinder")
-    (mira,) = state.party
-    _say("§C.4 — Turn 1 upkeep (from events)")
-    draws = {e.data.get("character"): e.data.get("card_name")
-             for e in ev if e.type == "draw"}
-    _check("Mira drew Mind Spike", draws.get("mira") == "Mind Spike")
-    refresh = next((e for e in ev if e.type == "mana_refresh"), None)
-    _check("Turn 1 available mana 4", refresh is not None and len(refresh.data["pool"]) == 4)
-    intents = {e.data["enemy"]: e.data["target"] for e in ev if e.type == "intent_declared"}
-    _check("Cinder Ember → Mira", intents.get("cinder") == "mira")
-    _check("Maul Crush → Mira", intents.get("maul") == "mira")
-
-    state = _pass_window(state)  # Still the Blade resolves → held
-    _say("TURN 1 — Mira casts Swarm Hex")
+    # --- TURN 1 — channel both in one Cast turn ----------------------------- #
+    _say("\nTURN 1 — Mira channels Still the Blade on Cinder, then Swarm Hex")
+    state, _ = _do(state, kind="cast", card_id="still_the_blade", target_id="cinder")
+    state = _pass_window(state)  # → held: Cinder takes a continuous −2/−0 wound
     state, _ = _do(state, kind="cast", card_id="swarm_hex")
-    state = _pass_window(state)  # Swarm Hex resolves → held
+    state = _pass_window(state)  # → held
     (mira,) = state.party
-
-    _say("§C.4 — Turn 1 after both channels")
     _check("Mira holds 2 channels", len(mira.channels) == 2)
-    _check("Reserved 2 (1 U + 1 B)", sorted(mira.reserved) == ["B", "U"])
-    _check("Available mana 2 [U,B]", sorted(mana(mira)) == ["B", "U"])
-    _check("Cinder's Ember intent disabled",
-           state.enemy("cinder").intent is None
-           and "attack" in state.enemy("cinder").disabled_intent_types)
-
+    _check("Reserved 1 U + 1 B", sorted(mira.reserved) == ["B", "U"])
+    _check("Cinder is wounded -2 Power", state.enemy("cinder").power_bonus == -2)
     state, _ = _do(state, kind="end_turn", actor_id="mira")
 
-    # --- TURN 1 — Enemy: Cinder disabled; Maul Crush, Mira Parries (no break) #
-    _say("\nTURN 1 — Maul executes Crush; Mira parries")
-    _check("Reaction window: Maul's Crush targets Mira",
-           _in_window(state) and state.stack[-1].target_id == "mira"
-           and state.stack[-1].label == "Crush")
-    state, _ = _do(state, kind="parry", actor_id="mira")  # reduce 5 → 3
-    state = _pass_window(state)  # (parry already passed; carry to next pause)
-    (mira,) = state.party
-    _check("Mira HP 12 (5 parried to 3)", mira.hp == 12)
-    _check("Both channels still held (hit reduced below 4)", len(mira.channels) == 2)
-
-    # --- TURN 2 — Upkeep: capacity choice (pre-draw), then recurring engine -- #
-    _check("Turn is 2", state.turn == 2)
-    _say("§C.4 — Turn 2 capacity choice + recurring")
-    opening = legal_actions(state)
-    _check("Turn 2 opens on Mira's capacity choice",
-           bool(opening) and all(a.kind == "choose_mana" for a in opening))
-    state, _ = _do(state, kind="choose_mana", actor_id="mira", color="U")
-    (mira,) = state.party
-    _check("One Wisp created", len(state.tokens) == 1 and state.tokens[0].name == "Wisp")
-    _check("Mira HP 11 (Swarm Hex recurring lose_life 1)", mira.hp == 11)
-    _check("Capacity 5", mira.capacity == 5)
-    _check("Reserved still 2", len(mira.reserved) == 2)
-    _check("Available 3", len(mana(mira)) == 3)
-    _check("Mira hand [Mind Spike, Leech]", hand_names(mira) == ["Mind Spike", "Leech"])
-    _check("Cinder still disabled, no intent",
-           state.enemy("cinder").intent is None
-           and "attack" in state.enemy("cinder").disabled_intent_types)
-    _check("Maul re-declares Crush → Mira",
-           state.enemy("maul").intent is not None
-           and state.enemy("maul").intent.target_id == "mira")
-
-    # --- TURN 2 — Player: Mind Spike on Maul, then the Wisp attacks --------- #
-    _say("\nTURN 2 — Mira casts Mind Spike on Maul")
-    state, _ = _do(state, kind="cast", card_id="mind_spike", target_id="maul")
+    # Enemy step: Cinder's Ember (declared at 2 BEFORE the wound) hits; then Maul's
+    # Crush, which Mira parries below the break threshold (Cinder Lv2 acts before Maul Lv4).
+    _say("TURN 1 — Cinder's Ember lands; Mira parries Maul's Crush (no break)")
+    state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 2 → Mira 13
+    _check("Mira HP 13 after Ember 2", state.character("mira").hp == 13)
+    # Crush 4, mitigated by X=ceil(Mira Power 1 / 2)=1 → 3 lands (under the break threshold).
+    state, _ = _do(state, kind="mitigate", actor_id="mira", target_id="mira")
     state = _pass_window(state)
     (mira,) = state.party
-    _check("Maul HP 8 (Mind Spike 2)", state.enemy("maul").hp == 8)
-    _check("Available mana 2", len(mana(mira)) == 2)
+    _check("Mira HP 10 after the mitigated Crush", mira.hp == 10)
+    _check("Both channels survive (3 < break threshold 4)", len(mira.channels) == 2)
+    _check("Now Turn 2", state.turn == 2)
 
-    state, _ = _do(state, kind="end_turn", actor_id="mira")  # -> Wisp acts
-    _check("Wisp's attack on Cinder is on the stack",
-           _in_window(state) and state.stack[-1].target_id == "cinder")
-    state, _ = _do(state, kind="pass", actor_id="mira")  # Wisp attack resolves
+    # --- TURN 2 — upkeep token engine + the wound bites the new declaration -- #
+    _say("\nTURN 2 — Swarm Hex spawns a Wisp; Cinder's Ember is wounded to 0")
+    state = _locks(state)
+    (mira,) = state.party
+    _check("A Wisp joined (Swarm Hex upkeep)", len(state.tokens) == 1 and state.tokens[0].name == "Wisp")
+    _check("Mira HP 9 (Swarm Hex lose 1)", mira.hp == 9)
+    _check("Cinder's re-declared Ember is wounded to 0",
+           state.enemy("cinder").intent is not None
+           and state.enemy("cinder").intent.effects[0].amount == 0)
+
+    _say("TURN 2 — Mira Mind Spikes Maul; the Wisp attacks Cinder")
+    state, _ = _do(state, kind="cast", card_id="mind_spike", target_id="maul")  # 2 → 8
+    state = _pass_window(state)
+    _check("Maul HP 8 after Mind Spike", state.enemy("maul").hp == 8)
+    state, _ = _do(state, kind="end_turn", actor_id="mira")
+    state, _ = _do(state, kind="pass", actor_id="mira")  # Ally step: Wisp attacks Cinder
     _check("Cinder HP 5 (Wisp 1)", state.enemy("cinder").hp == 5)
 
-    # --- TURN 2 — Enemy: Maul Crush, unmitigated → BREAK, release, Leech ---- #
-    _say("\nTURN 2 — Maul executes Crush; Mira takes it (break)")
-    _check("Maul's Crush targets Mira",
-           _in_window(state) and state.stack[-1].label == "Crush"
-           and state.stack[-1].target_id == "mira")
-    state, _ = _do(state, kind="pass", actor_id="mira")  # take the hit: 5 ≥ 4 → break
+    # --- TURN 2 enemy step — Ember does 0; Maul's Crush breaks concentration -- #
+    _say("TURN 2 — Cinder's Ember does 0; Mira takes Maul's Crush (break)")
+    state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 0 → Mira unchanged
+    _check("Mira HP 9 after Ember 0", state.character("mira").hp == 9)
+    state, _ = _do(state, kind="pass", actor_id="mira")  # take Crush 4 unmitigated → break (4 ≥ 4)
     (mira,) = state.party
-    _check("Breaking hit resolved first: Mira HP 6", mira.hp == 6)
-    _check("All channels ended (0 held)", len(mira.channels) == 0)
-    _check("Cinder no longer disabled",
-           "attack" not in state.enemy("cinder").disabled_intent_types)
-    _check("Reserved mana released into pool (≥ 1 B available)", "B" in mana(mira))
-    _check("Release trigger is on the stack (respondable)",
+    _check("Mira HP 5 after Crush 4", mira.hp == 5)
+    _check("All channels broke (0 held)", len(mira.channels) == 0)
+    _check("Cinder's wound lifted on break (Power back to 0)",
+           state.enemy("cinder").power_bonus == 0)
+    _check("Reserved mana released into the pool",
+           "B" in mira.pool or "U" in mira.pool)
+    _check("Mana Release is a respondable trigger",
            _in_window(state) and state.stack[-1].label == "Mana Release")
 
-    _say("TURN 2 — Mira casts Leech with the released mana")
-    state, _ = _do(state, kind="cast", card_id="leech", target_id="maul")
-    state = _pass_window(state)  # Leech resolves, then the release trigger resolves
-    (mira,) = state.party
-    _check("Maul HP 7 (Leech 1)", state.enemy("maul").hp == 7)
-    _check("Mira HP 7 (Leech heal 1)", mira.hp == 7)
-    _check("Still the Blade & Swarm Hex spent (not in hand, 0 channels)",
-           len(mira.channels) == 0
-           and "Still the Blade" not in hand_names(mira)
-           and "Swarm Hex" not in hand_names(mira))
+    state = _pass_window(state)
+    _check("Game still going (not a loss)", state.result is None)
 
     _say("\nALL §C ASSERTIONS PASSED")
     return state

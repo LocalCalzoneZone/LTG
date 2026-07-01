@@ -1,0 +1,233 @@
+{
+  "ltg_version": "0.1",
+  "character": {
+    "name": "Soren",
+    "description": "A steadfast frontline Fighter \u2014 shields allies and strikes hard in melee.",
+    "archetype": "Fighter",
+    "level": 1,
+    "colors": [
+      "G",
+      "W"
+    ],
+    "starting_mana": [
+      "G",
+      "W"
+    ],
+    "attack_mode": "melee",
+    "row": "front"
+  },
+  "cards": [
+    {
+      "id": "guard",
+      "name": "Guard",
+      "source_name": "Guard",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "Prevent combat damage to an ally.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "prevent",
+          "parameter": "combat_damage",
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "sunlance",
+      "name": "Sunlance",
+      "source_name": "Sunlance",
+      "rarity": "common",
+      "level": 1,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        }
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Deal 3 damage to an enemy.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": 3,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "steady_blade",
+      "name": "Steady Blade",
+      "source_name": "Steady Blade",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "G": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "An ally gains +1 attack and +1 temp HP this turn.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": 1,
+          "toughness": 1,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "end_of_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "mend",
+      "name": "Mend",
+      "source_name": "Mend",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "Restore 3 HP to an ally.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "heal",
+          "amount": 3,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "valors_edge",
+      "name": "Valor's Edge",
+      "source_name": "Valor's Edge",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "G": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "An ally gains +2 attack and +2 temp HP this turn.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "end_of_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "bulwark",
+      "name": "Bulwark",
+      "source_name": "Bulwark",
+      "rarity": "common",
+      "level": 1,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        }
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Yourself gains +0 attack and +3 temp HP this turn.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": 0,
+          "toughness": 3,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "end_of_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    }
+  ]
+}

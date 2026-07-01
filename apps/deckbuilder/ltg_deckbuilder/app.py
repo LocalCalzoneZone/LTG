@@ -19,13 +19,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from ltg_core.schema import (
+    ARCHETYPE_ATTACK,
     ARCHETYPE_STATS,
     Card,
     Character,
     Loadout,
     MODE_VALUES,
+    Row,
     SIDE_VALUES,
     deck_status,
+    default_attack_mode,
     effect_specs,
 )
 from ltg_core.lints import lint_card
@@ -78,10 +81,32 @@ def api_import(body: ImportBody) -> dict:
     gate) so nothing interrupts the import; problems are flagged in the UI, not
     blocked. Names that Scryfall can't resolve are reported in `not_found`.
     """
-    out, not_found = [], []
-    for name in body.names:
+    # Resolve the whole list in batches of 75 (one request each) instead of
+    # 1-2 requests per card; firing ~80 rapid requests for a 40-card list got us
+    # rate-limited (HTTP 429) partway through, silently dropping most cards.
+    # A batch failure (rate limit, timeout, bad identifier) must not 500 the
+    # whole import — fall back to treating every name as unmatched and let the
+    # per-name fuzzy path below sort them out.
+    try:
+        found, unmatched = scryfall.fetch_collection(body.names)
+    except Exception:
+        found, unmatched = {}, list(body.names)
+
+    # The batch endpoint is exact-match only; recover the rest with a per-name
+    # fuzzy fallback (the throttled, slower path — but only for the few misses).
+    not_found = []
+    for name in unmatched:
         try:
-            data = scryfall.fetch_best(name)
+            found[name] = scryfall.fetch_best(name)
+        except Exception:
+            not_found.append(name)
+
+    out = []
+    for name in body.names:
+        data = found.get(name)
+        if data is None:
+            continue
+        try:
             card = ingest.build_card(data)
         except Exception:
             not_found.append(name)
@@ -140,8 +165,14 @@ def api_effect_specs() -> dict:
 
 @app.get("/api/archetypes")
 def api_archetypes() -> dict:
-    """The archetype → stats table (single source of truth for the picker)."""
-    return {a.value: stats for a, stats in ARCHETYPE_STATS.items()}
+    """The archetype → stats table plus each archetype's attack profile options
+    and the row list (single source of truth for the character pickers)."""
+    out = {}
+    for a, stats in ARCHETYPE_STATS.items():
+        attacks = {mode.value: power for mode, power in ARCHETYPE_ATTACK[a].items()}
+        out[a.value] = {**stats, "attacks": attacks,
+                        "default_mode": default_attack_mode(a).value}
+    return {"archetypes": out, "rows": [r.value for r in Row]}
 
 
 @app.post("/api/cards/validate")

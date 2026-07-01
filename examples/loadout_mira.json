@@ -1,0 +1,180 @@
+{
+  "ltg_version": "0.1",
+  "character": {
+    "name": "Mira",
+    "description": "A Channeler who holds enchantments \u2014 blunting foes and summoning wisps.",
+    "archetype": "Channeler",
+    "level": 1,
+    "colors": [
+      "U",
+      "B"
+    ],
+    "starting_mana": [
+      "U",
+      "U",
+      "B",
+      "B"
+    ],
+    "attack_mode": "ranged",
+    "row": "front"
+  },
+  "cards": [
+    {
+      "id": "still_the_blade",
+      "name": "Still the Blade",
+      "source_name": "Still the Blade",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Enchantment",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "U": 1
+        }
+      },
+      "timing": "channeled",
+      "original_text": "",
+      "translated_text": "While channeled: the chosen enemy has -2 attack and -0 HP.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "wound",
+          "power": 2,
+          "toughness": 0,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "while_channeled"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "swarm_hex",
+      "name": "Swarm Hex",
+      "source_name": "Swarm Hex",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Enchantment",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "B": 1
+        }
+      },
+      "timing": "channeled",
+      "original_text": "",
+      "translated_text": "At the start of every turn while channeled: create a Wisp ally and lose 1 HP.",
+      "effects": [
+        {
+          "trigger": "upkeep",
+          "kind": "create_token",
+          "token_id": "wisp",
+          "count": 1
+        },
+        {
+          "trigger": "upkeep",
+          "kind": "lose_life",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "mind_spike",
+      "name": "Mind Spike",
+      "source_name": "Mind Spike",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "U": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "Deal 2 damage to an enemy.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": 2,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "leech",
+      "name": "Leech",
+      "source_name": "Leech",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "B": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "Deal 1 damage to an enemy. Restore 1 HP to yourself.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": 1,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        },
+        {
+          "trigger": null,
+          "kind": "heal",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    }
+  ]
+}

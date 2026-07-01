@@ -16,7 +16,7 @@ effect schema.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ltg_core.schema import Card, Effect
 
@@ -58,35 +58,59 @@ class CharacterState:
     power: int
     hand_size: int
     archetype: str = ""  # display-only label; the engine derives no stats from it
-    parry_reduce: int = 2  # how much this character's Parry reduces a hit by
+    attack_mode: str = "melee"  # melee | ranged (R-1/R-3) — drives reachability
+    level: int = 1              # ordering / level-gates (R-6)
     hand: List[Card] = field(default_factory=list)
     library: List[Card] = field(default_factory=list)  # ordered; top == index 0
+    graveyard: List[Card] = field(default_factory=list)  # spent / channelled cards (R-9)
+    exile: List[Card] = field(default_factory=list)      # cards removed from the game (move_card)
     identity: List[str] = field(default_factory=list)   # colours the +1 may lock
     mana_colors: List[str] = field(default_factory=list)  # one per capacity slot
     pool: List[str] = field(default_factory=list)        # spendable mana this turn
     channels: List[Channel] = field(default_factory=list)
+    # Position model (Design Update 02 §M-B). `row` is the *current* (physical) row —
+    # what intents and the melee wall read; it changes only at End step. `committed`
+    # is what this character's OWN actions/reactions read (Mitigate adjacency); forced
+    # moves write it immediately. `pending_voluntary` holds a chosen Move's destination,
+    # resolved into `row` at End step (it grants no reach mid-turn).
     row: str = "front"
+    committed: str = "front"
+    pending_voluntary: Optional[str] = None
 
-    # Temporary defensive layers (all expire at end step in this milestone).
-    temp_hp: int = 0          # absorbs damage after prevention (pump toughness / Defend)
-    prevent_pool: int = 0     # reduces the next damage this turn (prevent / Parry)
-    power_bonus: int = 0      # temporary Power (pump)
+    # Unified HP model (Design Update R-7): damage reduces `hp` directly; `temp_mod`
+    # is the net of end-of-turn pump (+) / wound (−) modifiers and expires at End.
+    # Lethality is checked on effective_hp = hp + temp_mod.
+    temp_mod: int = 0
+    prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
+    prevent_tags: List[str] = field(default_factory=list)  # nullifiers (R-11 prevent)
+    power_bonus: int = 0      # temporary Power (pump +, wound −)
+    protection: int = 0       # negates the next N spells/attacks (protection)
+    # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
+    # end step (end_of_turn/this_turn) or channel break (while_channeled); 'encounter'
+    # / 'permanent' persist. The engine reads these for keyword behaviour (GDD §7).
+    keywords: Dict[str, str] = field(default_factory=dict)
 
     # Per-round / per-turn flags (reset at upkeep).
     used_attack: bool = False
     used_defend: bool = False
-    used_parry: bool = False
-    acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" this turn
+    used_mitigate: bool = False
+    acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" | "move" this turn
     turn_ended: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
 
     @property
+    def effective_hp(self) -> int:
+        return self.hp + self.temp_mod
+
+    @property
     def alive(self) -> bool:
-        return self.hp > 0
+        # A player-character is "up" while effective_hp > 0; ≤ 0 is incapacitated
+        # (recoverable — R-7). Lethality everywhere is keyed to effective_hp.
+        return self.effective_hp > 0
 
     @property
     def current_power(self) -> int:
-        return self.power + self.power_bonus
+        return max(0, self.power + self.power_bonus)
 
     @property
     def capacity(self) -> int:
@@ -109,12 +133,27 @@ class TokenState:
     hp: int
     power: int
     row: str = "front"
-    temp_hp: int = 0
+    attack_mode: str = "melee"
+    level: int = 1
+    intent: Optional["Intent"] = None  # telegraphed in the Intents step (R-5)
+    temp_mod: int = 0
     prevent_pool: int = 0
+    prevent_tags: List[str] = field(default_factory=list)
+    protection: int = 0
+    power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
+    keywords: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def effective_hp(self) -> int:
+        return self.hp + self.temp_mod
 
     @property
     def alive(self) -> bool:
-        return self.hp > 0
+        return self.effective_hp > 0
+
+    @property
+    def current_power(self) -> int:
+        return max(0, self.power + self.power_bonus)
 
 
 @dataclass
@@ -136,18 +175,49 @@ class EnemyState:
     max_hp: int
     hp: int
     level: int
+    # The enemy's attack power (its basic damage). Drives `fight`; its telegraphed
+    # intent still carries its own `amount`. Defaults to the intent amount at build.
+    power: int = 0
     row: str = "front"
+    attack_mode: str = "melee"  # melee | ranged (R-1) — enemy attacks are classified too
     intent: Optional[Intent] = None
     intent_template: Dict[str, Any] = field(default_factory=dict)
-    disabled_intent_types: List[str] = field(default_factory=list)  # e.g. ["attack"]
+    # An optional weaker ranged attack (R-1 heuristics): the enemy falls back to it
+    # when its melee attack can't reach the target the heuristic wants. Same shape as
+    # `intent_template` (name/amount/action_type); empty == melee-only.
+    ranged_template: Dict[str, Any] = field(default_factory=dict)
+    stunned: int = 0           # intents to skip (stun); decremented as they would declare
+    taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
+    # Suspended by a channeled `exile` (GDD §8): off the board (not targetable, can't
+    # act, doesn't block victory) but still alive — it returns when the channel breaks.
+    # A spell's exile removes the enemy outright instead, so this stays False there.
+    exiled: bool = False
+    # Bounced to the "in hand" zone (Design Update 03 §E-C): off the battlefield (not
+    # targetable, occupies no row, declares nothing) but still on the roster, so it
+    # does NOT satisfy victory — it redeploys at the start of its next turn. Distinct
+    # from `exiled`, which counts as defeated. HP is retained across the bounce.
+    in_hand: bool = False
 
-    # Mirror the character's defensive layers so one damage routine serves both.
-    temp_hp: int = 0
+    # Mirror the character's HP model so one damage routine serves both. An enemy's
+    # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
+    temp_mod: int = 0
     prevent_pool: int = 0
+    prevent_tags: List[str] = field(default_factory=list)
+    protection: int = 0
+    power_bonus: int = 0
+    keywords: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def effective_hp(self) -> int:
+        return self.hp + self.temp_mod
 
     @property
     def alive(self) -> bool:
-        return self.hp > 0
+        return self.effective_hp > 0
+
+    @property
+    def current_power(self) -> int:
+        return max(0, self.power + self.power_bonus)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,9 +237,21 @@ class StackItem:
     label: str              # display name (card name / "Basic Attack" / "Claw")
     effects: List[Effect]
     target_id: Optional[str] = None
+    # Per-site targets for independent multi-target cards (see Action.targets);
+    # ordered by target site, with targets[0] == target_id. Empty otherwise.
+    targets: Tuple[str, ...] = ()
     card_id: Optional[str] = None
     card: Optional[Card] = None
     reserved: List[str] = field(default_factory=list)
+    uid: int = 0            # unique stack id (so a counter can name the action it answers)
+    mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
+    cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
+    attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
+    # A declared Mitigate on this attack (Update 02 §M-A): `mitigate_by` is the
+    # mitigator's id, `mitigate_for` the protected character (== mitigate_by for self
+    # mode, an ally's id for interception). Applied per hit at resolution.
+    mitigate_by: Optional[str] = None
+    mitigate_for: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -187,11 +269,18 @@ class Action:
     card_id: Optional[str] = None
     target_id: Optional[str] = None
     color: Optional[str] = None  # the locked colour, for choose_mana
+    mode: Optional[int] = None   # chosen modal mode index, for a modal cast
+    # Per-site targets for a card whose effects target independently (e.g. Agony
+    # Warp). Ordered by target site; targets[0] mirrors target_id (the primary).
+    # Empty for single-target cards, which use target_id alone.
+    targets: Tuple[str, ...] = ()
+    choice: Optional[int] = None  # picked candidate handle, for a choose_card action
     label: str = ""
 
     def key(self) -> tuple:
         """Identity used to match a chosen action against the legal set."""
-        return (self.kind, self.actor_id, self.card_id, self.target_id, self.color)
+        return (self.kind, self.actor_id, self.card_id, self.target_id,
+                self.color, self.mode, self.targets, self.choice)
 
 
 @dataclass
@@ -205,12 +294,49 @@ class Event:
 
 
 @dataclass
+class PendingChoice:
+    """A mid-resolution prompt: the chooser must pick which card(s) a move_card
+    effect moves, or (for a scry) where each revealed card goes. Set on the
+    GameState to pause the flow (like the capacity-colour choice); cleared once the
+    picks are made, then resolution of `remaining` (the stack item's not-yet-resolved
+    top-level effects) resumes.
+
+    `candidates` holds live references to the same Card objects that sit in the
+    chooser's zones — `copy.deepcopy(state)` preserves that sharing via its memo,
+    so a picked card is removed from the right zone by identity.
+
+    For a scry (`kind == "scry"`) the chooser assigns each of the `looked` revealed
+    top cards to either `top` (in pick order — the first chosen is drawn first) or
+    `bottom`; the choice is complete once `candidates` is empty."""
+
+    chooser_id: str
+    effect: "Effect"                     # the move_card / scry effect being resolved
+    candidates: List["Card"]             # the cards the chooser may pick from
+    need: int                            # cards still to move (move_card)
+    remaining: List["Effect"]            # effects to resolve after this choice completes
+    item: "StackItem"                    # the originating stack item (to resume on)
+    kind: str = "move"                   # "move" (move_card) | "scry"
+    # Scry accumulators (kind == "scry"): the revealed cards the chooser has so far
+    # sent to the top / bottom of the library, in pick order.
+    top: List["Card"] = field(default_factory=list)
+    bottom: List["Card"] = field(default_factory=list)
+    looked: int = 0                      # how many top cards were revealed (scry X)
+
+
+@dataclass
 class GameState:
     party: List[CharacterState]
     enemies: List[EnemyState]
     tokens: List[TokenState] = field(default_factory=list)
     token_defs: Dict[str, Any] = field(default_factory=dict)  # token_id -> stats
     token_seq: int = 0                # for unique created-token ids
+    stack_seq: int = 0                # for unique StackItem.uid
+    # Randomness (opt-in): when a scenario is built with a seed the library is
+    # shuffled at setup and stays shuffled; `rng_seed` (+ a bump per shuffle effect)
+    # makes any in-game shuffle reproducible. None == the deterministic fixed order.
+    rng_seed: Optional[int] = None
+    shuffle_count: int = 0            # bumped each time a shuffle effect re-randomises a library
+    pending_ramp: List[Dict[str, Any]] = field(default_factory=list)  # deferred capacity, applied at begin_turn
     turn: int = 1
     phase: str = "upkeep"             # upkeep|capacity|draw|intents|player|allies|enemy|end
     stack: List[StackItem] = field(default_factory=list)
@@ -219,6 +345,7 @@ class GameState:
     acted_enemies: List[str] = field(default_factory=list)
     acted_tokens: List[str] = field(default_factory=list)
     pending_break: List[str] = field(default_factory=list)  # channelers owed a break
+    pending_choice: Optional["PendingChoice"] = None  # mid-resolution card-move choice
     result: Optional[str] = None      # None | "victory" | "defeat"
     log: List[Event] = field(default_factory=list)
 
@@ -239,7 +366,16 @@ class GameState:
         return [c for c in self.party if c.alive]
 
     def living_enemies(self) -> List[EnemyState]:
-        return [e for e in self.enemies if e.alive]
+        # The enemies "in play" (Update 03 §E-A): on the battlefield, targetable, and
+        # acting. Channel-exiled enemies are alive but out of play (suspended), and
+        # bounced enemies are alive but "in hand" (off the field, pending redeploy);
+        # both are excluded here. Defeated enemies (graveyard/exile) leave the list.
+        return [e for e in self.enemies if e.alive and not e.exiled and not e.in_hand]
+
+    def bounced_enemies(self) -> List[EnemyState]:
+        """Roster enemies currently in the in-hand zone (bounced, pending redeploy).
+        They keep the encounter live — victory requires every enemy gone for good."""
+        return [e for e in self.enemies if e.in_hand]
 
     def living_tokens(self) -> List[TokenState]:
         return [t for t in self.tokens if t.alive]

@@ -54,6 +54,21 @@ class Timing(str, Enum):
     channeled = "channeled"
 
 
+class AttackMode(str, Enum):
+    """How a combatant's basic attack reaches (Design Update R-1/R-3)."""
+
+    melee = "melee"
+    ranged = "ranged"
+
+
+class Row(str, Enum):
+    """Battlefield row. Reach/melee reachability is keyed to these (R-1)."""
+
+    front = "front"
+    mid = "mid"
+    rear = "rear"
+
+
 class TargetMode(str, Enum):
     self_ = "self"
     chosen = "chosen"
@@ -197,16 +212,17 @@ Value = Union[int, Literal["all"], Ref]
 # rule. Retired keywords are kept here but can't be granted.
 # --------------------------------------------------------------------------- #
 KEYWORDS = {
-    "flying": {"display": "Flight", "gloss": "airborne — ignores rows; only reach/ranged can hit it", "grantable": True, "params": []},
-    "reach": {"display": "Reach", "gloss": "can hit flyers; guards the row behind", "grantable": True, "params": []},
-    "first_strike": {"display": "First Strike", "gloss": "may hold its attack and use it as a reaction", "grantable": True, "params": []},
-    "double_strike": {"display": "Double Strike", "gloss": "strikes twice — hits first (as a reaction) and again on its normal attack", "grantable": True, "params": []},
+    "flying": {"display": "Flying", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1)", "grantable": True, "params": []},
+    "reach": {"display": "Reach", "gloss": "its melee may strike flyers, and pins an enemy melee-flyer to rows not behind it (R-1)", "grantable": True, "params": []},
+    "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
+    "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
+    "haste": {"display": "Haste", "gloss": "may take its proactive action and also make a free voluntary move this turn (the move still resolves at End step)", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
-    "hexproof": {"display": "Hexproof", "gloss": "can't be spell-targeted by enemies", "grantable": True, "params": []},
-    "indestructible": {"display": "Indestructible", "gloss": "can't drop below 1 HP from damage", "grantable": True, "params": []},
+    "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
+    "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
     "protection": {"display": "Protection", "gloss": "prevents the next spell or attack", "grantable": True, "params": ["from"]},
     # Retired — not grantable.
     "menace": {"display": "Menace", "gloss": "", "grantable": False, "params": []},
@@ -286,13 +302,40 @@ class Destroy(EffectBase):
 
 
 class Exile(EffectBase):
+    """Remove a creature from play.
+
+    By default exile is permanent — a spell (instant/sorcery) that exiles puts the
+    creature out of the game for good. On a channeled card, `duration:
+    while_channeled` makes it reversible: the creature is suspended only while the
+    channel holds and returns if the channel breaks (GDD §8). It stays gone if the
+    encounter ends first — i.e. the last on-board enemies fall while it is exiled.
+    """
+
     kind: Literal["exile"] = "exile"
     target: TargetOrSlot
+    # Permanent when unset; `while_channeled` makes it reversible. Exile has no
+    # turn-scoped form, so the type offers only those two states (the editor then
+    # shows a "(none) / while_channeled" dropdown).
+    duration: Optional[Literal["while_channeled"]] = None
 
 
 class Bounce(EffectBase):
     kind: Literal["bounce"] = "bounce"
     target: TargetOrSlot
+
+
+class Fight(EffectBase):
+    """Two creatures fight (MTG's 'fight'): each deals damage equal to its power to
+    the other, simultaneously.
+
+    `target` is the creature you control, `other` the creature you don't. Both are
+    chosen at cast, so author them as two shared target slots (T1 ally, T2 enemy) —
+    the editor's "shared slot" link on each target field wires them up.
+    """
+
+    kind: Literal["fight"] = "fight"
+    target: TargetOrSlot  # the creature you control
+    other: TargetOrSlot   # the creature it fights
 
 
 class Counter(EffectBase):
@@ -339,8 +382,12 @@ class Counters(EffectBase):
 
 
 class Prevent(EffectBase):
+    """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
+    `prevent combat_damage` makes attack actions against the target deal no damage.
+    The parameter names what is nullified; scope is defined by that parameter."""
+
     kind: Literal["prevent"] = "prevent"
-    amount: Value
+    parameter: str = "combat_damage"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
@@ -363,21 +410,51 @@ class Scry(EffectBase):
     target: TargetOrSlot = Field(default_factory=t_self)
 
 
+# Card-logistics zones. `library` as a *source* means "search anywhere in it"; `drawn`
+# means "among the cards drawn earlier this resolution". `library_shuffle` is a
+# destination meaning "shuffled into the library".
+MoveSource = Literal["drawn", "library_top", "library_bottom", "library", "hand", "graveyard", "exile"]
+MoveDest = Literal["hand", "library_top", "library_bottom", "library_shuffle", "graveyard", "exile"]
+
+
+class MoveCard(EffectBase):
+    """Move card(s) between zones — the general card-logistics primitive (draw is the
+    common special case). Optionally filtered by type/level; can shuffle after (e.g. a
+    library search). You move your own cards, so the target is always yourself."""
+
+    kind: Literal["move_card"] = "move_card"
+    count: int = 1
+    source: MoveSource = "library"
+    destination: MoveDest = "hand"
+    filter_type: Optional[Literal["instant", "sorcery", "channeled"]] = None
+    # Level filtering is off unless the comparator is set to something other than
+    # 'any' (which means "any level — no filter"); filter_level is read only then.
+    filter_level_compare: Literal["any", "exactly", "or_more", "or_less"] = "any"
+    filter_level: int = 1
+    shuffle_after: bool = False
+    target: TargetOrSlot = Field(default_factory=t_self)
+
+
 class CreateToken(EffectBase):
     kind: Literal["create_token"] = "create_token"
     token_id: str
     count: int = 1
+    # The token's stats. None means "inherit from the scenario's token def" (legacy
+    # scenarios that declare a top-level `tokens` map); the deckbuilder authors them
+    # explicitly so a card is self-contained.
+    power: Optional[int] = None
+    hp: Optional[int] = None
+    keywords: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check(self) -> "CreateToken":
+        if self.keywords:
+            _check_grant_keywords(self.keywords, None, for_grant=True)
+        return self
 
 
 class Taunt(EffectBase):
     kind: Literal["taunt"] = "taunt"
-    target: TargetOrSlot
-    duration: Duration = Duration.this_turn
-
-
-class Disable(EffectBase):
-    kind: Literal["disable"] = "disable"
-    intent_type: str
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
@@ -455,6 +532,7 @@ LEAF_EFFECT_CLASSES = [
     Destroy,
     Exile,
     Bounce,
+    Fight,
     Counter,
     StripIntent,
     Stun,
@@ -465,9 +543,9 @@ LEAF_EFFECT_CLASSES = [
     Protection,
     Draw,
     Scry,
+    MoveCard,
     CreateToken,
     Taunt,
-    Disable,
     Revive,
     GrantKeyword,
     RemoveKeyword,
@@ -481,20 +559,6 @@ LeafEffect = Annotated[Union[tuple(LEAF_EFFECT_CLASSES)], Field(discriminator="k
 # --------------------------------------------------------------------------- #
 # Container effects: modal ("Choose one") and conditional ("If …, then …").
 # --------------------------------------------------------------------------- #
-class Mode(BaseModel):
-    """One option of a modal card; the player picks exactly one mode at cast."""
-
-    label: str = ""
-    effects: List[LeafEffect] = Field(min_length=1)
-
-
-class Modal(EffectBase):
-    """Choose one — the card may be cast for any one of its modes."""
-
-    kind: Literal["modal"] = "modal"
-    modes: List[Mode] = Field(min_length=2)
-
-
 class CastModeCondition(BaseModel):
     """True when the card was cast at this speed (action = proactive, reaction = response)."""
 
@@ -503,12 +567,15 @@ class CastModeCondition(BaseModel):
 
 
 class TargetPropertyCondition(BaseModel):
-    """True when the (main) target has a property — a keyword, or a side."""
+    """True when the (main) target has a property — a keyword, a side, or a level
+    (compared with exactly / or_more / or_less)."""
 
     kind: Literal["target_property"] = "target_property"
-    property: Literal["has_keyword", "side"]
+    property: Literal["has_keyword", "side", "level"]
     keyword: Optional[str] = None
     side: Optional[Side] = None
+    level: Optional[int] = None
+    compare: Literal["exactly", "or_more", "or_less"] = "exactly"
 
     @model_validator(mode="after")
     def _coherent(self) -> "TargetPropertyCondition":
@@ -519,6 +586,8 @@ class TargetPropertyCondition(BaseModel):
                 raise ValueError(f"unknown keyword '{self.keyword}'")
         if self.property == "side" and self.side is None:
             raise ValueError("target_property 'side' requires a side")
+        if self.property == "level" and self.level is None:
+            raise ValueError("target_property 'level' requires a level")
         return self
 
 
@@ -533,6 +602,39 @@ class Conditional(EffectBase):
     kind: Literal["conditional"] = "conditional"
     condition: Condition
     effects: List[LeafEffect] = Field(min_length=1)
+
+
+# A modal mode holds leaf effects and, one level deeper, a conditional
+# (modal > conditional > effect). It may NOT hold another modal — the engine has
+# no modal-in-modal, and resolution expands only the chosen mode's effects.
+ModeEffect = Annotated[
+    Union[tuple(LEAF_EFFECT_CLASSES + [Conditional])], Field(discriminator="kind")
+]
+
+
+class Mode(BaseModel):
+    """One option of a modal card; the player picks exactly one mode at cast."""
+
+    label: str = ""
+    effects: List[ModeEffect] = Field(min_length=1)
+
+
+class Modal(EffectBase):
+    """A 'Choose N' card: pick `choose` of its modes at cast (or `choose` or more
+    when `or_more` is set). Defaults to the classic 'Choose one'."""
+
+    kind: Literal["modal"] = "modal"
+    modes: List[Mode] = Field(min_length=2)
+    choose: int = 1            # how many modes the caster picks
+    or_more: bool = False      # "choose N or more" (choose is then the minimum)
+
+    @model_validator(mode="after")
+    def _check_choose(self) -> "Modal":
+        if self.choose < 1:
+            raise ValueError("modal 'choose' must be >= 1")
+        if self.choose > len(self.modes):
+            raise ValueError("modal 'choose' cannot exceed the number of modes")
+        return self
 
 
 EFFECT_CLASSES = LEAF_EFFECT_CLASSES + [Modal, Conditional]
@@ -586,6 +688,10 @@ def _control_for(annotation) -> dict:
                 return {"control": "enum", "options": list(_t.get_args(inner)), "optional": True}
             if isinstance(inner, type) and issubclass(inner, Enum):
                 return {"control": "enum", "options": [e.value for e in inner], "optional": True}
+            if inner is int:
+                return {"control": "int", "optional": True}
+            if inner is float:
+                return {"control": "float", "optional": True}
         return {"control": "value"}  # Value = int | "all" | {ref}
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         return {"control": "enum", "options": [e.value for e in annotation]}
@@ -611,8 +717,10 @@ def effect_specs() -> dict:
                     opts.append("all")
                 labels = {k: KEYWORDS.get(k, {}).get("display", k) for k in opts}
                 labels["all"] = "All abilities"
+                # grant/remove require at least one keyword; create_token's are optional.
                 params.append({"name": "keywords", "control": "keyword_list",
-                               "options": opts, "labels": labels, "required": True})
+                               "options": opts, "labels": labels,
+                               "required": finfo.is_required()})
                 continue
             if fname in ("modes", "condition", "effects"):
                 # Container fields (modal modes / conditional branch). The guided
@@ -700,7 +808,7 @@ class Card(BaseModel):
                 raise ValueError(
                     f"effect references undeclared slot '${name}'; declare it in 'targets'"
                 )
-            if effect.kind in ("draw", "scry"):
+            if effect.kind in ("draw", "scry", "move_card"):
                 desc = self.resolved_target(effect)
                 if desc is not None and desc.side == Side.enemy:
                     raise ValueError(
@@ -753,6 +861,27 @@ ARCHETYPE_STATS = {
     Archetype.Channeler: {"starting_hp": 15, "starting_hand": 2, "starting_mana": 4},
 }
 
+# Attack profile = (mode, power), sitting alongside HP/hand/mana (Design Update R-3).
+# Basic-attack damage = Power. Fighter is melee-only; the others choose one profile
+# at creation, fixed thereafter. The first key listed is the archetype's default.
+ARCHETYPE_ATTACK = {
+    Archetype.Fighter: {AttackMode.melee: 3},
+    Archetype.Tactician: {AttackMode.ranged: 1, AttackMode.melee: 2},
+    Archetype.Channeler: {AttackMode.ranged: 1, AttackMode.melee: 2},
+    Archetype.Caster: {AttackMode.ranged: 2, AttackMode.melee: 1},
+}
+
+
+def default_attack_mode(archetype: Archetype) -> AttackMode:
+    """The archetype's default attack mode (first profile listed)."""
+    return next(iter(ARCHETYPE_ATTACK[Archetype(archetype)]))
+
+
+def attack_power(archetype: Archetype, mode: AttackMode, level: int = 1) -> int:
+    """Basic-attack Power for an (archetype, attack mode). Level-flat for now (R-3)."""
+    profiles = ARCHETYPE_ATTACK[Archetype(archetype)]
+    return profiles[AttackMode(mode)]
+
 
 def archetype_stats(archetype: Archetype, level: int = 1) -> dict:
     """Resolved stats for an (archetype, level). Level is a placeholder for now."""
@@ -769,6 +898,10 @@ class Character(BaseModel):
     level: int = 1
     colors: List[Color]
     starting_mana: List[Color]
+    # Attack profile (R-3) and default battlefield row (R-1). `attack_mode` is
+    # chosen at creation; `row` is the character's starting row.
+    attack_mode: Optional[AttackMode] = None
+    row: Row = Row.front
 
     @field_validator("colors")
     @classmethod
@@ -796,10 +929,33 @@ class Character(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _attack_mode_valid(self) -> "Character":
+        """Fill the archetype default when unset; reject a mode the archetype
+        can't take (e.g. Fighter is melee-only) — R-3."""
+        allowed = ARCHETYPE_ATTACK[Archetype(self.archetype)]
+        if self.attack_mode is None:
+            object.__setattr__(self, "attack_mode", default_attack_mode(self.archetype))
+        elif AttackMode(self.attack_mode) not in allowed:
+            raise ValueError(
+                f"{self.archetype.value} has no {self.attack_mode.value} attack profile; "
+                f"choose one of {[m.value for m in allowed]}"
+            )
+        return self
+
+    @property
+    def power(self) -> int:
+        """Basic-attack Power, from the (archetype, attack mode) profile (R-3)."""
+        return attack_power(self.archetype, self.attack_mode or default_attack_mode(self.archetype),
+                            self.level)
+
     @property
     def stats(self) -> dict:
-        """Derived HP / hand size / mana amount — read-only, from the table."""
-        return archetype_stats(self.archetype, self.level)
+        """Derived HP / hand size / mana amount / Power — read-only, from the tables."""
+        s = archetype_stats(self.archetype, self.level)
+        s["power"] = self.power
+        s["attack_mode"] = (self.attack_mode or default_attack_mode(self.archetype)).value
+        return s
 
 
 class Loadout(BaseModel):

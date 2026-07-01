@@ -1,0 +1,44 @@
+{
+  "name": "§A — Skitterling & Brute (minions)",
+  "enemies": [
+    {
+      "id": "skitterling",
+      "name": "Skitterling",
+      "hp": 3,
+      "level": 1,
+      "intent": {
+        "name": "Claw",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "front_lowest_hp"
+      },
+      "ranged_intent": {
+        "name": "Spit",
+        "amount": 1,
+        "action_type": "ability",
+        "mode": "ranged"
+      }
+    },
+    {
+      "id": "brute",
+      "name": "Brute",
+      "hp": 8,
+      "level": 3,
+      "intent": {
+        "name": "Smash",
+        "amount": 4,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "lowest_hp"
+      },
+      "ranged_intent": {
+        "name": "Hurl",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "ranged"
+      }
+    }
+  ],
+  "tokens": {}
+}

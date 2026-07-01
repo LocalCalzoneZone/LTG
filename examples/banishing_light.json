@@ -1,0 +1,19 @@
+{
+  "id": "banishing_light",
+  "name": "Banishing Light",
+  "source_name": "Banishing Light",
+  "rarity": "common",
+  "level": 3,
+  "type": "Enchantment",
+  "cost": { "generic": 2, "colors": { "W": 1 } },
+  "timing": "channeled",
+  "original_text": "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield.",
+  "translated_text": "While channeled: exile the chosen enemy.",
+  "targets": {
+    "T1": { "mode": "chosen", "side": "enemy", "targeted": true }
+  },
+  "effects": [
+    { "kind": "exile", "target": "$T1", "duration": "while_channeled" }
+  ],
+  "validated": true
+}

@@ -27,7 +27,6 @@ from .schema import (
     DealDamage,
     Destroy,
     Draw,
-    Disable,
     Duration,
     Effect,
     Exile,
@@ -133,7 +132,7 @@ def _stat_change(m, ctx):
 
 @register(r"prevent .* damage|^fog\b|prevent all combat damage")
 def _prevent(m, ctx):
-    return [Prevent(amount="all", target=t_all("ally"))]
+    return [Prevent(parameter="combat_damage", target=t_all("ally"))]
 
 
 @register(r"scry (\w+)")
@@ -149,11 +148,6 @@ def _deal_damage(m, ctx):
 @register(r"gains? (\w+) life")
 def _gain_life(m, ctx):
     return [Heal(amount=_word_to_int(m.group(1)), target=t_chosen("ally"))]
-
-
-@register(r"can't attack(?: or block)?")
-def _pacify(m, ctx):
-    return [Disable(intent_type="attack", target=t_chosen("enemy", targeted=True))]
 
 
 # --- Granting / removing keywords (names match the registry) --------------- #
@@ -369,6 +363,12 @@ def _render_add_mana(e) -> str:
     return f"Add {e.amount} {colour} to your pool this turn."
 
 
+def _prevent_phrase(parameter: str) -> str:
+    """A `prevent [parameter]` nullification, in player-facing words (R-11)."""
+    return {"combat_damage": "combat damage", "damage": "all damage",
+            "all": "all damage"}.get(parameter, parameter.replace("_", " "))
+
+
 # Counter filter → player-facing phrase (filter matches a node + its descendants).
 _FILTER_PHRASE = {
     "action": "an enemy action (spell or ability)",
@@ -411,7 +411,31 @@ def _condition_phrase(cond) -> str:
     if cond.property == "side":
         s = cond.side.value if hasattr(cond.side, "value") else cond.side
         return {"ally": "the target is an ally", "enemy": "the target is an enemy"}.get(s, "the target qualifies")
+    if cond.property == "level":
+        suffix = {"or_more": " or more", "or_less": " or less"}.get(getattr(cond, "compare", "exactly"), "")
+        return f"the target is level {cond.level}{suffix}"
     return "the condition holds"
+
+
+def _token_phrase(e) -> str:
+    """'a 2/3 Wisp ally with flying' / '2 2/3 Wisp allies' — name, stats, keywords.
+
+    Stats are omitted when the effect leaves them to the scenario's token def.
+    """
+    name = e.token_id.replace("_", " ").title()
+    stats = f"{e.power}/{e.hp} " if e.power is not None and e.hp is not None else ""
+    kw = f" with {_keyword_phrase(e.keywords)}" if getattr(e, "keywords", None) else ""
+    if e.count == 1:
+        return f"a {stats}{name} ally{kw}"
+    return f"{e.count} {stats}{name} allies{kw}"
+
+
+_NUM_WORD = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+             6: "six", 7: "seven", 8: "eight", 9: "nine"}
+
+
+def _count_word(n: int) -> str:
+    return _NUM_WORD.get(n, str(n))
 
 
 def _render_modal(e) -> str:
@@ -419,11 +443,110 @@ def _render_modal(e) -> str:
     for m in e.modes:
         label = f"{m.label}: " if m.label else ""
         parts.append(f"• {label}{render_effects(m.effects)}")
-    return "Choose one — " + " ".join(parts)
+    choose = _count_word(getattr(e, "choose", 1))
+    if getattr(e, "or_more", False):
+        choose += " or more"
+    return f"Choose {choose} — " + " ".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# move_card rendering — phrase a zone move from source + destination + filter.
+_MOVE_DEST_PHRASE = {
+    "hand": "into your hand",
+    "library_top": "on top of your library",
+    "library_bottom": "on the bottom of your library",
+    "library_shuffle": "shuffled into your library",
+    "graveyard": "into your graveyard",
+    "exile": "into exile",
+}
+_MOVE_TYPE_WORD = {"instant": "instant", "sorcery": "sorcery", "channeled": "channeled"}
+
+
+def _move_level_suffix(e) -> str:
+    if e.filter_level_compare == "any":  # "any level" → no level filter
+        return ""
+    rel = {"or_more": " or more", "or_less": " or less"}.get(e.filter_level_compare, "")
+    return f" of level {e.filter_level}{rel}"
+
+
+def _move_search_object(e) -> str:
+    """The thing a library search looks for, e.g. 'an instant', 'a card of level 2 or more'."""
+    t = _MOVE_TYPE_WORD.get(e.filter_type)
+    base = {"instant": "an instant", "sorcery": "a sorcery",
+            "channeled": "a channeled card"}.get(e.filter_type, "a card")
+    return base + _move_level_suffix(e)
+
+
+def _move_noun(e, n: int) -> str:
+    """The card noun for a non-search source, e.g. '1 instant card', '2 cards of level 3 or less'."""
+    t = _MOVE_TYPE_WORD.get(e.filter_type)
+    noun = f"{t} card" if t else "card"
+    if n != 1:
+        noun += "s"
+    return noun + _move_level_suffix(e)
+
+
+def _render_move_card(e) -> str:
+    n = e.count
+    dest = _MOVE_DEST_PHRASE.get(e.destination, "into your hand")
+    if e.source == "library":  # search anywhere → tutor
+        pronoun = "it" if n == 1 else "them"
+        obj = _move_search_object(e) if n == 1 else f"{n} {_move_noun(e, n)}"
+        body = f"Search your library for {obj}, put {pronoun} {dest}"
+    else:
+        place = "top" if e.source == "library_top" else "bottom"
+        src = {
+            "drawn": f"{n} of the drawn cards",
+            "hand": f"{n} {_move_noun(e, n)} from your hand",
+            "graveyard": f"{n} {_move_noun(e, n)} from your graveyard",
+            "exile": f"{n} {_move_noun(e, n)} from exile",
+            "library_top": f"the {place} {n} card{'s' if n != 1 else ''} of your library",
+            "library_bottom": f"the {place} {n} card{'s' if n != 1 else ''} of your library",
+        }.get(e.source, f"{n} {_move_noun(e, n)}")
+        body = f"Put {src} {dest}"
+    # 'shuffled into your library' already implies the shuffle; don't say it twice.
+    if e.shuffle_after and e.destination != "library_shuffle":
+        body += ", then shuffle your library"
+    return body + "."
+
+
+def _target_condition_qualifier(cond) -> str:
+    """A noun-phrase qualifier for a target_property condition — the bit that
+    attaches to 'a target' so the SAME target is clearly meant (not a new one)."""
+    if cond.property == "has_keyword":
+        return f"with {KEYWORDS.get(cond.keyword, {}).get('display', cond.keyword).lower()}"
+    if cond.property == "level":
+        suffix = {"or_more": " or more", "or_less": " or less"}.get(getattr(cond, "compare", "exactly"), "")
+        return f"with level {cond.level}{suffix}"
+    if cond.property == "side":
+        s = cond.side.value if hasattr(cond.side, "value") else cond.side
+        return {"ally": "that is an ally", "enemy": "that is an enemy"}.get(s, "that qualifies")
+    return "that qualifies"
+
+
+def _targets_external(effect) -> bool:
+    """True when an effect acts on a chosen/external target (not 'self') — i.e. the
+    'a target' that a target_property qualifier can attach to."""
+    tgt = getattr(effect, "target", None)
+    if tgt is None:
+        return False
+    if isinstance(tgt, str):  # "$slot" ref — a shared chosen target
+        return True
+    mode = getattr(tgt, "mode", None)
+    mode = mode.value if hasattr(mode, "value") else mode
+    return mode != "self"
 
 
 def _render_conditional(e) -> str:
     inner = render_effects(e.effects)
+    # A target_property condition qualifies the SAME target the effect already
+    # acts on, so phrase it as "<effect> a target with <condition>." rather than
+    # "If the target …, <effect> a target." (which reads as two distinct targets).
+    # Only when the effect actually has an external target; cast-mode conditions
+    # (and target-less effects) keep the "If …" form.
+    if getattr(e.condition, "kind", None) == "target_property" and e.effects and _targets_external(e.effects[-1]):
+        body = inner.rstrip().rstrip(".")
+        return f"{body} {_target_condition_qualifier(e.condition)}."
     return f"If {_condition_phrase(e.condition)}, {_lc_first(inner)}"
 
 
@@ -456,13 +579,14 @@ RENDERERS = {
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
     "exile": lambda e: f"Exile {_tgt(e.target)}.",
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",
+    "fight": lambda e: f"{_tgt(e.target).capitalize()} fights {_tgt(e.other)}.",
     "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
     "strip_intent": lambda e: f"Remove {_subject(e.target, None, True)}'s telegraphed intent.",
     "stun": lambda e: f"{_subject(e.target, None, True).capitalize()} skips its next intent.",
     "pump": _render_pump,
     "wound": _render_wound,
     "counters": _render_counters,
-    "prevent": lambda e: f"Prevent {_value(e.amount)} damage to {_tgt(e.target)}.",
+    "prevent": lambda e: f"Prevent {_prevent_phrase(e.parameter)} to {_tgt(e.target)}.",
     "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
@@ -472,9 +596,9 @@ RENDERERS = {
         "Scry 1 for each point of mana capacity." if _is_capacity(e.amount)
         else f"Scry {e.amount}."
     ),
-    "create_token": lambda e: f"Create {e.count} {e.token_id} token(s).",
+    "move_card": _render_move_card,
+    "create_token": lambda e: f"Create {_token_phrase(e)}.",
     "taunt": lambda e: f"Force {_tgt(e.target)} to target you this turn.",
-    "disable": lambda e: f"{_tgt(e.target).capitalize()} can't {e.intent_type}.",
     "revive": lambda e: f"Revive {_tgt(e.target)} at {int(e.to_fraction * 100)}% HP.",
     "ramp": _render_ramp,
     "add_mana": _render_add_mana,
@@ -515,6 +639,15 @@ _CLAUSE = {
     "stun": lambda e: f"are stunned for {e.intents} intent(s)",
     "grant_keyword": lambda e: f"gain {_keyword_phrase(e.keywords, e.params)}",
     "remove_keyword": lambda e: f"lose {_keyword_phrase(e.keywords, e.params)}",
+    # Other targetable effects need subjectless phrases too, or the shared-target
+    # ("Choose X: they …") path falls back to the direct renderer and leaks the
+    # raw "$slot" reference with the wrong subject.
+    "strip_intent": lambda e: "lose their telegraphed intent",
+    "taunt": lambda e: "must target you this turn",
+    "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
+    "protection": lambda e: f"gain protection ({e.scope})",
+    "counters": lambda e: f"gain +{e.power}/+{e.toughness} counters",
+    "prevent": lambda e: f"have {_prevent_phrase(e.parameter)} prevented",
 }
 
 
@@ -540,14 +673,25 @@ def render_effects(effects: List[Effect], targets=None, channeled: bool = False)
     handled = set()
     parts = []
 
+    # Fight reads as one sentence over its two targets — never grouped with slots.
+    for e in effects:
+        if getattr(e, "kind", None) == "fight":
+            handled.add(id(e))
+            a = _subject(getattr(e, "target", None), targets)
+            b = _subject(getattr(e, "other", None), targets)
+            parts.append(f"{a.capitalize()} fights {b}.")
+
     # One sentence per shared-target slot (in first-appearance order).
     seen_slots = []
     for e in effects:
+        if id(e) in handled:
+            continue
         s = slot_name(getattr(e, "target", None))
         if s and s not in seen_slots:
             seen_slots.append(s)
     for s in seen_slots:
-        group = [e for e in effects if slot_name(getattr(e, "target", None)) == s]
+        group = [e for e in effects
+                 if id(e) not in handled and slot_name(getattr(e, "target", None)) == s]
         for e in group:
             handled.add(id(e))
         slot_type = targets.get(s)
@@ -583,8 +727,6 @@ def _channeled_body(e, targets) -> str:
     if k == "wound":
         verb = "have" if _plural(e.target, targets) else "has"
         return f"{_subject(e.target, targets, True)} {verb} -{e.power} attack and -{e.toughness} HP"
-    if k == "disable":
-        return f"{_subject(e.target, targets, True)} can't {e.intent_type}"
     if k == "grant_keyword":
         verb = "have" if _plural(e.target, targets) else "has"
         return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
@@ -594,11 +736,16 @@ def _channeled_body(e, targets) -> str:
     if k == "taunt":
         return f"{_subject(e.target, targets, True)} must target you"
     if k == "prevent":
-        return f"prevent {_value(e.amount)} damage to {_subject(e.target, targets, True)}"
+        return f"prevent {_prevent_phrase(e.parameter)} to {_subject(e.target, targets, True)}"
     if k == "protection":
         return f"{_subject(e.target, targets, True)} has protection"
     if k == "stun":
         return f"{_subject(e.target, targets, True)} is stunned"
+    if k == "exile":
+        return f"exile {_subject(e.target, targets, True)}"
+    if k == "fight":
+        return (f"{_subject(e.target, targets, True)} fights "
+                f"{_subject(getattr(e, 'other', None), targets, True)}")
     return _lc_first(_render_one(e).rstrip("."))
 
 
@@ -606,9 +753,7 @@ def _upkeep_clause(e, targets) -> str:
     """A recurring (upkeep) effect's body — imperative, lowercase, no period."""
     k = e.kind
     if k == "create_token":
-        token = e.token_id.replace("_", " ").title()
-        article = "an" if token[:1].lower() in "aeiou" else "a"
-        return f"create {article} {token} ally" if e.count == 1 else f"create {e.count} {token} allies"
+        return f"create {_token_phrase(e)}"
     if k == "lose_life":
         amt = _value(e.amount) if isinstance(e.amount, Ref) else e.amount
         if _is_self(_resolve(e.target, targets) or e.target):

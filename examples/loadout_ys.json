@@ -1,0 +1,251 @@
+{
+  "ltg_version": "0.1",
+  "character": {
+    "name": "Ys",
+    "description": "A cunning ranged Tactician \u2014 removal, draw, and life-paid power.",
+    "archetype": "Tactician",
+    "level": 1,
+    "colors": [
+      "U",
+      "B"
+    ],
+    "starting_mana": [
+      "U",
+      "B"
+    ],
+    "attack_mode": "ranged",
+    "row": "front"
+  },
+  "cards": [
+    {
+      "id": "unmake",
+      "name": "Unmake",
+      "source_name": "Unmake",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "B": 1
+        }
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Destroy an enemy. Lose HP equal to its Level.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "destroy",
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          }
+        },
+        {
+          "trigger": null,
+          "kind": "lose_life",
+          "amount": {
+            "ref": "destroyed_target.level"
+          },
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "mind_spike",
+      "name": "Mind Spike",
+      "source_name": "Mind Spike",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "U": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "Deal 2 damage to an enemy.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": 2,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "whispers",
+      "name": "Whispers",
+      "source_name": "Whispers",
+      "rarity": "common",
+      "level": 1,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "U": 1
+        }
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Draw 1 card(s).",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "draw",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "sift",
+      "name": "Sift",
+      "source_name": "Sift",
+      "rarity": "common",
+      "level": 1,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "U": 1
+        }
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Scry 1.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "scry",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "nightcreep",
+      "name": "Nightcreep",
+      "source_name": "Nightcreep",
+      "rarity": "common",
+      "level": 1,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "B": 1
+        }
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Deal 2 damage to an enemy.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": 2,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "leech",
+      "name": "Leech",
+      "source_name": "Leech",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "B": 1
+        }
+      },
+      "timing": "instant",
+      "original_text": "",
+      "translated_text": "Deal 1 damage to an enemy. Restore 1 HP to yourself.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": 1,
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        },
+        {
+          "trigger": null,
+          "kind": "heal",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    }
+  ]
+}

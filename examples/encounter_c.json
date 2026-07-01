@@ -1,0 +1,41 @@
+{
+  "name": "\u00a7C \u2014 Mira channels (Cinder & Maul)",
+  "enemies": [
+    {
+      "id": "cinder",
+      "name": "Cinder",
+      "hp": 6,
+      "level": 2,
+      "intent": {
+        "name": "Ember",
+        "amount": 2,
+        "action_type": "ability",
+        "intent_type": "attack",
+        "targeting": "lowest_hp_party",
+        "mode": "melee"
+      }
+    },
+    {
+      "id": "maul",
+      "name": "Maul",
+      "hp": 10,
+      "level": 4,
+      "intent": {
+        "name": "Crush",
+        "amount": 4,
+        "action_type": "ability",
+        "intent_type": "attack",
+        "targeting": "mira",
+        "mode": "melee"
+      }
+    }
+  ],
+  "tokens": {
+    "wisp": {
+      "name": "Wisp",
+      "hp": 1,
+      "power": 1,
+      "attack_mode": "melee"
+    }
+  }
+}

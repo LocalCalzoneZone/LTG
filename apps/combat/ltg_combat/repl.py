@@ -58,12 +58,16 @@ def _mana_str(char) -> str:
 
 def _status_str(char) -> str:
     bits = []
-    if char.temp_hp:
-        bits.append(f"+{char.temp_hp} tempHP")
+    if char.temp_mod:
+        bits.append(f"{'+' if char.temp_mod >= 0 else ''}{char.temp_mod} tempHP")
     if char.prevent_pool:
-        bits.append(f"prevent {char.prevent_pool}")
+        bits.append(f"reduce {char.prevent_pool}")
+    for tag in char.prevent_tags:
+        bits.append(f"prevent {tag}")
     if char.power_bonus:
-        bits.append(f"+{char.power_bonus} Pow")
+        bits.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Pow")
+    for kw in char.keywords:
+        bits.append(kw)
     if char.acted_mode and char.alive and not char.turn_ended:
         bits.append(char.acted_mode)
     if char.turn_ended:
@@ -176,10 +180,17 @@ def _build_menu(state: GameState, actions: List[Action]) -> List[_Entry]:
     """Group the engine's actions for legibility — Attack then choose an enemy,
     multi-target casts behind a 'choose target' sub-menu. Pure presentation:
     every entry maps back to an Action the engine already offered."""
+    # A mid-resolution choice (card move / scry placement) is exclusive: list each
+    # pick as its own entry and nothing else.
+    choices = [a for a in actions if a.kind in ("choose_card", "choose_scry")]
+    if choices:
+        return [_Entry(a.label, action=a) for a in choices]
+
     mana = [a for a in actions if a.kind == "choose_mana"]
     attacks = [a for a in actions if a.kind == "attack"]
     casts = [a for a in actions if a.kind == "cast"]
-    others = [a for a in actions if a.kind in ("defend", "parry", "pass", "end_turn")]
+    others = [a for a in actions
+              if a.kind in ("defend", "mitigate", "move", "pass", "end_turn")]
 
     entries: List[_Entry] = []
     for a in mana:

@@ -8,7 +8,7 @@
   "cost": { "generic": 1, "colors": { "R": 1 } },
   "timing": "instant",
   "original_text": "Opportune Strike deals 2 damage to target creature. If that creature has flying, it deals 4 damage instead.",
-  "translated_text": "Deal 2 damage to an enemy. If the target has Flight, deal 2 damage to an enemy.",
+  "translated_text": "Deal 2 damage to an enemy. Deal 2 damage to an enemy with flying.",
   "effects": [
     { "kind": "deal_damage", "amount": 2, "target": { "mode": "chosen", "side": "enemy", "targeted": true } },
     {

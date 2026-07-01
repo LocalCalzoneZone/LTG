@@ -18,14 +18,14 @@ def test_scenario_passes():
     """The whole §A hand-trace reproduces every asserted state (the proof)."""
     state = run_scenario(verbose=False)
     assert state.result == "victory"
-    assert state.turn == 2
+    assert state.turn == 3  # Soren melee/3 + Guard'd Ys; Brute falls on turn 3
 
 
 def test_channeling_scenario_passes():
     """The §C channeling hand-trace reproduces every asserted state (the proof)."""
     state = run_channeling_scenario(verbose=False)
-    # Channeling-specific end state: channels broke, mira survived the hit.
-    assert state.party[0].hp == 7
+    # Channeling-specific end state: channels broke, Mira survived the breaking hit.
+    assert state.party[0].hp == 5
     assert state.party[0].channels == []
 
 
@@ -62,12 +62,12 @@ def test_voluntary_drop_ends_all_channels_and_releases_mana():
     state, events = apply_action(state, drop[0])
     mira = state.party[0]
     assert mira.channels == []                       # all channels ended at once
-    assert "still the blade" not in [c.name.lower() for c in mira.hand]  # spent, not returned
+    assert "still the blade" in [c.name.lower() for c in mira.graveyard]  # already in graveyard (R-9)
     # Reserved U+B released back into the pool (a respondable trigger opened).
     assert sorted(mira.pool) == sorted(pool_before + ["U", "B"])
     assert any(e.type == "mana_released" for e in events)
-    # Cinder's disable was lifted with the channel.
-    assert "attack" not in state.enemy("cinder").disabled_intent_types
+    # Cinder's wound aura was lifted with the channel (Power back to 0).
+    assert state.enemy("cinder").power_bonus == 0
 
 
 def test_scenario_is_deterministic():
@@ -76,7 +76,7 @@ def test_scenario_is_deterministic():
     b = run_scenario(verbose=False)
     assert a.result == b.result
     assert [(c.name, c.hp) for c in a.party] == [(c.name, c.hp) for c in b.party]
-    assert [(c.name, c.hp) for c in a.party] == [("Soren", 25), ("Ys", 12)]
+    assert [(c.name, c.hp) for c in a.party] == [("Soren", 25), ("Ys", 11)]
     assert a.enemies == [] and b.enemies == []
 
 
@@ -125,32 +125,15 @@ def test_illegal_action_is_rejected():
 
 
 def test_text_ui_plays_scenario_to_victory():
-    """The text UI reaches the same result through the engine interface, owning
-    no rules. We feed the §A choices as menu numbers via injected I/O — a human
-    making these same picks reaches the same deterministic victory.
+    """The text UI reaches victory through the engine interface, owning no rules.
 
-    Attack is "Attack" then choose an enemy; multi-target casts sit behind a
-    'choose target' sub-menu — so each is two picks when there's a choice."""
-    script = [
-        "Attack", "Skitterling", # T1 Soren: Attack, then choose Skitterling
-        "Pass", "Pass",          # resolve the attack
-        "End turn",              # Soren ends
-        "Cast Unmake", "Brute", # T1 Ys: pick Unmake, then its target Brute
-        "Pass", "Pass",          # resolve Unmake
-        "End turn",              # Ys ends
-        "Cast Guard", "Ys",     # T1 Soren reacts to Claw: Guard, then target Ys
-        "Pass", "Pass", "Pass", "Pass",  # resolve Guard then Claw
-        "Green",                 # T2 Soren locks +1 capacity colour (G)
-        "Blue",                  # T2 Ys locks +1 capacity colour (U)
-        "Attack Skitterling",   # T2 Soren attacks (only one enemy -> inline)
-        "Pass", "Pass",          # resolve -> victory
-        "Quit",                  # decline the restart menu
-    ]
+    Rather than a brittle fixed script (the §A line is now multi-turn), we drive
+    the real menu with a simple deterministic strategy — pick a target when a
+    sub-menu is open, otherwise attack, lock mana, take an offensive cast, pass in
+    a reaction window, or end the turn — and assert the engine reaches victory."""
     pending_menu: list = []
 
     def fake_out(line):
-        # Track the most recently printed numbered menu so we can map a label.
-        # _render is emitted as one multi-line blob; menu items are one line each.
         if "\n" in line:
             return
         m = line.strip()
@@ -160,19 +143,30 @@ def test_text_ui_plays_scenario_to_victory():
             num, label = m.split(". ", 1)
             pending_menu.append((int(num), label))
 
-    step = {"i": 0}
+    calls = {"n": 0}
 
     def fake_read():
-        want = script[step["i"]]
-        step["i"] += 1
-        for num, label in pending_menu:
-            if want in label:
-                return str(num)
-        raise AssertionError(f"no menu option matching '{want}' in {pending_menu}")
+        calls["n"] += 1
+        if calls["n"] > 300:
+            return "q"  # safety valve — never reached in a healthy engine
+        menu = list(pending_menu)
+
+        def pick(pred):
+            return next((str(n) for n, l in menu if pred(l)), None)
+
+        return (
+            pick(lambda l: l.startswith("Quit"))                 # leave the restart prompt
+            or pick(lambda l: "(HP " in l and "Back" not in l)   # a target sub-menu is open
+            or pick(lambda l: l.startswith("Attack"))            # attack (inline or opener)
+            or pick(lambda l: l.startswith("Lock +1"))           # lock the +1 capacity colour
+            or pick(lambda l: l.startswith("Cast") and " on " in l)  # an offensive/targeted cast
+            or pick(lambda l: l == "Pass")                       # don't react in a window
+            or pick(lambda l: l == "End turn")
+            or (str(menu[0][0]) if menu else "q")
+        )
 
     final = play(state=build_state(), read=fake_read, out=fake_out)
     assert final.result == "victory"
-    assert step["i"] == len(script)  # every scripted choice was consumed
 
 
 def test_text_ui_can_load_scenario_json(tmp_path):

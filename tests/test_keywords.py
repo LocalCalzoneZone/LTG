@@ -30,7 +30,7 @@ def render(effects, **kw):
 def test_grant_flying_render():
     assert render([{"kind": "grant_keyword", "keywords": ["flying"],
                     "target": CHOSEN_ALLY, "duration": "end_of_turn"}]) \
-        == "An ally gains Flight until end of turn."
+        == "An ally gains Flying until end of turn."
 
 
 def test_grant_trample_channeled_render():
@@ -52,7 +52,7 @@ def test_pump_and_grant_compose():
 
 def test_remove_renderings():
     assert render([{"kind": "remove_keyword", "keywords": ["flying"], "target": CHOSEN_ALLY}]) \
-        == "An ally loses Flight."
+        == "An ally loses Flying."
     assert render([{"kind": "remove_keyword", "keywords": ["all"], "target": CHOSEN_ALLY}]) \
         == "An ally loses all abilities."
 
@@ -63,7 +63,7 @@ def test_grant_verb_agrees_with_target_number():
     assert plural == "All allies gain Lifelink until end of turn."
     single = render([{"kind": "grant_keyword", "keywords": ["flying"],
                       "target": CHOSEN_ALLY, "duration": "end_of_turn"}])
-    assert single == "An ally gains Flight until end of turn."
+    assert single == "An ally gains Flying until end of turn."
 
 
 def test_protection_from_param_renders():
@@ -106,7 +106,7 @@ def test_auto_grant_flying():
                     "oracle_text": "Target creature gains flying until end of turn."})
     assert c.effects[0].kind == "grant_keyword"
     assert c.effects[0].keywords == ["flying"]
-    assert "Flight" in c.translated_text
+    assert "Flying" in c.translated_text
 
 
 # --- editor metadata + fixtures --------------------------------------------- #
@@ -115,7 +115,7 @@ def test_effect_specs_keyword_list():
     kw = next(p for p in specs["grant_keyword"]["params"] if p["name"] == "keywords")
     assert kw["control"] == "keyword_list"
     assert "flying" in kw["options"] and "menace" not in kw["options"]
-    assert kw["labels"]["flying"] == "Flight"
+    assert kw["labels"]["flying"] == "Flying"
     rm = next(p for p in specs["remove_keyword"]["params"] if p["name"] == "keywords")
     assert "all" in rm["options"]
 

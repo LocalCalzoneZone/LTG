@@ -69,11 +69,13 @@ def _lint_slots(card):
     declared = set(card.targets.keys())
     referenced = set()
     for e in card.effects:
-        s = slot_name(getattr(e, "target", None))
-        if s is not None:
-            referenced.add(s)
-            if s not in declared:
-                out.append(f"effect references undeclared slot ${s}.")
+        # Every target-bearing field counts (fight references two: target + other).
+        for attr in ("target", "other"):
+            s = slot_name(getattr(e, attr, None))
+            if s is not None:
+                referenced.add(s)
+                if s not in declared:
+                    out.append(f"effect references undeclared slot ${s}.")
     for s in sorted(declared - referenced):
         out.append(f"slot {s} is declared but never used.")
     return out
@@ -86,11 +88,43 @@ def _lint_channeled_persistence(card):
     out = []
     for e in card.effects:
         continuous = getattr(e, "duration", None) == Duration.while_channeled
-        if not continuous and e.trigger is None:
+        if continuous or e.trigger is not None:
+            continue
+        # Only effects that carry a `duration` field can be made continuous; the rest
+        # (e.g. destroy, bounce, stun) can only persist via a recurring trigger.
+        if "duration" in type(e).model_fields:
             out.append(
                 f"{e.kind}: on a channeled card, set duration 'while_channeled' "
                 f"(continuous) or a trigger (recurring)."
             )
+        else:
+            out.append(
+                f"{e.kind}: on a channeled card, set a trigger (recurring) — "
+                f"'{e.kind}' has no continuous (while_channeled) form."
+            )
+    return out
+
+
+def _resolved_side(card, target):
+    """The Side of a target descriptor or slot ref, or None if not determinable."""
+    name = slot_name(target)
+    desc = card.targets.get(name) if name is not None else (
+        target if not isinstance(target, str) else None)
+    return getattr(desc, "side", None)
+
+
+def _lint_fight_sides(card):
+    # A fight pits a creature you control against one you don't — the two targets
+    # should sit on opposite sides (GDD §7).
+    out = []
+    for e in card.effects:
+        if getattr(e, "kind", None) != "fight":
+            continue
+        a = _resolved_side(card, getattr(e, "target", None))
+        b = _resolved_side(card, getattr(e, "other", None))
+        if a is not None and b is not None and a == b and a != Side.any:
+            out.append("fight: the two creatures should be on opposite sides "
+                       "(target a creature you control vs one you don't).")
     return out
 
 
@@ -102,6 +136,7 @@ LINT_RULES = [
     _lint_amounts,
     _lint_slots,
     _lint_channeled_persistence,
+    _lint_fight_sides,
 ]
 
 
