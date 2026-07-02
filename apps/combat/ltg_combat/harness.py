@@ -110,7 +110,7 @@ def run_scenario(verbose: bool = False, state: Optional[GameState] = None) -> Ga
     state, _ = _do(state, kind="cast", card_id="guard", target_id="ys")  # free instant
     state = _pass_window(state)
     _check("Ys holds a prevent(combat_damage) tag",
-           "combat_damage" in state.character("ys").prevent_tags)
+           any(t.parameter == "combat_damage" for t in state.character("ys").prevent_tags))
     state, _ = _do(state, kind="end_turn", actor_id="soren")
     state, _ = _do(state, kind="end_turn", actor_id="ys")
 

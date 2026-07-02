@@ -48,19 +48,38 @@ _BUILTIN_ENCOUNTERS: Dict[str, Dict[str, Any]] = {
 # removed by deleting their file; bundled examples (git-tracked repo fixtures the
 # tests depend on) are removed by hiding their id here — the file stays put.
 HIDDEN_FILE = LOADOUTS_DIR / "hidden.json"
+# The same idea for encounters (built-ins and bundled example encounters can't have
+# a file deleted, so a removal hides the id instead — see delete_encounter).
+ENCOUNTER_HIDDEN_FILE = LOADOUTS_DIR / "encounters_hidden.json"
 
 
-def _hidden() -> set:
+def _read_id_set(path: Path) -> set:
     try:
-        data = json.loads(HIDDEN_FILE.read_text())
+        data = json.loads(path.read_text())
         return set(data) if isinstance(data, list) else set()
     except (OSError, json.JSONDecodeError):
         return set()
 
 
-def _set_hidden(ids: set) -> None:
+def _write_id_set(path: Path, ids: set) -> None:
     LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
-    HIDDEN_FILE.write_text(json.dumps(sorted(ids)))
+    path.write_text(json.dumps(sorted(ids)))
+
+
+def _hidden() -> set:
+    return _read_id_set(HIDDEN_FILE)
+
+
+def _set_hidden(ids: set) -> None:
+    _write_id_set(HIDDEN_FILE, ids)
+
+
+def _enc_hidden() -> set:
+    return _read_id_set(ENCOUNTER_HIDDEN_FILE)
+
+
+def _set_enc_hidden(ids: set) -> None:
+    _write_id_set(ENCOUNTER_HIDDEN_FILE, ids)
 
 
 def _iter_json() -> List[Path]:
@@ -174,13 +193,21 @@ def loadout_for(character_id: str) -> Optional[Dict[str, Any]]:
 # Encounters (enemies-only scenarios + the two built-ins)
 # --------------------------------------------------------------------------- #
 def _encounter_registry() -> Dict[str, Dict[str, Any]]:
-    """id -> enemies-only scenario dict {name, enemies, tokens?}."""
+    """id -> {name, enemies, tokens, source, path}.
+
+    ``source`` is ``"builtin"`` (a hardcoded scenario, no file), ``"user"`` (a saved
+    file in LOADOUTS_DIR — editable/deletable in place) or ``"example"`` (a bundled
+    git-tracked fixture). A ``user`` file whose stem matches a built-in / example id
+    shadows it, so an edited built-in overrides its hardcoded base. Hidden ids are
+    NOT filtered here (build/edit still resolve them); ``list_encounters`` filters."""
     reg: Dict[str, Dict[str, Any]] = {}
     for eid, scen in _BUILTIN_ENCOUNTERS.items():
         reg[eid] = {
             "name": scen["name"],
             "enemies": copy.deepcopy(scen["enemies"]),
             "tokens": copy.deepcopy(scen.get("tokens", {})),
+            "source": "builtin",
+            "path": None,
         }
     for path in _iter_json():
         raw = _load_json(path)
@@ -193,25 +220,126 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
             "name": raw.get("name", eid),
             "enemies": copy.deepcopy(raw["enemies"]),
             "tokens": copy.deepcopy(raw.get("tokens", {})),
+            "source": "user" if path.parent == LOADOUTS_DIR else "example",
+            "path": path,
         }
     return reg
 
 
+def _encounter_meta(eid: str, scen: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": eid,
+        "name": scen["name"],
+        "enemy_names": [e.get("name", "?") for e in scen["enemies"]],
+        "enemy_count": len(scen["enemies"]),
+        # Everything is removable and editable: a user file is deleted/overwritten,
+        # a built-in or example is hidden / shadowed by an override file.
+        "deletable": True,
+        "editable": True,
+    }
+
+
 def list_encounters() -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    for eid, scen in _encounter_registry().items():
-        out.append({
-            "id": eid,
-            "name": scen["name"],
-            "enemy_names": [e.get("name", "?") for e in scen["enemies"]],
-            "enemy_count": len(scen["enemies"]),
-        })
-    return out
+    hidden = _enc_hidden()
+    return [_encounter_meta(eid, scen)
+            for eid, scen in _encounter_registry().items() if eid not in hidden]
 
 
 def encounter_for(encounter_id: str) -> Optional[Dict[str, Any]]:
     scen = _encounter_registry().get(encounter_id)
-    return copy.deepcopy(scen) if scen else None
+    if scen is None:
+        return None
+    return {
+        "name": scen["name"],
+        "enemies": copy.deepcopy(scen["enemies"]),
+        "tokens": copy.deepcopy(scen["tokens"]),
+    }
+
+
+def encounter_detail(encounter_id: str) -> Optional[Dict[str, Any]]:
+    """The full, editable encounter (id + name + raw enemy specs + tokens)."""
+    scen = _encounter_registry().get(encounter_id)
+    if scen is None:
+        return None
+    return {
+        "id": encounter_id,
+        "name": scen["name"],
+        "enemies": copy.deepcopy(scen["enemies"]),
+        "tokens": copy.deepcopy(scen["tokens"]),
+    }
+
+
+def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Structurally check an authored encounter and confirm the engine can build it.
+
+    Returns the cleaned ``{name, enemies, tokens}`` dict (no stray keys like ``id``).
+    Raises ValueError with a human message on anything malformed."""
+    if not isinstance(raw, dict):
+        raise ValueError("encounter must be an object")
+    enemies = raw.get("enemies")
+    if not isinstance(enemies, list) or not enemies:
+        raise ValueError("an encounter needs at least one enemy")
+    for e in enemies:
+        if not isinstance(e, dict) or not str(e.get("name", "")).strip():
+            raise ValueError("every enemy needs a name")
+        name = e["name"]
+        try:
+            if int(e["hp"]) <= 0:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"{name}: hp must be a positive number")
+        intent = e.get("intent")
+        if not isinstance(intent, dict) or not str(intent.get("name", "")).strip():
+            raise ValueError(f"{name}: needs an attack (intent) with a name")
+    cleaned = {
+        "name": str(raw.get("name") or "Encounter"),
+        "enemies": copy.deepcopy(enemies),
+        "tokens": copy.deepcopy(raw.get("tokens", {})) if isinstance(raw.get("tokens"), dict) else {},
+    }
+    # Authoritative gate: build a throwaway state (a stub 1-character party) so the
+    # engine validates every enemy — intents, rows, keywords — exactly as at play.
+    stub_party = [{
+        "id": "_probe", "name": "_probe", "hp": 1, "power": 1,
+        "attack_mode": "melee", "level": 1, "hand_size": 0,
+        "identity": ["C"], "library": [],
+    }]
+    try:
+        state_from_dict({**cleaned, "party": stub_party})
+    except Exception as exc:  # engine/pydantic validation
+        raise ValueError(f"engine rejected the encounter: {exc}") from exc
+    return cleaned
+
+
+def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> Dict[str, Any]:
+    """Validate + persist an encounter, returning its meta.
+
+    Writes ``<id>.json`` into LOADOUTS_DIR. With no ``encounter_id`` the id is the
+    name slug (a fresh encounter); with one it overwrites/overrides that id (editing
+    a user file, or shadowing a built-in / example). Saving un-hides the id."""
+    cleaned = _validate_encounter(raw)
+    eid = encounter_id or _slug(cleaned["name"]) or "encounter"
+    LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
+    (LOADOUTS_DIR / f"{eid}.json").write_text(json.dumps(cleaned, indent=2))
+    hidden = _enc_hidden()
+    if eid in hidden:
+        hidden.discard(eid)
+        _set_enc_hidden(hidden)
+    scen = _encounter_registry().get(eid)
+    return _encounter_meta(eid, scen) if scen else {"id": eid, "name": cleaned["name"]}
+
+
+def delete_encounter(encounter_id: str) -> None:
+    """Remove an encounter from the picker. A user file (in LOADOUTS_DIR) is deleted;
+    if the id still resolves from a built-in or bundled example afterwards it is hidden
+    so it stays gone. Raises ValueError on an unknown id."""
+    if encounter_id not in _encounter_registry():
+        raise ValueError(f"unknown encounter: {encounter_id}")
+    (LOADOUTS_DIR / f"{encounter_id}.json").unlink(missing_ok=True)
+    # A built-in base or an examples/ fixture survives the file removal — hide it.
+    if encounter_id in _encounter_registry():
+        hidden = _enc_hidden()
+        hidden.add(encounter_id)
+        _set_enc_hidden(hidden)
 
 
 # --------------------------------------------------------------------------- #

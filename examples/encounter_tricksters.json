@@ -1,0 +1,80 @@
+{
+  "name": "Tricksters — Unpredictable heuristics",
+  "enemies": [
+    {
+      "id": "harrier",
+      "name": "Harrier",
+      "hp": 6,
+      "level": 2,
+      "row": "front",
+      "intent": {
+        "name": "Slash",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "front_lowest_hp"
+      },
+      "ranged_intent": {
+        "name": "Throw Javelin",
+        "amount": 1,
+        "action_type": "ability",
+        "mode": "ranged"
+      }
+    },
+    {
+      "id": "reaver",
+      "name": "Reaver",
+      "hp": 8,
+      "level": 3,
+      "row": "mid",
+      "intent": {
+        "name": "Rend",
+        "amount": 4,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "lowest_hp"
+      },
+      "ranged_intent": {
+        "name": "Hurl Axe",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "ranged"
+      }
+    },
+    {
+      "id": "phantom",
+      "name": "Phantom",
+      "hp": 4,
+      "level": 2,
+      "row": "rear",
+      "intent": {
+        "name": "Mind Bolt",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "ranged",
+        "targeting": "lowest_hp"
+      }
+    },
+    {
+      "id": "prowler",
+      "name": "Prowler",
+      "hp": 5,
+      "level": 2,
+      "row": "front",
+      "intent": {
+        "name": "Pounce",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "lowest_hp_party"
+      },
+      "ranged_intent": {
+        "name": "Spit",
+        "amount": 1,
+        "action_type": "ability",
+        "mode": "ranged"
+      }
+    }
+  ],
+  "tokens": {}
+}

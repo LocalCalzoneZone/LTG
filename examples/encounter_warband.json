@@ -1,0 +1,90 @@
+{
+  "name": "Warband — Ranged & Melee (large team)",
+  "enemies": [
+    {
+      "id": "vanguard",
+      "name": "Vanguard",
+      "hp": 7,
+      "level": 2,
+      "row": "front",
+      "intent": {
+        "name": "Cleave",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "front_lowest_hp"
+      }
+    },
+    {
+      "id": "shieldbearer",
+      "name": "Shieldbearer",
+      "hp": 10,
+      "level": 2,
+      "row": "front",
+      "intent": {
+        "name": "Bash",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "front_lowest_hp"
+      }
+    },
+    {
+      "id": "berserker",
+      "name": "Berserker",
+      "hp": 6,
+      "level": 3,
+      "row": "front",
+      "intent": {
+        "name": "Frenzy",
+        "amount": 4,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "lowest_hp"
+      }
+    },
+    {
+      "id": "archer",
+      "name": "Archer",
+      "hp": 4,
+      "level": 1,
+      "row": "rear",
+      "intent": {
+        "name": "Longshot",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "ranged",
+        "targeting": "lowest_hp"
+      }
+    },
+    {
+      "id": "slinger",
+      "name": "Slinger",
+      "hp": 4,
+      "level": 1,
+      "row": "mid",
+      "intent": {
+        "name": "Sling",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "ranged",
+        "targeting": "lowest_hp_party"
+      }
+    },
+    {
+      "id": "bombardier",
+      "name": "Bombardier",
+      "hp": 5,
+      "level": 2,
+      "row": "rear",
+      "intent": {
+        "name": "Lob Bomb",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "ranged",
+        "targeting": "lowest_hp_party"
+      }
+    }
+  ],
+  "tokens": {}
+}

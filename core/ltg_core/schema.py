@@ -383,11 +383,21 @@ class Counters(EffectBase):
 
 class Prevent(EffectBase):
     """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
-    `prevent combat_damage` makes attack actions against the target deal no damage.
-    The parameter names what is nullified; scope is defined by that parameter."""
+    `prevent combat_damage` makes attack actions against the target deal no damage,
+    while `prevent attack` stops the target from attacking at all (Pacifism). The
+    parameter names what is nullified; scope is defined by that parameter.
+
+    `uses` disambiguates the two "protection" shapes the parameter can take:
+      * `"all"` — nullify EVERY matching instance until the duration ends (Fog:
+        "prevent all combat damage this turn"). The shield is not spent by a hit.
+      * `"next"` — nullify only the NEXT matching instance, then wear off (a
+        one-shot bodyguard, e.g. Gods Willing's protection).
+    An action-blocking parameter like `attack` is inherently "all" for its
+    duration (a channeled Pacifism keeps the creature from attacking every turn)."""
 
     kind: Literal["prevent"] = "prevent"
     parameter: str = "combat_damage"
+    uses: Literal["all", "next"] = "all"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 

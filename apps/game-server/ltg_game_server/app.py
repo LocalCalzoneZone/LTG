@@ -86,6 +86,43 @@ def delete_character(character_id: str) -> Dict[str, Any]:
     return {"ok": True}
 
 
+# --------------------------------------------------------------------------- #
+# REST: encounter authoring (create / edit / delete)
+# --------------------------------------------------------------------------- #
+class SaveEncounterBody(BaseModel):
+    id: Optional[str] = None          # present == edit that id; absent == create
+    encounter: Dict[str, Any]         # {name, enemies:[...], tokens?}
+
+
+@app.get("/api/encounters/{encounter_id}")
+def get_encounter(encounter_id: str) -> Dict[str, Any]:
+    """The full editable encounter (name + raw enemy specs + tokens)."""
+    detail = content.encounter_detail(encounter_id)
+    if detail is None:
+        raise HTTPException(404, "no such encounter")
+    return detail
+
+
+@app.post("/api/encounters")
+def save_encounter(body: SaveEncounterBody) -> Dict[str, Any]:
+    """Create or edit an encounter, returning its meta."""
+    try:
+        meta = content.save_encounter(body.encounter, body.id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"encounter": meta}
+
+
+@app.delete("/api/encounters/{encounter_id}")
+def delete_encounter(encounter_id: str) -> Dict[str, Any]:
+    """Remove an encounter (a built-in / example is hidden, a user file is deleted)."""
+    try:
+        content.delete_encounter(encounter_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
 @app.get("/api/games/{session_id}")
 def game_status(session_id: str) -> Dict[str, Any]:
     session = MANAGER.get(session_id)

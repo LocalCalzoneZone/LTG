@@ -100,7 +100,8 @@ def _status_tags(char) -> List[str]:
     if char.prevent_pool:
         tags.append(f"reduce {char.prevent_pool}")
     for tag in getattr(char, "prevent_tags", []):
-        tags.append(f"prevent {tag}")
+        span = "next " if tag.uses is not None else ""
+        tags.append(f"prevent {span}{tag.parameter}")
     if getattr(char, "power_bonus", 0):
         tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
     if getattr(char, "protection", 0):
@@ -194,6 +195,8 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "zone": "in_hand" if enemy.in_hand else ("exile" if enemy.exiled else "in_play"),
         "temp_mod": enemy.temp_mod,
         "prevent_pool": enemy.prevent_pool,
+        "prevent_tags": [f"{'next ' if t.uses is not None else ''}{t.parameter}"
+                         for t in enemy.prevent_tags],
         "protection": enemy.protection,
         "stunned": enemy.stunned,
         "power_bonus": enemy.power_bonus,

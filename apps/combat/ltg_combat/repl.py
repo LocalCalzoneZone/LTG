@@ -63,7 +63,7 @@ def _status_str(char) -> str:
     if char.prevent_pool:
         bits.append(f"reduce {char.prevent_pool}")
     for tag in char.prevent_tags:
-        bits.append(f"prevent {tag}")
+        bits.append(f"prevent {'next ' if tag.uses is not None else ''}{tag.parameter}")
     if char.power_bonus:
         bits.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Pow")
     for kw in char.keywords:

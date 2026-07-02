@@ -1,0 +1,66 @@
+{
+  "name": "Skyfangs — Flying & Lifelink",
+  "enemies": [
+    {
+      "id": "wyvern",
+      "name": "Wyvern",
+      "hp": 7,
+      "level": 3,
+      "row": "mid",
+      "keywords": ["flying"],
+      "intent": {
+        "name": "Dive",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "lowest_hp"
+      }
+    },
+    {
+      "id": "bat_swarm",
+      "name": "Bat Swarm",
+      "hp": 3,
+      "level": 1,
+      "row": "rear",
+      "keywords": ["flying", "lifelink"],
+      "intent": {
+        "name": "Drain Bite",
+        "amount": 2,
+        "action_type": "ability",
+        "mode": "ranged",
+        "targeting": "lowest_hp_party"
+      }
+    },
+    {
+      "id": "vampire",
+      "name": "Vampire Knight",
+      "hp": 8,
+      "level": 3,
+      "row": "front",
+      "keywords": ["lifelink"],
+      "intent": {
+        "name": "Bloodletting",
+        "amount": 3,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "front_lowest_hp"
+      }
+    },
+    {
+      "id": "dread_seraph",
+      "name": "Dread Seraph",
+      "hp": 6,
+      "level": 4,
+      "row": "mid",
+      "keywords": ["flying", "lifelink"],
+      "intent": {
+        "name": "Soul Rake",
+        "amount": 4,
+        "action_type": "ability",
+        "mode": "melee",
+        "targeting": "lowest_hp"
+      }
+    }
+  ],
+  "tokens": {}
+}

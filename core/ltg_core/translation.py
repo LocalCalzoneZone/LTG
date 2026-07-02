@@ -365,8 +365,19 @@ def _render_add_mana(e) -> str:
 
 def _prevent_phrase(parameter: str) -> str:
     """A `prevent [parameter]` nullification, in player-facing words (R-11)."""
-    return {"combat_damage": "combat damage", "damage": "all damage",
-            "all": "all damage"}.get(parameter, parameter.replace("_", " "))
+    return {"combat_damage": "combat damage", "damage": "damage",
+            "all": "damage", "attack": "attacks"}.get(parameter, parameter.replace("_", " "))
+
+
+def _render_prevent(e) -> str:
+    """A full `prevent` sentence that spells out its span so an "all this turn"
+    shield (Fog) never reads the same as a one-shot (Gods Willing) — R-11."""
+    if e.parameter in ("attack",):  # an action shield, not damage prevention
+        return f"{_tgt(e.target).capitalize()} can't attack."
+    phrase = _prevent_phrase(e.parameter)
+    if getattr(e, "uses", "all") == "next":
+        return f"Prevent the next {phrase} to {_tgt(e.target)}."
+    return f"Prevent all {phrase} this turn to {_tgt(e.target)}."
 
 
 # Counter filter → player-facing phrase (filter matches a node + its descendants).
@@ -586,7 +597,7 @@ RENDERERS = {
     "pump": _render_pump,
     "wound": _render_wound,
     "counters": _render_counters,
-    "prevent": lambda e: f"Prevent {_prevent_phrase(e.parameter)} to {_tgt(e.target)}.",
+    "prevent": _render_prevent,
     "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
@@ -647,7 +658,10 @@ _CLAUSE = {
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
     "protection": lambda e: f"gain protection ({e.scope})",
     "counters": lambda e: f"gain +{e.power}/+{e.toughness} counters",
-    "prevent": lambda e: f"have {_prevent_phrase(e.parameter)} prevented",
+    "prevent": lambda e: (
+        "can't attack" if e.parameter == "attack"
+        else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
+             f"{_prevent_phrase(e.parameter)} prevented"),
 }
 
 
@@ -736,7 +750,11 @@ def _channeled_body(e, targets) -> str:
     if k == "taunt":
         return f"{_subject(e.target, targets, True)} must target you"
     if k == "prevent":
-        return f"prevent {_prevent_phrase(e.parameter)} to {_subject(e.target, targets, True)}"
+        if e.parameter == "attack":
+            return f"{_subject(e.target, targets, True)} can't attack"
+        span = "the next" if getattr(e, "uses", "all") == "next" else "all"
+        return (f"prevent {span} {_prevent_phrase(e.parameter)} "
+                f"to {_subject(e.target, targets, True)}")
     if k == "protection":
         return f"{_subject(e.target, targets, True)} has protection"
     if k == "stun":

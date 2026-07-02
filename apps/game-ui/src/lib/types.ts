@@ -192,6 +192,36 @@ export interface EncounterOption {
   name: string;
   enemy_names: string[];
   enemy_count: number;
+  deletable: boolean;
+  editable: boolean;
+}
+
+// Authored enemy + encounter shape (Options → encounter editor). Mirrors the
+// scenario dict the engine consumes; the editor is a pure form over it.
+export interface EnemyIntentSpec {
+  name: string;
+  amount: number;
+  mode?: "melee" | "ranged";
+  targeting?: string; // lowest_hp | front_lowest_hp | lowest_hp_party | <char id>
+  action_type?: string;
+  intent_type?: string;
+}
+export interface EnemySpec {
+  id?: string;
+  name: string;
+  hp: number;
+  level: number;
+  power?: number;
+  row?: Row;
+  keywords?: string[];
+  intent: EnemyIntentSpec;
+  ranged_intent?: EnemyIntentSpec | null;
+}
+export interface EncounterDetail {
+  id: string;
+  name: string;
+  enemies: EnemySpec[];
+  tokens: Record<string, unknown>;
 }
 export interface SetupOptions {
   characters: CharacterOption[];

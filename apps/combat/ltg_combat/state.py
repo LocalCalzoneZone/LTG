@@ -22,6 +22,25 @@ from ltg_core.schema import Card, Effect
 
 
 # --------------------------------------------------------------------------- #
+# Prevention shields (R-11 `prevent [parameter]`)
+# --------------------------------------------------------------------------- #
+@dataclass
+class PreventTag:
+    """A `prevent [parameter]` shield riding on one combatant.
+
+    `uses=None` nullifies EVERY matching thing until the tag's duration ends —
+    Fog's "prevent all combat damage this turn", or a channeled `prevent attack`
+    (Pacifism) that keeps a creature from attacking for as long as it is held. A
+    positive `uses` is a one-shot (or N-shot) shield consumed as matches occur —
+    Gods Willing's "prevent the next combat damage". Both are wiped at the End
+    step; a `while_channeled` tag is re-asserted each turn while the channel holds.
+    """
+
+    parameter: str
+    uses: Optional[int] = None
+
+
+# --------------------------------------------------------------------------- #
 # Channels (held channeled enchantments, GDD §8)
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -82,7 +101,7 @@ class CharacterState:
     # Lethality is checked on effective_hp = hp + temp_mod.
     temp_mod: int = 0
     prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
-    prevent_tags: List[str] = field(default_factory=list)  # nullifiers (R-11 prevent)
+    prevent_tags: List[PreventTag] = field(default_factory=list)  # shields (R-11 prevent)
     power_bonus: int = 0      # temporary Power (pump +, wound −)
     protection: int = 0       # negates the next N spells/attacks (protection)
     # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
@@ -138,7 +157,7 @@ class TokenState:
     intent: Optional["Intent"] = None  # telegraphed in the Intents step (R-5)
     temp_mod: int = 0
     prevent_pool: int = 0
-    prevent_tags: List[str] = field(default_factory=list)
+    prevent_tags: List[PreventTag] = field(default_factory=list)
     protection: int = 0
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
@@ -202,7 +221,7 @@ class EnemyState:
     # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
     temp_mod: int = 0
     prevent_pool: int = 0
-    prevent_tags: List[str] = field(default_factory=list)
+    prevent_tags: List[PreventTag] = field(default_factory=list)
     protection: int = 0
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)

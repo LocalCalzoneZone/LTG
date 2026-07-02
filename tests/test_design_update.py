@@ -113,7 +113,7 @@ def test_attack_profile_resolves_power_from_archetype_and_mode():
 
 
 # --------------------------------------------------------------------------- #
-# R-7 — the pump buffer rides effective_hp, then expires
+# R-7 — positive temp HP is a shield that absorbs the blow before base HP
 # --------------------------------------------------------------------------- #
 def _bolt(amount, cid="bolt", colors=None):
     return {"id": cid, "name": cid.title(), "source_name": cid, "rarity": "common", "level": 1,
@@ -123,10 +123,10 @@ def _bolt(amount, cid="bolt", colors=None):
             "validated": True}
 
 
-def test_pump_buffer_keeps_a_creature_alive_at_zero_hp():
-    # Damage reduces hp directly (R-7); a +0/+3 buffer (temp_mod) adds headroom on
-    # effective_hp. An enemy at hp 3 / temp_mod +3 (eff 6) takes 5 → hp 0, eff 3:
-    # still alive because lethality is checked on effective_hp.
+def test_temp_hp_shield_absorbs_then_spills_over():
+    # Positive temp HP soaks the blow first (GDD §4.9). An enemy at hp 3 / temp_mod +3
+    # (eff 6) takes 5 → the buffer absorbs 3, the remaining 2 hits hp → hp 1, temp 0,
+    # eff 1: still alive.
     st = state_from_dict({
         "party": [{"id": "h", "name": "H", "archetype": "Tactician", "hp": 20, "power": 5,
                    "attack_mode": "ranged", "hand_size": 1, "identity": ["U", "B", "R", "G"],
@@ -137,4 +137,21 @@ def test_pump_buffer_keeps_a_creature_alive_at_zero_hp():
     while st.result is None and st.stack:
         st, _ = apply_action(st, next(a for a in legal_actions(st) if a.kind == "pass"))
     orc = st.enemy("orc")
-    assert orc is not None and orc.hp == 0 and orc.effective_hp == 3 and orc.alive
+    assert orc is not None and orc.hp == 1 and orc.temp_mod == 0
+    assert orc.effective_hp == 1 and orc.alive
+
+
+def test_defend_temp_hp_absorbs_incoming_damage():
+    # A Fighter Defends (+3 temp HP), then an enemy hits it for 3 — the buffer soaks
+    # the whole blow, so base HP is preserved. (Before the shield fix this ended at
+    # hp 22; the +3 temp HP had no effect against a non-lethal hit.)
+    st = _state([_hero(hp=25)], [_enemy("brute", "Brute", 8, amount=3)])
+    st, _ = apply_action(st, next(a for a in legal_actions(st) if a.kind == "defend"))
+    assert st.character("hero").temp_mod == 3
+    st, _ = apply_action(st, next(a for a in legal_actions(st) if a.kind == "end_turn"))
+    while st.stack:
+        p = next((a for a in legal_actions(st) if a.kind == "pass"), None)
+        if p is None:
+            break
+        st, _ = apply_action(st, p)
+    assert st.character("hero").hp == 25

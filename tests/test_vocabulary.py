@@ -215,6 +215,33 @@ def test_channeled_exile_suspends_then_returns_on_break():
     assert hero(after).channels == []
 
 
+def test_lethal_wound_aura_kills_target_without_breaking_other_channels():
+    # Regression: channelling a −2/−2 aura onto a 2-HP enemy kills it outright (a wound
+    # that empties toughness is lethal), and losing that aura's target does NOT break
+    # concentration — an unrelated channel keeps holding and no reserved mana is
+    # released. GDD §8: only a ≥25% hit, incapacitation, or a voluntary drop breaks
+    # channels (never an aura losing its target).
+    anthem = C("anthem", "channeled",
+               [{"kind": "pump", "power": 1, "toughness": 1,
+                 "target": {"mode": "all", "side": "ally"}, "duration": "while_channeled"}],
+               colors={"W": 1})
+    dead_weight = C("dead_weight", "channeled",
+                    [{"kind": "wound", "power": 2, "toughness": 2, "target": "$T1",
+                      "duration": "while_channeled"}],
+                    colors={"B": 1},
+                    targets={"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
+    state = make_state([anthem, dead_weight],
+                       enemies=[_enemy("archer", "Archer", hp=2), _enemy("brute", "Brute", hp=10)])
+
+    state, _ = do(state, kind="cast", card_id="anthem")
+    assert len(hero(state).channels) == 1  # the survivor channel
+
+    state, events = do(state, kind="cast", card_id="dead_weight", target_id="archer")
+    assert state.enemy("archer") is None                       # (1) the −2/−2 is lethal
+    assert len(hero(state).channels) == 2                      # (2)+(3) both channels hold
+    assert not any(e.type == "mana_released" for e in events)  # no break -> no mana released
+
+
 def test_channeled_exile_becomes_permanent_when_the_encounter_ends():
     # Exiling the last enemy ends the encounter — it is permanently exiled, never
     # restored (the rule: defeat everyone else while one is suspended → it's gone).
@@ -339,6 +366,73 @@ def _advance_to_turn(state, turn):
         state, _ = apply_action(state, a)
         guard += 1
     return state
+
+
+# --------------------------------------------------------------------------- #
+# Prevent: an all-turn shield vs a one-shot shield vs blocking an action (R-11)
+# --------------------------------------------------------------------------- #
+def _two_orcs(amount=6):
+    """Two enemies that both swing at the hero in one enemy step — enough hits to
+    tell an 'all' shield (soaks both) from a 'next' shield (soaks one)."""
+    return [{"id": f"orc{i}", "name": f"Orc{i}", "hp": 10, "level": 3,
+             "intent": {"name": "Hit", "amount": amount, "action_type": "ability",
+                        "intent_type": "attack", "targeting": "lowest_hp_party"}}
+            for i in (1, 2)]
+
+
+def _resolve_enemy_step(state):
+    """End the hero's turn and let the enemy step resolve, halting at the next
+    player decision (or game end)."""
+    state, _ = apply_action(state, pick(state, kind="end_turn"))
+    guard = 0
+    while state.result is None and guard < 80:
+        a = next((x for x in legal_actions(state) if x.kind == "pass"), None)
+        if a is None:
+            break
+        state, _ = apply_action(state, a)
+        guard += 1
+    return state
+
+
+def test_prevent_all_soaks_every_hit_this_turn():
+    # Fog-shape: uses="all" nullifies EVERY combat-damage hit until end of turn, so
+    # two swings both bounce off and the hero takes nothing.
+    card = C("fog", "instant", [{"kind": "prevent", "parameter": "combat_damage",
+        "uses": "all", "target": {"mode": "self"}}], colors={"G": 1})
+    state = make_state([card], hero_hp=20, enemies=_two_orcs(6))
+    after, _ = do(state, kind="cast", card_id="fog")
+    assert [t.parameter for t in hero(after).prevent_tags] == ["combat_damage"]
+    after = _resolve_enemy_step(after)
+    assert hero(after).hp == 20  # both hits prevented; the shield was never spent
+
+
+def test_prevent_next_soaks_only_one_hit():
+    # Gods-Willing-shape: uses="next" is a one-shot shield — it eats the first hit
+    # and then wears off, so the second swing lands in full.
+    card = C("ward", "instant", [{"kind": "prevent", "parameter": "combat_damage",
+        "uses": "next", "target": {"mode": "self"}}], colors={"W": 1})
+    state = make_state([card], hero_hp=20, enemies=_two_orcs(6))
+    after, _ = do(state, kind="cast", card_id="ward")
+    assert hero(after).prevent_tags[0].uses == 1
+    after = _resolve_enemy_step(after)
+    assert hero(after).hp == 14  # first hit prevented, second (6) got through
+
+
+def test_prevent_attack_stops_the_enemy_from_attacking():
+    # Pacifism: a channeled `prevent attack` cancels the target's pending swing and
+    # keeps it from declaring another for as long as the channel holds.
+    pac = C("pacify", "channeled", [{"kind": "prevent", "parameter": "attack",
+        "target": "$T1", "duration": "while_channeled"}], colors={"W": 1},
+        targets={"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
+    state = make_state([pac], hero_hp=20, intent_amount=6)
+    after, _ = do(state, kind="cast", card_id="pacify", target_id="orc")
+    assert orc(after).intent is None                           # no swing telegraphed
+    assert any(t.parameter == "attack" for t in orc(after).prevent_tags)
+    # Across this turn's and next turn's enemy steps the orc never attacks: the hero
+    # is untouched and the channel keeps re-asserting the shield.
+    after = _advance_to_turn(after, 2)
+    assert orc(after).intent is None and hero(after).hp == 20
+    assert any(t.parameter == "attack" for t in orc(after).prevent_tags)
 
 
 # --------------------------------------------------------------------------- #

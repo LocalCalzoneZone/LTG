@@ -47,14 +47,17 @@ export function ActionBar({ choices, reaction }: { choices: Choices | null; reac
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
         {CORE.map(coreBtn)}
       </div>
-      {/* Pass / End Turn — prominent */}
+      {/* Drop Channel sits ABOVE Pass / End Turn so those two stay anchored at the
+          bottom in their usual spot — otherwise it appears where Pass normally is and
+          invites a mis-click when you mean to pass. */}
+      {choices?.dropChannels && (
+        <TextBtn choice={choices.dropChannels} label="Drop Channel" />
+      )}
+      {/* Pass / End Turn — prominent, always the bottom-most controls */}
       <div className="grid grid-cols-2 gap-2">
         <TextBtn choice={choices?.pass} label="Pass" />
         <TextBtn choice={choices?.endTurn} label="End Turn" />
       </div>
-      {choices?.dropChannels && (
-        <TextBtn choice={choices.dropChannels} label="Drop Channel" />
-      )}
     </div>
   );
 }

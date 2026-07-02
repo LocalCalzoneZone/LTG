@@ -51,6 +51,7 @@ from .state import (
     GameState,
     Intent,
     PendingChoice,
+    PreventTag,
     StackItem,
     TokenState,
 )
@@ -347,6 +348,12 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
         e.intent = None
         _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
              enemy=e.id, intents=e.stunned)
+        return
+    # Pacified (`prevent attack`): the enemy can't attack, so it declares nothing.
+    # Non-attack intents aren't offered by these minions, so this simply idles it.
+    if (tmpl.get("intent_type", "attack") == "attack" and _prevented_action(e, "attack")):
+        e.intent = None
+        _log(st, "pacified", f"{e.name} can't attack and declares nothing.", enemy=e.id)
         return
     target, mode, amount, name = _choose_enemy_attack(st, e)
     if target is None:
@@ -882,21 +889,21 @@ def _start_channel(st: GameState, item: StackItem) -> None:
     for effect in item.card.effects:
         if _is_continuous(effect):
             _apply_continuous(st, channel, effect)
-    # An aura whose target is already gone ends at once (Layer 1 -> break).
-    if channel.target_id is not None and _aura_target_lost(st, channel):
-        _note_break(st, holder, "aura_loss")
+    # State-based check: a wound aura that drops a creature to ≤0 effective HP kills it
+    # now (GDD §8: a −X/−X that empties toughness is lethal). The death sticks — the
+    # channel keeps holding, its target simply gone, until the caster drops it. Losing
+    # an aura's target is NOT a break cause (only a ≥25% hit, incapacitation, or a
+    # voluntary drop is), so the caster's other channels are untouched.
+    _reap_aura_kills(st)
 
 
-def _aura_target_lost(st: GameState, channel: Channel) -> bool:
-    """True if this channel targets a creature that is no longer a legal target."""
-    if channel.target_id is None:
-        return False
-    needs_target = any(getattr(e, "target", None) is not None and _is_continuous(e)
-                       for e in channel.card.effects)
-    if not needs_target:
-        return False
-    tgt = st.combatant(channel.target_id)
-    return tgt is None or not getattr(tgt, "alive", False)
+def _reap_aura_kills(st: GameState) -> None:
+    """Remove board creatures a just-applied continuous aura reduced to ≤0 effective
+    HP (the non-damage kill path). Enemies/tokens die immediately; a PC wounded to ≤0
+    is a temporary downing that resolves at End (R-7), so it is left to `_reap_dead`."""
+    for c in list(st.enemies) + list(st.tokens):
+        if c.effective_hp <= 0:
+            _after_damage(st, c)
 
 
 def _continuous_targets(st: GameState, channel: Channel, effect) -> List:
@@ -949,6 +956,28 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
                          enemy=target.id, by=holder_id)
         elif holder_id is None or target.taunted_by == holder_id:
             target.taunted_by = None
+        return
+    if k == "prevent":
+        # A channeled `prevent` (e.g. Pacifism's `prevent attack`) rides the target
+        # as an "all"-uses shield for as long as the channel holds. It is wiped each
+        # End step and re-asserted here (see _reapply_channel_stats), mirroring the
+        # stat auras. Removal on break lifts one matching shield.
+        param = effect.parameter
+        if sign > 0:
+            if not any(t.parameter == param for t in target.prevent_tags):
+                target.prevent_tags.append(PreventTag(param, None))
+            # Pacifying an enemy also cancels any attack intent it already declared.
+            if (param in _ACTION_PREVENT and isinstance(target, EnemyState)
+                    and target.intent is not None):
+                target.intent = None
+            if log_it:
+                _log(st, "prevent", f"{target.name} — {param} prevented (channel).",
+                     target=_tid(target), parameter=param)
+        else:
+            for t in list(target.prevent_tags):
+                if t.parameter == param:
+                    target.prevent_tags.remove(t)
+                    break
         return
     if k == "grant_keyword":
         for kw in effect.keywords:
@@ -1005,7 +1034,7 @@ def _remove_continuous(st: GameState, channel: Channel, effect) -> None:
 
 # Continuous effects that reset each end step and must be re-asserted every turn:
 # the stat auras (temp layers reset) and a taunt (`taunted_by` clears at end step).
-_REAPPLIED_CONTINUOUS = (*_STAT_CONTINUOUS, "taunt")
+_REAPPLIED_CONTINUOUS = (*_STAT_CONTINUOUS, "taunt", "prevent")
 
 
 def _reapply_channel_stats(st: GameState) -> None:
@@ -1464,10 +1493,8 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
             del enemy.keywords[kw]
     if enemy.id in st.acted_enemies:          # off the field — it takes no action this turn
         st.acted_enemies.remove(enemy.id)
-    # Enchantments/channels attached to it fall off as it leaves play -> the holder breaks.
-    for holder in st.party:
-        if any(ch.target_id == enemy.id for ch in holder.channels):
-            _note_break(st, holder, "aura_loss")
+    # A channel aimed at it loses its target and holds inert — an aura losing its target
+    # is not a concentration break (GDD §8), so the caster keeps their other channels.
     _log(st, "bounced",
          f"{enemy.name} is bounced to hand (redeploys next turn; HP {enemy.hp} retained).",
          enemy=enemy.id, hp=enemy.hp, row=enemy.row)
@@ -1550,9 +1577,14 @@ def _r_counters(st, item, effect, target, ctx):
 
 def _r_prevent_only(st, item, effect, target, ctx):
     # R-11 prevent: tag the target to nullify the named thing for the duration.
-    target.prevent_tags.append(effect.parameter)
-    _log(st, "prevent", f"{target.name} will prevent {effect.parameter} this turn.",
-         target=_tid(target), parameter=effect.parameter)
+    # `uses="all"` (None) shields every matching instance until the tag expires;
+    # `uses="next"` (1) is a one-shot shield spent by the first matching thing.
+    uses = None if getattr(effect, "uses", "all") == "all" else 1
+    target.prevent_tags.append(PreventTag(effect.parameter, uses))
+    span = "all" if uses is None else "the next"
+    _log(st, "prevent", f"{target.name} will prevent {span} {effect.parameter} "
+         f"({'this turn' if uses is None else 'once'}).",
+         target=_tid(target), parameter=effect.parameter, uses=uses)
 
 
 def _r_protection(st, item, effect, target, ctx):
@@ -1697,30 +1729,53 @@ def _duration_value(effect) -> str:
 # --------------------------------------------------------------------------- #
 # Damage / death / draw primitives
 # --------------------------------------------------------------------------- #
-def _prevent_match(tag: str, damage_kind: str) -> bool:
-    """Does a `prevent [parameter]` tag nullify this incoming damage (R-11)?"""
-    if tag in ("damage", "all"):
+# `prevent [parameter]` parameters that forbid an ACTION rather than nullify
+# incoming damage. These are checked when the actor tries to act (see
+# `_prevented_action`), never in `_deal_damage`, so a `prevent attack` shield
+# must not also soak damage of kind "attack".
+_ACTION_PREVENT = frozenset({"attack"})
+
+
+def _prevented_action(combatant, action: str) -> bool:
+    """True if a `prevent [action]` shield forbids this actor from taking `action`
+    (e.g. Pacifism's `prevent attack` stops a creature attacking, R-11)."""
+    return any(t.parameter == action for t in getattr(combatant, "prevent_tags", []))
+
+
+def _prevent_match(parameter: str, damage_kind: str) -> bool:
+    """Does a `prevent [parameter]` tag nullify this incoming damage (R-11)? Action
+    shields (e.g. `prevent attack`) block the actor, not damage — they never match."""
+    if parameter in _ACTION_PREVENT:
+        return False
+    if parameter in ("damage", "all"):
         return True
-    if tag == "combat_damage":
+    if parameter == "combat_damage":
         return damage_kind == "attack"
-    return tag == damage_kind
+    return parameter == damage_kind
 
 
 def _deal_damage(st: GameState, target, amount: int, source: str = "", source_obj=None,
                  damage_kind: str = "spell") -> None:
-    """Damage reduces `hp` directly (R-7). It is answered, in order, by: a matching
-    `prevent` tag (nullifies it), `protection` (negates a whole spell/attack), then
-    Parry's numeric reduction. Lethality is then checked on effective_hp. Source
-    keywords (deathtouch/lifelink) and target indestructible apply here."""
+    """Damage is answered, in order, by: a matching `prevent` tag (nullifies it),
+    `protection` (negates a whole spell/attack), Parry's numeric reduction, then any
+    **positive** temporary HP (the Defend/pump buffer soaks the blow before base HP —
+    GDD §4.9 "a buffer that absorbs a blow"); the remainder reduces `hp` directly
+    (R-7). Lethality is then checked on effective_hp. Source keywords
+    (deathtouch/lifelink) and target indestructible apply here."""
     if target is None or amount <= 0:
         return
 
-    # R-11 prevent: a matching nullifier cancels the hit outright and is consumed.
-    for i, tag in enumerate(getattr(target, "prevent_tags", [])):
-        if _prevent_match(tag, damage_kind):
-            target.prevent_tags.pop(i)
+    # R-11 prevent: a matching shield cancels the hit outright. A one-shot shield
+    # (`uses="next"`) is spent by it; an "all" shield (uses=None) keeps standing and
+    # nullifies every matching hit until it expires at End step (Fog).
+    for tag in list(getattr(target, "prevent_tags", [])):
+        if _prevent_match(tag.parameter, damage_kind):
+            if tag.uses is not None:
+                tag.uses -= 1
+                if tag.uses <= 0:
+                    target.prevent_tags.remove(tag)
             _log(st, "prevented", f"{source or 'the hit'} on {target.name} is prevented "
-                 f"({tag}).", target=_tid(target), parameter=tag)
+                 f"({tag.parameter}).", target=_tid(target), parameter=tag.parameter)
             return
 
     # Protection negates the next incoming spell/attack outright (GDD §7).
@@ -1740,25 +1795,42 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     if amount <= 0:
         return
 
-    # A hit of ≥25% of max HP breaks concentration (the amount that lands, GDD §8).
+    # A hit of ≥25% of max HP breaks concentration (the amount that lands — before the
+    # temp-HP buffer soaks it: a big blow still rattles the channel, GDD §8).
     if (isinstance(target, CharacterState) and target.channels
             and amount >= _break_threshold(target)):
         _note_break(st, target, "hit")
 
-    # Damage reduces hp directly (R-7). Player hp floors at 0; indestructible floors
-    # at 1 (it can't be reduced below 1 HP *by damage*).
+    # Shield: positive temporary HP (Defend / a pump's toughness) absorbs the blow
+    # before base HP — GDD §4.9 "a buffer that absorbs a blow". A negative temp_mod
+    # (a wound) never soaks damage; healing still fills that separately (R-7).
+    absorbed = 0
+    if target.temp_mod > 0:
+        absorbed = min(target.temp_mod, amount)
+        target.temp_mod -= absorbed
+        amount -= absorbed
+        if absorbed:
+            _log(st, "absorbed",
+                 f"{target.name}'s temp HP absorbs {absorbed} (temp HP {target.temp_mod}).",
+                 target=_tid(target), amount=absorbed)
+
+    # The remainder reduces hp directly (R-7). Player hp floors at 0; indestructible
+    # floors at 1 (it can't be reduced below 1 HP *by damage*).
     floor = 1 if _has_kw(target, "indestructible") else 0
     dealt = target.hp - max(floor, target.hp - amount)
     target.hp = max(floor, target.hp - amount)
-    _log(st, "damage", f"{target.name} takes {dealt} damage (HP {target.hp}, "
-         f"eff {target.effective_hp}).", target=_tid(target), amount=dealt,
-         hp=target.hp, source=source)
+    if dealt > 0 or absorbed == 0:
+        _log(st, "damage", f"{target.name} takes {dealt} damage (HP {target.hp}, "
+             f"eff {target.effective_hp}).", target=_tid(target), amount=dealt,
+             hp=target.hp, source=source)
 
-    # Lifelink: the source heals for the damage dealt. Deathtouch: any damage
-    # executes a minion outright (GDD §7).
-    if source_obj is not None and dealt > 0 and _has_kw(source_obj, "lifelink"):
-        _heal(st, source_obj, dealt, reason="lifelink")
-    if (source_obj is not None and dealt > 0 and _has_kw(source_obj, "deathtouch")
+    # On-damage triggers key off the blow that connected — temp HP soaked plus HP lost
+    # (so a shielded hit still feeds lifelink/deathtouch; identical to before when no
+    # temp HP was present).
+    connected = absorbed + dealt
+    if source_obj is not None and connected > 0 and _has_kw(source_obj, "lifelink"):
+        _heal(st, source_obj, connected, reason="lifelink")
+    if (source_obj is not None and connected > 0 and _has_kw(source_obj, "deathtouch")
             and isinstance(target, EnemyState) and target.alive):
         _log(st, "deathtouch", f"{target.name} is executed by deathtouch.", target=target.id)
         target.hp = 0
@@ -1800,8 +1872,9 @@ def _after_damage(st: GameState, target) -> None:
 
 
 def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
-    """A removed enemy leaves the board and its pending intent is discarded. Any
-    channel aimed at it loses its target -> that holder's channels break."""
+    """A removed enemy leaves the board and its pending intent is discarded. A channel
+    aimed at it simply loses its target and holds inert — losing an aura target is not
+    a break cause (GDD §8), so the caster keeps concentrating until they drop it."""
     if enemy in st.enemies:
         st.enemies.remove(enemy)
     if enemy.id in st.acted_enemies:
@@ -1810,9 +1883,6 @@ def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
         _log(st, "intent_discarded", f"{enemy.name}'s pending intent is discarded.",
              enemy=enemy.id)
     _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
-    for holder in st.party:
-        if any(ch.target_id == enemy.id for ch in holder.channels):
-            _note_break(st, holder, "aura_loss")
 
 
 def _remove_token(st: GameState, token: TokenState) -> None:
@@ -1985,8 +2055,10 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     actions: List[Action] = []
     mode = actor.acted_mode
     vig = _has_kw(actor, "vigilance")  # lifts the attack-vs-cast restriction (GDD §7)
-    # Attack (basic, once per round): locked out after a Cast unless vigilant.
-    if not actor.used_attack and (mode is None or (vig and mode == "cast")):
+    # Attack (basic, once per round): locked out after a Cast unless vigilant, and
+    # forbidden outright while a `prevent attack` shield (Pacifism) rides the actor.
+    if (not actor.used_attack and not _prevented_action(actor, "attack")
+            and (mode is None or (vig and mode == "cast"))):
         dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
         for e in _legal_attack_targets(st, actor):  # only rows this attack can reach
             actions.append(Action("attack", actor.id, target_id=e.id,

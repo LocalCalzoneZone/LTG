@@ -157,6 +157,19 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
+def _keyword_dict(kw: Any) -> Dict[str, str]:
+    """Normalise an authored keyword field into the engine's {keyword: duration} map.
+
+    Accepts a list (``["flying", "lifelink"]`` — permanent, empty duration) or an
+    already-shaped dict (``{"flying": "", "haste": "end_of_turn"}``); anything else
+    (or ``None``) yields no keywords."""
+    if isinstance(kw, dict):
+        return {str(k): str(v) for k, v in kw.items()}
+    if isinstance(kw, (list, tuple)):
+        return {str(k): "" for k in kw}
+    return {}
+
+
 def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameState:
     """Build the pre-upkeep setup state from a scenario dict.
 
@@ -195,6 +208,10 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             row=e.get("row", "front"), intent_template=dict(e["intent"]),
             ranged_template=dict(e.get("ranged_intent", {})),
             attack_mode=e.get("intent", {}).get("mode", "melee"),
+            # Starting keywords (flying, lifelink, deathtouch, reach …). Authored as a
+            # list (permanent) or a {keyword: duration} dict; a bare list means "no
+            # expiry" so encounter keywords persist across turns.
+            keywords=_keyword_dict(e.get("keywords")),
         ))
 
     return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",

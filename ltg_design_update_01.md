@@ -87,9 +87,14 @@ Model every combatant as:
 
 **Lethality** is always checked on `effective_hp`. **`effective_hp ≤ 0`** → a creature/token **dies** (permanent, *even if indestructible*); a player-character is **incapacitated**.
 
-**Damage** reduces `hp` directly (not temporary).
+**Damage** is first absorbed by any **positive** `temp_mod` (the Defend / pump
+buffer soaks the blow, down to 0 — GDD §4.9 "a buffer that absorbs a blow"); the
+remainder reduces `hp` directly. A **negative** `temp_mod` (a wound) never absorbs
+damage. HP loss persists across turns; the temp buffer expires at End step.
 - Creatures/tokens at `hp ≤ 0` die.
 - **Player-character `hp` floors at 0** — no negative tracking, overkill is discarded. (At 1 HP, hit for 5 → 0 and incapacitated; the extra 4 is lost.)
+- *Shield example:* PC at `hp 15`, Defend `+3` (eff 18), takes 3 → temp HP soaks all 3 → `hp 15`, `temp_mod 0` (eff 15). A blow larger than the buffer spills over: `+3` buffer, take 5 → `temp_mod 0`, `hp −2` → `hp 13`.
+- On-damage triggers (lifelink/deathtouch) and concentration breaks key off the blow that **connected** (soaked temp HP + HP lost), not just the HP removed.
 
 **Wound (`−X/−X`)** = temporary **−X Power** and **−X to `temp_mod`**. If this drives `effective_hp ≤ 0` it kills/incaps immediately, including through `indestructible`. For a creature this is permanent death even though the modifier was "temporary"; for a PC see recovery below.
 
@@ -133,7 +138,10 @@ The **`effective_hp ≤ 0` death-check precedes the enrage trigger.** A single h
 - **`taunt`** — redirects enemy intent(s) onto the taunter; **target or all**, per the card. A taunted hit **overrides reach/row restrictions and lands regardless of the taunter's row.**
 - **`revive`** — returns an **incapacitated ally to half max HP**.
 - **`scry`** — look at the **top card of your library**; choose to leave it on top or move it to the **bottom**.
-- **`prevent`** — always carries a parameter: **`prevent [parameter]`**; it nullifies the named thing (e.g. `prevent combat_damage` → attack actions deal no damage). Scope is defined by that parameter.
+- **`prevent`** — always carries a parameter: **`prevent [parameter]`**; it nullifies the named thing. Scope is defined by that parameter, and a **`uses`** field fixes *how long the shield lasts* so an "all turn" effect never reads the same as a one-shot:
+  - **`uses: all`** (default) — nullify **every** matching instance until the shield's `duration` ends; a hit does **not** spend it. *Fog:* `prevent combat_damage` (all, this turn) = "prevent all combat damage this turn."
+  - **`uses: next`** — a one-shot shield that nullifies only the **next** matching instance, then wears off. *Gods Willing:* `prevent combat_damage` (next) = "prevent the next combat damage" to a creature.
+  - **Action parameters** (e.g. **`prevent attack`**) forbid the actor from taking that action rather than nullifying incoming damage — they are inherently "all" for their duration. *Pacifism:* channeled `prevent attack` = the enchanted creature **can't attack** while the channel holds (casting it also cancels a swing already telegraphed). This is distinct from `prevent combat_damage`, which only stops damage the target would *receive*.
 
 ---
 

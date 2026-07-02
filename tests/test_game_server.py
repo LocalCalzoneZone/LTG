@@ -19,18 +19,22 @@ EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 @pytest.fixture(autouse=True)
 def _isolate_hidden_roster():
-    """These tests read the real content dirs, so isolate the picker's hidden-set:
-    start each test with nothing hidden, and restore the developer's own hidden.json
-    afterward (so running the suite never disturbs their curated roster)."""
-    original = content.HIDDEN_FILE.read_text() if content.HIDDEN_FILE.exists() else None
-    content.HIDDEN_FILE.unlink(missing_ok=True)
+    """These tests read the real content dirs, so isolate the picker's hidden-sets:
+    start each test with nothing hidden, and restore the developer's own hidden.json /
+    encounters_hidden.json afterward (so running the suite never disturbs their curated
+    roster)."""
+    saved = {p: (p.read_text() if p.exists() else None)
+             for p in (content.HIDDEN_FILE, content.ENCOUNTER_HIDDEN_FILE)}
+    for p in saved:
+        p.unlink(missing_ok=True)
     try:
         yield
     finally:
-        if original is None:
-            content.HIDDEN_FILE.unlink(missing_ok=True)
-        else:
-            content.HIDDEN_FILE.write_text(original)
+        for p, original in saved.items():
+            if original is None:
+                p.unlink(missing_ok=True)
+            else:
+                p.write_text(original)
 
 
 def _two_char_session():
@@ -164,6 +168,77 @@ def test_remove_bundled_example_hides_it_without_deleting_the_file():
 def test_delete_unknown_character_raises():
     with pytest.raises(ValueError, match="unknown character"):
         content.delete_loadout("no_such_character")
+
+
+# --------------------------------------------------------------------------- #
+# Encounter authoring (create / edit / delete) + keyword build-through
+# --------------------------------------------------------------------------- #
+def _simple_encounter(name="Test Ambush", hp=4):
+    return {"name": name, "enemies": [
+        {"name": "Goblin", "hp": hp, "level": 1,
+         "intent": {"name": "Stab", "amount": 2, "action_type": "ability",
+                    "mode": "melee", "targeting": "lowest_hp"}},
+    ]}
+
+
+def test_bundled_example_encounters_are_offered():
+    encs = {e["id"] for e in content.list_encounters()}
+    assert {"encounter_warband", "encounter_tricksters", "encounter_skyfangs"} <= encs
+
+
+def test_save_edit_delete_user_encounter_roundtrip():
+    meta = content.save_encounter(_simple_encounter())
+    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    try:
+        assert any(e["id"] == meta["id"] for e in content.list_encounters())
+        # Edit: bump the goblin's HP and confirm it persists.
+        edited = content.encounter_detail(meta["id"])
+        edited["enemies"][0]["hp"] = 11
+        content.save_encounter(edited, meta["id"])
+        assert content.encounter_detail(meta["id"])["enemies"][0]["hp"] == 11
+        # Delete a user file: the file is removed and it leaves the picker for good.
+        content.delete_encounter(meta["id"])
+        assert not path.exists()
+        assert not any(e["id"] == meta["id"] for e in content.list_encounters())
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_delete_builtin_encounter_hides_it_without_a_file():
+    # (encounter-hidden state is isolated + restored by the autouse fixture)
+    assert any(e["id"] == "builtin_a" for e in content.list_encounters())
+    content.delete_encounter("builtin_a")
+    assert not any(e["id"] == "builtin_a" for e in content.list_encounters())
+    # Still resolvable by id (build path uses it) — only the listing filters it.
+    assert content.encounter_for("builtin_a") is not None
+
+
+def test_editing_a_builtin_writes_an_override_that_shadows_it():
+    path = content.LOADOUTS_DIR / "builtin_a.json"
+    try:
+        content.save_encounter(_simple_encounter(name="Overridden A"), "builtin_a")
+        assert path.exists()
+        detail = content.encounter_detail("builtin_a")
+        assert detail["name"] == "Overridden A"
+        assert [e["name"] for e in detail["enemies"]] == ["Goblin"]
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_save_encounter_rejects_malformed_input():
+    for bad in ({"enemies": []},
+                {"enemies": [{"hp": 3, "intent": {"name": "x"}}]},        # no name
+                {"enemies": [{"name": "N", "hp": 0, "intent": {"name": "x"}}]},  # hp<=0
+                {"enemies": [{"name": "N", "hp": 3}]}):                    # no intent
+        with pytest.raises(ValueError):
+            content.save_encounter(bad)
+
+
+def test_encounter_keywords_reach_the_engine():
+    state, _ = content.build_state(["loadout_soren"], "encounter_skyfangs", seed=1)
+    by_name = {e.name: e for e in state.enemies}
+    assert "flying" in by_name["Wyvern"].keywords
+    assert {"flying", "lifelink"} <= set(by_name["Dread Seraph"].keywords)
 
 
 def test_multitarget_cast_carries_per_site_targets():

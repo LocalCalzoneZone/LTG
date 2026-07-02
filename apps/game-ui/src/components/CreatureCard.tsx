@@ -3,6 +3,13 @@ import { hpColor, powerColor } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
 
+const KEYWORD_ABBR: Record<string, string> = {
+  flying: "Fly",
+  lifelink: "Life",
+  deathtouch: "Death",
+  reach: "Reach",
+};
+
 const STAT = "text-[clamp(11px,1.8vh,20px)]";
 const META = "text-[clamp(9px,1.3vh,14px)]";
 const NAME = "text-[clamp(9px,1.4vh,15px)]";
@@ -43,6 +50,16 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       </div>
       {creature.is_channeling && (
         <div className={`absolute left-1.5 bottom-7 rounded-full bg-purple-600/80 px-1 ${META} text-white`}>✦</div>
+      )}
+      {/* Keywords (flying, lifelink, …) — stacked top-left under the level chip */}
+      {creature.keywords.length > 0 && (
+        <div className="absolute left-1.5 top-7 flex flex-col gap-0.5">
+          {creature.keywords.map((kw) => (
+            <span key={kw} title={kw} className={`rounded bg-indigo-600/80 px-1 ${META} font-semibold leading-tight text-white`}>
+              {KEYWORD_ABBR[kw] ?? kw.slice(0, 4)}
+            </span>
+          ))}
+        </div>
       )}
       {/* Name — bottom-center */}
       <div className={`absolute inset-x-0 bottom-0 truncate rounded-b-lg bg-black/65 px-1 py-1 text-center ${NAME} font-semibold`}>

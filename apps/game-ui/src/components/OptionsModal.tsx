@@ -1,19 +1,36 @@
 import { useEffect, useRef, useState } from "react";
-import { deleteCharacter, fetchSetupOptions, importCharacter } from "../lib/api";
-import type { CharacterOption } from "../lib/types";
+import {
+  deleteCharacter,
+  deleteEncounter,
+  fetchEncounter,
+  fetchSetupOptions,
+  importCharacter,
+} from "../lib/api";
+import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
+import { EncounterEditor } from "./EncounterEditor";
 import { ManaIcon } from "./Pips";
 
+type Tab = "characters" | "encounters";
+
 export function OptionsModal({ onClose }: { onClose: () => void }) {
+  const [tab, setTab] = useState<Tab>("characters");
   const [chars, setChars] = useState<CharacterOption[]>([]);
+  const [encounters, setEncounters] = useState<EncounterOption[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState<string | null>(null); // card pending delete
+  const [encConfirmId, setEncConfirmId] = useState<string | null>(null);
+  // Encounter being authored: an EncounterDetail (edit), "new" (create), or null.
+  const [editing, setEditing] = useState<EncounterDetail | "new" | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = () =>
     fetchSetupOptions()
-      .then((o) => setChars(o.characters))
+      .then((o) => {
+        setChars(o.characters);
+        setEncounters(o.encounters);
+      })
       .catch((e) => setErr(String(e)))
       .finally(() => setLoading(false));
 
@@ -54,6 +71,56 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const doDeleteEncounter = async (e: EncounterOption) => {
+    setErr(null);
+    setNote(null);
+    try {
+      await deleteEncounter(e.id);
+      setNote(`Removed ${e.name}`);
+      await refresh();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : String(ex));
+    } finally {
+      setEncConfirmId(null);
+    }
+  };
+
+  const openEditor = async (e: EncounterOption) => {
+    setErr(null);
+    try {
+      setEditing(await fetchEncounter(e.id));
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : String(ex));
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+        <div
+          className="flex max-h-[88vh] w-[min(94vw,900px)] flex-col rounded-xl bg-slate-800 p-5 shadow-2xl ring-1 ring-white/10"
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold">{editing === "new" ? "New Encounter" : "Edit Encounter"}</h2>
+            <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-white">
+              ✕
+            </button>
+          </div>
+          <EncounterEditor
+            initial={editing === "new" ? null : editing}
+            onCancel={() => setEditing(null)}
+            onSaved={async () => {
+              setEditing(null);
+              setNote("Encounter saved");
+              await refresh();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div
@@ -61,12 +128,26 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Characters</h2>
+          <div className="flex gap-1 rounded-lg bg-black/30 p-1">
+            {(["characters", "encounters"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`rounded-md px-4 py-1.5 text-sm font-semibold capitalize transition ${
+                  tab === t ? "bg-blue-600 text-white" : "text-gray-300 hover:text-white"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
             ✕
           </button>
         </div>
 
+        {tab === "characters" && (
+        <>
         {/* Import from Deckbuilder JSON */}
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-black/30 p-3 ring-1 ring-white/5">
           <button
@@ -158,6 +239,76 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
+        </>
+        )}
+
+        {tab === "encounters" && (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-black/30 p-3 ring-1 ring-white/5">
+            <button
+              onClick={() => setEditing("new")}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500"
+            >
+              ＋ New Encounter
+            </button>
+            <span className="text-xs text-gray-400">
+              Author an enemy group for playtesting. Edit or remove any encounter below.
+            </span>
+            {note && <span className="text-xs font-semibold text-emerald-400">{note}</span>}
+            {err && <span className="text-xs font-semibold text-red-400">{err}</span>}
+          </div>
+
+          <div className="scroll-thin -mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1">
+            {loading && <div className="text-gray-400">Loading…</div>}
+            {!loading && encounters.length === 0 && (
+              <div className="text-gray-500">No encounters yet. Create one above.</div>
+            )}
+            {encounters.map((e) => (
+              <div key={e.id} className="relative flex items-center gap-3 rounded-lg bg-slate-700/50 p-3 ring-1 ring-white/10">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold">{e.name}</div>
+                  <div className="truncate text-xs text-gray-400">
+                    {e.enemy_count} {e.enemy_count === 1 ? "enemy" : "enemies"} · {e.enemy_names.join(", ")}
+                  </div>
+                </div>
+                {encConfirmId === e.id ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">Remove?</span>
+                    <button
+                      onClick={() => doDeleteEncounter(e)}
+                      className="rounded bg-red-600 px-3 py-1 text-sm font-semibold hover:bg-red-500"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      onClick={() => setEncConfirmId(null)}
+                      className="rounded bg-slate-600 px-3 py-1 text-sm font-semibold hover:bg-slate-500"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEditor(e)}
+                      className="rounded bg-slate-600 px-3 py-1 text-sm font-semibold hover:bg-slate-500"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setEncConfirmId(e.id)}
+                      title={`Remove ${e.name}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-gray-300 hover:bg-red-600 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+        )}
       </div>
     </div>
   );
