@@ -8,3 +8,5 @@ loadouts/
 *.egg-info/
 build/
 dist/
+# Node / client build
+node_modules/

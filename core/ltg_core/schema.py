@@ -782,6 +782,9 @@ class Card(BaseModel):
     timing: Timing  # instant/sorcery/channeled — also derives the card's speed
     original_text: str = ""
     translated_text: str = ""
+    # Optional, human-authored prose describing how the effect works "in
+    # character" — flavour to accompany the flavour name. Never machine-derived.
+    flavor_text: str = ""
     effects: List[Effect] = Field(default_factory=list)
     # Shared target slots: {slot_name: chosen TargetDescriptor}. Most cards
     # declare none and use direct descriptors; slots are only added when several

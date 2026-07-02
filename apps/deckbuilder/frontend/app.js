@@ -760,6 +760,8 @@ function openDetail(idx) {
     <div class="block">
       <div class="label">Flavour name — editable</div>
       <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
+      <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
+      <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
     </div>
 
     <div class="block">
@@ -828,6 +830,7 @@ function wireDetail(idx) {
   const card = state.cards[idx];
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
+  $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
   $("#detail-validate").onclick = () => toggleValidated(idx);
   $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
   $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };

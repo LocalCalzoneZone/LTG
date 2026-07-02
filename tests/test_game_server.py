@@ -1,0 +1,227 @@
+"""LTG-Game server tests: the seat/hidden-info guarantees the engine does not
+provide. Rules themselves are the engine's (covered elsewhere); these check only
+the authority/relay layer — seat gating and hidden-hand filtering."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from ltg_combat.engine import apply_action, legal_actions
+from ltg_combat.scenario import state_from_dict
+from ltg_game_server import content
+from ltg_game_server.session import SessionManager
+
+EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_hidden_roster():
+    """These tests read the real content dirs, so isolate the picker's hidden-set:
+    start each test with nothing hidden, and restore the developer's own hidden.json
+    afterward (so running the suite never disturbs their curated roster)."""
+    original = content.HIDDEN_FILE.read_text() if content.HIDDEN_FILE.exists() else None
+    content.HIDDEN_FILE.unlink(missing_ok=True)
+    try:
+        yield
+    finally:
+        if original is None:
+            content.HIDDEN_FILE.unlink(missing_ok=True)
+        else:
+            content.HIDDEN_FILE.write_text(original)
+
+
+def _two_char_session():
+    state, portraits = content.build_state(["loadout_soren", "loadout_ys"], "builtin_a", seed=7)
+    return SessionManager().create(state, portraits=portraits)
+
+
+def _wound(power, toughness):
+    return {"kind": "wound", "power": power, "toughness": toughness,
+            "target": {"mode": "chosen", "side": "enemy", "targeted": True},
+            "duration": "end_of_turn"}
+
+
+def _card(cid, name, timing, cost, effects):
+    return {"id": cid, "name": name, "source_name": name, "rarity": "common", "level": 1,
+            "type": {"instant": "Instant", "sorcery": "Sorcery"}[timing], "timing": timing,
+            "cost": cost, "effects": effects, "validated": True}
+
+
+def test_setup_options_expose_characters_and_encounters():
+    chars = {c["id"] for c in content.list_characters()}
+    encs = {e["id"] for e in content.list_encounters()}
+    assert {"loadout_soren", "loadout_ys"} <= chars
+    assert {"builtin_a", "builtin_c"} <= encs  # the two built-in fights are always offered
+
+
+def test_hidden_info_only_controlled_hands_are_sent():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren"])
+
+    snap = s.snapshot_for("A")
+    by_id = {c["id"]: c for c in snap["characters"]}
+    assert by_id["soren"]["hand"] is not None      # controlled -> visible
+    assert by_id["soren"]["controlled"] is True
+    assert by_id["ys"]["hand"] is None             # not controlled -> hidden
+    assert by_id["ys"]["controlled"] is False
+    # But hand_count is public (board truth), just not the card identities.
+    assert by_id["ys"]["hand_count"] >= 0
+
+
+def test_legal_actions_only_for_the_controlled_priority_holder():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.clients["B"] = None
+    s.claim("A", ["ys"])   # A controls ys (NOT the turn-1 holder soren)
+    s.claim("B", ["soren"])
+
+    # Soren is the opening priority holder; only B (who controls soren) gets actions.
+    assert s.snapshot_for("A")["legal_actions"] == []
+    assert len(s.snapshot_for("B")["legal_actions"]) > 0
+
+
+def test_seat_gating_rejects_action_for_uncontrolled_character():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.clients["B"] = None
+    s.claim("A", ["ys"])
+    s.claim("B", ["soren"])
+
+    # Index 0 is soren's action (the holder). A does not control soren -> rejected.
+    with pytest.raises(ValueError, match="do not control"):
+        s.apply_index("A", 0)
+    # B controls soren -> the same index applies cleanly.
+    s.apply_index("B", 0)
+
+
+def test_out_of_range_index_rejected():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren"])
+    with pytest.raises(ValueError, match="out of range"):
+        s.apply_index("A", 9999)
+
+
+def test_snapshot_carries_portrait_field():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren"])
+    snap = s.snapshot_for("A")
+    assert all("portrait" in c for c in snap["characters"])
+
+
+def test_import_loadout_roundtrip_and_portrait_flows_to_game():
+    raw = content.loadout_for("loadout_soren")
+    raw["character"]["name"] = "Portrait Test Zzz"
+    raw["character"]["portrait"] = "data:image/png;base64,AAAA"
+    meta = content.save_loadout(raw)
+    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    try:
+        # Now discoverable as an available character, with its portrait.
+        assert any(c["id"] == meta["id"] for c in content.list_characters())
+        assert meta["portrait"].startswith("data:image")
+        # And the portrait flows through into a built game's session map.
+        _state, portraits = content.build_state([meta["id"]], "builtin_a", seed=1)
+        assert list(portraits.values())[0].startswith("data:image")
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_import_rejects_invalid_loadout():
+    with pytest.raises(ValueError, match="invalid loadout"):
+        content.save_loadout({"not": "a loadout"})
+
+
+def test_delete_imported_character_removes_its_file():
+    raw = content.loadout_for("loadout_soren")
+    raw["character"]["name"] = "Deletable Zzz"
+    meta = content.save_loadout(raw)
+    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    try:
+        assert any(c["id"] == meta["id"] for c in content.list_characters())
+        content.delete_loadout(meta["id"])
+        assert not path.exists()
+        assert not any(c["id"] == meta["id"] for c in content.list_characters())
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_remove_bundled_example_hides_it_without_deleting_the_file():
+    # (hidden state is isolated + restored by the autouse fixture)
+    example_path = content.REPO_ROOT / "examples" / "loadout_soren.json"
+    assert any(c["id"] == "loadout_soren" for c in content.list_characters())
+    content.delete_loadout("loadout_soren")  # hides, does NOT delete the file
+    assert example_path.exists(), "bundled example file must be preserved"
+    assert not any(c["id"] == "loadout_soren" for c in content.list_characters())
+    # It's still resolvable by id (only the picker listing filters it out).
+    assert content.loadout_for("loadout_soren") is not None
+
+
+def test_delete_unknown_character_raises():
+    with pytest.raises(ValueError, match="unknown character"):
+        content.delete_loadout("no_such_character")
+
+
+def test_multitarget_cast_carries_per_site_targets():
+    """Independent multi-target casts (Agony Warp) ship a `targets` tuple per site,
+    so the client can drive a per-site picker."""
+    agony = _card("agony_warp", "Agony Warp", "instant", {"generic": 0, "colors": {}},
+                  [_wound(3, 0), _wound(0, 3)])
+    spec = {
+        "party": [{"id": "p", "name": "Caster", "hp": 20, "power": 2, "hand_size": 1,
+                   "identity": ["U"], "library": [agony]}],
+        "enemies": [
+            {"id": "ea", "name": "EnemyA", "hp": 12, "level": 1,
+             "intent": {"name": "Hit", "amount": 1, "action_type": "ability", "mode": "melee"}},
+            {"id": "eb", "name": "EnemyB", "hp": 12, "level": 1,
+             "intent": {"name": "Hit", "amount": 1, "action_type": "ability", "mode": "melee"}},
+        ],
+    }
+    s = SessionManager().create(state_from_dict(spec))
+    s.clients["A"] = None
+    s.claim("A", ["p"])
+    casts = [a for a in s.snapshot_for("A")["legal_actions"]
+             if a["kind"] == "cast" and a["card_id"] == "agony_warp"]
+    assert casts, "expected Agony Warp casts"
+    # Two sites × two enemies == four combinations, each a 2-element targets tuple.
+    assert all(len(a["targets"]) == 2 for a in casts)
+    combos = sorted(a["targets"] for a in casts)
+    assert combos == [["ea", "ea"], ["ea", "eb"], ["eb", "ea"], ["eb", "eb"]]
+
+
+def test_counter_target_id_maps_to_a_stack_uid():
+    """A counter (Unweave) targets an enemy action on the stack; its target_id is
+    "#<uid>" matching a StackRow.uid, which the client uses to make that row clickable."""
+    unweave = json.loads((EXAMPLES / "counterspell.json").read_text())
+    spec = {
+        "party": [{"id": "caster", "name": "Caster", "hp": 20, "power": 2, "hand_size": 1,
+                   "identity": ["U", "U"], "library": [unweave]}],
+        "enemies": [{"id": "goblin", "name": "Goblin", "hp": 6, "level": 1,
+                     "intent": {"name": "Zap", "amount": 2, "action_type": "ability",
+                                "mode": "ranged", "targeting": "lowest_hp_party"}}],
+    }
+    s = SessionManager().create(state_from_dict(spec))  # deterministic: opening hand == [Unweave]
+    s.clients["A"] = None
+    s.claim("A", ["caster"])
+    end = next(a for a in legal_actions(s.state) if a.kind == "end_turn")
+    s.state, _ = apply_action(s.state, end)  # into the enemy phase reaction window
+
+    snap = s.snapshot_for("A")
+    counters = [a for a in snap["legal_actions"]
+                if a["kind"] == "cast" and (a["target_id"] or "").startswith("#")]
+    assert counters, "expected a counter targeting the stacked enemy action"
+    stack_uids = {f"#{r['uid']}" for r in snap["stack"]}
+    assert all(a["target_id"] in stack_uids for a in counters)
+
+
+def test_disconnect_releases_seats():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren", "ys"])
+    assert s.controlled_by("A") == {"soren", "ys"}
+    s.remove_client("A")
+    assert all(owner is None for owner in s.seats.values())

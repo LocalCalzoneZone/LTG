@@ -921,13 +921,35 @@ def _continuous_targets(st: GameState, channel: Channel, effect) -> List:
 _STAT_CONTINUOUS = ("pump", "counters", "wound")  # auras that ride the temp layers
 
 
-def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True) -> None:
+def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
+                  holder_id: Optional[str] = None) -> None:
     """Apply (sign +1) or lift (sign −1) one continuous effect on one creature.
 
     Stat auras (pump/counters add, wound subtracts) ride `power_bonus`/`temp_mod`
     and are re-applied each end step (those layers reset), so reapply passes
-    `log_it=False` to stay quiet."""
+    `log_it=False` to stay quiet. `holder_id` is the channeler — needed by a
+    continuous taunt (e.g. Lure) to know which character enemies are forced onto."""
     k = effect.kind
+    if k == "taunt":
+        # A continuous taunt (Lure): while channeled, every covered enemy is forced
+        # to target the channeler. `taunted_by` resets each end step, so this is
+        # re-asserted every turn (see _reapply_channel_stats) — the enemy heuristic
+        # (_choose_enemy_attack) reads it when declaring the next intent, and we also
+        # redirect any intent already declared this turn (the cast turn).
+        if not isinstance(target, EnemyState):
+            return
+        if sign > 0:
+            holder = st.character(holder_id) if holder_id is not None else None
+            if holder is not None and holder.alive and not _has_kw(holder, "hexproof"):
+                target.taunted_by = holder_id
+                if target.intent is not None:
+                    target.intent.target_id = holder_id
+                if log_it:
+                    _log(st, "taunt", f"{target.name} is lured into targeting {holder.name}.",
+                         enemy=target.id, by=holder_id)
+        elif holder_id is None or target.taunted_by == holder_id:
+            target.taunted_by = None
+        return
     if k == "grant_keyword":
         for kw in effect.keywords:
             if sign > 0:
@@ -973,23 +995,30 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True)
 
 def _apply_continuous(st: GameState, channel: Channel, effect) -> None:
     for target in _continuous_targets(st, channel, effect):
-        _apply_static(st, target, effect, +1)
+        _apply_static(st, target, effect, +1, holder_id=channel.holder_id)
 
 
 def _remove_continuous(st: GameState, channel: Channel, effect) -> None:
     for target in _continuous_targets(st, channel, effect):
-        _apply_static(st, target, effect, -1)
+        _apply_static(st, target, effect, -1, holder_id=channel.holder_id)
+
+
+# Continuous effects that reset each end step and must be re-asserted every turn:
+# the stat auras (temp layers reset) and a taunt (`taunted_by` clears at end step).
+_REAPPLIED_CONTINUOUS = (*_STAT_CONTINUOUS, "taunt")
 
 
 def _reapply_channel_stats(st: GameState) -> None:
-    """After the end step clears the temp layers, re-apply the stat auras held by
-    channels (pump/counters/wound) so a sustained anthem or debuff persists."""
+    """After the end step clears the temp layers (and taunts), re-apply the sustained
+    channel effects — stat auras (anthem/debuff) and a continuous taunt (Lure) — so
+    they persist across turns. Quiet (log_it=False): the initial cast already logged."""
     for holder in st.living_party():
         for channel in holder.channels:
             for effect in channel.card.effects:
-                if _is_continuous(effect) and effect.kind in _STAT_CONTINUOUS:
+                if _is_continuous(effect) and effect.kind in _REAPPLIED_CONTINUOUS:
                     for target in _continuous_targets(st, channel, effect):
-                        _apply_static(st, target, effect, +1, log_it=False)
+                        _apply_static(st, target, effect, +1, log_it=False,
+                                      holder_id=channel.holder_id)
 
 
 def _note_break(st: GameState, char: CharacterState, reason: str) -> None:
