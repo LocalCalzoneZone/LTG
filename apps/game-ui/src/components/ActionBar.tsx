@@ -11,6 +11,12 @@ const CORE: { key: keyof Choices; icon: string; label: string }[] = [
 export function ActionBar({ choices, reaction }: { choices: Choices | null; reaction: boolean }) {
   const select = useGame((s) => s.selectChoice);
   const armed = useGame((s) => s.armed);
+  const startPassAll = useGame((s) => s.startPassAll);
+  const passAllFor = useGame((s) => s.passAllFor);
+  // Active only when THIS character (the one holding priority for `pass`) is the one
+  // auto-passing — not when a different party member armed Pass All.
+  const passActor = choices?.pass?.candidates[0]?.actor_id;
+  const passAllActive = passAllFor != null && passAllFor === passActor;
 
   const coreBtn = ({ key, icon, label }: { key: keyof Choices; icon: string; label: string }) => {
     const choice = choices?.[key] as Choice | undefined;
@@ -47,17 +53,26 @@ export function ActionBar({ choices, reaction }: { choices: Choices | null; reac
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
         {CORE.map(coreBtn)}
       </div>
-      {/* Drop Channel sits ABOVE Pass / End Turn so those two stay anchored at the
-          bottom in their usual spot — otherwise it appears where Pass normally is and
-          invites a mis-click when you mean to pass. */}
-      {choices?.dropChannels && (
-        <TextBtn choice={choices.dropChannels} label="Drop Channel" />
-      )}
-      {/* Pass / End Turn — prominent, always the bottom-most controls */}
+      {/* Pass / Pass All — Pass All keeps passing until the stack fully resolves. */}
       <div className="grid grid-cols-2 gap-2">
         <TextBtn choice={choices?.pass} label="Pass" />
-        <TextBtn choice={choices?.endTurn} label="End Turn" />
+        <button
+          disabled={!choices?.pass}
+          onClick={startPassAll}
+          title="Pass every reaction window until the stack fully resolves"
+          className={`rounded-lg py-1.5 text-sm font-semibold transition ${
+            !choices?.pass
+              ? "cursor-not-allowed bg-slate-800/40 text-gray-600"
+              : passAllActive
+                ? "bg-yellow-500 text-black shadow"
+                : "bg-slate-700 hover:bg-slate-600"
+          }`}
+        >
+          Pass All
+        </button>
       </div>
+      {/* End Turn — prominent, always the bottom-most control */}
+      <TextBtn choice={choices?.endTurn} label="End Turn" />
     </div>
   );
 }

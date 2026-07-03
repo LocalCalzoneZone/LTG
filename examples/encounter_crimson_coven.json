@@ -1,0 +1,81 @@
+{
+  "name": "Crimson Coven — Drain & Reactions",
+  "faction": "The Crimson Coven",
+  "colors": ["B", "R"],
+  "notes": "Design Update 04 §F-8 worked statblocks (vampires). Level derives from budget B(L)=5L+5. Showcases: the valuation brain, a multi-verb Drain that self-heals, an on_spell_cast reaction that punishes your casting, lifelink, and Evasive repositioning. Total enemy Levels 7 — a hard fight for a two-hero Level-1 party.",
+  "enemies": [
+    {
+      "id": "grave_thrall",
+      "name": "Grave Thrall",
+      "flavor": "Husk +4 HP (9/10). A wall that shambles forward — the baseline, no components.",
+      "hp": 6,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee"
+    },
+    {
+      "id": "bloodbat",
+      "name": "Bloodbat",
+      "flavor": "Skirmisher, flying (15/15). A dodging harasser that only ranged/reach answers cleanly.",
+      "hp": 2,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "keywords": ["flying"],
+      "components": [
+        {
+          "id": "evasive",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Flit to the shadows"
+        }
+      ]
+    },
+    {
+      "id": "vampire_adept",
+      "name": "Vampire Adept",
+      "flavor": "Caster-frame +4 HP, lifelink (25/25). Drains from safety and punishes your casting — the piece you must answer.",
+      "hp": 6,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "keywords": ["lifelink"],
+      "components": [
+        {
+          "id": "drain",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Life Drain — deal 3, heal 3",
+          "verbs": [
+            {"kind": "deal_damage", "amount": 3, "target": {"mode": "chosen", "side": "ally", "targeted": true}},
+            {"kind": "heal", "amount": 3, "target": {"mode": "self"}}
+          ]
+        },
+        {
+          "id": "curse",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Withering Curse — wound the caster -1/-1",
+          "verbs": [
+            {"kind": "wound", "power": 1, "toughness": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}}
+          ]
+        }
+      ]
+    }
+  ],
+  "tokens": {}
+}

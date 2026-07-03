@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useGame } from "../lib/store";
 
 function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
@@ -70,29 +71,54 @@ export function ZoneModal() {
     body = <CardList cards={char.graveyard ?? []} />;
   } else {
     title = `${char.name} — Channels`;
-    const dropIdx = choices.find((a) => a.kind === "drop_channels" && a.actor_id === char.id)?.index;
+    // Voluntary drop: one legal action per channel (matched by card_id), plus a
+    // "drop all" (card_id === null) when more than one is held.
+    const drops = choices.filter((a) => a.kind === "drop_channels" && a.actor_id === char.id);
+    const dropByCard: Record<string, number> = {};
+    let dropAllIdx: number | undefined;
+    for (const a of drops) {
+      if (a.card_id == null) dropAllIdx = a.index;
+      else dropByCard[a.card_id] = a.index;
+    }
     body = (
       <div className="flex flex-col gap-2">
         {char.channels_summary.length === 0 ? (
           <div className="text-sm italic text-gray-500">no active channels</div>
         ) : (
-          char.channels_summary.map((ch) => (
-            <div key={ch.card_id} className="rounded bg-white/5 p-2 text-sm">
-              <div className="font-semibold">{ch.card_name}</div>
-              {ch.target_name && <div className="text-xs text-gray-400">on {ch.target_name}</div>}
-              <div className="text-xs text-gray-300">{ch.text}</div>
-            </div>
-          ))
+          char.channels_summary.map((ch) => {
+            const dropIdx = dropByCard[ch.card_id];
+            return (
+              <div key={ch.card_id} className="flex items-start gap-2 rounded bg-white/5 p-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">{ch.card_name}</div>
+                  {ch.target_name && <div className="text-xs text-gray-400">on {ch.target_name}</div>}
+                  <div className="text-xs text-gray-300">{ch.text}</div>
+                </div>
+                {dropIdx != null && (
+                  <button
+                    onClick={() => {
+                      submit(dropIdx);
+                      onClose();
+                    }}
+                    title={`Drop ${ch.card_name}`}
+                    className="shrink-0 self-center rounded bg-red-700 px-2.5 py-1 text-xs font-semibold hover:bg-red-600"
+                  >
+                    Drop
+                  </button>
+                )}
+              </div>
+            );
+          })
         )}
-        {dropIdx != null && (
+        {dropAllIdx != null && (
           <button
             onClick={() => {
-              submit(dropIdx);
+              submit(dropAllIdx);
               onClose();
             }}
             className="rounded-lg bg-red-700 px-3 py-2 text-sm font-semibold hover:bg-red-600"
           >
-            Drop concentration (ends all)
+            Drop all channels
           </button>
         )}
       </div>
@@ -184,6 +210,57 @@ export function Toast() {
   return (
     <div className="fixed bottom-44 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold shadow-lg">
       {error}
+    </div>
+  );
+}
+
+/** Transient banner announcing a new turn or phase. Watches the snapshot's turn /
+ *  phase label and flashes a centred pill when either changes, then fades out. */
+export function PhaseBanner() {
+  const turn = useGame((s) => s.snapshot?.turn ?? null);
+  const phase = useGame((s) => s.snapshot?.phase_label ?? null);
+  const [banner, setBanner] = useState<{ id: number; title: string; sub?: string } | null>(null);
+  const prev = useRef<{ turn: number | null; phase: string | null } | null>(null);
+  const seq = useRef(0);
+
+  useEffect(() => {
+    if (turn == null || phase == null) return;
+    const before = prev.current;
+    prev.current = { turn, phase };
+    if (!before) return; // don't announce the very first snapshot (game just loaded)
+    let title: string | null = null;
+    let sub: string | undefined;
+    if (turn !== before.turn) {
+      title = `Turn ${turn}`;
+      sub = phase; // e.g. "enemy intents"
+    } else if (phase !== before.phase) {
+      title = phase;
+    }
+    if (title) setBanner({ id: ++seq.current, title, sub });
+  }, [turn, phase]);
+
+  // Auto-dismiss after the animation (matches the 2s .phase-banner keyframe).
+  useEffect(() => {
+    if (!banner) return;
+    const t = window.setTimeout(
+      () => setBanner((b) => (b && b.id === banner.id ? null : b)),
+      2000,
+    );
+    return () => window.clearTimeout(t);
+  }, [banner]);
+
+  if (!banner) return null;
+  return (
+    <div
+      key={banner.id}
+      className="phase-banner pointer-events-none fixed left-1/2 top-20 z-50 flex flex-col items-center"
+    >
+      <div className="rounded-full bg-slate-900/90 px-6 py-2 text-center shadow-xl ring-1 ring-white/15">
+        <div className="text-lg font-black uppercase tracking-wide text-white">{banner.title}</div>
+        {banner.sub && (
+          <div className="text-xs font-semibold capitalize text-blue-300">{banner.sub}</div>
+        )}
+      </div>
     </div>
   );
 }

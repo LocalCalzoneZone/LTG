@@ -24,7 +24,7 @@ _FILLER = {"id": "filler", "name": "Filler", "source_name": "Filler", "rarity": 
 def _wound(power, toughness, side="enemy"):
     return {"kind": "wound", "power": power, "toughness": toughness,
             "target": {"mode": "chosen", "side": side, "targeted": True},
-            "duration": "end_of_turn"}
+            "duration": "this_turn"}
 
 
 # Agony Warp: two independent top-level wounds.

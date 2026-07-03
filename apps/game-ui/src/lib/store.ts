@@ -42,6 +42,10 @@ interface StoreState {
   armed: Armed | null; // a target selection in progress
   chooseModeFor: Choice | null; // a modal card awaiting a mode pick
   zoneModal: ZoneModal;
+  // The character id auto-passing every reaction window it holds priority in until
+  // the stack fully resolves (null = off). Scoped to one character — other party
+  // members still decide for themselves.
+  passAllFor: string | null;
   error: string | null;
   gameOver: string | null;
 
@@ -61,6 +65,7 @@ interface StoreState {
   pickTargetId: (id: string) => void; // pick a target for the current armed site
   cancelArm: () => void;
   submitIndex: (index: number) => void;
+  startPassAll: () => void; // pass now and keep passing until the stack resolves
   _arm: (c: Choice) => void;
 
   openZone: (z: ZoneModal) => void;
@@ -84,6 +89,7 @@ export const useGame = create<StoreState>((set, get) => ({
   armed: null,
   chooseModeFor: null,
   zoneModal: null,
+  passAllFor: null,
   error: null,
   gameOver: null,
 
@@ -118,6 +124,21 @@ export const useGame = create<StoreState>((set, get) => ({
         // A fresh authoritative state ends any optimistic arming (§4.6).
         set({ snapshot: snap, armed: null, chooseModeFor: null });
         get()._recomputeFocus();
+        // Pass All: auto-pass for the initiating character only, each time it holds
+        // priority, until the stack fully resolves — then reset. Other characters'
+        // priority windows are left for the player to decide.
+        const forId = get().passAllFor;
+        if (forId != null) {
+          if (snap.stack.length === 0) {
+            set({ passAllFor: null }); // stack resolved — done
+          } else {
+            const pass = snap.legal_actions.find(
+              (a) => a.kind === "pass" && a.actor_id === forId,
+            );
+            if (pass) get().submitIndex(pass.index);
+            // else: another character holds priority (or a forced choice) — wait.
+          }
+        }
         break;
       }
       case "prompt":
@@ -128,7 +149,7 @@ export const useGame = create<StoreState>((set, get) => ({
         break;
       case "error":
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null });
+        set({ armed: null, chooseModeFor: null, passAllFor: null });
         break;
     }
   },
@@ -201,6 +222,14 @@ export const useGame = create<StoreState>((set, get) => ({
 
   submitIndex: (index) => {
     get().socket?.send({ type: "submit_action", action: { index } });
+  },
+
+  startPassAll: () => {
+    const snap = get().snapshot;
+    const pass = snap?.legal_actions.find((a) => a.kind === "pass");
+    if (!pass) return;
+    set({ passAllFor: pass.actor_id, armed: null, chooseModeFor: null });
+    get().submitIndex(pass.index);
   },
 
   openZone: (z) => set({ zoneModal: z }),

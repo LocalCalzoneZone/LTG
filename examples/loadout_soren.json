@@ -115,7 +115,7 @@
             "exclude_self": false,
             "targeted": true
           },
-          "duration": "end_of_turn"
+          "duration": "this_turn"
         }
       ],
       "targets": {},
@@ -185,7 +185,7 @@
             "exclude_self": false,
             "targeted": true
           },
-          "duration": "end_of_turn"
+          "duration": "this_turn"
         }
       ],
       "targets": {},
@@ -221,7 +221,7 @@
             "exclude_self": false,
             "targeted": false
           },
-          "duration": "end_of_turn"
+          "duration": "this_turn"
         }
       ],
       "targets": {},

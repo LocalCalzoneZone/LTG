@@ -84,7 +84,9 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "portrait": portrait,  # loadout art (data URL / image URL), "" if none
         "row": cd["row"],
         "power": _power_block(cd["power"], cd["base_power"], cd["power_bonus"]),
-        "hp": _power_block(cd["hp"], cd["max_hp"], cd["temp_mod"]),
+        # `current` is the EFFECTIVE hp (hp + temp_mod), mirroring current_power —
+        # a wound/pump (temp_mod) must show in the displayed number, not just base.
+        "hp": _power_block(char.effective_hp, cd["max_hp"], cd["temp_mod"]),
         "incapacitated": not char.alive,
         "is_channeling": bool(char.channels),
         "channels_summary": cd["channels"],  # id/name/target/text per held channel
@@ -117,7 +119,8 @@ def _creature_snapshot(view: GameState, enemy) -> Dict[str, Any]:
         "row": ed["row"],
         "level": ed["level"],
         "power": _power_block(enemy.current_power, enemy.power, enemy.power_bonus),
-        "hp": _power_block(ed["hp"], ed["max_hp"], ed["temp_mod"]),
+        # Effective hp (hp + temp_mod) so a wound (e.g. Agony Warp −0/−3) shows.
+        "hp": _power_block(enemy.effective_hp, ed["max_hp"], ed["temp_mod"]),
         "attack_mode": ed["attack_mode"],
         "keywords": ed["keywords"],
         "intent": ed["intent"],
@@ -136,7 +139,7 @@ def _token_snapshot(view: GameState, token) -> Dict[str, Any]:
         "name": td["name"],
         "row": td["row"],
         "power": _power_block(token.current_power, token.power, token.power_bonus),
-        "hp": _power_block(token.hp, token.max_hp, token.temp_mod),
+        "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
         "is_channeling": False,
     }
 
@@ -146,7 +149,7 @@ def _intents(view: GameState) -> List[Dict[str, Any]]:
     for e in view.living_enemies():
         if e.intent is None:
             continue
-        amount = e.intent.effects[0].amount if e.intent.effects else None
+        amount = e.intent.attack_damage(e.power_bonus)  # live: blunted by any wound
         amt = f" {amount}" if isinstance(amount, int) else ""
         out.append({
             "creature_id": e.id,

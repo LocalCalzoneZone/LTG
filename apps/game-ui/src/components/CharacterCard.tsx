@@ -48,7 +48,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       style={{
         width: CARD_WIDTH,
         ...(char.portrait
-          ? { backgroundImage: `url(${char.portrait})`, backgroundSize: "cover", backgroundPosition: "center" }
+          ? { backgroundImage: `url(${char.portrait})`, backgroundSize: "cover", backgroundPosition: "top" }
           : {}),
       }}
       className={`relative aspect-[9/16] shrink-0 select-none overflow-hidden rounded-lg shadow-lg transition ${

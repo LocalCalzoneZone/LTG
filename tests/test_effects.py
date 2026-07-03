@@ -137,6 +137,51 @@ def test_lint_zero_amount_and_unused_slot():
     assert any("T2" in m and "never used" in m for m in lints)
 
 
+def test_duration_end_of_turn_is_legacy_alias_of_this_turn():
+    from ltg_core.schema import Duration
+    # `end_of_turn` was merged into `this_turn`; it is no longer a member but old
+    # data still loads and normalises so nothing breaks on import.
+    assert "end_of_turn" not in {d.value for d in Duration}
+    c = card(effects=[{"kind": "pump", "power": 1, "toughness": 1,
+                       "target": CHOSEN_ALLY_T, "duration": "end_of_turn"}])
+    assert c.effects[0].duration is Duration.this_turn
+    assert c.model_dump(mode="json")["effects"][0]["duration"] == "this_turn"
+
+
+def test_lint_flags_multiple_independent_inline_targets():
+    # A "+2/+2 and gains lifelink" spell authored with two inline chosen targets
+    # resolves to TWO independent targets — the lint nudges toward a shared slot.
+    c = card(effects=[
+        {"kind": "pump", "power": 2, "toughness": 2, "target": CHOSEN_ANY_T},
+        {"kind": "grant_keyword", "keywords": ["lifelink"], "target": CHOSEN_ANY_T},
+    ])
+    assert any("independently" in m and "shared slot" in m for m in lint_card(c))
+
+
+def test_shared_slot_two_effects_is_not_flagged():
+    # The same spell, but both effects share $T1 → one target, no warning.
+    c = card(
+        targets={"T1": CHOSEN_ANY_T},
+        effects=[
+            {"kind": "pump", "power": 2, "toughness": 2, "target": "$T1"},
+            {"kind": "grant_keyword", "keywords": ["lifelink"], "target": "$T1"},
+        ],
+    )
+    assert not any("independently" in m for m in lint_card(c))
+
+
+def test_distinct_slots_are_not_flagged():
+    # Agony-Warp shape: two effects on two distinct slots is deliberate, not a warning.
+    c = card(
+        targets={"T1": CHOSEN_ANY_T, "T2": CHOSEN_ANY_T},
+        effects=[
+            {"kind": "wound", "power": 3, "toughness": 0, "target": "$T1"},
+            {"kind": "wound", "power": 0, "toughness": 3, "target": "$T2"},
+        ],
+    )
+    assert not any("independently" in m for m in lint_card(c))
+
+
 # --- editor metadata ------------------------------------------------------- #
 def test_effect_specs_cover_all_kinds():
     specs = effect_specs()

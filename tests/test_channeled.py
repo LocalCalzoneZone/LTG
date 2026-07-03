@@ -93,7 +93,7 @@ def test_exile_duration_must_be_while_channeled():
     # Exile is permanent (no duration) or reversible (while_channeled) — the
     # turn-scoped durations are meaningless and rejected.
     with pytest.raises(ValidationError):
-        chan_card([{"kind": "exile", "target": "$T1", "duration": "end_of_turn"}],
+        chan_card([{"kind": "exile", "target": "$T1", "duration": "this_turn"}],
                   {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
 
 

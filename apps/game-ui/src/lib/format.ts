@@ -21,7 +21,7 @@ export function modifierColor(mod: number): string {
 }
 
 export function modifierText(mod: number): string {
-  if (mod === 0) return "–";
+  if (mod === 0) return "";
   return mod > 0 ? `+${mod}` : `${mod}`;
 }
 

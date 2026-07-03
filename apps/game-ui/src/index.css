@@ -46,3 +46,26 @@ body {
 .ring-active {
   animation: pulse-ring 1.8s infinite;
 }
+
+/* Transient turn / phase banner: fade in, hold, fade out. */
+@keyframes phase-banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.96);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.98);
+  }
+}
+.phase-banner {
+  animation: phase-banner 2s ease forwards;
+}

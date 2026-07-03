@@ -44,7 +44,6 @@ export interface Choices {
   mitigate?: Choice;
   pass?: Choice;
   endTurn?: Choice;
-  dropChannels?: Choice;
   casts: Record<string, Choice>; // cardId -> Choice (may carry modes[])
   mana: { color: string; index: number; label: string }[];
   // A mandatory mid-resolution pick (move_card / scry): rendered as a prompt modal.
@@ -71,8 +70,8 @@ export function buildChoices(legal: LegalAction[]): Choices {
   if (pass.length) out.pass = mk("pass", "pass", pass, "Pass");
   const end = pick("end_turn");
   if (end.length) out.endTurn = mk("end_turn", "end_turn", end, "End Turn");
-  const drop = pick("drop_channels");
-  if (drop.length) out.dropChannels = mk("drop", "drop_channels", drop, drop[0].label);
+  // Voluntary drop is offered per-channel via the Channels zone modal (reads the
+  // raw drop_channels legal actions directly), so no ActionBar choice is built.
 
   // Casts, grouped by card. A card with >1 distinct mode becomes a modal choice.
   const casts = pick("cast");

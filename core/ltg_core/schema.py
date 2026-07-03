@@ -183,11 +183,22 @@ class ActionTarget(BaseModel):
 
 
 class Duration(str, Enum):
-    end_of_turn = "end_of_turn"
+    # Every value names the span the effect is active FOR (not the event that ends
+    # it), matching `encounter` / `while_channeled`. `this_turn` covers the rest of
+    # the current turn and expires at the End step — the former `end_of_turn` was a
+    # synonym for exactly this and is aliased below for legacy data.
     this_turn = "this_turn"
     encounter = "encounter"
     # Applies continuously while the enchantment is channeled (channeled cards only).
     while_channeled = "while_channeled"
+
+    @classmethod
+    def _missing_(cls, value):
+        # Legacy alias: `end_of_turn` was merged into `this_turn` (identical
+        # behaviour). Old saved cards still load and normalise to `this_turn`.
+        if value == "end_of_turn":
+            return cls.this_turn
+        return None
 
 
 # Effects on channeled cards may fire on a recurring trigger instead of being
@@ -362,7 +373,7 @@ class Pump(EffectBase):
     power: int
     toughness: int
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
 
 class Wound(EffectBase):
@@ -370,7 +381,7 @@ class Wound(EffectBase):
     power: int
     toughness: int
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
 
 class Counters(EffectBase):
@@ -482,7 +493,7 @@ class GrantKeyword(EffectBase):
     keywords: List[str] = Field(min_length=1)
     params: Optional[Dict[str, str]] = None
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
     @model_validator(mode="after")
     def _check(self) -> "GrantKeyword":
@@ -497,7 +508,7 @@ class RemoveKeyword(EffectBase):
     keywords: List[str] = Field(min_length=1)
     params: Optional[Dict[str, str]] = None
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
     @model_validator(mode="after")
     def _check(self) -> "RemoveKeyword":

@@ -10,6 +10,7 @@ import {
   CardPickPrompt,
   ChooseModeModal,
   GameOverOverlay,
+  PhaseBanner,
   Toast,
   ZoneModal,
 } from "./components/Modals";
@@ -26,7 +27,8 @@ export default function App() {
   const connected = useGame((s) => s.connected);
 
   const [sessionId, setSessionId] = useState<string | null>(sessionFromUrl());
-  const [showNewGame, setShowNewGame] = useState<boolean>(!sessionFromUrl());
+  // Start on an empty battlefield — the player opens New Game / Options themselves.
+  const [showNewGame, setShowNewGame] = useState<boolean>(false);
   const [showOptions, setShowOptions] = useState<boolean>(false);
 
   // Connect when a session id is set (from URL or after New Game).
@@ -67,36 +69,43 @@ export default function App() {
       {sessionId && <SeatBar />}
 
       <div className="flex min-h-0 flex-1">
-        {snapshot ? (
-          <>
-            <div className="min-w-0 basis-2/3">
-              <Battlefield />
+        <div className="min-w-0 basis-2/3">
+          {snapshot ? (
+            <Battlefield />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+              {sessionId ? (
+                <span className="text-gray-400">{connected ? "Loading game…" : "Connecting…"}</span>
+              ) : (
+                <>
+                  <div className="text-lg font-semibold text-gray-300">No game in progress</div>
+                  <div className="max-w-sm text-sm text-gray-500">
+                    Start a <span className="font-semibold text-blue-400">New Game</span>, or open{" "}
+                    <span className="font-semibold text-gray-300">Options</span> to load characters and
+                    author encounters.
+                  </div>
+                </>
+              )}
             </div>
-            <div className="min-w-0 basis-1/3 border-l border-white/10">
-              <SidePanel onNewGame={() => setShowNewGame(true)} onOptions={() => setShowOptions(true)} />
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-1 items-center justify-center text-gray-400">
-            {sessionId ? (connected ? "Loading game…" : "Connecting…") : "Start a new game."}
-          </div>
-        )}
+          )}
+        </div>
+        <div className="min-w-0 basis-1/3 border-l border-white/10">
+          <SidePanel onNewGame={() => setShowNewGame(true)} onOptions={() => setShowOptions(true)} />
+        </div>
       </div>
 
       {snapshot && <BottomBar />}
 
       {/* Overlays */}
       {showNewGame && (
-        <NewGameModal
-          onClose={sessionId ? () => setShowNewGame(false) : null}
-          onStarted={onStarted}
-        />
+        <NewGameModal onClose={() => setShowNewGame(false)} onStarted={onStarted} />
       )}
       {showOptions && <OptionsModal onClose={() => setShowOptions(false)} />}
       <ChooseModeModal />
       <ZoneModal />
       <CardPickPrompt />
       <GameOverOverlay onNewGame={() => setShowNewGame(true)} />
+      <PhaseBanner />
       <Toast />
     </div>
   );

@@ -174,10 +174,9 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
 def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
     intent = None
     if enemy.intent is not None:
-        amount = enemy.intent.effects[0].amount if enemy.intent.effects else None
         intent = {
             "name": enemy.intent.name,
-            "amount": amount if isinstance(amount, int) else None,
+            "amount": enemy.intent.attack_damage(enemy.power_bonus),
             "target_id": enemy.intent.target_id,
             "target_name": _name_of(state, enemy.intent.target_id),
         }

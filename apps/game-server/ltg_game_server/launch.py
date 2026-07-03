@@ -29,9 +29,33 @@ UI_DIR = Path(__file__).resolve().parents[2] / "game-ui"  # apps/game-ui
 DIST = UI_DIR / "dist"
 
 
+def _newest_mtime(root: Path, *, skip: set[str] = frozenset()) -> float:
+    """The most-recently-modified mtime under `root`, ignoring `skip` dir names.
+    Returns 0.0 if nothing is found."""
+    newest = 0.0
+    for path in root.rglob("*"):
+        if any(part in skip for part in path.parts):
+            continue
+        if path.is_file():
+            newest = max(newest, path.stat().st_mtime)
+    return newest
+
+
+def _dist_is_stale() -> bool:
+    """True when the built client is missing or older than its source — so a launch
+    after any UI edit rebuilds automatically. Compares the newest client source
+    file against the newest file in dist/ (both node_modules excluded)."""
+    if not DIST.exists():
+        return True
+    src_newest = _newest_mtime(UI_DIR, skip={"node_modules", "dist"})
+    dist_newest = _newest_mtime(DIST)
+    return src_newest > dist_newest
+
+
 def _build_client(force: bool = False) -> None:
-    """Ensure apps/game-ui/dist exists (npm install + build on first run)."""
-    if DIST.exists() and not force:
+    """Build apps/game-ui/dist when it's missing, stale (source is newer), or a
+    rebuild is forced — so UI edits always reach the served client at launch."""
+    if not force and not _dist_is_stale():
         return
     npm = shutil.which("npm")
     if npm is None:

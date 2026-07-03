@@ -25,7 +25,9 @@ def test_channeling_scenario_passes():
     """The §C channeling hand-trace reproduces every asserted state (the proof)."""
     state = run_channeling_scenario(verbose=False)
     # Channeling-specific end state: channels broke, Mira survived the breaking hit.
-    assert state.party[0].hp == 5
+    # (Mira 7, not 5: Cinder's wounded Ember now does 0 on turn 1 too — the swing
+    # re-checks the enemy's current Power at resolution, R-7.)
+    assert state.party[0].hp == 7
     assert state.party[0].channels == []
 
 
@@ -56,10 +58,12 @@ def test_voluntary_drop_ends_all_channels_and_releases_mana():
     assert len(mira.channels) == 2
     pool_before = sorted(mira.pool)
 
-    # Drop must be offered now (Mira holds channels) and end them all.
+    # Drop must be offered now (Mira holds channels): one per channel plus a
+    # "drop all". Use the drop-all (no card_id) to end them at once.
     drop = [a for a in legal_actions(state) if a.kind == "drop_channels"]
-    assert len(drop) == 1
-    state, events = apply_action(state, drop[0])
+    assert len(drop) == 3                              # 2 per-channel + drop all
+    drop_all = next(a for a in drop if a.card_id is None)
+    state, events = apply_action(state, drop_all)
     mira = state.party[0]
     assert mira.channels == []                       # all channels ended at once
     assert "still the blade" in [c.name.lower() for c in mira.graveyard]  # already in graveyard (R-9)

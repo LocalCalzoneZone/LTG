@@ -4,14 +4,13 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
   const snapshot = useGame((s) => s.snapshot);
   const armed = useGame((s) => s.armed);
   const pickTargetId = useGame((s) => s.pickTargetId);
-  if (!snapshot) return null;
 
   // A counter arms with stack-ref targets ("#<uid>"): those rows become clickable.
   const targetIds = armedTargetIdSet(armed);
 
   return (
     <div className="flex h-full flex-col gap-2 p-2">
-      {/* Game Options Bar */}
+      {/* Game Options Bar — always available (so an empty battlefield can reach these) */}
       <div className="flex items-center gap-2">
         <button
           onClick={onNewGame}
@@ -27,12 +26,22 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
         >
           ⚙ Options
         </button>
-        <div className="ml-auto text-right text-xs text-gray-400">
-          <div>Turn {snapshot.turn}</div>
-          <div className="capitalize">{snapshot.phase_label}</div>
-        </div>
+        {snapshot && (
+          <div className="ml-auto text-right text-xs text-gray-400">
+            <div>Turn {snapshot.turn}</div>
+            <div className="capitalize">{snapshot.phase_label}</div>
+          </div>
+        )}
       </div>
 
+      {!snapshot && (
+        <div className="flex flex-1 items-center justify-center px-2 text-center text-xs italic text-gray-600">
+          No game loaded.
+        </div>
+      )}
+
+      {snapshot && (
+        <>
       {/* Stack + Intents */}
       <div className="grid grid-cols-2 gap-2">
         <Panel title="Stack">
@@ -92,6 +101,8 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
           )}
         </div>
       </Panel>
+        </>
+      )}
     </div>
   );
 }

@@ -317,7 +317,7 @@ def _is_capacity(v) -> bool:
 
 def _duration_suffix(e) -> str:
     dur = getattr(e, "duration", None)
-    if dur in (Duration.this_turn, Duration.end_of_turn):
+    if dur == Duration.this_turn:
         return " this turn"
     if dur == Duration.encounter:
         return " for the encounter"
@@ -406,7 +406,7 @@ def _keyword_phrase(keywords, params=None) -> str:
 
 def _grant_duration(e) -> str:
     dur = getattr(e, "duration", None)
-    if dur in (Duration.end_of_turn, Duration.this_turn):
+    if dur == Duration.this_turn:
         return " until end of turn"
     if dur == Duration.encounter:
         return " for the encounter"

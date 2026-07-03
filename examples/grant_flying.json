@@ -14,7 +14,7 @@
       "kind": "grant_keyword",
       "keywords": ["flying"],
       "target": { "class": "creature", "mode": "chosen", "side": "ally", "targeted": true },
-      "duration": "end_of_turn"
+      "duration": "this_turn"
     }
   ],
   "validated": true

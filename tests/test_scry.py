@@ -113,3 +113,22 @@ def test_scry_menu_renders_for_cockpit():
     assert all(m["kind"] in ("prompt", "choose_scry") for m in menu)
     assert any("on top" in m["label"] for m in menu)
     assert any("bottom" in m["label"] for m in menu)
+
+
+def test_scry_then_untargeted_effect_with_no_target_fizzles_not_crashes():
+    """Regression: a card like Gods Willing (scry + a `chosen`/`targeted:false` prevent)
+    is cast with no target, so the post-scry effect resolves against a None target. It
+    must fizzle gracefully rather than crash in the handler."""
+    card = _spell("gods_willing", [
+        {"kind": "scry", "amount": 1, "target": {"mode": "self"}},
+        {"kind": "prevent", "parameter": "combat_damage", "uses": "all",
+         "duration": "this_turn",
+         "target": {"mode": "chosen", "side": "any", "targeted": False}},
+    ])
+    st = _state([card] + [_plain(c) for c in ("a", "b")], hand_size=1)
+    st = _do(st, kind="cast", card_id="gods_willing")
+    st = _do(st, kind="pass")                    # resolve the sorcery → raises the scry choice
+    revealed = st.pending_choice.candidates[0].id
+    st = _place(st, revealed, "top")             # complete the scry → resolves the prevent
+    assert st.pending_choice is None and not st.stack
+    assert any(e.type == "fizzle" and e.data.get("kind") == "prevent" for e in st.log)

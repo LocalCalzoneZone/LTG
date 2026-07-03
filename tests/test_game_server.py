@@ -45,7 +45,7 @@ def _two_char_session():
 def _wound(power, toughness):
     return {"kind": "wound", "power": power, "toughness": toughness,
             "target": {"mode": "chosen", "side": "enemy", "targeted": True},
-            "duration": "end_of_turn"}
+            "duration": "this_turn"}
 
 
 def _card(cid, name, timing, cost, effects):
@@ -241,6 +241,32 @@ def test_encounter_keywords_reach_the_engine():
     assert {"flying", "lifelink"} <= set(by_name["Dread Seraph"].keywords)
 
 
+def test_snapshot_handles_non_damage_component_intent():
+    """A component intent whose leading verb isn't damage (Swarm's create_token) must
+    serialize without assuming an `amount` — regression for the CreateToken crash."""
+    from ltg_game_server.snapshot import build_snapshot
+
+    spec = {
+        "party": [{"id": "p", "name": "P", "hp": 20, "power": 2, "hand_size": 0,
+                   "identity": ["U"], "library": []}],
+        "enemies": [{
+            "id": "brood", "name": "Broodmother", "hp": 6, "power": 2, "level": 3,
+            "row": "rear", "attack_mode": "melee",
+            "components": [{
+                "id": "swarm", "archetype": "Swarm", "timing": "proactive",
+                "priority": 20, "target_rule": "self", "telegraph": "Spawn Husklings",
+                "verbs": [{"kind": "create_token", "token_id": "bat", "count": 2,
+                           "hp": 2, "power": 1}],
+            }],
+        }],
+    }
+    snap = build_snapshot(state_from_dict(spec), {"p"})  # raised AttributeError before the fix
+    brood = next(c for c in snap["creatures"] if c["name"] == "Broodmother")
+    assert brood["intent"]["name"] == "Spawn Husklings"
+    assert brood["intent"]["amount"] is None            # no damage number for a Swarm
+    assert any(it["intent_text"] == "Spawn Husklings" for it in snap["intents"])
+
+
 def test_multitarget_cast_carries_per_site_targets():
     """Independent multi-target casts (Agony Warp) ship a `targets` tuple per site,
     so the client can drive a per-site picker."""
@@ -266,6 +292,29 @@ def test_multitarget_cast_carries_per_site_targets():
     assert all(len(a["targets"]) == 2 for a in casts)
     combos = sorted(a["targets"] for a in casts)
     assert combos == [["ea", "ea"], ["ea", "eb"], ["eb", "ea"], ["eb", "eb"]]
+
+
+def test_wounded_creature_hp_shows_effective():
+    """A wound (−0/−3, e.g. Agony Warp) lowers temp_mod; the serialized hp.current
+    must be EFFECTIVE hp (hp + temp_mod), mirroring current_power — not raw hp.
+    Regression: the UI showed base hp, so a wounded creature's HP didn't update."""
+    from ltg_game_server.snapshot import build_snapshot
+
+    spec = {
+        "party": [{"id": "p", "name": "P", "hp": 20, "power": 2, "hand_size": 0,
+                   "identity": ["U"], "library": []}],
+        "enemies": [{"id": "brood", "name": "Broodmother", "hp": 4, "power": 2, "level": 3,
+                     "intent": {"name": "Hit", "amount": 1, "action_type": "ability",
+                                "mode": "melee"}}],
+    }
+    st = state_from_dict(spec)
+    st.enemy("brood").temp_mod = -3                 # a −0/−3 wound has landed
+    assert st.enemy("brood").effective_hp == 1
+
+    card = next(c for c in build_snapshot(st, {"p"})["creatures"] if c["id"] == "brood")
+    assert card["hp"]["current"] == 1               # effective, not raw hp (4)
+    assert card["hp"]["base"] == 4
+    assert card["hp"]["modifier"] == -3
 
 
 def test_counter_target_id_maps_to_a_stack_uid():

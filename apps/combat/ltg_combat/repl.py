@@ -125,8 +125,10 @@ def _render(state: GameState, acting_id: Optional[str]) -> str:
         intent = "no intent"
         if e.intent is not None:
             tgt = state.combatant(e.intent.target_id)
-            amt = e.intent.effects[0].amount if e.intent.effects else "?"
-            intent = f"{e.intent.name} ({amt}) → {tgt.name if tgt else '?'}"
+            amt = e.intent.display_amount()  # only attacks carry a damage number
+            dmg = f" ({amt})" if amt is not None else ""
+            arrow = f" → {tgt.name}" if tgt is not None else ""
+            intent = f"{e.intent.name}{dmg}{arrow}"
         lines.append(f"   {e.name}  HP {e.hp}/{e.max_hp}  Lv{e.level}  row {e.row}"
                      f"   intent: {intent}")
 

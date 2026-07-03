@@ -46,6 +46,7 @@ from .state import (
     Action,
     Channel,
     CharacterState,
+    Component,
     EnemyState,
     Event,
     GameState,
@@ -125,11 +126,14 @@ def _advance(st: GameState) -> None:
             return
 
         # A non-empty stack means a reaction window is open: a player must
-        # react or pass before the top can resolve. Always pause here.
+        # react or pass before the top can resolve. Always pause here. Priority None
+        # marks a FRESH window (a new/changed stack top), so the per-window reaction
+        # tracker resets here — this is the single canonical window-open point.
         if st.stack:
             if st.priority is None:
                 st.priority = _ordered(st.living_party())[0].id  # canonical order (R-6)
                 st.passes = 0
+                st.reacted_window = []
             return
 
         # Stack empty -> walk the turn structure (GDD §4.2).
@@ -217,10 +221,13 @@ def _begin_turn(st: GameState) -> None:
     apply any deferred ramp (capacity scheduled to arrive this turn)."""
     st.acted_enemies = []
     st.acted_tokens = []
+    st.reacted_window = []  # no window open at turn start
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
         c.committed = c.row  # Update 02 §M-B.5: begin the turn committed to where you stand
+    for e in st.enemies:
+        e.committed = e.row  # enemies use the same position model (§F-2)
     for pending in list(st.pending_ramp):
         char = st.character(pending["char"])
         if char is not None:
@@ -342,21 +349,48 @@ def _redeploy_bounced(st: GameState) -> None:
 
 
 def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
-    tmpl = e.intent_template
+    """The proactive pass (Design Update 04 §F-7.1): evaluate the enemy's merged
+    priority list first-match-wins — the top proactive component whose condition holds,
+    cooldown is ready, and target exists declares this turn's intent. The list always
+    terminates in the default Attack (priority 90), so a non-stunned enemy that can
+    still act always produces an intent. An enemy with no components goes straight to
+    the default attack (legacy behaviour, unchanged)."""
     if e.stunned > 0:  # stun: skip this intent, spend one charge (R-11)
         e.stunned -= 1
         e.intent = None
         _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
              enemy=e.id, intents=e.stunned)
         return
-    # Pacified (`prevent attack`): the enemy can't attack, so it declares nothing.
-    # Non-attack intents aren't offered by these minions, so this simply idles it.
-    if (tmpl.get("intent_type", "attack") == "attack" and _prevented_action(e, "attack")):
+    for comp in _proactive_rules(e):
+        intent = _try_declare_component(st, e, comp)
+        if intent is not None:
+            e.intent = intent
+            tgt = st.combatant(intent.target_id)
+            _log(st, "intent_declared",
+                 f"{e.name} declares {intent.name}" + (f" → {tgt.name}" if tgt else "") + ".",
+                 enemy=e.id, intent=intent.name, target=intent.target_id,
+                 component=comp.id, archetype=comp.archetype)
+            return
+    _declare_default_attack(st, e)
+
+
+def _declare_default_attack(st: GameState, e: EnemyState) -> None:
+    """The terminal priority-90 rule: the basic attack. Pacified (`prevent attack`) or
+    with no reachable target, the enemy declares nothing (Move-toward-reach is added in
+    §F-7.3)."""
+    tmpl = e.intent_template
+    if tmpl.get("intent_type", "attack") == "attack" and _prevented_action(e, "attack"):
         e.intent = None
         _log(st, "pacified", f"{e.name} can't attack and declares nothing.", enemy=e.id)
         return
     target, mode, amount, name = _choose_enemy_attack(st, e)
     if target is None:
+        dest = _move_toward_reach(st, e)  # §F-7.3: step toward reach instead of idling
+        if dest is not None:
+            e.intent = _move_intent("Advance", dest, None)
+            _log(st, "intent_declared", f"{e.name} advances toward {dest} (no target in reach).",
+                 enemy=e.id, intent="Advance", destination=dest)
+            return
         e.intent = None
         _log(st, "no_target", f"{e.name} has no reachable target and declares nothing.",
              enemy=e.id)
@@ -366,10 +400,200 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     # An attack-type intent lands on the stack as an `attack` (so combat_damage
     # prevention and ability/attack counters answer it — R-1/R-11).
     kind = "attack" if tmpl.get("intent_type", "attack") == "attack" else tmpl.get("action_type", "ability")
-    e.intent = Intent(name=name, action_type=kind, effects=effects, target_id=target.id)
+    # Base (pre-bonus) Power of the chosen attack, so a wound/anthem landing after
+    # declaration re-blunts/boosts the swing when it executes (see Intent.attack_damage).
+    src_tmpl = tmpl if mode == tmpl.get("mode", "melee") else e.ranged_template
+    base = int(src_tmpl.get("amount", 0))
+    e.intent = Intent(name=name, action_type=kind, effects=effects, target_id=target.id,
+                      attack_power=base)
     _log(st, "intent_declared",
          f"{e.name} declares {name} ({mode} {amount} dmg) → {target.name}.",
          enemy=e.id, intent=name, amount=amount, target=target.id, mode=mode)
+
+
+# --------------------------------------------------------------------------- #
+# Components: the merged priority list (Design Update 04 §F-3 / §F-7)
+# --------------------------------------------------------------------------- #
+def _proactive_rules(e: EnemyState) -> List[Component]:
+    """The enemy's proactive components in evaluation order: priority ascending, ties
+    broken by authoring order (§F-7.1). `sorted` is stable, so a priority-only key keeps
+    authoring order within a band."""
+    return sorted([c for c in e.components if c.timing == "proactive"],
+                  key=lambda c: c.priority)
+
+
+def _cooldown_ready(st: GameState, e: EnemyState, comp: Component) -> bool:
+    """A component is off cooldown once the current turn reaches its next-usable turn
+    (0 by default → always ready). once_per_encounter parks the value out of reach."""
+    return st.turn >= e.cooldowns.get(comp.id, 0)
+
+
+def _start_cooldown(st: GameState, e: EnemyState, comp_id: str) -> None:
+    """Consume a fired component's cooldown (§F-3.1): it is next usable `cooldown` whole
+    turns from now (min 1 so a fire always costs a turn); once_per_encounter never returns."""
+    comp = next((c for c in e.components if c.id == comp_id), None)
+    if comp is None:
+        return
+    e.cooldowns[comp_id] = 10 ** 9 if comp.once_per_encounter else st.turn + max(1, comp.cooldown)
+
+
+def _cmp(lhs: float, op: str, rhs: float) -> bool:
+    return {"<": lhs < rhs, "<=": lhs <= rhs, ">": lhs > rhs,
+            ">=": lhs >= rhs, "==": lhs == rhs, "!=": lhs != rhs}.get(op, False)
+
+
+def _condition_met(st: GameState, e: EnemyState, cond: dict) -> bool:
+    """Evaluate a component's optional eligibility gate (§F-3): self-HP fraction, the
+    turn number, this enemy's ally count, or raw self-HP. An unknown kind fails closed."""
+    kind = cond.get("kind")
+    op = cond.get("op", ">=")
+    val = cond.get("value", 0)
+    if kind == "self_hp_pct":
+        lhs = 100.0 * e.effective_hp / e.max_hp if e.max_hp else 0.0
+    elif kind == "self_hp":
+        lhs = e.effective_hp
+    elif kind == "turn":
+        lhs = st.turn
+    elif kind == "ally_count":
+        lhs = len([o for o in st.living_enemies() if o.id != e.id])
+    else:
+        return False
+    return _cmp(lhs, op, val)
+
+
+def _component_eligible(st: GameState, e: EnemyState, comp: Component) -> bool:
+    if not _cooldown_ready(st, e, comp):
+        return False
+    if comp.condition is not None and not _condition_met(st, e, comp.condition):
+        return False
+    return True
+
+
+def _component_target(st: GameState, e: EnemyState, comp: Component):
+    """Resolve a component's `target_rule` to a concrete combatant (§F-3 / §F-7.2), or
+    None when it wants a target it can't find (so the rule is skipped, first-match-wins).
+
+    Frame note: an enemy's "ally" is another enemy; a player-directed rule uses the
+    reachability-aware valuation pick (refined further in §F-7.2)."""
+    rule = comp.target_rule
+    if rule == "self":
+        return e
+    if rule == "lowest_hp_ally":
+        return _lowest_hp([o for o in st.living_enemies() if o.id != e.id])
+    if rule == "channeling_player":
+        return _lowest_hp([c for c in st.living_party() if c.channels])
+    if rule == "valuation":
+        return _valuation_target(st, e, comp)
+    return st.combatant(rule)  # a fixed combatant id
+
+
+def _component_damage(comp: Component) -> int:
+    """The constant `deal_damage` a component's verbs would deal (0 if it deals none) —
+    what the valuation reads to judge 'finishable' and 'channel-breakable'."""
+    total = 0
+    for eff in comp.verbs:
+        if getattr(eff, "kind", None) == "deal_damage":
+            amt = getattr(eff, "amount", 0)
+            if isinstance(amt, int):
+                total += amt
+    return total
+
+
+def _role_rank(c) -> int:
+    """Role value for valuation step 3 (§F-7.2): actively-casting/support first, then
+    ranged, then melee."""
+    if getattr(c, "channels", None):
+        return 0
+    return 1 if getattr(c, "attack_mode", "melee") == "ranged" else 2
+
+
+def _swarm_at_cap(st: GameState, e: EnemyState, comp: Component) -> bool:
+    """A Swarm component is a no-op once the creator already has 2 living tokens (§F-4
+    T-27) — skip it so the enemy does something useful instead."""
+    if not any(getattr(v, "kind", None) == "create_token" for v in comp.verbs):
+        return False
+    return len([o for o in st.living_enemies() if o.created_by == e.id]) >= 2
+
+
+def _valuation_target(st: GameState, e: EnemyState, comp: Component):
+    """The target-valuation brain (§F-7.2). Candidates are the reachable, non-hexproof
+    players; then ranked, first-match-wins:
+
+      1. Finishable — effective HP ≤ this hit's damage; take the highest such (biggest kill).
+      2. Channel-breakable — channeling and this hit ≥ 25% of its max HP (GDD §8).
+      3/4. Role value (caster/support > ranged > melee), then lowest effective HP.
+      5. Deterministic tiebreak — row order (front > mid > rear), then name.
+
+    This is what makes an archer snipe the exposed channeler and a brute finish the
+    wounded frontliner with no per-enemy scripting."""
+    dmg = _component_damage(comp)
+    cands = [c for c in _reachable_targets(e, st.living_party()) if not _has_kw(c, "hexproof")]
+    return _rank_valuation(cands, dmg)
+
+
+def _rank_valuation(cands: List, dmg: int):
+    """The §F-7.2 ranking applied to an already-reachable candidate list and a known hit
+    size — shared by valuation components and the default attack (whose damage is Power)."""
+    if not cands:
+        return None
+    if dmg > 0:
+        finishable = [c for c in cands if c.effective_hp <= dmg]
+        if finishable:  # highest effective HP among the kills, then the deterministic tiebreak
+            return sorted(finishable, key=lambda c: (-c.effective_hp, _row_rank(c.row), c.name))[0]
+        breakers = [c for c in cands if getattr(c, "channels", None)
+                    and dmg >= _break_threshold(c)]
+        if breakers:
+            return sorted(breakers, key=lambda c: (_row_rank(c.row), c.name))[0]
+    return sorted(cands, key=lambda c: (_role_rank(c), c.effective_hp, _row_rank(c.row), c.name))[0]
+
+
+def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Optional[Intent]:
+    """Build this component's intent if it is eligible and has a target; else None (the
+    priority pass moves on). Movement/repositioning rules are declared in §F-7.3."""
+    if not _component_eligible(st, e, comp):
+        return None
+    if comp.move_home:  # an Evasive/repositioning rule declares a Move (§F-7.3)
+        dest = _reposition_row(st, e, comp)
+        if dest is None or dest == e.committed:
+            return None  # already where it wants to be — skip to the next rule
+        return _move_intent(comp.telegraph or "Reposition", dest, comp.id)
+    if _swarm_at_cap(st, e, comp):
+        return None  # already at the per-creator token cap — skip (attack instead, §F-4)
+    target = _component_target(st, e, comp)
+    if comp.target_rule != "self" and target is None:
+        return None  # wanted a target it can't reach — skip to the next rule
+    name = comp.telegraph or comp.archetype or "Ability"
+    return Intent(name=name, action_type="ability", effects=list(comp.verbs),
+                  target_id=(target.id if target is not None else None),
+                  source_component=comp.id)
+
+
+# --------------------------------------------------------------------------- #
+# Enemy movement (Design Update 04 §F-7.3; position model per §F-2 / Update 02)
+# --------------------------------------------------------------------------- #
+def _move_intent(name: str, dest: str, comp_id: Optional[str]) -> Intent:
+    """A Move intent: no stack action, no reaction window — it queues a destination row
+    that resolves at End step. Its "target" is the row, carried on `move_to`."""
+    return Intent(name=name, action_type="ability", effects=[], target_id=None,
+                  kind="move", move_to=dest, source_component=comp_id)
+
+
+def _reposition_row(st: GameState, e: EnemyState, comp: Component) -> Optional[str]:
+    """Where a repositioning rule sends the enemy — its home row (Evasive retreats to
+    the safe row it lives on, §F-2/§F-8 Bloodbat). Returns None if already home."""
+    return e.home_row if e.home_row != e.committed else None
+
+
+def _move_toward_reach(st: GameState, e: EnemyState) -> Optional[str]:
+    """The row a stranded enemy steps to when nothing is reachable (§F-7.3): toward the
+    front-most row a living player occupies, one step at a time is unnecessary here —
+    it commits to that row and the reach check re-runs next turn. None if no players."""
+    party = st.living_party()
+    if not party:
+        return None
+    front = min(_row_rank(c.row) for c in party)
+    dest = next((r for r, rank in _ROW_RANK.items() if rank == front), "front")
+    return dest if dest != e.committed else None
 
 
 def _attack_amount(e: EnemyState, tmpl: dict) -> int:
@@ -434,6 +658,11 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
     if rule == "lowest_hp":  # the Brute: always the globally lowest-HP character
         return aim(_lowest_hp(fallback if has_fallback else primary))
 
+    if rule == "valuation":  # §F-7.2 default-attack brain (finishable / channel-break / role)
+        pool = primary if primary else (fallback if has_fallback else [])
+        dmg = primary_amount if primary else fb_amount
+        return aim(_rank_valuation(pool, dmg))
+
     if rule not in ("lowest_hp_party", "front_lowest_hp"):  # a fixed character id
         cand = st.character(rule)
         if cand is not None and cand.alive and not _has_kw(cand, "hexproof"):
@@ -467,15 +696,41 @@ def _declare_ally_intent(st: GameState, token: TokenState) -> None:
 
 
 def _execute_intent(st: GameState, enemy: EnemyState) -> None:
-    """Move a declared intent onto the stack as an action (GDD §5.2)."""
+    """Move a declared intent onto the stack as an action (GDD §5.2). A component
+    intent starts that component's cooldown as it executes (§F-3.1)."""
     st.acted_enemies.append(enemy.id)
     intent = enemy.intent
-    if intent is None or intent.target_id is None:
+    if intent is None:
         return
+    if intent.source_component is not None:
+        _start_cooldown(st, enemy, intent.source_component)
+    if intent.kind == "move":  # a Move queues a destination row, resolved at End step
+        enemy.pending_voluntary = intent.move_to
+        enemy.intent = None
+        _log(st, "enemy_move",
+             f"{enemy.name} will move to {intent.move_to} (resolves at End step).",
+             enemy=enemy.id, destination=intent.move_to)
+        return
+    if intent.target_id is None:
+        enemy.intent = None
+        return
+    # Re-check target legality as the intent ENTERS the stack: a target that left play,
+    # was incapacitated, or gained Hexproof since this was telegraphed makes the swing
+    # fizzle now rather than reach the stack (it is also re-checked at resolution, R-12).
+    target = st.combatant(intent.target_id)
+    if (target is None or not _legal_target(target)
+            or (intent.action_type == "attack" and _has_kw(target, "hexproof"))):
+        _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no legal target.",
+             enemy=enemy.id, label=intent.name)
+        enemy.intent = None
+        return
+    # Carry the base attack Power so the damage is recomputed from the enemy's CURRENT
+    # power when it RESOLVES — a wound (e.g. Agony Warp −3/−0) applied after declaration,
+    # or while the swing sits on the stack, must reduce what lands (R-7).
     _push(st, StackItem(kind=intent.action_type, source_id=enemy.id,
                         source_side="enemy", label=intent.name,
                         effects=intent.effects, target_id=intent.target_id,
-                        attack_mode=enemy.attack_mode))
+                        attack_mode=enemy.attack_mode, attack_power=intent.attack_power))
     enemy.intent = None
     st.priority = None  # open a fresh reaction window (party order, set in _advance)
     st.passes = 0
@@ -522,6 +777,10 @@ def _end_step(st: GameState) -> None:
         e.temp_mod = e.prevent_pool = e.power_bonus = 0
         e.prevent_tags = []
         e.taunted_by = None
+        # The body catches up to a queued Move (§F-7.3 / Update 02 §M-B.5), else stays
+        # where it committed. Then clear the voluntary slot.
+        e.row = e.pending_voluntary if e.pending_voluntary is not None else e.committed
+        e.pending_voluntary = None
         _expire_keywords(e)
     for t in st.tokens:
         t.temp_mod = t.power_bonus = t.prevent_pool = 0
@@ -551,7 +810,7 @@ def _expire_keywords(combatant) -> None:
     """Drop granted keywords whose duration ends with the turn (encounter /
     permanent / while_channeled persist; the channel break lifts the last)."""
     for kw, dur in list(combatant.keywords.items()):
-        if dur in ("end_of_turn", "this_turn"):
+        if dur in ("this_turn", "end_of_turn"):  # end_of_turn: legacy alias of this_turn
             del combatant.keywords[kw]
 
 
@@ -636,18 +895,147 @@ def _do_choose_card(st: GameState, action: Action) -> None:
 
 
 def _do_pass(st: GameState, action: Action) -> None:
-    """Pass priority in the open reaction window. When every living PC has passed
-    in succession, the top of the stack resolves (LIFO)."""
+    """Pass priority in the open reaction window (§F-7.4). When every living PC has
+    passed in succession: first offer the enemy side a reaction to the stack top
+    (pre-resolution triggers); if one fires the window reopens and the top does NOT
+    resolve. Otherwise the top resolves, and the effects it produced are offered to
+    the enemy side as post-resolution triggers (on_hit / on_ally_hit / on_ally_death)."""
     actor = st.character(action.actor_id)
     _log(st, "pass", f"{actor.name} passes.", character=actor.id)
     st.passes += 1
     if st.passes >= len(st.living_party()):
-        _resolve_top(st)
+        if _offer_reactions(st, _pre_trigger_ctx(st)):
+            return  # an enemy answered the top; the reopened window is the party's
+        start = len(st.log)
+        item = _resolve_top(st)
         _process_breaks(st)  # a breaking hit just resolved? end channels, release mana
         st.passes = 0
-        st.priority = None  # next item (or close) — re-seeded by _advance
+        st.priority = None   # next item (or close) — re-seeded by _advance
+        _offer_reactions(st, _post_trigger_ctx(st, item, st.log[start:]))
     else:
         st.priority = _next_priority_after(st, actor.id)
+
+
+# --------------------------------------------------------------------------- #
+# Enemy reactions (Design Update 04 §F-3.2 / §F-7.4): trigger-typed, one per enemy
+# per window, cross-turn reuse gated by per-component cooldowns.
+# --------------------------------------------------------------------------- #
+def _reactive_rules(e: EnemyState) -> List[Component]:
+    """The enemy's reactive components in evaluation order (priority ascending, ties by
+    authoring order)."""
+    return sorted([c for c in e.components if c.timing == "reactive"],
+                  key=lambda c: c.priority)
+
+
+def _pre_trigger_ctx(st: GameState) -> dict:
+    """The trigger context for reactions evaluated BEFORE the stack top resolves: the
+    item under answer is the current top (a player play or an enemy action)."""
+    return {"phase": "pre", "stack_top": st.stack[-1] if st.stack else None,
+            "hits": [], "deaths": [], "attacker": None}
+
+
+def _post_trigger_ctx(st: GameState, item: Optional[StackItem], events: List[Event]) -> dict:
+    """The trigger context for reactions evaluated AFTER a resolution: which combatants
+    took damage (`hits`), which enemies died (`deaths`), and who dealt it (`attacker` =
+    the resolved item's source), read from the events the resolution emitted."""
+    hits = [ev.data.get("target") for ev in events if ev.type == "damage"]
+    deaths = [ev.data.get("enemy") for ev in events if ev.type == "enemy_died"]
+    return {"phase": "post", "stack_top": None, "hits": hits, "deaths": deaths,
+            "attacker": item.source_id if item is not None else None}
+
+
+def _offer_reactions(st: GameState, ctx: dict) -> bool:
+    """Offer the enemy side its reaction to `ctx` (§F-7.4 step 3). Across all in-play
+    enemies (canonical R-6 order) that have not yet reacted this window, gather the
+    single top-priority eligible reactive rule whose trigger matches; the highest-
+    priority one across the side fires, pushing a new stack action and reopening the
+    party's window. One reaction per call — the caller returns to player priority.
+
+    Termination: firing consumes both the per-window slot (`reacted_window`) and the
+    component's cooldown (≥1 turn), so the eligible set strictly shrinks."""
+    best = None  # (priority, order_index, enemy, component)
+    for order, e in enumerate(_ordered(st.living_enemies())):
+        if e.id in st.reacted_window:
+            continue
+        for comp in _reactive_rules(e):
+            if not _component_eligible(st, e, comp):
+                continue
+            if not _trigger_matches(st, e, comp, ctx):
+                continue
+            cand = (comp.priority, order, e, comp)
+            if best is None or cand[:2] < best[:2]:
+                best = cand
+            break  # one candidate per enemy (its top-priority matching rule)
+    if best is None:
+        return False
+    _, _, e, comp = best
+    _fire_reaction(st, e, comp, ctx)
+    return True
+
+
+def _trigger_matches(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> bool:
+    """Whether `comp`'s trigger fires for this context (§F-3.2). Pre-resolution triggers
+    read the stack top; post-resolution triggers read what the resolution did."""
+    trig = comp.trigger
+    top = ctx.get("stack_top")
+    if ctx["phase"] == "pre":
+        if trig == "on_spell_cast":
+            return top is not None and top.source_side == "party" and top.kind == "spell"
+        if trig == "on_targeted":
+            return top is not None and top.source_side == "party" and top.target_id == e.id
+        if trig == "on_incoming_lethal":
+            return top is not None and _would_be_lethal(st, top, e)
+        return False
+    # post-resolution
+    hits, deaths = ctx.get("hits", []), ctx.get("deaths", [])
+    if trig == "on_hit":
+        return e.id in hits
+    if trig == "on_ally_hit":
+        return any(h != e.id and st.enemy(h) is not None for h in hits)
+    if trig == "on_ally_death":
+        return any(d != e.id for d in deaths)
+    return False
+
+
+def _would_be_lethal(st: GameState, item: StackItem, e: EnemyState) -> bool:
+    """Whether resolving `item` would drop `e` to ≤0 effective HP — the total of its
+    constant `deal_damage` aimed at `e`. (Dynamic/prevented damage isn't modelled here;
+    the common targeted spell/attack is.)"""
+    if item.target_id != e.id:
+        return False
+    total = 0
+    for eff in item.effects:
+        if getattr(eff, "kind", None) == "deal_damage":
+            amt = getattr(eff, "amount", 0)
+            if isinstance(amt, int):
+                total += amt
+    return total >= e.effective_hp
+
+
+def _reaction_target(st: GameState, e: EnemyState, comp: Component, ctx: dict):
+    """Resolve a reaction's target. `trigger_source` is the player who caused the
+    trigger — the caster/attacker (the stack top's source pre-resolution, the resolved
+    item's source post-resolution); other rules resolve as for a proactive component."""
+    if comp.target_rule == "trigger_source":
+        src = ctx["stack_top"].source_id if ctx.get("stack_top") else ctx.get("attacker")
+        return st.combatant(src)
+    return _component_target(st, e, comp)
+
+
+def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> None:
+    """Push an enemy reaction onto the stack and reopen the party's window. Consumes
+    the per-window slot and starts the component's cooldown."""
+    target = _reaction_target(st, e, comp, ctx)
+    _start_cooldown(st, e, comp.id)
+    st.reacted_window.append(e.id)
+    label = comp.telegraph or comp.archetype or "Reaction"
+    tid = target.id if target is not None else None
+    _push(st, StackItem(kind="ability", source_id=e.id, source_side="enemy",
+                        label=label, effects=list(comp.verbs), target_id=tid))
+    st.priority = None   # reopen the window; party order re-seeded by _advance
+    st.passes = 0
+    _log(st, "enemy_react", f"{e.name} reacts with {label}.",
+         enemy=e.id, label=label, target=tid, trigger=comp.trigger)
 
 
 def _do_end_turn(st: GameState, action: Action) -> None:
@@ -667,10 +1055,15 @@ def _do_attack(st: GameState, action: Action) -> None:
     hits = 2 if _has_kw(actor, "double_strike") else 1  # double strike: strikes twice
     effects = [DealDamage(amount=actor.current_power, target=t_chosen("enemy", targeted=True))
                for _ in range(hits)]
+    # attack_power = base Power so resolution recomputes damage from the actor's CURRENT
+    # power (a reaction-window pump/wound changes what lands — R-7).
+    # A First Strike swing made into an open window reacts (stacks above, resolves first);
+    # the normal main-phase attack opens a fresh window at party order.
+    reactive = bool(st.stack)
     _push(st, StackItem(kind="attack", source_id=actor.id, source_side="party",
                         label="Basic Attack", effects=effects, target_id=action.target_id,
-                        attack_mode=actor.attack_mode))
-    _open_window(st, actor.id, reactive=False)
+                        attack_mode=actor.attack_mode, attack_power=actor.power))
+    _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
     _log(st, "attack_declared",
          f"{actor.name} attacks {tgt.name} ({actor.attack_mode} Power {actor.current_power}).",
@@ -772,8 +1165,16 @@ def _apply_mitigation(st: GameState, item: StackItem, target, amount: int):
 
 
 def _do_drop_channels(st: GameState, action: Action) -> None:
-    """Voluntary drop (a free action): end all of the holder's channels at once."""
+    """Voluntary drop (a free action): end one named channel (`card_id`) or, when
+    no card is named, all of the holder's channels at once."""
     actor = st.character(action.actor_id)
+    if action.card_id is not None:
+        channel = next((ch for ch in actor.channels if ch.card.id == action.card_id), None)
+        if channel is None:
+            return
+        _log(st, "drop_channels", f"{actor.name} drops {channel.card.name}.", character=actor.id)
+        _end_channels(st, actor, [channel], reason="voluntary")
+        return
     _log(st, "drop_channels", f"{actor.name} drops concentration.", character=actor.id)
     _break_channels(st, actor, reason="voluntary")
 
@@ -808,15 +1209,18 @@ def _next_priority_after(st: GameState, actor_id: str) -> str:
 # --------------------------------------------------------------------------- #
 # Resolving the stack
 # --------------------------------------------------------------------------- #
-def _resolve_top(st: GameState) -> None:
+def _resolve_top(st: GameState) -> StackItem:
+    """Resolve and return the popped top item (the caller reads it to build the
+    post-resolution reaction context — §F-7.4)."""
     item = st.stack.pop()
     _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
     # A channeled card doesn't run its effects once — it becomes a held channel.
     if item.card is not None and item.card.timing == Timing.channeled:
         _start_channel(st, item)
-        return
+        return item
     ctx = _new_ctx(st, item)
     _resolve_effect_list(st, item, item.effects, ctx)
+    return item
 
 
 def _new_ctx(st: GameState, item: StackItem) -> dict:
@@ -999,6 +1403,7 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
                 target.intent = None  # a suspended enemy telegraphs nothing
                 if target.id in st.acted_enemies:
                     st.acted_enemies.remove(target.id)
+                _purge_stack_from(st, target.id, "exiled")  # its swings go with it
                 if log_it:
                     _log(st, "exiled", f"{target.name} is exiled while the channel holds.",
                          target=target.id, level=target.level, channeled=True)
@@ -1072,19 +1477,30 @@ def _process_breaks(st: GameState) -> None:
 def _break_channels(st: GameState, char: CharacterState, reason: str) -> None:
     """End ALL of a character's channels at once (all-or-nothing): lift continuous
     effects and release all reserved mana into the pool as a respondable stack
-    trigger (GDD §8). The card is already in the graveyard (R-9) — the channel
-    simply ends."""
-    if not char.channels:
+    trigger (GDD §8). Breaks (damage) are always all-or-nothing; a voluntary drop
+    may instead end a single channel via `_end_channels`."""
+    _end_channels(st, char, list(char.channels), reason)
+
+
+def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
+                  reason: str) -> None:
+    """End the given channels: lift their continuous effects and release their
+    reserved mana into the pool as one respondable stack trigger (GDD §8). The
+    card is already in the graveyard (R-9) — the channel simply ends. `channels`
+    is a subset of the holder's channels (all of them for a break; one for a
+    voluntary single drop)."""
+    channels = [ch for ch in channels if ch in char.channels]
+    if not channels:
         return
     released: List[str] = []
-    for channel in char.channels:
+    for channel in channels:
         for effect in channel.card.effects:
             if _is_continuous(effect):
                 _remove_continuous(st, channel, effect)
         released.extend(channel.reserved)
         _log(st, "channel_end", f"{channel.card.name}'s channel ends (the card is "
              f"already in the graveyard).", character=char.id, card=channel.card.id, reason=reason)
-    char.channels = []
+    char.channels = [ch for ch in char.channels if ch not in channels]
     # Release the reserved mana immediately so it can fund a reaction this window,
     # and put a respondable trigger on the stack (GDD §8).
     char.pool.extend(released)
@@ -1096,6 +1512,11 @@ def _break_channels(st: GameState, char: CharacterState, reason: str) -> None:
          f"{char.name}'s channels break ({reason}); {_mana_str(released)} released "
          f"(pool now {_mana_str(char.pool)}).",
          character=char.id, released=list(released), reason=reason)
+
+
+# Effects that act on the source or a stack item, not on the resolved `target`
+# (a None target is legitimate for them); every other effect needs a target to land on.
+_TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana"})
 
 
 def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
@@ -1128,6 +1549,13 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
 
     # One effect can hit a SET (mode 'all') or a single creature; resolve per target.
     for target in _resolution_targets(st, item, effect, ctx):
+        # A per-target effect with no resolved target does nothing — fizzle rather than
+        # crash. This covers a card cast with no target whose effect still expects one
+        # (e.g. a `chosen`/`targeted:false` prevent that was never given a creature).
+        if target is None and effect.kind not in _TARGETLESS:
+            _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no target).",
+                 kind=effect.kind)
+            continue
         if _is_targeted(effect) and (target is None or not _legal_target(target)):
             _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no legal target).",
                  kind=effect.kind)
@@ -1264,10 +1692,61 @@ def _value(amount, ctx: dict) -> int:
 # ---- one handler per effect primitive --------------------------------------- #
 def _r_deal_damage(st, item, effect, target, ctx):
     amount = _value(effect.amount, ctx)
-    if item.kind == "attack":  # Mitigate answers attack-type hits only (Update 02 §M-A.1)
+    source_obj = st.combatant(item.source_id)
+    if item.kind == "attack":
+        # The attacker must still be in play when the swing resolves (R-12): a First
+        # Strike reaction that killed it first removes this attack — a dead/removed
+        # source deals no combat damage.
+        if item.attack_power is not None and source_obj is None:
+            _log(st, "fizzle", f"{item.label} fizzles — its attacker is gone.", kind="attack")
+            return
+        # A basic attack's damage is its source's CURRENT Power, evaluated now (R-7):
+        # a wound/anthem landing after the swing was declared changes what lands.
+        if item.attack_power is not None:
+            amount = max(0, item.attack_power + source_obj.power_bonus)
+        # Mitigate answers attack-type hits only (Update 02 §M-A.1)
         target, amount = _apply_mitigation(st, item, target, amount)
-    _deal_damage(st, target, amount, source=item.label,
-                 source_obj=st.combatant(item.source_id), damage_kind=item.kind)
+    overkill = _deal_damage(st, target, amount, source=item.label,
+                            source_obj=source_obj, damage_kind=item.kind)
+    # Trample: if the blow felled the target, the excess cleaves onto ONE more creature.
+    if (item.kind == "attack" and overkill > 0 and source_obj is not None
+            and _has_kw(source_obj, "trample")):
+        _trample_cleave(st, source_obj, target, overkill, item.attack_mode, item.label)
+
+
+def _mode_can_strike(attacker, defender, mode: Optional[str]) -> bool:
+    """R-1 legality for a single hit, ignoring the front-row targeting rule: ranged hits
+    anything; ground melee can't touch a flyer (unless the attacker has flying/reach).
+    So a melee trample can't cleave onto a Flying creature."""
+    if (mode or getattr(attacker, "attack_mode", "melee")) == "ranged":
+        return True
+    akw = getattr(attacker, "keywords", {})
+    if "flying" in akw or "reach" in akw:
+        return True
+    return "flying" not in getattr(defender, "keywords", {})
+
+
+def _trample_cleave(st: GameState, attacker, primary, excess: int,
+                    mode: Optional[str], label: str) -> None:
+    """Spill `excess` trample damage onto ONE more creature on the felled target's side:
+    the lowest-HP legal target on the primary's row or an adjacent row. It goes through
+    that creature's own mitigation (no bypass) and can't land on an illegal target (e.g.
+    a Flying creature for a ground-melee swing). No viable target → the excess is lost."""
+    if isinstance(primary, EnemyState):
+        pool = [c for c in st.living_enemies() if c is not primary]
+    else:  # a felled ally (player/token) — an enemy trample cleaves to the party side
+        pool = [c for c in (st.living_party() + st.living_tokens()) if c is not primary]
+    prow = _row_rank(primary.row)
+    pool = [c for c in pool
+            if abs(_row_rank(c.row) - prow) <= 1 and _mode_can_strike(attacker, c, mode)]
+    if not pool:
+        return
+    carry = sorted(pool, key=lambda c: (c.effective_hp, _row_rank(c.row), c.name))[0]
+    _log(st, "trample", f"{primary.name} falls; {excess} tramples onto {carry.name}.",
+         source=getattr(attacker, "id", None), target=_tid(carry), amount=excess)
+    # damage_kind="attack" so it stays combat damage; no further cleave (single carry).
+    _deal_damage(st, carry, excess, source=f"{label} (trample)",
+                 source_obj=attacker, damage_kind="attack")
 
 
 def _r_heal(st, item, effect, target, ctx):
@@ -1429,9 +1908,12 @@ def _r_move_card(st, item, effect, target, ctx):
 
 
 def _r_create_token(st, item, effect, target, ctx):
-    # Create autonomous ally token(s). The effect carries the stats/keywords the
-    # card author chose; anything it leaves unset falls back to the scenario's
-    # token definition (legacy `tokens` map).
+    # An enemy Swarm (§F-4) spawns enemy-side tokens; a card's create_token spawns
+    # autonomous ally tokens. Both read the effect's stats, falling back to the
+    # scenario's token definition (legacy `tokens` map) for anything unset.
+    if item.source_side == "enemy":
+        _create_enemy_tokens(st, item, effect)
+        return
     tdef = st.token_defs.get(effect.token_id, {})
     hp = int(effect.hp) if getattr(effect, "hp", None) is not None else int(tdef.get("hp", 1))
     power = int(effect.power) if getattr(effect, "power", None) is not None else int(tdef.get("power", 1))
@@ -1450,6 +1932,45 @@ def _r_create_token(st, item, effect, target, ctx):
         st.tokens.append(token)
         _log(st, "token_created", f"A {token.name} (HP {token.hp}/Power {token.power}) "
              f"joins the party.", token=token.id, token_id=effect.token_id)
+
+
+def _create_enemy_tokens(st: GameState, item: StackItem, effect) -> None:
+    """Swarm (§F-4): spawn Husk-chassis enemy tokens for the creator, capped at 2 alive
+    per creator (T-27). A spawned token is a full enemy — it holds a row, declares a
+    basic melee attack next turn, and must be defeated for victory. It appears after the
+    Intents step, so it first acts on the following turn."""
+    creator = item.source_id
+    tdef = st.token_defs.get(effect.token_id, {})
+    hp = int(effect.hp) if getattr(effect, "hp", None) is not None else int(tdef.get("hp", 1))
+    power = int(effect.power) if getattr(effect, "power", None) is not None else int(tdef.get("power", 1))
+    level = int(tdef.get("level", 1))
+    row = tdef.get("row", "front")
+    mode = tdef.get("attack_mode", "melee")
+    keywords = ({k: "encounter" for k in effect.keywords} if getattr(effect, "keywords", None)
+                else _keyword_dict_like(tdef.get("keywords", {})))
+    room = 2 - len([e for e in st.living_enemies() if e.created_by == creator])
+    for _ in range(max(0, min(effect.count, room))):
+        st.token_seq += 1
+        tok = EnemyState(
+            id=f"{effect.token_id}_{st.token_seq}",
+            name=tdef.get("name", effect.token_id.replace("_", " ").title()),
+            max_hp=hp, hp=hp, level=level, power=power,
+            row=row, committed=row, home_row=row, attack_mode=mode,
+            intent_template={"name": "Strike", "amount": power, "action_type": "ability",
+                             "intent_type": "attack", "targeting": "lowest_hp_party",
+                             "mode": mode},
+            created_by=creator, keywords=dict(keywords))
+        st.enemies.append(tok)
+        _log(st, "token_created",
+             f"A {tok.name} (HP {hp}/Power {power}) joins the enemy side.",
+             enemy=tok.id, token_id=effect.token_id, created_by=creator)
+
+
+def _keyword_dict_like(kw) -> dict:
+    """A token def's keywords as a {keyword: duration} dict (a list means encounter-long)."""
+    if isinstance(kw, dict):
+        return dict(kw)
+    return {k: "encounter" for k in (kw or [])}
 
 
 def _r_exile(st, item, effect, target, ctx):
@@ -1484,6 +2005,8 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
     (the Intents step). Fires no death triggers — bounce is not death (§E-D)."""
     enemy.in_hand = True
     enemy.intent = None                       # pending intent reset — declares fresh on redeploy
+    enemy.pending_voluntary = None            # a queued Move is dropped; it re-enters at its row
+    enemy.committed = enemy.row
     # Shed temporary modifiers (the pump/wound layers would expire at End anyway, R-7).
     enemy.temp_mod = enemy.prevent_pool = enemy.power_bonus = 0
     enemy.prevent_tags = []
@@ -1498,6 +2021,7 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
     _log(st, "bounced",
          f"{enemy.name} is bounced to hand (redeploys next turn; HP {enemy.hp} retained).",
          enemy=enemy.id, hp=enemy.hp, row=enemy.row)
+    _purge_stack_from(st, enemy.id, "bounced")
 
 
 def _power_of(c) -> int:
@@ -1723,7 +2247,7 @@ def _filter_matches(filter_node: str, item: StackItem) -> bool:
 
 def _duration_value(effect) -> str:
     dur = getattr(effect, "duration", None)
-    return dur.value if dur is not None else "end_of_turn"
+    return dur.value if dur is not None else "this_turn"
 
 
 # --------------------------------------------------------------------------- #
@@ -1755,15 +2279,19 @@ def _prevent_match(parameter: str, damage_kind: str) -> bool:
 
 
 def _deal_damage(st: GameState, target, amount: int, source: str = "", source_obj=None,
-                 damage_kind: str = "spell") -> None:
+                 damage_kind: str = "spell") -> int:
     """Damage is answered, in order, by: a matching `prevent` tag (nullifies it),
     `protection` (negates a whole spell/attack), Parry's numeric reduction, then any
     **positive** temporary HP (the Defend/pump buffer soaks the blow before base HP —
     GDD §4.9 "a buffer that absorbs a blow"); the remainder reduces `hp` directly
     (R-7). Lethality is then checked on effective_hp. Source keywords
-    (deathtouch/lifelink) and target indestructible apply here."""
+    (deathtouch/lifelink) and target indestructible apply here.
+
+    Returns the OVERKILL — damage beyond what the target's HP could absorb — but only
+    when the target actually fell (dead / incapacitated). Trample reads it to cleave the
+    excess onto one more creature (see `_r_deal_damage`); every other caller ignores it."""
     if target is None or amount <= 0:
-        return
+        return 0
 
     # R-11 prevent: a matching shield cancels the hit outright. A one-shot shield
     # (`uses="next"`) is spent by it; an "all" shield (uses=None) keeps standing and
@@ -1776,14 +2304,14 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
                     target.prevent_tags.remove(tag)
             _log(st, "prevented", f"{source or 'the hit'} on {target.name} is prevented "
                  f"({tag.parameter}).", target=_tid(target), parameter=tag.parameter)
-            return
+            return 0
 
     # Protection negates the next incoming spell/attack outright (GDD §7).
     if getattr(target, "protection", 0) > 0 and damage_kind in ("attack", "spell", "ability"):
         target.protection -= 1
         _log(st, "protected", f"{target.name}'s protection negates {source or 'the hit'}.",
              target=_tid(target))
-        return
+        return 0
 
     # Parry / numeric prevention reduces the hit before it lands.
     reduced = min(target.prevent_pool, amount)
@@ -1793,7 +2321,7 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
         _log(st, "reduced", f"{reduced} damage to {target.name} reduced.",
              target=_tid(target), amount=reduced)
     if amount <= 0:
-        return
+        return 0
 
     # A hit of ≥25% of max HP breaks concentration (the amount that lands — before the
     # temp-HP buffer soaks it: a big blow still rattles the channel, GDD §8).
@@ -1817,6 +2345,7 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     # The remainder reduces hp directly (R-7). Player hp floors at 0; indestructible
     # floors at 1 (it can't be reduced below 1 HP *by damage*).
     floor = 1 if _has_kw(target, "indestructible") else 0
+    overkill = max(0, amount - target.hp)  # damage beyond hp — cleaves past on trample
     dealt = target.hp - max(floor, target.hp - amount)
     target.hp = max(floor, target.hp - amount)
     if dealt > 0 or absorbed == 0:
@@ -1836,6 +2365,8 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
         target.hp = 0
         target.temp_mod = min(target.temp_mod, 0)
     _after_damage(st, target)
+    # Overkill only cleaves when the blow actually felled the target (dead / incapacitated).
+    return overkill if target.effective_hp <= 0 else 0
 
 
 def _heal(st: GameState, target, amount: int, reason: str = "") -> None:
@@ -1869,6 +2400,23 @@ def _after_damage(st: GameState, target) -> None:
     else:  # a player-character: incapacitated (its channels then break)
         _log(st, "incapacitated", f"{target.name} is incapacitated.", character=target.id)
         _note_break(st, target, "incapacitated")
+        _purge_stack_from(st, target.id, "incapacitated")  # its pending spells/attacks drop
+
+
+def _purge_stack_from(st: GameState, source_id: str, reason: str) -> None:
+    """Remove every stack item that ORIGINATES from `source_id`. When a creature leaves
+    play (killed, bounced, exiled) or a player is incapacitated, the actions it put on
+    the stack — its attack, ability, reaction, or spell — go with it and never resolve.
+    (Items that merely TARGET the gone source are left to fizzle at resolution instead —
+    they may still have other legal targets.)"""
+    removed = [it for it in st.stack if it.source_id == source_id]
+    if not removed:
+        return
+    st.stack = [it for it in st.stack if it.source_id != source_id]
+    for it in removed:
+        _log(st, "stack_removed",
+             f"{it.label} leaves the stack — its source is gone ({reason}).",
+             source=source_id, label=it.label)
 
 
 def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
@@ -1883,6 +2431,7 @@ def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
         _log(st, "intent_discarded", f"{enemy.name}'s pending intent is discarded.",
              enemy=enemy.id)
     _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
+    _purge_stack_from(st, enemy.id, "destroyed")
 
 
 def _remove_token(st: GameState, token: TokenState) -> None:
@@ -1891,6 +2440,7 @@ def _remove_token(st: GameState, token: TokenState) -> None:
     if token.id in st.acted_tokens:
         st.acted_tokens.remove(token.id)
     _log(st, "token_died", f"{token.name} is destroyed.", token=token.id)
+    _purge_stack_from(st, token.id, "destroyed")
 
 
 def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None:
@@ -2088,12 +2638,26 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
 
 
 def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
-    """An open reaction window: free instants, Mitigate (self / adjacent ally),
-    voluntary drop, or pass."""
+    """An open reaction window: free instants, Mitigate (self / adjacent ally), a
+    First Strike basic attack, voluntary drop, or pass."""
     actions: List[Action] = []
     for card in actor.hand:
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
+    # First Strike (R-12): during the ENEMY step only, a character that did NOT spend its
+    # basic attack (on its turn or already this enemy step) may swing NOW as a reaction —
+    # it is a plain `attack`, not a special one. It stacks above the answered action, so it
+    # resolves first and can kill the attacker before its attack lands. `used_attack` gates
+    # both "didn't attack on my turn" and "haven't reacted yet"; Pacifism still forbids it.
+    # The tactical payoff: you can spend your turn action on Move/Defend/Cast and still hold
+    # the swing for the enemy step.
+    if (st.phase == "enemy" and _has_kw(actor, "first_strike") and not actor.used_attack
+            and not _prevented_action(actor, "attack")):
+        dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
+        for e in _legal_attack_targets(st, actor):
+            actions.append(Action("attack", actor.id, target_id=e.id,
+                                  label=f"Attack {e.name} ({actor.attack_mode} "
+                                        f"Power {actor.current_power}){dbl}"))
     top = st.stack[-1]
     # Mitigate (Update 02 §M-A): once per turn, answers an enemy attack-type action.
     # Self mode if it targets the actor; ally mode for an ally it targets that is in
@@ -2115,12 +2679,16 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
 
 def _drop_actions(actor: CharacterState) -> List[Action]:
     """Voluntary drop is a free action available whenever the holder has priority
-    and holds at least one channel (ends ALL of them)."""
-    if actor.channels:
-        n = len(actor.channels)
-        return [Action("drop_channels", actor.id,
-                       label=f"Drop concentration (end {n} channel{'s' if n > 1 else ''})")]
-    return []
+    and holds at least one channel. One action per channel (named by `card_id`),
+    plus a "drop all" (no card_id) when more than one is held."""
+    if not actor.channels:
+        return []
+    actions = [Action("drop_channels", actor.id, card_id=ch.card.id,
+                      label=f"Drop {ch.card.name}") for ch in actor.channels]
+    if len(actor.channels) > 1:
+        actions.append(Action("drop_channels", actor.id,
+                              label=f"Drop concentration (end all {len(actor.channels)})"))
+    return actions
 
 
 def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Action]:

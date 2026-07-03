@@ -182,16 +182,18 @@ def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = 
     _check("Cinder is wounded -2 Power", state.enemy("cinder").power_bonus == -2)
     state, _ = _do(state, kind="end_turn", actor_id="mira")
 
-    # Enemy step: Cinder's Ember (declared at 2 BEFORE the wound) hits; then Maul's
-    # Crush, which Mira parries below the break threshold (Cinder Lv2 acts before Maul Lv4).
-    _say("TURN 1 — Cinder's Ember lands; Mira parries Maul's Crush (no break)")
-    state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 2 → Mira 13
-    _check("Mira HP 13 after Ember 2", state.character("mira").hp == 13)
+    # Enemy step: Cinder's Ember was declared at 2, but the −2 wound now blunts it AT
+    # resolution (R-7) — everything re-checks when it resolves — so it lands for 0; then
+    # Maul's Crush, which Mira parries below the break threshold (Cinder Lv2 acts before Maul Lv4).
+    _say("TURN 1 — Cinder's wounded Ember does 0; Mira parries Maul's Crush (no break)")
+    state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 2−2 wound → 0 → Mira 15
+    _check("Mira HP 15 after Ember 0 (wound blunts it at resolution)",
+           state.character("mira").hp == 15)
     # Crush 4, mitigated by X=ceil(Mira Power 1 / 2)=1 → 3 lands (under the break threshold).
     state, _ = _do(state, kind="mitigate", actor_id="mira", target_id="mira")
     state = _pass_window(state)
     (mira,) = state.party
-    _check("Mira HP 10 after the mitigated Crush", mira.hp == 10)
+    _check("Mira HP 12 after the mitigated Crush", mira.hp == 12)
     _check("Both channels survive (3 < break threshold 4)", len(mira.channels) == 2)
     _check("Now Turn 2", state.turn == 2)
 
@@ -200,7 +202,7 @@ def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = 
     state = _locks(state)
     (mira,) = state.party
     _check("A Wisp joined (Swarm Hex upkeep)", len(state.tokens) == 1 and state.tokens[0].name == "Wisp")
-    _check("Mira HP 9 (Swarm Hex lose 1)", mira.hp == 9)
+    _check("Mira HP 11 (Swarm Hex lose 1)", mira.hp == 11)
     _check("Cinder's re-declared Ember is wounded to 0",
            state.enemy("cinder").intent is not None
            and state.enemy("cinder").intent.effects[0].amount == 0)
@@ -216,10 +218,10 @@ def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = 
     # --- TURN 2 enemy step — Ember does 0; Maul's Crush breaks concentration -- #
     _say("TURN 2 — Cinder's Ember does 0; Mira takes Maul's Crush (break)")
     state, _ = _do(state, kind="pass", actor_id="mira")  # Ember 0 → Mira unchanged
-    _check("Mira HP 9 after Ember 0", state.character("mira").hp == 9)
+    _check("Mira HP 11 after Ember 0", state.character("mira").hp == 11)
     state, _ = _do(state, kind="pass", actor_id="mira")  # take Crush 4 unmitigated → break (4 ≥ 4)
     (mira,) = state.party
-    _check("Mira HP 5 after Crush 4", mira.hp == 5)
+    _check("Mira HP 7 after Crush 4", mira.hp == 7)
     _check("All channels broke (0 held)", len(mira.channels) == 0)
     _check("Cinder's wound lifted on break (Power back to 0)",
            state.enemy("cinder").power_bonus == 0)

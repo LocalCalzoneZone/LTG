@@ -181,7 +181,7 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
             <div key={c.id} className="relative flex flex-col overflow-hidden rounded-lg bg-slate-700/50 ring-1 ring-white/10">
               <div className="aspect-[3/2] w-full bg-slate-900">
                 {c.portrait ? (
-                  <img src={c.portrait} alt={c.name} className="h-full w-full object-cover" />
+                  <img src={c.portrait} alt={c.name} className="h-full w-full object-cover object-top" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-3xl text-slate-600">🖼</div>
                 )}

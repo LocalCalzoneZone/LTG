@@ -15,7 +15,7 @@
       "power": 3,
       "toughness": 3,
       "target": { "mode": "chosen", "side": "any", "targeted": true },
-      "duration": "end_of_turn"
+      "duration": "this_turn"
     }
   ]
 }

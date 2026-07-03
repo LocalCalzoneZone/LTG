@@ -30,22 +30,22 @@ export function BottomBar() {
       <ArmingHint />
       <ManaWidget char={char} manaChoices={choices?.mana ?? []} />
 
-      <div className="flex w-[240px] shrink-0 flex-col gap-2">
-        <div className="min-h-0 flex-1">
-          <ActionBar choices={choices} reaction={reaction} />
+      {/* Zones — a vertical column of the controlled character's hidden zones. */}
+      {char.controlled && (
+        <div className="flex w-[92px] shrink-0 flex-col gap-2">
+          <ZoneBtn label="Library" count={char.library_count} onClick={() => openZone({ kind: "library", charId: char.id })} />
+          <ZoneBtn label="Grave" count={char.graveyard_count} onClick={() => openZone({ kind: "graveyard", charId: char.id })} />
+          <ZoneBtn
+            label="Channel"
+            count={char.channels_summary.length}
+            disabled={!char.is_channeling}
+            onClick={() => openZone({ kind: "channel", charId: char.id })}
+          />
         </div>
-        {char.controlled && (
-          <div className="grid shrink-0 grid-cols-3 gap-2">
-            <ZoneBtn label="Library" count={char.library_count} onClick={() => openZone({ kind: "library", charId: char.id })} />
-            <ZoneBtn label="Grave" count={char.graveyard_count} onClick={() => openZone({ kind: "graveyard", charId: char.id })} />
-            <ZoneBtn
-              label="Channel"
-              count={char.channels_summary.length}
-              disabled={!char.is_channeling}
-              onClick={() => openZone({ kind: "channel", charId: char.id })}
-            />
-          </div>
-        )}
+      )}
+
+      <div className="flex w-[240px] shrink-0 flex-col">
+        <ActionBar choices={choices} reaction={reaction} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -74,12 +74,12 @@ function ZoneBtn({ label, count, onClick, disabled }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex flex-col items-center rounded-lg py-1 leading-tight transition ${
+      className={`flex min-h-0 flex-1 flex-col items-center justify-center rounded-lg py-1 leading-tight transition ${
         disabled ? "cursor-not-allowed bg-slate-800/40 text-gray-600" : "bg-slate-700 hover:bg-slate-600"
       }`}
     >
       <span className="text-[11px] font-semibold">{label}</span>
-      <span className={`text-sm font-bold ${disabled ? "" : "text-sky-300"}`}>{count}</span>
+      <span className={`text-lg font-bold ${disabled ? "" : "text-sky-300"}`}>{count}</span>
     </button>
   );
 }

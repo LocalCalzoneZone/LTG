@@ -70,7 +70,7 @@ export function NewGameModal({ onClose, onStarted }: {
                       }`}
                     >
                       {c.portrait && (
-                        <img src={c.portrait} alt={c.name} className="aspect-[3/2] w-full object-cover" />
+                        <img src={c.portrait} alt={c.name} className="aspect-[3/2] w-full object-cover object-top" />
                       )}
                       <div className="p-2">
                         <div className="flex items-center justify-between">

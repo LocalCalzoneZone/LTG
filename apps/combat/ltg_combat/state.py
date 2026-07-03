@@ -105,7 +105,7 @@ class CharacterState:
     power_bonus: int = 0      # temporary Power (pump +, wound −)
     protection: int = 0       # negates the next N spells/attacks (protection)
     # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
-    # end step (end_of_turn/this_turn) or channel break (while_channeled); 'encounter'
+    # end step (this_turn) or channel break (while_channeled); 'encounter'
     # / 'permanent' persist. The engine reads these for keyword behaviour (GDD §7).
     keywords: Dict[str, str] = field(default_factory=dict)
 
@@ -177,12 +177,76 @@ class TokenState:
 
 @dataclass
 class Intent:
-    """An enemy's declared next action (the pre-stack form, GDD §5.2)."""
+    """An enemy's declared next action (the pre-stack form, GDD §5.2).
+
+    A plain attack still fills `effects` with a DealDamage; a component-declared
+    intent carries that component's verbs. `kind` distinguishes a normal action from
+    a Move (Design Update 04 §F-7.3), whose "target" is the destination row.
+    `source_component` is the id of the component that declared it, so the engine can
+    start that component's cooldown when the intent executes."""
 
     name: str               # e.g. "Claw"
-    action_type: str        # "ability" / "spell"
+    action_type: str        # "ability" / "spell" / "attack"
     effects: List[Effect]   # core effect primitives this intent will resolve
     target_id: Optional[str]  # combatant the intent points at (resolved at declare)
+    kind: str = "action"    # "action" | "move" (Move declares a destination row)
+    move_to: Optional[str] = None  # destination row for a Move intent (§F-7.3)
+    source_component: Optional[str] = None  # component that declared it (cooldown bookkeeping)
+    # The basic attack's BASE Power (pre-bonus), for a default-attack intent. The
+    # damage it actually deals is `max(0, attack_power + enemy.power_bonus)`, computed
+    # live — so a wound (or anthem) landing AFTER declaration blunts/boosts the swing
+    # (R-7). None for component telegraphs / Moves, which carry their own amounts.
+    attack_power: Optional[int] = None
+
+    def attack_damage(self, power_bonus: int = 0) -> Optional[int]:
+        """Live attack damage: the base attack Power adjusted by the enemy's CURRENT
+        power_bonus. Falls back to the telegraphed effect amount for a non-attack
+        (component) intent that carries no `attack_power`."""
+        if self.attack_power is None:
+            return self.display_amount()
+        return max(0, self.attack_power + power_bonus)
+
+    def display_amount(self) -> Optional[int]:
+        """The damage number to show beside an attack intent (the basic attack's Power),
+        or None for a component telegraph / Move, whose text already describes itself.
+        Non-damage verbs (create_token, heal, …) carry no `amount`, so this never assumes
+        one is present."""
+        if self.action_type != "attack":
+            return None
+        for e in self.effects:
+            amt = getattr(e, "amount", None)
+            if isinstance(amt, int):
+                return amt
+        return None
+
+
+@dataclass
+class Component:
+    """One instantiated enemy behavior (Design Update 04 §F-3): the "mind" is a blend
+    of these. Each contributes one rule to the enemy's merged priority list, evaluated
+    first-match-wins in a proactive pass (intent declaration) and reactive passes
+    (trigger windows). The engine adds no resolution logic — `verbs` are ordinary §11
+    primitives that resolve through the same handlers a card uses.
+
+    `condition` is an optional gate read at evaluation time; its shape is a small dict
+    the engine understands, e.g. {"kind": "self_hp_pct", "op": "<", "value": 50} or
+    {"kind": "turn", "op": ">=", "value": 3} or {"kind": "ally_count", "op": "<",
+    "value": 2}. `cooldown` is whole turns between uses (0/1 = every turn); a component
+    that is `once_per_encounter` fires a single time. `id` names the component for
+    cooldown bookkeeping (unique within an enemy)."""
+
+    id: str                              # unique within the enemy (cooldown key)
+    archetype: str = ""                  # Burst | Evasive | Drain | ... (authoring/label)
+    timing: str = "proactive"            # "proactive" | "reactive" (§F-3)
+    trigger: Optional[str] = None        # reactive only — from the §F-3.2 vocabulary
+    condition: Optional[Dict[str, Any]] = None  # optional eligibility gate
+    cooldown: int = 0                    # whole turns between uses (§F-3.1)
+    once_per_encounter: bool = False
+    priority: int = 90                   # lower = evaluated first (§F-7.1)
+    verbs: List[Effect] = field(default_factory=list)   # §11 primitives this rule runs
+    target_rule: str = "valuation"       # self | lowest_hp_ally | valuation | channeling_player | ...
+    telegraph: str = ""                  # intent text shown in the Intents list (proactive)
+    move_home: bool = False              # a repositioning rule (Evasive/§F-7.3) declares a Move
 
 
 @dataclass
@@ -199,7 +263,24 @@ class EnemyState:
     power: int = 0
     row: str = "front"
     attack_mode: str = "melee"  # melee | ranged (R-1) — enemy attacks are classified too
+    # Position model, mirroring the character (Design Update 04 §F-2 / Update 02 §M-B):
+    # `row` is the current physical row (what intents/the melee wall read; changes only
+    # at End step); `committed` is what this enemy's own actions read; `pending_voluntary`
+    # holds a declared Move's destination, resolved into `row` at End step. `home_row`
+    # is the spawn/redeploy row its Move behavior regresses toward.
+    committed: str = "front"
+    pending_voluntary: Optional[str] = None
+    home_row: str = "front"
     intent: Optional[Intent] = None
+    # The "mind" (Design Update 04 §F-3): a blend of components merged into one priority
+    # list. Empty == the legacy single-template enemy (the default Attack rule only), so
+    # existing content runs unchanged. `cooldowns` maps component id → the turn number it
+    # is next usable (a fired component sets this to turn + cooldown; once_per_encounter
+    # parks it forever).
+    components: List["Component"] = field(default_factory=list)
+    cooldowns: Dict[str, int] = field(default_factory=dict)
+    is_boss: bool = False       # §F-9 hook (boss behaviours deferred; the flag rides now)
+    created_by: Optional[str] = None  # the enemy that spawned this token (§F-4 per-creator cap)
     intent_template: Dict[str, Any] = field(default_factory=dict)
     # An optional weaker ranged attack (R-1 heuristics): the enemy falls back to it
     # when its melee attack can't reach the target the heuristic wants. Same shape as
@@ -266,6 +347,10 @@ class StackItem:
     mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
     attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
+    # Base (pre-bonus) Power of a basic attack. The damage it deals is recomputed at
+    # RESOLUTION as max(0, attack_power + source.power_bonus) — so a wound/anthem landing
+    # while the swing sits on the stack changes what lands (R-7). None for spells/abilities.
+    attack_power: Optional[int] = None
     # A declared Mitigate on this attack (Update 02 §M-A): `mitigate_by` is the
     # mitigator's id, `mitigate_for` the protected character (== mitigate_by for self
     # mode, an ally's id for interception). Applied per hit at resolution.
@@ -363,6 +448,10 @@ class GameState:
     passes: int = 0                   # consecutive passes in the open window
     acted_enemies: List[str] = field(default_factory=list)
     acted_tokens: List[str] = field(default_factory=list)
+    # Enemies that have already fired a reaction in the CURRENT reaction window (Design
+    # Update 04 §F-3.3: at most one reaction per enemy per window). Reset whenever a
+    # fresh window opens; cross-turn reuse is gated separately by per-component cooldowns.
+    reacted_window: List[str] = field(default_factory=list)
     pending_break: List[str] = field(default_factory=list)  # channelers owed a break
     pending_choice: Optional["PendingChoice"] = None  # mid-resolution card-move choice
     result: Optional[str] = None      # None | "victory" | "defeat"
