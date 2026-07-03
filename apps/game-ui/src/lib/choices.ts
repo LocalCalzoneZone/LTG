@@ -5,6 +5,41 @@
 // stack-targeting counter) and submits the chosen action's index verbatim.
 
 import type { LegalAction } from "./types";
+import { parsePips } from "./format";
+
+export interface CastPayment {
+  colored: string[]; // mandatory coloured pips the cost demands (e.g. ["B"])
+  generic: number; // how many generic pips remain to pay after the coloured ones
+  ambiguous: boolean; // the generic portion can be paid from the pool >1 distinct way
+}
+
+/** Split a cast's cost into its mandatory coloured pips and generic count, and
+ *  decide whether the generic portion is ambiguous given `pool` (colour -> count).
+ *  The engine still owns payment; this only drives the click-to-pick interaction,
+ *  and every submission is re-validated server-side. */
+export function castPayment(cost: string, pool: Record<string, number>): CastPayment {
+  const colored: string[] = [];
+  let generic = 0;
+  for (const p of parsePips(cost)) {
+    if (p.kind === "color") colored.push(p.value);
+    else generic += parseInt(p.value, 10) || 0;
+  }
+  // What's left in the pool once the mandatory coloured pips are set aside.
+  const remaining: Record<string, number> = { ...pool };
+  for (const c of colored) remaining[c] = (remaining[c] ?? 0) - 1;
+  let remainingSize = 0;
+  let distinct = 0;
+  for (const c of Object.keys(remaining)) {
+    const n = Math.max(0, remaining[c]);
+    remainingSize += n;
+    if (n > 0) distinct += 1;
+  }
+  // A real choice exists only when the generic pips could draw >1 distinct colour
+  // multiset: some generic to pay, more mana left than needed, and ≥2 colours to
+  // pick between. (Taking all of a single colour, or all that's left, is forced.)
+  const ambiguous = generic > 0 && remainingSize > generic && distinct >= 2;
+  return { colored, generic, ambiguous };
+}
 
 export interface Choice {
   key: string;

@@ -26,9 +26,15 @@ export function ManaWidget({ char, manaChoices }: {
   manaChoices: { color: string; index: number; label: string }[];
 }) {
   const submit = useGame((s) => s.submitIndex);
+  const manaSelect = useGame((s) => s.manaSelect);
+  const pickMana = useGame((s) => s.pickMana);
+  const resetMana = useGame((s) => s.resetMana);
   const pending = char.mana.pending_capacity_choice;
   const choiceByColor: Record<string, number> = {};
   for (const m of manaChoices) choiceByColor[m.color] = m.index;
+
+  // An ambiguous cast by THIS character is picking its generic mana here.
+  const selecting = manaSelect && manaSelect.actorId === char.id ? manaSelect : null;
 
   const colorSet = new Set<string>([
     ...char.mana.identity_colors,
@@ -43,10 +49,27 @@ export function ManaWidget({ char, manaChoices }: {
 
   const circle = "clamp(28px, 4.8vh, 46px)";
 
+  // How many of each colour are still free to spend on the generic portion:
+  // pool minus the mandatory coloured pips minus what's already picked.
+  const count = (arr: string[], c: string) => arr.filter((x) => x === c).length;
+  const genericLeft = selecting ? selecting.generic - selecting.picked.length : 0;
+  const freeForGeneric = (c: string) =>
+    (byColor[c]?.pool ?? 0) - count(selecting?.colored ?? [], c) - count(selecting?.picked ?? [], c);
+
   return (
-    <div className="flex h-full w-max shrink-0 flex-col justify-between rounded-lg bg-black/40 p-2.5 ring-1 ring-white/10">
+    <div className={`flex h-full w-max shrink-0 flex-col justify-between rounded-lg bg-black/40 p-2.5 ring-1 ${
+      selecting ? "ring-yellow-400" : "ring-white/10"
+    }`}>
       <div className="text-center text-[11px] font-bold uppercase tracking-wide text-gray-300">
-        {pending ? <span className="text-yellow-300">Pick +1 Capacity</span> : "Mana"}
+        {selecting ? (
+          <span className="text-yellow-300">
+            Pay {selecting.cardName} — pick {genericLeft} mana
+          </span>
+        ) : pending ? (
+          <span className="text-yellow-300">Pick +1 Capacity</span>
+        ) : (
+          "Mana"
+        )}
       </div>
 
       {rows.map((row) => (
@@ -81,25 +104,54 @@ export function ManaWidget({ char, manaChoices }: {
         </div>
       ))}
 
-      {/* Mana symbols along the bottom. At the start of a new turn the +1 capacity
-          choice is made here — click the symbol of the colour to lock. */}
+      {/* Mana symbols along the bottom. Two interactive modes light them up:
+          the +1 capacity lock at the start of a turn, and picking which colours
+          pay an ambiguous cast's generic mana. Otherwise they're a static legend. */}
       <div className="flex justify-center gap-2 pt-0.5">
         {colors.map((color) => {
-          const clickable = pending && choiceByColor[color] != null;
+          const capacityClickable = pending && choiceByColor[color] != null;
+          const manaClickable = !!selecting && genericLeft > 0 && freeForGeneric(color) > 0;
+          const clickable = capacityClickable || manaClickable;
+          const onClick = () => {
+            if (capacityClickable) submit(choiceByColor[color]);
+            else if (manaClickable) pickMana(color);
+          };
+          const picked = selecting ? count(selecting.picked, color) : 0;
+          const title = capacityClickable
+            ? `Lock +1 capacity as ${color}`
+            : selecting
+              ? `Spend ${color} (${freeForGeneric(color)} free)`
+              : color;
           return (
-            <button
-              key={color}
-              disabled={!clickable}
-              onClick={() => clickable && submit(choiceByColor[color])}
-              title={clickable ? `Lock +1 capacity as ${color}` : color}
-              style={{ width: circle, height: circle, backgroundImage: `url(/assets/mana/${color}.svg)` }}
-              className={`rounded-full bg-cover bg-center transition ${
-                clickable ? "cursor-pointer ring-2 ring-yellow-400 ring-offset-2 ring-offset-black hover:scale-110" : ""
-              }`}
-            />
+            <div key={color} className="relative">
+              <button
+                disabled={!clickable}
+                onClick={onClick}
+                title={title}
+                style={{ width: circle, height: circle, backgroundImage: `url(/assets/mana/${color}.svg)` }}
+                className={`rounded-full bg-cover bg-center transition ${
+                  clickable ? "cursor-pointer ring-2 ring-yellow-400 ring-offset-2 ring-offset-black hover:scale-110" : ""
+                } ${selecting && !manaClickable ? "opacity-45" : ""}`}
+              />
+              {picked > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-400 text-[10px] font-black text-black">
+                  {picked}
+                </span>
+              )}
+            </div>
           );
         })}
       </div>
+
+      {selecting && (
+        <button
+          onClick={resetMana}
+          disabled={selecting.picked.length === 0}
+          className="mt-1 text-center text-[10px] font-semibold text-gray-400 hover:text-white disabled:opacity-40"
+        >
+          reset picks
+        </button>
+      )}
     </div>
   );
 }

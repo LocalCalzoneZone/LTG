@@ -81,8 +81,13 @@ class Session:
         }
 
     # -- actions (authority) ------------------------------------------------- #
-    def apply_index(self, client_id: str, index: int) -> None:
+    def apply_index(self, client_id: str, index: int,
+                    mana: Optional[List[str]] = None) -> None:
         """Validate + apply a legal-action index submitted by `client_id`.
+
+        `mana` is an optional explicit payment (the exact colours to spend) for a
+        cast whose generic portion could be paid multiple ways; the engine
+        re-validates it covers the cost.
 
         Raises ValueError (turned into an `error` message) on any rejection:
         out-of-range index, a character the client does not control, or an action
@@ -94,6 +99,8 @@ class Session:
         action = actions[index]
         if self.seats.get(action.actor_id) != client_id:
             raise ValueError("you do not control that character")
+        if mana is not None:
+            action.mana = list(mana)
         # apply_action re-validates against the engine's current legal set as well.
         new_state, _events = apply_action(self.state, action)
         self.state = new_state

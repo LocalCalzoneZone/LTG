@@ -8,8 +8,14 @@ export function ArmingHint() {
   const cancelArm = useGame((s) => s.cancelArm);
   if (!armed) return null;
 
-  const step =
-    armed.numSites > 1 ? ` — select target ${armed.site + 1} of ${armed.numSites}` : " — select a target";
+  // The effect this site feeds (e.g. "weaken −0/−3"), when the server named it.
+  const siteLabel = armed.targetLabels[armed.site] ?? null;
+  const progress = armed.numSites > 1 ? ` (${armed.site + 1} of ${armed.numSites})` : "";
+  const step = siteLabel
+    ? ` — choose target to ${siteLabel}${progress}`
+    : armed.numSites > 1
+      ? ` — select target ${armed.site + 1} of ${armed.numSites}`
+      : " — select a target";
   const counterHint = armed.kind === "cast" && [...(armed.candidates[0]?.targets ?? [])].length === 0 &&
     (armed.candidates[0]?.target_id ?? "").startsWith("#")
     ? " (click an action on the Stack)"

@@ -209,10 +209,31 @@ def test_channeled_exile_suspends_then_returns_on_break():
     assert "orc" not in [e.id for e in after.living_enemies()]           # out of play
     assert len(hero(after).channels) == 1 and after.result is None       # the Goblin fights on
 
+    # A channel is only voluntarily droppable from the next turn on; mark it as started
+    # last turn so the break below is legal.
+    for ch in hero(after).channels:
+        ch.started_turn = after.turn - 1
     after, _ = do(after, kind="drop_channels")                           # break the channel
     assert not after.enemy("orc").exiled                                 # the Orc returns
     assert "orc" in [e.id for e in after.living_enemies()]
     assert hero(after).channels == []
+
+
+def test_channel_cannot_be_voluntarily_dropped_the_turn_it_starts():
+    # Cancelling a channel the same turn would be a discounted one-turn cast of its
+    # continuous effect — too cheap. A voluntary drop is only offered from the NEXT turn.
+    anthem = C("anthem", "channeled", [{"kind": "pump", "power": 1, "toughness": 1,
+        "target": {"mode": "self"}}], colors={"G": 1})
+    state = make_state([anthem], hero_hp=20, intent_amount=2)  # 2 dmg < break threshold
+    state, _ = do(state, kind="cast", card_id="anthem")        # channel it this turn
+    assert len(hero(state).channels) == 1
+    assert not any(a.kind == "drop_channels" for a in legal_actions(state))  # no same-turn drop
+
+    state = _advance_to_turn(state, 2)                         # the channel survives into turn 2
+    assert len(hero(state).channels) == 1
+    assert any(a.kind == "drop_channels" for a in legal_actions(state))     # now it's droppable
+    state, _ = do(state, kind="drop_channels")
+    assert hero(state).channels == []
 
 
 def test_lethal_wound_aura_kills_target_without_breaking_other_channels():

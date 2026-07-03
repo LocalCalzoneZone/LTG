@@ -64,6 +64,7 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
                 >
                   <span className="font-semibold">{s.source_name}</span>
                   <span className="text-gray-400"> · {s.label}</span>
+                  {s.mode && <span className="text-sky-300/80"> ({s.mode})</span>}
                   {s.target_name && <span className="text-gray-400"> → {s.target_name}</span>}
                 </div>
               );
@@ -80,6 +81,7 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
               <div key={i} className="rounded bg-white/5 px-1.5 py-1 text-[11px]">
                 <span className="font-semibold text-rose-300">{it.creature_name}</span>
                 <span className="text-gray-400"> · {it.intent_text}</span>
+                {it.mode && <span className="text-sky-300/80"> ({it.mode})</span>}
                 {it.target_name && <span className="text-gray-400"> → {it.target_name}</span>}
               </div>
             ))

@@ -110,6 +110,7 @@ export interface TokenView {
 export interface StackRow {
   label: string;
   kind: string;
+  mode: string | null; // melee | ranged | spell (null for a generic ability)
   source_id: string;
   source_name: string | null;
   source_side: string;
@@ -124,6 +125,7 @@ export interface IntentRow {
   creature_id: string;
   creature_name: string;
   intent_text: string;
+  mode: string | null; // melee | ranged | spell (null for a generic ability)
   target_id: string | null;
   target_name: string | null;
 }
@@ -144,6 +146,10 @@ export interface LegalAction {
   // ordered by site; targets[0] mirrors target_id. Empty for single-target actions.
   // A stack-targeting counter uses target_id "#<uid>" (referencing StackRow.uid).
   targets: (string | null)[];
+  // Per-site effect label (aligned with `targets`, or a single entry for a
+  // single-target cast): what each pick is for, e.g. "weaken −0/−3". Null = no
+  // label; the UI falls back to a generic "select a target".
+  target_labels?: (string | null)[];
   color: Color | null;
   mode: number | null;
   label: string;

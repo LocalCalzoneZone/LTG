@@ -39,6 +39,7 @@ from ltg_core.schema import (
     Ref,
     TargetMode,
     Timing,
+    slot_name,
     t_chosen,
 )
 
@@ -1077,7 +1078,7 @@ def _do_cast(st: GameState, action: Action) -> None:
     actor = st.character(action.actor_id)
     card = _card_in_hand(actor, action.card_id)
     reactive = bool(st.stack)  # a cast made inside an open window stacks above
-    paid = _pay(actor, card)
+    paid = _pay(actor, card, action.mana)
     actor.hand.remove(card)
     actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
     if card.timing in _SORCERY_SPEED and not reactive:
@@ -1165,18 +1166,22 @@ def _apply_mitigation(st: GameState, item: StackItem, target, amount: int):
 
 
 def _do_drop_channels(st: GameState, action: Action) -> None:
-    """Voluntary drop (a free action): end one named channel (`card_id`) or, when
-    no card is named, all of the holder's channels at once."""
+    """Voluntary drop (a free action): end one named channel (`card_id`) or, when no
+    card is named, all droppable channels at once. Only channels started on an earlier
+    turn are droppable (a same-turn channel can't be cancelled)."""
     actor = st.character(action.actor_id)
+    droppable = _voluntarily_droppable(st, actor)
     if action.card_id is not None:
-        channel = next((ch for ch in actor.channels if ch.card.id == action.card_id), None)
+        channel = next((ch for ch in droppable if ch.card.id == action.card_id), None)
         if channel is None:
             return
         _log(st, "drop_channels", f"{actor.name} drops {channel.card.name}.", character=actor.id)
         _end_channels(st, actor, [channel], reason="voluntary")
         return
+    if not droppable:
+        return
     _log(st, "drop_channels", f"{actor.name} drops concentration.", character=actor.id)
-    _break_channels(st, actor, reason="voluntary")
+    _end_channels(st, actor, droppable, reason="voluntary")
 
 
 _DEFEND_TEMP_HP = 3   # placeholder; GDD leaves Defend's amount to gear/flavour
@@ -1285,7 +1290,8 @@ def _start_channel(st: GameState, item: StackItem) -> None:
     its continuous effects. Recurring effects are armed (they fire at upkeep)."""
     holder = st.character(item.source_id)
     channel = Channel(card=item.card, holder_id=holder.id,
-                      reserved=list(item.reserved), target_id=item.target_id)
+                      reserved=list(item.reserved), target_id=item.target_id,
+                      started_turn=st.turn)
     holder.channels.append(channel)
     _log(st, "channel_start",
          f"{holder.name} channels {item.card.name} (reserves {_mana_str(channel.reserved)}).",
@@ -2632,7 +2638,7 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     for card in actor.hand:            # Free instants (mana-limited, any time)
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
-    actions += _drop_actions(actor)
+    actions += _drop_actions(st, actor)
     actions.append(Action("end_turn", actor.id, label="End turn"))
     return actions
 
@@ -2672,22 +2678,30 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
                     and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
                 actions.append(Action("mitigate", actor.id, target_id=ally.id,
                                       label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
-    actions += _drop_actions(actor)
+    actions += _drop_actions(st, actor)
     actions.append(Action("pass", actor.id, label="Pass"))
     return actions
 
 
-def _drop_actions(actor: CharacterState) -> List[Action]:
-    """Voluntary drop is a free action available whenever the holder has priority
-    and holds at least one channel. One action per channel (named by `card_id`),
-    plus a "drop all" (no card_id) when more than one is held."""
-    if not actor.channels:
+def _voluntarily_droppable(st: GameState, actor: CharacterState) -> List[Channel]:
+    """The holder's channels that may be VOLUNTARILY dropped right now: only those
+    started on an EARLIER turn. A same-turn channel can't be cancelled — otherwise
+    channel-then-drop would be a discounted one-turn cast of its effect (GDD §8)."""
+    return [ch for ch in actor.channels if ch.started_turn < st.turn]
+
+
+def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:
+    """Voluntary drop is a free action for each channel the holder may drop this turn
+    (started before this turn). One action per droppable channel (named by `card_id`),
+    plus a "drop all" (no card_id) when more than one is droppable."""
+    droppable = _voluntarily_droppable(st, actor)
+    if not droppable:
         return []
     actions = [Action("drop_channels", actor.id, card_id=ch.card.id,
-                      label=f"Drop {ch.card.name}") for ch in actor.channels]
-    if len(actor.channels) > 1:
+                      label=f"Drop {ch.card.name}") for ch in droppable]
+    if len(droppable) > 1:
         actions.append(Action("drop_channels", actor.id,
-                              label=f"Drop concentration (end all {len(actor.channels)})"))
+                              label=f"Drop concentration (end all {len(droppable)})"))
     return actions
 
 
@@ -2822,6 +2836,75 @@ def _target_sites(effects, card: Card):
     return sites
 
 
+def _effect_site_label(e) -> Optional[str]:
+    """A short, human phrase for the effect a target site feeds — shown on the
+    targeting popup so a multi-target card names each pick (e.g. Agony Warp's two
+    wounds) instead of the ambiguous "target 1 / target 2". None == let the UI use
+    its generic fallback."""
+    k = e.kind
+    if k == "wound":
+        return f"weaken −{e.power}/−{e.toughness}"
+    if k == "pump":
+        return f"buff +{e.power}/+{e.toughness}"
+    if k == "counters":
+        return f"+{e.power}/+{e.toughness} counters"
+    if k == "deal_damage":
+        return f"deal {e.amount} damage" if isinstance(e.amount, int) else "deal damage"
+    if k == "heal":
+        return f"heal {e.amount}" if isinstance(e.amount, int) else "heal"
+    if k == "grant_keyword":
+        return "grant " + ", ".join(e.keywords) if getattr(e, "keywords", None) else "grant keyword"
+    if k == "remove_keyword":
+        return "remove " + ", ".join(e.keywords) if getattr(e, "keywords", None) else "remove keyword"
+    return {
+        "destroy": "destroy",
+        "exile": "exile",
+        "bounce": "return to hand",
+        "stun": "stun",
+        "counter": "counter",
+        "taunt": "taunt",
+        "protection": "protect",
+        "strip_intent": "strip intent",
+        "revive": "revive",
+        "lose_life": "drain",
+    }.get(k)
+
+
+def _site_label(key, effects, card: Card) -> Optional[str]:
+    """The label for one target site (from `_target_sites`): the effect that site
+    feeds, or the first effect sharing its `$slot`."""
+    kind, ident = key
+    if kind in ("eff", "eff_other"):
+        e = next((x for x in effects if id(x) == ident), None)
+        if e is None:
+            return None
+        if e.kind == "fight":
+            return "fight" if kind == "eff" else "fight against"
+        return _effect_site_label(e)
+    if kind == "slot":  # a shared slot — describe it by the first effect that uses it
+        for e in effects:
+            if slot_name(getattr(e, "target", None)) == ident:
+                return _effect_site_label(e)
+    return None
+
+
+def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:
+    """Per-site effect labels for a cast, aligned with its target sites (so the UI
+    names what each pick is for). Empty for non-casts / untargeted casts."""
+    if action.kind != "cast":
+        return []
+    actor = state.character(action.actor_id)
+    if actor is None:
+        return []
+    card = next((c for c in actor.hand if c.id == action.card_id), None)
+    if card is None:
+        return []
+    effects = next((eff for midx, eff, _ in _mode_specs(card) if midx == action.mode), None)
+    if effects is None:
+        effects = _mode_specs(card)[0][1]
+    return [_site_label(key, effects, card) for key, _side in _target_sites(effects, card)]
+
+
 # --------------------------------------------------------------------------- #
 # Mana
 # --------------------------------------------------------------------------- #
@@ -2836,9 +2919,18 @@ def _can_pay(actor: CharacterState, card: Card) -> bool:
     return len(pool) >= card.cost.generic
 
 
-def _pay(actor: CharacterState, card: Card) -> List[str]:
+def _pay(actor: CharacterState, card: Card, explicit: Optional[List[str]] = None) -> List[str]:
     """Spend the cost from the pool; return the actual colours paid (so a channel
-    can reserve exactly those and release them on end)."""
+    can reserve exactly those and release them on end).
+
+    `explicit` (a player-chosen list of colours) overrides the deterministic WUBRG
+    order when the generic portion could be paid multiple ways — it is validated to
+    exactly cover the cost and be available before anything is spent."""
+    if explicit is not None:
+        _validate_payment(actor, card, explicit)
+        for c in explicit:
+            actor.pool.remove(c)
+        return list(explicit)
     pool = actor.pool
     paid: List[str] = []
     for color, n in card.cost.colors.items():
@@ -2852,6 +2944,28 @@ def _pay(actor: CharacterState, card: Card) -> List[str]:
                 paid.append(c)
                 break
     return paid
+
+
+def _validate_payment(actor: CharacterState, card: Card, chosen: List[str]) -> None:
+    """Reject an explicit mana payment that doesn't exactly settle `card`'s cost.
+
+    The payment must (1) be drawable from the pool, (2) include each coloured pip
+    the cost demands, and (3) total exactly coloured + generic mana. Extra colours
+    beyond the coloured pips count toward the generic portion."""
+    from collections import Counter
+    have = Counter(actor.pool)
+    pay = Counter(chosen)
+    for color, n in pay.items():
+        if have.get(color, 0) < n:
+            raise ValueError(f"{actor.name} cannot pay {n}×{color} (pool lacks it)")
+    need_colored = {c.value: n for c, n in card.cost.colors.items()}
+    for color, n in need_colored.items():
+        if pay.get(color, 0) < n:
+            raise ValueError(f"payment is missing {n}×{color} for {card.name}")
+    total_needed = sum(need_colored.values()) + card.cost.generic
+    if len(chosen) != total_needed:
+        raise ValueError(f"payment must total {total_needed} mana for {card.name}, "
+                         f"got {len(chosen)}")
 
 
 # --------------------------------------------------------------------------- #

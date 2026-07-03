@@ -203,9 +203,13 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                 if not isinstance(index, int):
                     await _send(ws, {"type": "error", "message": "action.index required"})
                     continue
+                mana = action.get("mana")
+                if mana is not None and not isinstance(mana, list):
+                    await _send(ws, {"type": "error", "message": "action.mana must be a list"})
+                    continue
                 async with session.lock():
                     try:
-                        session.apply_index(client_id, index)
+                        session.apply_index(client_id, index, mana)
                     except ValueError as exc:
                         await _send(ws, {"type": "error", "message": str(exc)})
                         # Re-sync just this client so its optimistic arming reverts.

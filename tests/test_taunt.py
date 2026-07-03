@@ -104,7 +104,10 @@ def test_taunt_lifts_when_the_channel_is_dropped():
     st = _pass_all(st)
     assert st.enemy("ogre").taunted_by == "bait"
 
-    # Voluntarily drop concentration → the taunt is lifted.
+    # Voluntarily drop concentration → the taunt is lifted. A channel is only droppable
+    # from the next turn on, so mark it as started last turn to reach that state.
+    for ch in st.character("bait").channels:
+        ch.started_turn = st.turn - 1
     drop = next((a for a in legal_actions(st) if a.kind == "drop_channels"), None)
     assert drop is not None
     st = apply_action(st, drop)[0]

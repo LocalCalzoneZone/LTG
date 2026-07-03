@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useGame } from "../lib/store";
+import type { StackRow } from "../lib/types";
 
 function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
@@ -214,30 +215,46 @@ export function Toast() {
   );
 }
 
-/** Transient banner announcing a new turn or phase. Watches the snapshot's turn /
- *  phase label and flashes a centred pill when either changes, then fades out. */
+// A banner is either a new-turn/phase note (plain title + optional sub) or a new
+// stack item, which renders in the same style as the Stack/Intents list rows.
+type Banner =
+  | { id: number; kind: "plain"; title: string; sub?: string }
+  | { id: number; kind: "stack"; row: StackRow };
+
+/** Transient banner announcing a new turn / phase, or a new effect entering the
+ *  stack. Watches the snapshot and flashes a centred pill on each change, then
+ *  fades out. A stack push takes precedence over the (redundant) "reaction
+ *  window" phase change it triggers. */
 export function PhaseBanner() {
   const turn = useGame((s) => s.snapshot?.turn ?? null);
   const phase = useGame((s) => s.snapshot?.phase_label ?? null);
-  const [banner, setBanner] = useState<{ id: number; title: string; sub?: string } | null>(null);
-  const prev = useRef<{ turn: number | null; phase: string | null } | null>(null);
+  const stack = useGame((s) => s.snapshot?.stack ?? null);
+  const [banner, setBanner] = useState<Banner | null>(null);
+  const prev = useRef<{ turn: number | null; phase: string | null; maxUid: number } | null>(null);
   const seq = useRef(0);
 
   useEffect(() => {
     if (turn == null || phase == null) return;
     const before = prev.current;
-    prev.current = { turn, phase };
+    const top = stack && stack.length ? stack[0] : null;
+    const topUid = top ? top.uid : null;
+    const maxUid = Math.max(before?.maxUid ?? -1, topUid ?? -1);
+    prev.current = { turn, phase, maxUid };
     if (!before) return; // don't announce the very first snapshot (game just loaded)
-    let title: string | null = null;
-    let sub: string | undefined;
-    if (turn !== before.turn) {
-      title = `Turn ${turn}`;
-      sub = phase; // e.g. "enemy intents"
-    } else if (phase !== before.phase) {
-      title = phase;
+    const id = seq.current + 1;
+    if (top && topUid != null && topUid > before.maxUid) {
+      // A new effect just entered the stack — announce it (not the "reaction
+      // window" phase label the same push produces).
+      seq.current = id;
+      setBanner({ id, kind: "stack", row: top });
+    } else if (turn !== before.turn) {
+      seq.current = id;
+      setBanner({ id, kind: "plain", title: `Turn ${turn}`, sub: phase }); // e.g. "enemy intents"
+    } else if (phase !== before.phase && phase !== "reaction window") {
+      seq.current = id;
+      setBanner({ id, kind: "plain", title: phase });
     }
-    if (title) setBanner({ id: ++seq.current, title, sub });
-  }, [turn, phase]);
+  }, [turn, phase, stack]);
 
   // Auto-dismiss after the animation (matches the 2s .phase-banner keyframe).
   useEffect(() => {
@@ -256,9 +273,23 @@ export function PhaseBanner() {
       className="phase-banner pointer-events-none fixed left-1/2 top-20 z-50 flex flex-col items-center"
     >
       <div className="rounded-full bg-slate-900/90 px-6 py-2 text-center shadow-xl ring-1 ring-white/15">
-        <div className="text-lg font-black uppercase tracking-wide text-white">{banner.title}</div>
-        {banner.sub && (
-          <div className="text-xs font-semibold capitalize text-blue-300">{banner.sub}</div>
+        {banner.kind === "stack" ? (
+          // Same phrasing as a Stack row: coloured source · label (mode) → target.
+          <div className="text-base font-medium leading-tight text-white">
+            <span className={`font-bold ${banner.row.source_side === "enemy" ? "text-rose-300" : "text-emerald-200"}`}>
+              {banner.row.source_name}
+            </span>
+            <span className="text-gray-300"> · {banner.row.label}</span>
+            {banner.row.mode && <span className="text-sky-300/90"> ({banner.row.mode})</span>}
+            {banner.row.target_name && <span className="text-gray-300"> → {banner.row.target_name}</span>}
+          </div>
+        ) : (
+          <>
+            <div className="text-lg font-bold capitalize tracking-wide text-white">{banner.title}</div>
+            {banner.sub && (
+              <div className="text-xs font-semibold capitalize text-blue-300">{banner.sub}</div>
+            )}
+          </>
         )}
       </div>
     </div>

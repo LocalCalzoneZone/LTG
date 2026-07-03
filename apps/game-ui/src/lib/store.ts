@@ -1,9 +1,21 @@
 import { create } from "zustand";
 import { GameSocket } from "./ws";
 import type { GameSnapshot, LegalAction } from "./types";
-import { buildChoices, siteCount, targetAt, type Choice, type Choices } from "./choices";
+import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choices } from "./choices";
 
 export type ZoneModal = { kind: "library" | "graveyard" | "channel"; charId: string } | null;
+
+// A cast whose generic mana can be paid more than one way: the player clicks mana
+// symbols to choose which colours to spend before the cast is submitted.
+export interface ManaSelect {
+  actorId: string;
+  index: number; // the cast action's legal index
+  cardId: string | null;
+  cardName: string;
+  colored: string[]; // mandatory coloured pips, spent automatically
+  generic: number; // how many generic pips the player still picks
+  picked: string[]; // generic colours chosen so far
+}
 
 // A target-selection in progress. Walks the candidate actions site-by-site:
 // single-target (one site), independent multi-target (e.g. Agony Warp), or a
@@ -16,6 +28,9 @@ export interface Armed {
   site: number; // which target site we're choosing now
   numSites: number;
   picks: string[]; // chosen target ids so far (for the hint)
+  // Per-site effect labels (from the action's `target_labels`) so the arming hint
+  // can name what each pick is for — shared across a choice's candidates.
+  targetLabels: (string | null)[];
 }
 
 /** The set of legal target ids for the current armed site (entity ids, rows, or
@@ -41,6 +56,7 @@ interface StoreState {
   focusedId: string | null;
   armed: Armed | null; // a target selection in progress
   chooseModeFor: Choice | null; // a modal card awaiting a mode pick
+  manaSelect: ManaSelect | null; // an ambiguous cast awaiting a mana pick
   zoneModal: ZoneModal;
   // The character id auto-passing every reaction window it holds priority in until
   // the stack fully resolves (null = off). Scoped to one character — other party
@@ -64,9 +80,14 @@ interface StoreState {
   pickMode: (sub: Choice) => void;
   pickTargetId: (id: string) => void; // pick a target for the current armed site
   cancelArm: () => void;
-  submitIndex: (index: number) => void;
+  submitIndex: (index: number, mana?: string[]) => void;
   startPassAll: () => void; // pass now and keep passing until the stack resolves
   _arm: (c: Choice) => void;
+  _finishAction: (kind: string, action: LegalAction) => void; // submit, or detour a cast
+  // Casts route through here so an ambiguous mana payment can prompt a pick first.
+  beginCast: (action: LegalAction) => void;
+  pickMana: (color: string) => void; // choose one generic mana in the pending cast
+  resetMana: () => void; // clear the picks and start the selection over
 
   openZone: (z: ZoneModal) => void;
   setError: (m: string | null) => void;
@@ -88,6 +109,7 @@ export const useGame = create<StoreState>((set, get) => ({
   focusedId: null,
   armed: null,
   chooseModeFor: null,
+  manaSelect: null,
   zoneModal: null,
   passAllFor: null,
   error: null,
@@ -122,7 +144,7 @@ export const useGame = create<StoreState>((set, get) => ({
       case "state": {
         const snap = msg as GameSnapshot;
         // A fresh authoritative state ends any optimistic arming (§4.6).
-        set({ snapshot: snap, armed: null, chooseModeFor: null });
+        set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null });
         get()._recomputeFocus();
         // Pass All: auto-pass for the initiating character only, each time it holds
         // priority, until the stack fully resolves — then reset. Other characters'
@@ -149,7 +171,7 @@ export const useGame = create<StoreState>((set, get) => ({
         break;
       case "error":
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null, passAllFor: null });
+        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: null });
         break;
     }
   },
@@ -191,14 +213,15 @@ export const useGame = create<StoreState>((set, get) => ({
   _arm: (c) => {
     const n = siteCount(c.candidates);
     if (n === 0) {
-      // Untargeted (Defend / Pass / a self-only cast): submit the sole action.
-      get().submitIndex(c.candidates[0].index);
+      // Untargeted (Defend / Pass / a self-only cast): finish the sole action.
       set({ armed: null, chooseModeFor: null });
+      get()._finishAction(c.kind, c.candidates[0]);
       return;
     }
     set({
       armed: { label: c.label, kind: c.kind, cardId: c.cardId ?? null,
-               candidates: c.candidates, site: 0, numSites: n, picks: [] },
+               candidates: c.candidates, site: 0, numSites: n, picks: [],
+               targetLabels: c.candidates[0]?.target_labels ?? [] },
       chooseModeFor: null,
     });
   },
@@ -211,17 +234,68 @@ export const useGame = create<StoreState>((set, get) => ({
     const nextSite = armed.site + 1;
     // Done when we've filled every site, or only one action can still match.
     if (nextSite >= armed.numSites || filtered.length === 1) {
-      get().submitIndex(filtered[0].index);
       set({ armed: null });
+      get()._finishAction(armed.kind, filtered[0]);
       return;
     }
     set({ armed: { ...armed, candidates: filtered, site: nextSite, picks: [...armed.picks, id] } });
   },
 
-  cancelArm: () => set({ armed: null, chooseModeFor: null }),
+  cancelArm: () => set({ armed: null, chooseModeFor: null, manaSelect: null }),
 
-  submitIndex: (index) => {
-    get().socket?.send({ type: "submit_action", action: { index } });
+  submitIndex: (index, mana) => {
+    const action: Record<string, unknown> = { index };
+    if (mana) action.mana = mana;
+    get().socket?.send({ type: "submit_action", action });
+  },
+
+  // Submit a finished action — but casts detour through beginCast so an ambiguous
+  // mana payment can prompt a pick before the action is sent.
+  _finishAction: (kind: string, action: LegalAction) => {
+    if (kind === "cast") get().beginCast(action);
+    else get().submitIndex(action.index);
+  },
+
+  beginCast: (action) => {
+    const snap = get().snapshot;
+    const char = snap?.characters.find((c) => c.id === action.actor_id) ?? null;
+    const card = char?.hand?.find((c) => c.id === action.card_id) ?? null;
+    if (!char || !card) {
+      get().submitIndex(action.index); // no hand info — let the engine pay deterministically
+      return;
+    }
+    const pool: Record<string, number> = {};
+    for (const m of char.mana.by_color) pool[m.color] = m.pool;
+    const pay = castPayment(card.cost, pool);
+    if (!pay.ambiguous) {
+      get().submitIndex(action.index); // one valid payment — no need to ask
+      return;
+    }
+    set({
+      manaSelect: {
+        actorId: char.id, index: action.index, cardId: card.id, cardName: card.name,
+        colored: pay.colored, generic: pay.generic, picked: [],
+      },
+      armed: null,
+    });
+  },
+
+  pickMana: (color) => {
+    const ms = get().manaSelect;
+    if (!ms || ms.picked.length >= ms.generic) return;
+    const picked = [...ms.picked, color];
+    if (picked.length >= ms.generic) {
+      // Full payment settled — spend the coloured pips plus the chosen generic.
+      set({ manaSelect: null });
+      get().submitIndex(ms.index, [...ms.colored, ...picked]);
+      return;
+    }
+    set({ manaSelect: { ...ms, picked } });
+  },
+
+  resetMana: () => {
+    const ms = get().manaSelect;
+    if (ms) set({ manaSelect: { ...ms, picked: [] } });
   },
 
   startPassAll: () => {

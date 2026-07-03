@@ -56,6 +56,10 @@ class Channel:
     holder_id: str
     reserved: List[str] = field(default_factory=list)
     target_id: Optional[str] = None
+    # The turn this channel was started. A channel can only be VOLUNTARILY dropped on a
+    # LATER turn (started_turn < current turn) — cancelling it the same turn would be a
+    # discounted one-turn cast of its continuous effect (GDD §8).
+    started_turn: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -379,6 +383,11 @@ class Action:
     # Empty for single-target cards, which use target_id alone.
     targets: Tuple[str, ...] = ()
     choice: Optional[int] = None  # picked candidate handle, for a choose_card action
+    # Explicit mana payment for a cast (the exact colours to spend). None == let the
+    # engine pay deterministically (WUBRG order). Not part of `key()`: the payment is
+    # a settlement detail, not the action's identity, so legality still matches the
+    # engine's offered cast. The engine re-validates it covers the cost at apply time.
+    mana: Optional[List[str]] = None
     label: str = ""
 
     def key(self) -> tuple:

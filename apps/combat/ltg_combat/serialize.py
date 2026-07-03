@@ -228,12 +228,27 @@ def _name_of(state: GameState, cid: Optional[str]) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Stack
 # --------------------------------------------------------------------------- #
+def action_mode(kind: str, attack_mode: Optional[str]) -> Optional[str]:
+    """The melee/ranged/spell tag shown beside an action (stack row or intent).
+
+    Spells read "spell"; attacks (and enemy ability-attacks that carry a reach)
+    read their melee/ranged reach; a generic ability with no reach reads nothing."""
+    if kind == "spell":
+        return "spell"
+    if attack_mode in ("melee", "ranged"):
+        return attack_mode
+    if kind == "attack":
+        return "melee"
+    return None
+
+
 def _stack_list(state: GameState) -> List[Dict[str, Any]]:
     out = []
     for i, item in enumerate(reversed(state.stack)):  # top first
         out.append({
             "label": item.label,
             "kind": item.kind,
+            "mode": action_mode(item.kind, item.attack_mode),
             "source_id": item.source_id,
             "source_name": _name_of(state, item.source_id),
             "source_side": item.source_side,

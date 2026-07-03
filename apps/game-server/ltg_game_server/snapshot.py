@@ -15,13 +15,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set
 
-from ltg_combat.engine import legal_actions, settle
+from ltg_combat.engine import cast_target_labels, legal_actions, settle
 from ltg_combat.serialize import (
     _character_dict,
     _enemy_dict,
     _name_of,
     _stack_list,
     _token_dict,
+    action_mode,
     card_dict,
     phase_label,
     serialize_actions,
@@ -151,10 +152,14 @@ def _intents(view: GameState) -> List[Dict[str, Any]]:
             continue
         amount = e.intent.attack_damage(e.power_bonus)  # live: blunted by any wound
         amt = f" {amount}" if isinstance(amount, int) else ""
+        # Reuse the stack's mode logic: an attack intent reads the enemy's reach
+        # (melee/ranged), a spell reads "spell", a component ability reads nothing.
+        mode = action_mode(e.intent.action_type, e.attack_mode)
         out.append({
             "creature_id": e.id,
             "creature_name": e.name,
             "intent_text": f"{e.intent.name}{amt}",
+            "mode": mode,
             "target_id": e.intent.target_id,
             "target_name": _name_of(view, e.intent.target_id),
         })
@@ -188,6 +193,9 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         # picker. Order/index align (both derive from the same `actions`).
         for entry, act in zip(legal_payload, actions):
             entry["targets"] = list(act.targets)
+            # Per-site effect labels so the targeting popup names each pick (e.g.
+            # Agony Warp's two wounds) rather than "target 1 / target 2".
+            entry["target_labels"] = cast_target_labels(view, act)
 
     characters = [
         _character_snapshot(view, c, c.id in controlled_ids, holder_id, kind,
@@ -201,7 +209,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
     # surface `uid` so a counter's `#<uid>` target maps to a clickable stack row.
     stack = [
         {
-            "label": r["label"], "kind": r["kind"],
+            "label": r["label"], "kind": r["kind"], "mode": r["mode"],
             "source_id": r["source_id"], "source_name": r["source_name"],
             "source_side": r["source_side"], "target_id": r["target_id"],
             "target_name": r["target_name"], "reserved_pips": r["reserved_pips"],
