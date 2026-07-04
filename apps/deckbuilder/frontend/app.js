@@ -151,16 +151,15 @@ function reconcileStartingMana() {
   }
 }
 
-// One buyable track: label, per-step cost, current total, and −/+ steppers. `plus`
-// is disabled when the next step would break a cap or blow the budget; `minus` when
-// it would drop below the floor.
-function buyRow(label, totalText, stepCost, canMinus, canPlus, onMinus, onPlus, note) {
+// One buyable track: a label and a −/+ stepper around the current total. `plus` is
+// disabled when the next step would break a cap or blow the budget; `minus` when it
+// would drop below the floor. Cost is conveyed live by the budget meter, not text.
+function buyRow(label, totalText, canMinus, canPlus, onMinus, onPlus) {
   const row = document.createElement("div");
   row.className = "buy-row";
-  row.innerHTML =
-    `<div class="buy-head"><span class="buy-label">${label}</span>` +
-    `<span class="buy-cost">${stepCost} pt${stepCost === 1 ? "" : "s"}/step</span></div>` +
-    (note ? `<div class="buy-note">${note}</div>` : "");
+  const lab = document.createElement("span");
+  lab.className = "buy-label";
+  lab.textContent = label;
   const ctrl = document.createElement("div");
   ctrl.className = "buy-ctrl";
   const minus = document.createElement("button");
@@ -172,7 +171,7 @@ function buyRow(label, totalText, stepCost, canMinus, canPlus, onMinus, onPlus, 
   plus.type = "button"; plus.className = "step-btn"; plus.textContent = "+";
   plus.disabled = !canPlus; plus.onclick = onPlus;
   ctrl.append(minus, val, plus);
-  row.appendChild(ctrl);
+  row.append(lab, ctrl);
   return row;
 }
 
@@ -233,49 +232,43 @@ function renderCharacter() {
   const buy = $("#buy-pick");
   buy.innerHTML = "";
   const cost = CMODEL.costs;
-  const powerCap = basePower() + CMODEL.caps.power_bought;
   buy.appendChild(buyRow(
-    "HP", `${ch.hp}`, cost.hp_step,
+    "HP", `${ch.hp}`,
     ch.hp > CMODEL.baseline.hp, remaining >= cost.hp_step,
-    () => stepHp(-2), () => stepHp(+2), "+2 HP per step"));
+    () => stepHp(-2), () => stepHp(+2)));
   buy.appendChild(buyRow(
-    "Mana capacity", `${manaCapacity()}`, cost.mana,
+    "Mana", `${manaCapacity()}`,
     manaCapacity() > CMODEL.baseline.mana, remaining >= cost.mana,
     () => stepMana(-1), () => stepMana(+1)));
   buy.appendChild(buyRow(
-    "Starting cards", `${ch.starting_cards}`, cost.card,
+    "Cards", `${ch.starting_cards}`,
     ch.starting_cards > CMODEL.baseline.cards, remaining >= cost.card,
     () => stepCards(-1), () => stepCards(+1)));
   buy.appendChild(buyRow(
-    "Power", `${currentPower()}`, cost.power,
+    "Power", `${currentPower()}`,
     (ch.power_bought || 0) > 0,
     (ch.power_bought || 0) < CMODEL.caps.power_bought && remaining >= cost.power,
-    () => stepPower(-1), () => stepPower(+1),
-    `${ch.attack_mode} cap ${powerCap} (at most +${CMODEL.caps.power_bought})`));
+    () => stepPower(-1), () => stepPower(+1)));
 
-  // Keyword — none, or exactly one buyable keyword (§P-3). Banned ones aren't shown.
+  // Keyword — a single dropdown (you may pick at most one, §P-3). Each option shows
+  // its cost; ones you can't afford are disabled. Banned keywords aren't offered.
   const kwPick = $("#keyword-pick");
   kwPick.innerHTML = "";
-  const noneBtn = document.createElement("button");
-  noneBtn.type = "button";
-  noneBtn.className = "kw-btn" + (!ch.keyword ? " on" : "");
-  noneBtn.textContent = "none";
-  noneBtn.onclick = () => setKeyword(null);
-  kwPick.appendChild(noneBtn);
+  const sel = document.createElement("select");
+  sel.className = "kw-select";
+  sel.appendChild(new Option("None", ""));
   Object.keys(CMODEL.keywords).forEach((kw) => {
     const info = CMODEL.keywords[kw];
-    const btn = document.createElement("button");
-    btn.type = "button";
+    const opt = new Option(`${info.display} — ${info.cost} pts`, kw);
     const selected = ch.keyword === kw;
-    // Affordable if selected already, or the swap fits the budget.
     const swapCost = info.cost - (ch.keyword ? CMODEL.keywords[ch.keyword].cost : 0);
-    btn.className = "kw-btn" + (selected ? " on" : "");
-    btn.disabled = !selected && swapCost > remaining;
-    btn.title = info.gloss || "";
-    btn.innerHTML = `${info.display} <span class="kw-cost">${info.cost}</span>`;
-    btn.onclick = () => setKeyword(selected ? null : kw);
-    kwPick.appendChild(btn);
+    opt.disabled = !selected && swapCost > remaining;  // unaffordable swap
+    opt.title = info.gloss || "";
+    sel.appendChild(opt);
   });
+  sel.value = ch.keyword || "";
+  sel.onchange = () => setKeyword(sel.value || null);
+  kwPick.appendChild(sel);
 
   // Default row.
   const rowPick = $("#row-pick");
@@ -297,7 +290,7 @@ function renderCharacter() {
   });
 
   // Starting mana: one slot per mana-capacity point, each within the colour identity.
-  $("#mana-label").textContent = `Starting mana (${manaCapacity()}, from your colours)`;
+  $("#mana-label").textContent = "Starting mana";
   const manaPick = $("#mana-pick");
   manaPick.innerHTML = "";
   for (let slot = 0; slot < manaCapacity(); slot++) {

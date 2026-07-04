@@ -120,27 +120,25 @@ textarea { resize: vertical; }
 .budget-bar span { display: block; height: 100%; background: var(--accent); transition: width .12s; }
 .budget-meter.over .budget-bar span { background: var(--bad); }
 
-/* Buyable-track steppers */
-.buy-list { display: flex; flex-direction: column; gap: 8px; }
-.buy-row { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
-  padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.buy-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+/* Buyable-track steppers — one even row per track: label left, stepper right. */
+.buy-list { display: flex; flex-direction: column; gap: 6px; }
+.buy-row { display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; height: 38px; padding: 0 6px 0 10px; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px; }
 .buy-label { font-size: 13px; color: var(--text); }
-.buy-cost { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.buy-note { font-size: 10px; color: var(--muted); flex-basis: 100%; }
-.buy-ctrl { display: flex; align-items: center; gap: 6px; flex: none; }
-.buy-val { min-width: 22px; text-align: center; font-size: 15px; font-weight: 600; color: var(--text); }
-.step-btn { width: 26px; height: 26px; padding: 0; font-size: 16px; line-height: 1;
-  border-radius: 6px; display: grid; place-items: center; }
-.step-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.buy-ctrl { display: flex; align-items: center; gap: 2px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 2px; }
+.buy-val { min-width: 30px; text-align: center; font-size: 15px; font-weight: 600;
+  color: var(--text); font-variant-numeric: tabular-nums; }
+.step-btn { width: 26px; height: 26px; padding: 0; font-size: 17px; line-height: 1;
+  border: 0; border-radius: 5px; background: transparent; color: var(--accent);
+  display: grid; place-items: center; }
+.step-btn:hover:not(:disabled) { background: var(--panel-2); border: 0; }
+.step-btn:disabled { color: var(--line); cursor: not-allowed; }
 
-/* Keyword picker */
-.keyword-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.kw-btn { padding: 5px 9px; font-size: 12px; text-transform: capitalize; }
-.kw-btn.on { background: var(--accent); color: #0c0f16; border-color: var(--accent); }
-.kw-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.kw-btn .kw-cost { font-size: 10px; color: var(--muted); margin-left: 3px; }
-.kw-btn.on .kw-cost { color: #0c0f16; }
+/* Keyword dropdown — a single select (pick at most one). */
+.kw-select { width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; }
 
 .mana-slot { margin-bottom: 6px; }
 .slot-label { font-size: 11px; color: var(--muted); width: 42px; flex: none; }
