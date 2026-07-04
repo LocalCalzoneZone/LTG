@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { createGame, fetchSetupOptions } from "../lib/api";
+import { createGame, fetchSetupOptions, generateEncounter } from "../lib/api";
 import type { SetupOptions } from "../lib/types";
 import { ManaIcon } from "./Pips";
+
+// Sentinel encounter id for the "generate a new one" choice.
+const GENERATE = "__generate__";
+const DIFFICULTIES = ["easy", "standard", "hard"];
 
 export function NewGameModal({ onClose, onStarted }: {
   onClose: (() => void) | null; // null == not dismissable (first launch)
@@ -10,7 +14,10 @@ export function NewGameModal({ onClose, onStarted }: {
   const [opts, setOpts] = useState<SetupOptions | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [encounter, setEncounter] = useState<string>("");
+  const [difficulty, setDifficulty] = useState("standard");
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null); // busy sub-status
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,11 +36,19 @@ export function NewGameModal({ onClose, onStarted }: {
     setBusy(true);
     setErr(null);
     try {
-      const sid = await createGame(picked, encounter);
+      let encounterId = encounter;
+      if (encounter === GENERATE) {
+        setStatus("Generating encounter… (this can take up to a minute)");
+        const meta = await generateEncounter(picked, difficulty, note);
+        encounterId = meta.id;
+      }
+      setStatus("Starting game…");
+      const sid = await createGame(picked, encounterId);
       onStarted(sid);
     } catch (e) {
-      setErr(String(e));
+      setErr(e instanceof Error ? e.message : String(e));
       setBusy(false);
+      setStatus(null);
     }
   };
 
@@ -92,6 +107,56 @@ export function NewGameModal({ onClose, onStarted }: {
             <section className="mb-5">
               <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">Encounter</h3>
               <div className="flex flex-col gap-1">
+                {/* Generate a fresh encounter via the LLM, scoped to the picked party. */}
+                <label
+                  className={`flex cursor-pointer flex-col gap-2 rounded-lg p-2 ring-1 transition ${
+                    encounter === GENERATE
+                      ? "bg-violet-600/30 ring-violet-400"
+                      : "bg-slate-700/50 ring-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="encounter"
+                      checked={encounter === GENERATE}
+                      onChange={() => setEncounter(GENERATE)}
+                    />
+                    <span className="font-medium">✨ Generate new encounter</span>
+                    <span className="ml-auto text-xs text-gray-400">scaled to your party</span>
+                  </div>
+                  {encounter === GENERATE && (
+                    <div className="flex flex-col gap-2 pl-6" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs uppercase tracking-wide text-gray-400">Difficulty</span>
+                        <div className="flex gap-1">
+                          {DIFFICULTIES.map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setDifficulty(d)}
+                              className={`rounded px-3 py-1 text-xs font-semibold capitalize transition ${
+                                difficulty === d
+                                  ? "bg-violet-600 text-white"
+                                  : "bg-slate-900 text-gray-300 hover:text-white"
+                              }`}
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        maxLength={140}
+                        placeholder="Optional theme, e.g. “undead pirates besieging a lighthouse”"
+                        className="rounded bg-slate-900 px-2 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-violet-400"
+                      />
+                    </div>
+                  )}
+                </label>
+
                 {opts.encounters.map((e) => (
                   <label
                     key={e.id}
@@ -112,12 +177,16 @@ export function NewGameModal({ onClose, onStarted }: {
               </div>
             </section>
 
+            {busy && status && (
+              <div className="mb-3 rounded bg-violet-900/40 px-3 py-2 text-sm text-violet-200">{status}</div>
+            )}
+
             <button
               disabled={busy || picked.length === 0 || !encounter}
               onClick={start}
               className="w-full rounded-lg bg-blue-600 py-2.5 font-bold hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-600"
             >
-              {busy ? "Starting…" : "Start Game"}
+              {busy ? "Working…" : encounter === GENERATE ? "Generate & Start" : "Start Game"}
             </button>
           </>
         )}

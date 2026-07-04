@@ -44,6 +44,25 @@ class PreventTag:
 # Channels (held channeled enchantments, GDD §8)
 # --------------------------------------------------------------------------- #
 @dataclass
+class EnemyChannel:
+    """An enemy's held channel (GDD §8 mirrored onto the enemy side).
+
+    Enemies have no cards or mana, so the channel is anchored to the COMPONENT
+    that started it: its continuous verbs stay applied and its `trigger: upkeep`
+    verbs recur until the channel breaks. Break causes: the channeler takes one
+    hit of ≥25% max HP, dies, is bounced, or is suspended — plus normal stack
+    interaction at cast time (the channel enters play as a counterable action).
+    `name` is the component telegraph — the player-facing "what this is doing"."""
+
+    component_id: str
+    name: str
+    effects: List[Effect] = field(default_factory=list)
+    holder_id: str = ""
+    target_id: Optional[str] = None
+    started_turn: int = 0
+
+
+@dataclass
 class Channel:
     """A channeled card held in play, anchored to its caster.
 
@@ -112,6 +131,10 @@ class CharacterState:
     # end step (this_turn) or channel break (while_channeled); 'encounter'
     # / 'permanent' persist. The engine reads these for keyword behaviour (GDD §7).
     keywords: Dict[str, str] = field(default_factory=dict)
+    # Total +1/+1 counters received. The stat change is already folded into
+    # `power`/`max_hp` when granted (_r_counters); this tally exists so the UI
+    # can show counters as a distinct, permanent thing.
+    counters: int = 0
 
     # Per-round / per-turn flags (reset at upkeep).
     used_attack: bool = False
@@ -120,6 +143,13 @@ class CharacterState:
     acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" | "move" this turn
     turn_ended: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
+
+    # Enemy Debilitate effects on players (Design Update 04 §F-3 "stun / taunt-us").
+    # `stunned` = whole turns whose proactive window is denied (decremented as each
+    # stunned turn ends); `taunted_to` = the enemy id this character's basic attacks
+    # must target while it lives (cleared at upkeep — a this-turn effect).
+    stunned: int = 0
+    taunted_to: Optional[str] = None
 
     @property
     def effective_hp(self) -> int:
@@ -165,6 +195,7 @@ class TokenState:
     protection: int = 0
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
+    counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
 
     @property
     def effective_hp(self) -> int:
@@ -251,6 +282,20 @@ class Component:
     target_rule: str = "valuation"       # self | lowest_hp_ally | valuation | channeling_player | ...
     telegraph: str = ""                  # intent text shown in the Intents list (proactive)
     move_home: bool = False              # a repositioning rule (Evasive/§F-7.3) declares a Move
+    # Boss phase gate (§F-9): None = always; "pre_enrage" = only before the boss
+    # enrages; "post_enrage" = only after. Meaningless (ignored) on non-bosses.
+    phase: Optional[str] = None
+    # GDD action-taxonomy class for what this component puts on the stack.
+    # Enemies have no cards, so "spell" is THEMATIC: Fireball/Meteor/Psionic
+    # Lance are spells (answered by spell counters like Negate); Life Leech /
+    # Sparkbomb / Spore Fog stay abilities. Proactive: "ability" (default) or
+    # "spell". Reactive components land as "triggered" unless flagged "spell".
+    action_type: str = "ability"
+    # A channelled component (§8, enemy side): resolving its intent doesn't run
+    # the verbs once — it starts an EnemyChannel. Continuous verbs
+    # (duration while_channeled) hold; `trigger: upkeep` verbs recur each turn;
+    # anything else fires once as the channel starts.
+    channel: bool = False
 
 
 @dataclass
@@ -283,7 +328,8 @@ class EnemyState:
     # parks it forever).
     components: List["Component"] = field(default_factory=list)
     cooldowns: Dict[str, int] = field(default_factory=dict)
-    is_boss: bool = False       # §F-9 hook (boss behaviours deferred; the flag rides now)
+    is_boss: bool = False       # §F-9: removal-immune outside the execute window; enrages ≤25%
+    enraged: bool = False       # one-way: set the first time a boss falls to ≤25% max HP
     created_by: Optional[str] = None  # the enemy that spawned this token (§F-4 per-creator cap)
     intent_template: Dict[str, Any] = field(default_factory=dict)
     # An optional weaker ranged attack (R-1 heuristics): the enemy falls back to it
@@ -292,6 +338,9 @@ class EnemyState:
     ranged_template: Dict[str, Any] = field(default_factory=dict)
     stunned: int = 0           # intents to skip (stun); decremented as they would declare
     taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
+    # Held channels (§8 enemy side): started by channel-components, broken by a
+    # ≥25%-max-HP hit, death, bounce, or suspension. See EnemyChannel.
+    channels: List[EnemyChannel] = field(default_factory=list)
     # Suspended by a channeled `exile` (GDD §8): off the board (not targetable, can't
     # act, doesn't block victory) but still alive — it returns when the channel breaks.
     # A spell's exile removes the enemy outright instead, so this stays False there.
@@ -310,6 +359,7 @@ class EnemyState:
     protection: int = 0
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)
+    counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
 
     @property
     def effective_hp(self) -> int:
@@ -322,6 +372,14 @@ class EnemyState:
     @property
     def current_power(self) -> int:
         return max(0, self.power + self.power_bonus)
+
+    @property
+    def in_execute_window(self) -> bool:
+        """§9.4 / §F-9: a boss at ≤25% max HP can finally be removed (destroy /
+        exile / bounce / deathtouch). Always True for non-bosses (no immunity)."""
+        if not self.is_boss:
+            return True
+        return self.effective_hp * 4 <= self.max_hp
 
 
 # --------------------------------------------------------------------------- #
@@ -348,6 +406,11 @@ class StackItem:
     card: Optional[Card] = None
     reserved: List[str] = field(default_factory=list)
     uid: int = 0            # unique stack id (so a counter can name the action it answers)
+    # An enemy channel-component's intent: resolving it STARTS an EnemyChannel
+    # (it doesn't run the verbs once). Countering it on the stack stops the
+    # channel from ever existing — normal stack interaction.
+    starts_channel: bool = False
+    component_id: Optional[str] = None
     mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
     attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)

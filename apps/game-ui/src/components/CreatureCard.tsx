@@ -2,13 +2,7 @@ import type { CreatureView, TokenView } from "../lib/types";
 import { hpColor, powerColor } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
-
-const KEYWORD_ABBR: Record<string, string> = {
-  flying: "Fly",
-  lifelink: "Life",
-  deathtouch: "Death",
-  reach: "Reach",
-};
+import { KeywordBadges } from "./KeywordBadges";
 
 const STAT = "text-[clamp(11px,1.8vh,20px)]";
 const META = "text-[clamp(9px,1.3vh,14px)]";
@@ -38,9 +32,12 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         isTarget ? "cursor-pointer" : "cursor-default"
       } ${creature.is_boss ? "z-10" : ""}`}
     >
-      {/* Level — top-left */}
-      <div className={`absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 ${META} font-bold text-gray-200`}>
-        L{creature.level}
+      {/* Level — top-left; keyword/counter badges stack beneath it */}
+      <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
+        <div className={`rounded bg-black/60 px-1.5 ${META} font-bold text-gray-200`}>
+          L{creature.level}
+        </div>
+        <KeywordBadges keywords={creature.keywords} counters={creature.counters} />
       </div>
       {/* Power / HP — top-right */}
       <div className={`absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 ${STAT} font-bold leading-none`}>
@@ -49,16 +46,12 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         <span className={hpColor(creature.hp)}>{creature.hp.current}</span>
       </div>
       {creature.is_channeling && (
-        <div className={`absolute left-1.5 bottom-7 rounded-full bg-purple-600/80 px-1 ${META} text-white`}>✦</div>
-      )}
-      {/* Keywords (flying, lifelink, …) — stacked top-left under the level chip */}
-      {creature.keywords.length > 0 && (
-        <div className="absolute left-1.5 top-7 flex flex-col gap-0.5">
-          {creature.keywords.map((kw) => (
-            <span key={kw} title={kw} className={`rounded bg-indigo-600/80 px-1 ${META} font-semibold leading-tight text-white`}>
-              {KEYWORD_ABBR[kw] ?? kw.slice(0, 4)}
-            </span>
-          ))}
+        <div
+          title={`Channeling: ${(creature.channels ?? []).map((c) => c.name).join(" · ")}\nBreak it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
+          className={`absolute inset-x-1 bottom-7 truncate rounded bg-purple-600/85 px-1 py-0.5 ${META} font-semibold text-white`}
+        >
+          ✦ {(creature.channels ?? [])[0]?.name ?? "Channeling"}
+          {(creature.channels?.length ?? 0) > 1 && ` +${creature.channels.length - 1}`}
         </div>
       )}
       {/* Name — bottom-center */}
@@ -86,6 +79,10 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
         <span className={powerColor(token.power)}>{token.power.current}</span>
         <span className="text-gray-400">/</span>
         <span className={hpColor(token.hp)}>{token.hp.current}</span>
+      </div>
+      {/* Keyword/counter badges — top-left (matches the character/creature cards) */}
+      <div className="absolute left-0.5 top-0.5">
+        <KeywordBadges keywords={token.keywords} counters={token.counters} />
       </div>
       <div className={`absolute inset-x-0 bottom-0 truncate rounded-b-md bg-black/65 px-0.5 text-center ${META}`}>
         {token.name}

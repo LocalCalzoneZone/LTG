@@ -8,9 +8,15 @@ import {
 } from "../lib/api";
 import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
 import { EncounterEditor } from "./EncounterEditor";
+import { LlmSettingsPanel } from "./LlmSettingsPanel";
 import { ManaIcon } from "./Pips";
 
-type Tab = "characters" | "encounters";
+type Tab = "characters" | "encounters" | "llm";
+const TAB_LABELS: Record<Tab, string> = {
+  characters: "Characters",
+  encounters: "Encounters",
+  llm: "LLM",
+};
 
 export function OptionsModal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("characters");
@@ -94,6 +100,19 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Open the Deckbuilder app with this character loaded for editing. There its
+  // export button becomes "Update Game Character", writing back to the repo so
+  // the next New Game picks the changes up. The Deckbuilder serves on port 8000
+  // by default (`ltg-deckbuilder`); override via localStorage if you run it
+  // elsewhere: localStorage.setItem("ltg_deckbuilder_port", "8012").
+  const editInDeckbuilder = (c: CharacterOption) => {
+    const port = localStorage.getItem("ltg_deckbuilder_port") || "8000";
+    window.open(
+      `http://${location.hostname}:${port}/?edit=${encodeURIComponent(c.id)}`,
+      "_blank",
+    );
+  };
+
   if (editing) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
@@ -129,15 +148,15 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-1 rounded-lg bg-black/30 p-1">
-            {(["characters", "encounters"] as Tab[]).map((t) => (
+            {(["characters", "encounters", "llm"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`rounded-md px-4 py-1.5 text-sm font-semibold capitalize transition ${
+                className={`rounded-md px-4 py-1.5 text-sm font-semibold transition ${
                   tab === t ? "bg-blue-600 text-white" : "text-gray-300 hover:text-white"
                 }`}
               >
-                {t}
+                {TAB_LABELS[t]}
               </button>
             ))}
           </div>
@@ -201,6 +220,13 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
                 {c.description && (
                   <div className="line-clamp-2 text-[11px] text-gray-500">{c.description}</div>
                 )}
+                <button
+                  onClick={() => editInDeckbuilder(c)}
+                  title="Open this character in the Deckbuilder (it must be running). Its Update Game Character button saves back here."
+                  className="mt-1 self-start rounded bg-slate-600 px-2.5 py-1 text-xs font-semibold hover:bg-slate-500"
+                >
+                  ✎ Edit in Deckbuilder
+                </button>
               </div>
 
               {/* Delete affordance — imported characters only */}
@@ -309,6 +335,8 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
           </div>
         </>
         )}
+
+        {tab === "llm" && <LlmSettingsPanel />}
       </div>
     </div>
   );

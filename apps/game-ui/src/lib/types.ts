@@ -40,6 +40,14 @@ export interface ManaBlock {
   pending_capacity_choice: boolean;
 }
 
+// A keyword static, pre-labelled by the server (registry display name + rules
+// gloss) so the client renders icon + tooltip without knowing any rules.
+export interface KeywordInfo {
+  id: string; // registry id, e.g. "first_strike"
+  name: string; // display name, e.g. "First Strike"
+  gloss: string; // one-line rules explanation for the tooltip
+}
+
 export interface ChannelSummary {
   card_id: string;
   card_name: string;
@@ -61,6 +69,9 @@ export interface CharacterView {
   is_channeling: boolean;
   channels_summary: ChannelSummary[];
   status_tags: string[];
+  keywords: KeywordInfo[];
+  // +1/+1 counters received; their stat change is already inside power/hp.
+  counters: number;
   mitigate_value: number;
   acted_mode: string | null;
   turn_ended: boolean;
@@ -91,10 +102,16 @@ export interface CreatureView {
   power: StatBlock;
   hp: StatBlock;
   attack_mode: string;
-  keywords: string[];
+  keywords: KeywordInfo[];
+  // +1/+1 counters received; their stat change is already inside power/hp.
+  counters: number;
   intent: IntentView | null;
   is_boss: boolean;
   is_channeling: boolean;
+  // Held enemy channels (§8): named so the player knows what breaking does.
+  channels: { name: string }[];
+  // One hit of at least this much breaks the enemy's channel(s).
+  break_threshold: number;
   in_execute_window: boolean;
 }
 
@@ -104,13 +121,17 @@ export interface TokenView {
   row: Row;
   power: StatBlock;
   hp: StatBlock;
+  keywords: KeywordInfo[];
+  counters: number;
   is_channeling: boolean;
 }
 
 export interface StackRow {
   label: string;
   kind: string;
-  mode: string | null; // melee | ranged | spell (null for a generic ability)
+  // Engine vocabulary (serialize.py action_mode): "melee attack" | "ranged attack"
+  // | "spell" | "ability" — the damage lane, so what answers it is unambiguous.
+  mode: string | null;
   source_id: string;
   source_name: string | null;
   source_side: string;
@@ -125,7 +146,8 @@ export interface IntentRow {
   creature_id: string;
   creature_name: string;
   intent_text: string;
-  mode: string | null; // melee | ranged | spell (null for a generic ability)
+  // Same vocabulary as StackRow.mode: "melee attack" | "ranged attack" | "spell" | "ability".
+  mode: string | null;
   target_id: string | null;
   target_name: string | null;
 }
@@ -232,4 +254,24 @@ export interface EncounterDetail {
 export interface SetupOptions {
   characters: CharacterOption[];
   encounters: EncounterOption[];
+}
+
+// LLM / encounter generation (Options → LLM).
+export interface LlmModel {
+  id: string; // exact OpenRouter slug
+  label: string;
+}
+export interface LlmSettings {
+  model: string;
+  instructions: string;
+  models: LlmModel[];
+  has_key: boolean; // the raw key is never sent to the client
+  difficulties: string[]; // e.g. ["easy","standard","hard"]
+}
+// Partial update; omit `api_key` (or send "") to leave the stored key untouched.
+// `instructions: null` resets the prompt to the server's built-in default.
+export interface LlmSettingsPatch {
+  api_key?: string;
+  model?: string;
+  instructions?: string | null;
 }

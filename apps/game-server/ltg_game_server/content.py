@@ -288,9 +288,22 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError
         except (KeyError, TypeError, ValueError):
             raise ValueError(f"{name}: hp must be a positive number")
+        try:
+            if int(e["level"]) <= 0:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"{name}: level must be a positive number")
+        # An enemy defines its behaviour either through a legacy `intent` template or
+        # through the Update-04 framework (`components`, with the basic attack derived
+        # from Power). A plain chassis with neither is legal — it just attacks. So the
+        # only requirement is that, if an `intent` is present, it carries a name.
         intent = e.get("intent")
-        if not isinstance(intent, dict) or not str(intent.get("name", "")).strip():
-            raise ValueError(f"{name}: needs an attack (intent) with a name")
+        if intent is not None and (
+            not isinstance(intent, dict) or not str(intent.get("name", "")).strip()
+        ):
+            raise ValueError(f"{name}: intent, if given, needs a name")
+    if sum(1 for e in enemies if isinstance(e, dict) and e.get("is_boss")) > 1:
+        raise ValueError("an encounter can have at most one boss")
     cleaned = {
         "name": str(raw.get("name") or "Encounter"),
         "enemies": copy.deepcopy(enemies),

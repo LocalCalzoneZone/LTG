@@ -25,6 +25,16 @@ export function modifierText(mod: number): string {
   return mod > 0 ? `+${mod}` : `${mod}`;
 }
 
+// Colour for an action's classification tag (the engine's vocabulary — see
+// serialize.py action_mode): attacks amber (combat damage: Mitigate and
+// combat-damage prevention answer them), abilities violet (NOT combat damage),
+// spells sky. One glance tells you which damage lane a stack item is in.
+export function actionModeColor(mode: string | null): string {
+  if (mode === "spell") return "text-sky-300/90";
+  if (mode === "ability") return "text-violet-300/90";
+  return "text-amber-300/90"; // "melee attack" / "ranged attack"
+}
+
 export interface Pip {
   kind: "generic" | "color";
   value: string;

@@ -77,8 +77,11 @@ def _counter_ability(m, ctx):
     return [Counter(filter="ability")]
 
 
-@register(r"counter target noncreature spell")
-def _counter_noncreature(m, ctx):
+@register(r"counter target (?:instant|noncreature) spell")
+def _counter_spell_only(m, ctx):
+    # Spell-only counters (Negate, Dispel): enemy components flagged
+    # `action_type: "spell"` (Fireball, Psionic Lance …) land on the stack as
+    # kind "spell" and are exactly what these answer — nothing physical.
     return [Counter(filter="spell")]
 
 

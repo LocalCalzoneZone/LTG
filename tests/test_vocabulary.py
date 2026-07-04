@@ -502,6 +502,7 @@ def test_counters_are_persistent_power_and_max_hp():
     after, _ = do(make_state([card], hero_power=3), kind="cast", card_id="grow")
     h = hero(after)
     assert h.power == 5 and h.max_hp == 22 and h.hp == 22  # not cleared at end step
+    assert h.counters == 2  # tallied separately so the UI can badge them
 
 
 def test_wound_lowers_effective_hp_and_a_heal_fills_it_first():

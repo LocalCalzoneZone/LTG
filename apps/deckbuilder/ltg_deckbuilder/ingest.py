@@ -79,17 +79,29 @@ def slugify(name: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", name.lower())).strip("_")
 
 
+_CHOOSE_RE = re.compile(r"choose (one|two|three|four)(\s+or more)?", re.IGNORECASE)
+_CHOOSE_WORD = {"one": 1, "two": 2, "three": 3, "four": 4}
+
+
 def parse_modal(oracle_text: str):
-    """If the text is a 'Choose one —' modal, build a Modal effect from its bullets."""
-    if "choose one" not in (oracle_text or "").lower():
+    """If the text is a 'Choose one/two/… [or more] —' modal, build a Modal effect
+    from its bullets. EVERY bullet must translate — a modal missing modes would
+    silently misrepresent the card, so a partial translation returns None and the
+    card is flagged `needs_translation` for hand-authoring instead."""
+    m = _CHOOSE_RE.search(oracle_text or "")
+    if not m:
         return None
     bullets = [b.strip() for b in re.split(r"[•·]\s*", oracle_text)[1:] if b.strip()]
     modes = []
     for b in bullets:
         effs = translate(b, {})
-        if effs:
-            modes.append(Mode(effects=effs))
-    return Modal(modes=modes) if len(modes) >= 2 else None
+        if not effs:
+            return None  # an untranslated bullet — no partial modals
+        modes.append(Mode(effects=effs))
+    if len(modes) < 2:
+        return None
+    choose = min(_CHOOSE_WORD[m.group(1).lower()], len(modes))
+    return Modal(modes=modes, choose=choose, or_more=bool(m.group(2)))
 
 
 def build_card(scryfall_json: dict) -> Card:

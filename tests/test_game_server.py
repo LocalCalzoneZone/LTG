@@ -76,6 +76,29 @@ def test_hidden_info_only_controlled_hands_are_sent():
     assert by_id["ys"]["hand_count"] >= 0
 
 
+def test_snapshot_carries_keywords_and_counters():
+    """Keyword statics reach the client pre-labelled (registry display + gloss)
+    and the +1/+1 counter tally rides alongside the folded-in stats."""
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren"])
+
+    char = s.state.party[0]
+    char.keywords["flying"] = "encounter"
+    char.counters = 2
+    enemy = s.state.enemies[0]
+    enemy.keywords["lifelink"] = "permanent"
+
+    snap = s.snapshot_for("A")
+    c = next(cv for cv in snap["characters"] if cv["id"] == char.id)
+    assert c["counters"] == 2
+    kw = {k["id"]: k for k in c["keywords"]}
+    assert kw["flying"]["name"] == "Flying" and kw["flying"]["gloss"]
+    e = next(ev for ev in snap["creatures"] if ev["id"] == enemy.id)
+    assert e["counters"] == 0
+    assert [k["id"] for k in e["keywords"]] == ["lifelink"]
+
+
 def test_legal_actions_only_for_the_controlled_priority_holder():
     s = _two_char_session()
     s.clients["A"] = None

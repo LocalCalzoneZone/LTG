@@ -656,7 +656,10 @@ function defaultEffect(kind) {
     else if (p.control === "bool") eff[p.name] = false;
     else if (p.control === "int" || p.control === "float" || p.control === "value") eff[p.name] = 1;
     else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
-    else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
+    // Chosen targets default to TARGETED: MTG "target …" wording is the common
+    // case, and the flag drives hexproof/protection interaction. Untick "targets"
+    // for the rare untargeted-chosen effect (which then beats hexproof).
+    else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: true };
     else if (p.control === "action_target") eff[p.name] = { class: "action", side: "enemy" };
     else if (p.control === "keyword_list") eff[p.name] = (p.required && (p.options || []).length) ? [p.options[0]] : [];
     else eff[p.name] = "";
@@ -1144,7 +1147,7 @@ function onTargetLink(idx, i, value, field = "target") {
   } else if (value === "__new_slot__") {
     const name = nextSlotName(card);
     const cur = e[field];
-    const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: false };
+    const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: true };
     card.targets[name] = seed;
     e[field] = "$" + name;
   } else {
@@ -1404,8 +1407,51 @@ async function doImport() {
   }
 }
 
+// Edit-a-game-character mode (opened from the game's Options → Characters →
+// Edit with ?edit=<character id>): the export button becomes "Update Game
+// Character" and writes the engine loadout over that character's file in the
+// repo, keeping its id even if renamed. null == normal standalone mode.
+let editTarget = null;
+
+async function updateGameCharacter() {
+  syncCharacterFromInputs();
+  try {
+    const res = await api("POST", "/api/loadout/update-game",
+                          { name: editTarget, loadout: state });
+    if (res.omitted.length) {
+      toast(`Updated ${res.updated}: ${res.exported_count} cards live; ` +
+            `${res.omitted.length} omitted (not validated).`);
+      console.warn("Omitted from game update:", res.omitted);
+    } else {
+      toast(`Updated ${res.updated} — ${res.exported_count} cards. ` +
+            `The game picks it up on the next New Game.`);
+    }
+  } catch (e) {
+    alert(`Update failed:\n${e.message}`);
+  }
+}
+
+async function enterEditMode(name) {
+  try {
+    const data = await api("GET", `/api/loadout/${encodeURIComponent(name)}`);
+    state = data;
+    if (!state.character.row) state.character.row = "front";
+    normalizeCharacter(state.character);
+    reconcileStartingMana();
+    editTarget = name;
+    const btn = $("#btn-export-engine");
+    btn.textContent = "Update Game Character";
+    btn.title = `Writes this loadout over the game character "${name}" (validated cards only)`;
+    renderAll();
+    toast(`Editing game character: ${state.character.name || name}`);
+  } catch (e) {
+    toast(`Could not load character "${name}": ${e.message}`);
+  }
+}
+
 // Export an engine-ready loadout: only structurally-valid, validated cards.
 async function exportEngineLoadout() {
+  if (editTarget) return updateGameCharacter();
   syncCharacterFromInputs();
   try {
     const res = await api("POST", "/api/loadout/export", { loadout: state });
@@ -1486,3 +1532,10 @@ function init() {
 }
 
 init();
+
+// Opened from the game (Options → Characters → Edit)? Load that character and
+// flip the export button into "Update Game Character" mode.
+{
+  const editParam = new URLSearchParams(location.search).get("edit");
+  if (editParam) enterEditMode(editParam);
+}

@@ -28,6 +28,7 @@ from ltg_combat.serialize import (
     serialize_actions,
 )
 from ltg_combat.state import Action, GameState
+from ltg_core.schema import KEYWORDS
 
 LOG_TAIL = 60  # how many recent log entries to ship (newest-first)
 
@@ -58,6 +59,20 @@ def priority_kind(view: GameState) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 def _power_block(cur: int, base: int, modifier: int) -> Dict[str, int]:
     return {"current": cur, "base": base, "modifier": modifier}
+
+
+def _keyword_list(obj) -> List[Dict[str, str]]:
+    """Active keyword statics with their registry display name + gloss, so the
+    client can render an icon and a tooltip without knowing any rules."""
+    out = []
+    for kw in getattr(obj, "keywords", {}):
+        info = KEYWORDS.get(kw, {})
+        out.append({
+            "id": kw,
+            "name": info.get("display", kw.replace("_", " ").title()),
+            "gloss": info.get("gloss", ""),
+        })
+    return out
 
 
 def _mana_block(char_dict: Dict[str, Any], raw_char, pending_capacity: bool) -> Dict[str, Any]:
@@ -97,6 +112,9 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "is_channeling": bool(char.channels),
         "channels_summary": cd["channels"],  # id/name/target/text per held channel
         "status_tags": cd["status_tags"],
+        "keywords": _keyword_list(char),
+        # +1/+1 counters received (their stat change is already inside power/hp).
+        "counters": getattr(char, "counters", 0),
         "mitigate_value": cd["mitigate_value"],
         "acted_mode": cd["acted_mode"],
         "turn_ended": cd["turn_ended"],
@@ -128,13 +146,18 @@ def _creature_snapshot(view: GameState, enemy) -> Dict[str, Any]:
         # Effective hp (hp + temp_mod) so a wound (e.g. Agony Warp −0/−3) shows.
         "hp": _power_block(enemy.effective_hp, ed["max_hp"], ed["temp_mod"]),
         "attack_mode": ed["attack_mode"],
-        "keywords": ed["keywords"],
+        "keywords": _keyword_list(enemy),
+        "counters": getattr(enemy, "counters", 0),
         "intent": ed["intent"],
-        # Boss support is out of scope in the engine (INTERFACE_NOTES §4.3/§4.4):
-        # these stay constant so the UI's dormant boss hooks never light up.
-        "is_boss": False,
-        "is_channeling": False,
-        "in_execute_window": False,
+        # Boss support (§F-9): the flag lights the UI's boss chrome; the execute
+        # window tells players the removal immunity has lifted (≤25% max HP).
+        "is_boss": bool(enemy.is_boss),
+        # Enemy channels (§8): the held effects, named so the player knows what
+        # they are turning off — break with one hit of ≥25% max HP or removal.
+        "is_channeling": bool(enemy.channels),
+        "channels": [{"name": ch.name} for ch in enemy.channels],
+        "break_threshold": -(-enemy.max_hp // 4),  # ceil(max_hp / 4)
+        "in_execute_window": bool(enemy.is_boss and enemy.in_execute_window),
     }
 
 
@@ -146,6 +169,8 @@ def _token_snapshot(view: GameState, token) -> Dict[str, Any]:
         "row": td["row"],
         "power": _power_block(token.current_power, token.power, token.power_bonus),
         "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
+        "keywords": _keyword_list(token),
+        "counters": getattr(token, "counters", 0),
         "is_channeling": False,
     }
 

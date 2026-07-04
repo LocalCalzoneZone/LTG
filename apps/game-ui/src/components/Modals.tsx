@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { actionModeColor } from "../lib/format";
 import { useGame } from "../lib/store";
 import type { StackRow } from "../lib/types";
 
@@ -183,7 +184,13 @@ export function CardPickPrompt() {
 }
 
 /** §4.16 game-over overlay (board stays visible behind). */
-export function GameOverOverlay({ onNewGame }: { onNewGame: () => void }) {
+export function GameOverOverlay({
+  onNewGame,
+  onOptions,
+}: {
+  onNewGame: () => void;
+  onOptions: () => void;
+}) {
   const result = useGame((s) => s.gameOver ?? s.snapshot?.result ?? null);
   if (!result) return null;
   const win = result === "victory";
@@ -193,12 +200,23 @@ export function GameOverOverlay({ onNewGame }: { onNewGame: () => void }) {
         <div className={`text-4xl font-black ${win ? "text-emerald-400" : "text-red-500"}`}>
           {win ? "Victory" : "Defeat"}
         </div>
-        <button
-          onClick={onNewGame}
-          className="mt-5 rounded-lg bg-blue-600 px-5 py-2 font-semibold hover:bg-blue-500"
-        >
-          New Game
-        </button>
+        <div className="mt-2 text-sm text-gray-400">
+          Tweak your party, encounters, or generation settings, then start again.
+        </div>
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <button
+            onClick={onOptions}
+            className="rounded-lg bg-slate-600 px-5 py-2 font-semibold hover:bg-slate-500"
+          >
+            Options
+          </button>
+          <button
+            onClick={onNewGame}
+            className="rounded-lg bg-blue-600 px-5 py-2 font-semibold hover:bg-blue-500"
+          >
+            New Game
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -280,7 +298,7 @@ export function PhaseBanner() {
               {banner.row.source_name}
             </span>
             <span className="text-gray-300"> · {banner.row.label}</span>
-            {banner.row.mode && <span className="text-sky-300/90"> ({banner.row.mode})</span>}
+            {banner.row.mode && <span className={actionModeColor(banner.row.mode)}> ({banner.row.mode})</span>}
             {banner.row.target_name && <span className="text-gray-300"> → {banner.row.target_name}</span>}
           </div>
         ) : (

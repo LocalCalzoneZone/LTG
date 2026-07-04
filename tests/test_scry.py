@@ -115,10 +115,12 @@ def test_scry_menu_renders_for_cockpit():
     assert any("bottom" in m["label"] for m in menu)
 
 
-def test_scry_then_untargeted_effect_with_no_target_fizzles_not_crashes():
-    """Regression: a card like Gods Willing (scry + a `chosen`/`targeted:false` prevent)
-    is cast with no target, so the post-scry effect resolves against a None target. It
-    must fizzle gracefully rather than crash in the handler."""
+def test_scry_then_chosen_effect_resolves_on_the_picked_target():
+    """A card like Gods Willing (scry + a `chosen`/`targeted:false` prevent) now
+    enumerates a target at cast — `chosen` means the caster picks, whether or not
+    the effect is `targeted` (which only governs interaction rules). The post-scry
+    effect must resolve onto that pick, not fizzle target-less (the old pinned
+    behaviour — the same bug that made Cryptic Command's bounce fizzle)."""
     card = _spell("gods_willing", [
         {"kind": "scry", "amount": 1, "target": {"mode": "self"}},
         {"kind": "prevent", "parameter": "combat_damage", "uses": "all",
@@ -126,9 +128,10 @@ def test_scry_then_untargeted_effect_with_no_target_fizzles_not_crashes():
          "target": {"mode": "chosen", "side": "any", "targeted": False}},
     ])
     st = _state([card] + [_plain(c) for c in ("a", "b")], hand_size=1)
-    st = _do(st, kind="cast", card_id="gods_willing")
+    st = _do(st, kind="cast", card_id="gods_willing", target_id="p")  # pick self
     st = _do(st, kind="pass")                    # resolve the sorcery → raises the scry choice
     revealed = st.pending_choice.candidates[0].id
     st = _place(st, revealed, "top")             # complete the scry → resolves the prevent
     assert st.pending_choice is None and not st.stack
-    assert any(e.type == "fizzle" and e.data.get("kind") == "prevent" for e in st.log)
+    caster = st.character("p")
+    assert any(t.parameter == "combat_damage" for t in caster.prevent_tags)

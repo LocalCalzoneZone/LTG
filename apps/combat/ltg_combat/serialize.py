@@ -229,16 +229,21 @@ def _name_of(state: GameState, cid: Optional[str]) -> Optional[str]:
 # Stack
 # --------------------------------------------------------------------------- #
 def action_mode(kind: str, attack_mode: Optional[str]) -> Optional[str]:
-    """The melee/ranged/spell tag shown beside an action (stack row or intent).
+    """The classification tag shown beside an action (stack row / banner / intent),
+    in the engine's own vocabulary: **spell | attack | ability** (GDD taxonomy).
 
-    Spells read "spell"; attacks (and enemy ability-attacks that carry a reach)
-    read their melee/ranged reach; a generic ability with no reach reads nothing."""
+    Melee/ranged qualifies ATTACKS ONLY — "melee attack" / "ranged attack". An
+    ability always reads "ability", even when its owner is a ranged creature: the
+    old behaviour let an enemy ability wear its owner's reach ("Life Leech (ranged)"),
+    which read as an attack and hid why combat-damage prevention didn't stop it.
+    The tag names the item's damage lane, so what answers it is legible at a glance."""
     if kind == "spell":
         return "spell"
-    if attack_mode in ("melee", "ranged"):
-        return attack_mode
     if kind == "attack":
-        return "melee"
+        reach = attack_mode if attack_mode in ("melee", "ranged") else "melee"
+        return f"{reach} attack"
+    if kind in ("ability", "activated", "triggered"):
+        return "ability"
     return None
 
 

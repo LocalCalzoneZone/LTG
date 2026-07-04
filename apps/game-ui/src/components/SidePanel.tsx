@@ -1,3 +1,4 @@
+import { actionModeColor } from "../lib/format";
 import { armedTargetIdSet, useGame } from "../lib/store";
 
 export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onOptions: () => void }) {
@@ -63,7 +64,7 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
               >
                 <span className="font-semibold">{s.source_name}</span>
                 <span className="text-gray-400"> · {s.label}</span>
-                {s.mode && <span className="text-sky-300/80"> ({s.mode})</span>}
+                {s.mode && <span className={actionModeColor(s.mode)}> ({s.mode})</span>}
                 {s.target_name && <span className="text-gray-400"> → {s.target_name}</span>}
               </div>
             );
