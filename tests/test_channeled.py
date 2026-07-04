@@ -33,7 +33,17 @@ def test_anthem_render():
 
 
 def test_pacifism_render():
-    # `disable` was retired (R-11); Still the Blade now blunts the enemy's attack.
+    # Pacifism keeps its target from attacking (`prevent attack`, R-11) — distinct
+    # from a wound aura, which only shaves attack power.
+    c = chan_card(
+        [{"kind": "prevent", "parameter": "attack", "target": "$T1", "duration": "while_channeled"}],
+        {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}},
+    )
+    assert render(c) == "While channeled: the chosen enemy can't attack."
+
+
+def test_wound_aura_render():
+    # A −2/−0 wound aura (e.g. Still the Blade) only blunts the enemy's attack power.
     c = chan_card(
         [{"kind": "wound", "power": 2, "toughness": 0, "target": "$T1", "duration": "while_channeled"}],
         {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}},
@@ -83,7 +93,7 @@ def test_exile_duration_must_be_while_channeled():
     # Exile is permanent (no duration) or reversible (while_channeled) — the
     # turn-scoped durations are meaningless and rejected.
     with pytest.raises(ValidationError):
-        chan_card([{"kind": "exile", "target": "$T1", "duration": "end_of_turn"}],
+        chan_card([{"kind": "exile", "target": "$T1", "duration": "this_turn"}],
                   {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
 
 

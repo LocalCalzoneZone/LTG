@@ -1,0 +1,108 @@
+{
+  "name": "Ironhide's Warband — Fortify, Swarm & Punish",
+  "faction": "Ironhide's Warband",
+  "notes": "Design Update 04 §F worked blends + a Swarm. Level derives from budget B(L)=5L+5. Showcases: a condition-gated Fortify that heals only when bloodied (the condition IS the arbitration), an on_hit Punish reaction, a Swarm that spawns enemy tokens (capped at 2 per creator), the valuation-targeted Debilitate wound, hexproof, and Evasive repositioning. Total enemy Levels 12 — a boss-weight brawl; bring a full party.",
+  "enemies": [
+    {
+      "id": "ironhide",
+      "name": "Ironhide Warleader",
+      "flavor": "Bruiser +6 HP +1 Pwr, trample (29/30). Swings while healthy; heals when hurt; punishes melee.",
+      "hp": 10,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": ["trample"],
+      "components": [
+        {
+          "id": "fortify",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 10,
+          "cooldown": 2,
+          "target_rule": "self",
+          "condition": {"kind": "self_hp_pct", "op": "<", "value": 50},
+          "telegraph": "Second Wind — heal 7",
+          "verbs": [
+            {"kind": "heal", "amount": 7, "target": {"mode": "self"}}
+          ]
+        },
+        {
+          "id": "punish",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Retaliate — deal 2 to the attacker",
+          "verbs": [
+            {"kind": "deal_damage", "amount": 2, "target": {"mode": "chosen", "side": "ally", "targeted": true}}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broodmother",
+      "name": "Hive Broodmother",
+      "flavor": "Bruiser + Swarm (16/20). Spawns Husklings from the back line, at most two alive.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "swarm",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Spawn Husklings (x2)",
+          "verbs": [
+            {"kind": "create_token", "token_id": "huskling", "count": 2, "hp": 2, "power": 1}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mistveil_hexer",
+      "name": "Mistveil Hexer",
+      "flavor": "Skirmisher +3 HP, hexproof (25/25). Chips your board every turn and is hard to pin.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "keywords": ["hexproof"],
+      "components": [
+        {
+          "id": "hex",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 1,
+          "target_rule": "valuation",
+          "telegraph": "Withering Hex — wound -1/-1",
+          "verbs": [
+            {"kind": "wound", "power": 1, "toughness": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}}
+          ]
+        },
+        {
+          "id": "evasive",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Miststep"
+        }
+      ]
+    }
+  ],
+  "tokens": {
+    "huskling": {"name": "Huskling", "hp": 2, "power": 1, "row": "front", "attack_mode": "melee"}
+  }
+}

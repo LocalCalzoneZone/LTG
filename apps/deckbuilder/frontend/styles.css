@@ -48,9 +48,11 @@ main.layout {
   border-radius: 10px; padding: 14px;
 }
 
-/* Character portrait — square aspect ratio. */
+/* Character portrait — 9:16 aspect ratio.
+   Same width as before; taller. Images of other ratios are scaled to cover
+   (fit the smallest dimension) and centre-aligned, cropping the overflow. */
 .portrait {
-  position: relative; aspect-ratio: 1 / 1; width: 100%;
+  position: relative; aspect-ratio: 9 / 16; width: 100%;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
   overflow: hidden; cursor: pointer; display: grid; place-items: center;
 }
@@ -104,6 +106,40 @@ textarea { resize: vertical; }
   border-radius: 6px; padding: 6px 4px; font-size: 11px; color: var(--muted);
 }
 .stat b { display: block; font-size: 16px; color: var(--text); }
+.stat.kw { flex: 0 0 auto; padding: 6px 8px; }
+.stat.kw b { font-size: 12px; color: var(--accent); text-transform: capitalize; }
+
+/* Points-buy budget meter */
+.budget-meter { margin: 0 0 12px; }
+.budget-head { display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.budget-head b { color: var(--text); font-size: 15px; }
+.budget-remaining { color: var(--good); }
+.budget-meter.over .budget-remaining { color: var(--bad); font-weight: 600; }
+.budget-bar { height: 6px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.budget-bar span { display: block; height: 100%; background: var(--accent); transition: width .12s; }
+.budget-meter.over .budget-bar span { background: var(--bad); }
+
+/* Buyable-track steppers — one even row per track: label left, stepper right. */
+.buy-list { display: flex; flex-direction: column; gap: 6px; }
+.buy-row { display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; height: 38px; padding: 0 6px 0 10px; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px; }
+.buy-label { font-size: 13px; color: var(--text); }
+.buy-ctrl { display: flex; align-items: center; gap: 2px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 2px; }
+.buy-val { min-width: 30px; text-align: center; font-size: 15px; font-weight: 600;
+  color: var(--text); font-variant-numeric: tabular-nums; }
+.step-btn { width: 26px; height: 26px; padding: 0; font-size: 17px; line-height: 1;
+  border: 0; border-radius: 5px; background: transparent; color: var(--accent);
+  display: grid; place-items: center; }
+.step-btn:hover:not(:disabled) { background: var(--panel-2); border: 0; }
+.step-btn:disabled { color: var(--line); cursor: not-allowed; }
+
+/* Keyword dropdown — a single select (pick at most one). */
+.kw-select { width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; }
+
 .mana-slot { margin-bottom: 6px; }
 .slot-label { font-size: 11px; color: var(--muted); width: 42px; flex: none; }
 .mana-icon { vertical-align: middle; }

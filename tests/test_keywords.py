@@ -29,7 +29,7 @@ def render(effects, **kw):
 # --- worked examples -------------------------------------------------------- #
 def test_grant_flying_render():
     assert render([{"kind": "grant_keyword", "keywords": ["flying"],
-                    "target": CHOSEN_ALLY, "duration": "end_of_turn"}]) \
+                    "target": CHOSEN_ALLY, "duration": "this_turn"}]) \
         == "An ally gains Flying until end of turn."
 
 
@@ -42,8 +42,8 @@ def test_grant_trample_channeled_render():
 
 def test_pump_and_grant_compose():
     c = card([
-        {"kind": "pump", "power": 2, "toughness": 2, "target": CHOSEN_ALLY, "duration": "end_of_turn"},
-        {"kind": "grant_keyword", "keywords": ["first_strike"], "target": CHOSEN_ALLY, "duration": "end_of_turn"},
+        {"kind": "pump", "power": 2, "toughness": 2, "target": CHOSEN_ALLY, "duration": "this_turn"},
+        {"kind": "grant_keyword", "keywords": ["first_strike"], "target": CHOSEN_ALLY, "duration": "this_turn"},
     ])
     kinds = [e.kind for e in c.effects]
     assert kinds == ["pump", "grant_keyword"]
@@ -59,10 +59,10 @@ def test_remove_renderings():
 
 def test_grant_verb_agrees_with_target_number():
     plural = render([{"kind": "grant_keyword", "keywords": ["lifelink"],
-                      "target": {"mode": "all", "side": "ally"}, "duration": "end_of_turn"}])
+                      "target": {"mode": "all", "side": "ally"}, "duration": "this_turn"}])
     assert plural == "All allies gain Lifelink until end of turn."
     single = render([{"kind": "grant_keyword", "keywords": ["flying"],
-                      "target": CHOSEN_ALLY, "duration": "end_of_turn"}])
+                      "target": CHOSEN_ALLY, "duration": "this_turn"}])
     assert single == "An ally gains Flying until end of turn."
 
 

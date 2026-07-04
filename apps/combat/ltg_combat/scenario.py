@@ -19,9 +19,39 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ltg_core.schema import Card, Loadout
+from pydantic import TypeAdapter
 
-from .state import CharacterState, EnemyState, GameState
+from ltg_core.schema import Card, Effect, Loadout
+
+from .state import CharacterState, Component, EnemyState, GameState
+
+# Parses a component's `verbs` (a list of effect dicts) into core Effect models — the
+# same schema a card's effects use, so an enemy adds no new resolution vocabulary.
+_VERBS = TypeAdapter(List[Effect])
+
+
+def _component_from_dict(spec: Dict[str, Any]) -> Component:
+    """Build a runtime `Component` (Design Update 04 §F-3) from its JSON form. `verbs`
+    are schema-validated §11 primitives; everything else is a scalar the engine reads."""
+    return Component(
+        id=spec["id"], archetype=spec.get("archetype", ""),
+        timing=spec.get("timing", "proactive"), trigger=spec.get("trigger"),
+        condition=spec.get("condition"), cooldown=int(spec.get("cooldown", 0)),
+        once_per_encounter=bool(spec.get("once_per_encounter", False)),
+        priority=int(spec.get("priority", 90)),
+        verbs=list(_VERBS.validate_python(spec.get("verbs", []))),
+        target_rule=spec.get("target_rule", "valuation"),
+        telegraph=spec.get("telegraph", ""),
+        move_home=bool(spec.get("move_home", False)))
+
+
+def _default_attack_template(e: Dict[str, Any]) -> Dict[str, Any]:
+    """The default-attack (priority-90) template for an enemy that defines its behaviour
+    through components rather than a legacy `intent` — the chassis basic attack, targeted
+    by the §F-7.2 valuation brain."""
+    return {"name": f"{e['name']} Attack", "amount": int(e.get("power", 0)),
+            "action_type": "ability", "intent_type": "attack",
+            "targeting": "valuation", "mode": e.get("attack_mode", "melee")}
 
 # Readable target descriptors (the §6 aliases, in their canonical structured form).
 TARGETED_ENEMY = {"mode": "chosen", "side": "enemy", "targeted": True}
@@ -58,15 +88,15 @@ SCENARIO_A: Dict[str, Any] = {
                     [{"kind": "deal_damage", "amount": 3, "target": TARGETED_ENEMY}]),
                 _cd("steady_blade", "Steady Blade", "instant", {"colors": {"G": 1}}, 1,
                     [{"kind": "pump", "power": 1, "toughness": 1, "target": TARGETED_ALLY,
-                      "duration": "end_of_turn"}]),
+                      "duration": "this_turn"}]),
                 _cd("mend", "Mend", "instant", {"colors": {"W": 1}}, 1,
                     [{"kind": "heal", "amount": 3, "target": TARGETED_ALLY}]),
                 _cd("valors_edge", "Valor's Edge", "instant", {"colors": {"G": 1}}, 2,
                     [{"kind": "pump", "power": 2, "toughness": 2, "target": TARGETED_ALLY,
-                      "duration": "end_of_turn"}], rarity="uncommon"),
+                      "duration": "this_turn"}], rarity="uncommon"),
                 _cd("bulwark", "Bulwark", "sorcery", {"colors": {"W": 1}}, 1,
                     [{"kind": "pump", "power": 0, "toughness": 3, "target": SELF,
-                      "duration": "end_of_turn"}]),
+                      "duration": "this_turn"}]),
             ],
         },
         {
@@ -157,6 +187,19 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
+def _keyword_dict(kw: Any) -> Dict[str, str]:
+    """Normalise an authored keyword field into the engine's {keyword: duration} map.
+
+    Accepts a list (``["flying", "lifelink"]`` — permanent, empty duration) or an
+    already-shaped dict (``{"flying": "", "haste": "this_turn"}``); anything else
+    (or ``None``) yields no keywords."""
+    if isinstance(kw, dict):
+        return {str(k): str(v) for k, v in kw.items()}
+    if isinstance(kw, (list, tuple)):
+        return {str(k): "" for k in kw}
+    return {}
+
+
 def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameState:
     """Build the pre-upkeep setup state from a scenario dict.
 
@@ -183,18 +226,33 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
             row=p.get("row", "front"), committed=p.get("row", "front"),
             attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
+            # Keywords bought at creation (§P-3) — permanent for the encounter.
+            keywords=_keyword_dict(p.get("keywords")),
         ))
 
     enemies: List[EnemyState] = []
     for e in spec["enemies"]:
+        row = e.get("row", "front")
+        # An enemy is either legacy (a flat `intent` template) or framework-defined
+        # (Design Update 04: `chassis` stats + `components`). For the latter the default
+        # priority-90 attack is synthesized from its Power, targeted by valuation.
+        intent_template = dict(e["intent"]) if "intent" in e else _default_attack_template(e)
+        attack_mode = e.get("attack_mode", e.get("intent", {}).get("mode", "melee"))
         enemies.append(EnemyState(
             id=e.get("id", _slug(e["name"])), name=e["name"],
             max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
             # Attack power defaults to the intent's damage when not given explicitly.
             power=int(e.get("power", e.get("intent", {}).get("amount", 0))),
-            row=e.get("row", "front"), intent_template=dict(e["intent"]),
+            row=row, committed=row, home_row=e.get("home_row", row),
+            intent_template=intent_template,
             ranged_template=dict(e.get("ranged_intent", {})),
-            attack_mode=e.get("intent", {}).get("mode", "melee"),
+            attack_mode=attack_mode,
+            components=[_component_from_dict(c) for c in e.get("components", [])],
+            is_boss=bool(e.get("is_boss", False)),
+            # Starting keywords (flying, lifelink, deathtouch, reach …). Authored as a
+            # list (permanent) or a {keyword: duration} dict; a bare list means "no
+            # expiry" so encounter keywords persist across turns.
+            keywords=_keyword_dict(e.get("keywords")),
         ))
 
     return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",
@@ -244,18 +302,19 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
     """
     lo = Loadout.model_validate(raw_loadout)
     char = lo.character
-    stats = char.stats
+    block = char.stat_block  # §P-4c resolved stat block: what the engine consumes
     return {
         "id": _slug(char.name),
         "name": char.name,
-        "archetype": char.archetype.value,
-        "hp": stats["starting_hp"],
-        "power": char.power,                 # from the (archetype, attack mode) profile
-        "attack_mode": stats["attack_mode"],
+        "archetype": char.preset or "",      # display label only; no stats derive from it
+        "hp": block["hp"],
+        "power": block["attack_profile"]["power"],
+        "attack_mode": block["attack_profile"]["mode"],
         "row": char.row.value,
         "level": char.level,
-        "hand_size": stats["starting_hand"],
+        "hand_size": block["starting_cards"],
         "identity": [c.value for c in char.starting_mana],
+        "keywords": list(block["keywords"]),  # the one bought keyword (§P-3), if any
         "parry_reduce": 2,
         "library": [c.model_dump(mode="json") for c in lo.cards],
     }

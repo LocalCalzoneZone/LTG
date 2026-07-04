@@ -8,12 +8,12 @@
   "cost": { "generic": 1, "colors": { "W": 1 } },
   "timing": "channeled",
   "original_text": "Enchant creature. Enchanted creature can't attack or block.",
-  "translated_text": "While channeled: the chosen enemy has -2 attack and -0 HP.",
+  "translated_text": "While channeled: the chosen enemy can't attack.",
   "targets": {
     "T1": { "mode": "chosen", "side": "enemy", "targeted": true }
   },
   "effects": [
-    { "kind": "wound", "power": 2, "toughness": 0, "target": "$T1", "duration": "while_channeled" }
+    { "kind": "prevent", "parameter": "attack", "target": "$T1", "duration": "while_channeled" }
   ],
   "validated": true
 }

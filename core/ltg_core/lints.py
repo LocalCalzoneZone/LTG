@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import List
 
-from .schema import Duration, Side, Timing, slot_name
+from .schema import Duration, Side, TargetMode, Timing, iter_effects, slot_name
 
 
 def _lint_no_effects(card):
@@ -68,7 +68,9 @@ def _lint_slots(card):
     out = []
     declared = set(card.targets.keys())
     referenced = set()
-    for e in card.effects:
+    # Descend into modal modes / conditional branches — slots are commonly
+    # referenced by effects nested inside a "Choose one" block.
+    for e in iter_effects(card.effects):
         # Every target-bearing field counts (fight references two: target + other).
         for attr in ("target", "other"):
             s = slot_name(getattr(e, attr, None))
@@ -128,6 +130,29 @@ def _lint_fight_sides(card):
     return out
 
 
+def _lint_independent_inline_targets(card):
+    # Each effect that builds its OWN inline "chosen" target resolves independently
+    # — the player picks a creature per effect. Two or more of these on one card is
+    # almost always a mis-author: "target creature gets +2/+2 AND gains lifelink"
+    # means ONE creature, not two. Shared slots make the intent explicit — link
+    # every such effect to the SAME slot ($T1) for one shared target, or to DISTINCT
+    # slots ($T1, $T2) when the targets are genuinely meant to differ (e.g. Agony
+    # Warp). `fight` is exempt (its two targets are intentionally distinct).
+    inline = sum(
+        1 for e in card.effects
+        if e.kind not in ("modal", "conditional", "fight")
+        and (t := getattr(e, "target", None)) is not None
+        and not isinstance(t, str)
+        and getattr(t, "mode", None) == TargetMode.chosen
+        and getattr(t, "targeted", False)
+    )
+    if inline >= 2:
+        return [f"{inline} effects each choose their own target independently — if "
+                f"they should hit the SAME creature, link them to one shared slot "
+                f"($T1 on each); use distinct slots only when the targets differ."]
+    return []
+
+
 LINT_RULES = [
     _lint_no_effects,
     _lint_draw_scry_side,
@@ -137,6 +162,7 @@ LINT_RULES = [
     _lint_slots,
     _lint_channeled_persistence,
     _lint_fight_sides,
+    _lint_independent_inline_targets,
 ]
 
 

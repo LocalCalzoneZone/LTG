@@ -183,11 +183,22 @@ class ActionTarget(BaseModel):
 
 
 class Duration(str, Enum):
-    end_of_turn = "end_of_turn"
+    # Every value names the span the effect is active FOR (not the event that ends
+    # it), matching `encounter` / `while_channeled`. `this_turn` covers the rest of
+    # the current turn and expires at the End step — the former `end_of_turn` was a
+    # synonym for exactly this and is aliased below for legacy data.
     this_turn = "this_turn"
     encounter = "encounter"
     # Applies continuously while the enchantment is channeled (channeled cards only).
     while_channeled = "while_channeled"
+
+    @classmethod
+    def _missing_(cls, value):
+        # Legacy alias: `end_of_turn` was merged into `this_turn` (identical
+        # behaviour). Old saved cards still load and normalise to `this_turn`.
+        if value == "end_of_turn":
+            return cls.this_turn
+        return None
 
 
 # Effects on channeled cards may fire on a recurring trigger instead of being
@@ -362,7 +373,7 @@ class Pump(EffectBase):
     power: int
     toughness: int
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
 
 class Wound(EffectBase):
@@ -370,7 +381,7 @@ class Wound(EffectBase):
     power: int
     toughness: int
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
 
 class Counters(EffectBase):
@@ -383,11 +394,21 @@ class Counters(EffectBase):
 
 class Prevent(EffectBase):
     """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
-    `prevent combat_damage` makes attack actions against the target deal no damage.
-    The parameter names what is nullified; scope is defined by that parameter."""
+    `prevent combat_damage` makes attack actions against the target deal no damage,
+    while `prevent attack` stops the target from attacking at all (Pacifism). The
+    parameter names what is nullified; scope is defined by that parameter.
+
+    `uses` disambiguates the two "protection" shapes the parameter can take:
+      * `"all"` — nullify EVERY matching instance until the duration ends (Fog:
+        "prevent all combat damage this turn"). The shield is not spent by a hit.
+      * `"next"` — nullify only the NEXT matching instance, then wear off (a
+        one-shot bodyguard, e.g. Gods Willing's protection).
+    An action-blocking parameter like `attack` is inherently "all" for its
+    duration (a channeled Pacifism keeps the creature from attacking every turn)."""
 
     kind: Literal["prevent"] = "prevent"
     parameter: str = "combat_damage"
+    uses: Literal["all", "next"] = "all"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
@@ -472,7 +493,7 @@ class GrantKeyword(EffectBase):
     keywords: List[str] = Field(min_length=1)
     params: Optional[Dict[str, str]] = None
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
     @model_validator(mode="after")
     def _check(self) -> "GrantKeyword":
@@ -487,7 +508,7 @@ class RemoveKeyword(EffectBase):
     keywords: List[str] = Field(min_length=1)
     params: Optional[Dict[str, str]] = None
     target: TargetOrSlot
-    duration: Duration = Duration.end_of_turn
+    duration: Duration = Duration.this_turn
 
     @model_validator(mode="after")
     def _check(self) -> "RemoveKeyword":
@@ -782,6 +803,9 @@ class Card(BaseModel):
     timing: Timing  # instant/sorcery/channeled — also derives the card's speed
     original_text: str = ""
     translated_text: str = ""
+    # Optional, human-authored prose describing how the effect works "in
+    # character" — flavour to accompany the flavour name. Never machine-derived.
+    flavor_text: str = ""
     effects: List[Effect] = Field(default_factory=list)
     # Shared target slots: {slot_name: chosen TargetDescriptor}. Most cards
     # declare none and use direct descriptors; slots are only added when several
@@ -845,6 +869,41 @@ class Card(BaseModel):
         return spell_speed(self.timing.value)
 
 
+# --------------------------------------------------------------------------- #
+# Character creation — points-buy against a budget (Design Update 05, §P-1..P-4).
+#
+# A character is no longer an archetype; it is a *build*: baseline stats plus
+# bought steps, priced against a 70-point budget. The four GDD archetypes survive
+# only as named 70-point PRESETS (§P-4b) — starting points, not a closed taxonomy.
+# The engine consumes the resolved STAT BLOCK (`stat_block`), never a class name.
+#
+# All magnitudes are playtest starting values (§P-8 Rebalance Register); the
+# mechanism is canonical. Only level-1 creation is implemented (flat costs); the
+# leveling cliff of §P-6 is [DESIGNED — NOT SCHEDULED] and deliberately absent.
+# --------------------------------------------------------------------------- #
+CREATION_BUDGET = 70                                    # T5-01
+BASELINE_HP = 8                                         # §P-1 free base
+BASELINE_MANA = 1
+BASELINE_CARDS = 1
+# Free base Power per attack mode; melee's higher base pays for its row-restriction.
+BASE_POWER = {AttackMode.melee: 2, AttackMode.ranged: 1}  # §P-1
+
+COST_HP_STEP = 5     # per +2 HP step (HP is bought two at a time)   T5-02
+COST_MANA = 15       # per +1 mana capacity                          T5-03
+COST_CARD = 15       # per +1 starting card                          T5-04
+COST_POWER = 10      # per +1 Power above the mode's base            T5-05
+MAX_POWER_BOUGHT = 2  # §P-4 Power cap: melee ≤ 4, ranged ≤ 3         T5-14
+MAX_KEYWORDS = 1     # §P-3 one keyword at creation                  T5-06
+
+# Buyable keyword costs (§P-3, T5-07..13). The set is deliberately narrow.
+CREATION_KEYWORD_COST = {
+    "reach": 5, "trample": 10, "first_strike": 15, "lifelink": 15,
+    "haste": 15, "vigilance": 20, "flying": 25,
+}
+# Hard-stop at creation (§P-3): may exist on enemies / via gear later, never bought.
+BANNED_CREATION_KEYWORDS = {"protection", "hexproof", "indestructible", "deathtouch"}
+
+
 class Archetype(str, Enum):
     Fighter = "Fighter"
     Tactician = "Tactician"
@@ -852,40 +911,52 @@ class Archetype(str, Enum):
     Channeler = "Channeler"
 
 
-# Single source of truth for archetype stats. Stats are a function of
-# (archetype, level); at level 1 they equal this table. Retune here.
-ARCHETYPE_STATS = {
-    Archetype.Fighter: {"starting_hp": 25, "starting_hand": 2, "starting_mana": 2},
-    Archetype.Tactician: {"starting_hp": 15, "starting_hand": 4, "starting_mana": 2},
-    Archetype.Caster: {"starting_hp": 10, "starting_hand": 3, "starting_mana": 3},
-    Archetype.Channeler: {"starting_hp": 15, "starting_hand": 2, "starting_mana": 4},
+# The four archetypes as pre-spent 70-point builds (§P-4b). Each is a *build* the
+# Deckbuilder can load, not a class the engine knows about. `mode` is the default
+# attack mode (the first profile listed); `power` is Power bought above base. HP is
+# re-baselined to the even values that preserve 70-point equality under the 8-HP base.
+PRESETS = {
+    Archetype.Fighter:   {"hp": 20, "mana": 2, "cards": 2, "power": 1, "mode": AttackMode.melee},
+    Archetype.Tactician: {"hp": 12, "mana": 2, "cards": 4, "power": 0, "mode": AttackMode.ranged},
+    Archetype.Caster:    {"hp": 8,  "mana": 3, "cards": 3, "power": 1, "mode": AttackMode.ranged},
+    Archetype.Channeler: {"hp": 12, "mana": 4, "cards": 2, "power": 0, "mode": AttackMode.ranged},
 }
 
-# Attack profile = (mode, power), sitting alongside HP/hand/mana (Design Update R-3).
-# Basic-attack damage = Power. Fighter is melee-only; the others choose one profile
-# at creation, fixed thereafter. The first key listed is the archetype's default.
-ARCHETYPE_ATTACK = {
-    Archetype.Fighter: {AttackMode.melee: 3},
-    Archetype.Tactician: {AttackMode.ranged: 1, AttackMode.melee: 2},
-    Archetype.Channeler: {AttackMode.ranged: 1, AttackMode.melee: 2},
-    Archetype.Caster: {AttackMode.ranged: 2, AttackMode.melee: 1},
+# Pre-Update-05 HP for the same archetypes. Only HP was re-baselined (§P-4b); hand,
+# mana, and Power are identical to the new presets. Characters saved before Update
+# 05 (an `archetype` key, no build fields) load with these legacy HP values, exempt
+# from the even-HP/budget guardrails — the odd legacy values (25/15) cannot be valid
+# new builds, and the canonical §A/§C reference traces are tuned to them. New builds
+# authored in the Deckbuilder always use the re-baselined PRESETS above.
+LEGACY_ARCHETYPE_HP = {
+    Archetype.Fighter: 25, Archetype.Tactician: 15,
+    Archetype.Caster: 10, Archetype.Channeler: 15,
 }
 
 
-def default_attack_mode(archetype: Archetype) -> AttackMode:
-    """The archetype's default attack mode (first profile listed)."""
-    return next(iter(ARCHETYPE_ATTACK[Archetype(archetype)]))
+def creation_points(hp: int, mana_capacity: int, starting_cards: int,
+                    power_bought: int, keyword: Optional[str]) -> int:
+    """Points a build spends against the §P-2 flat creation table."""
+    pts = (
+        COST_HP_STEP * ((hp - BASELINE_HP) // 2)
+        + COST_MANA * (mana_capacity - BASELINE_MANA)
+        + COST_CARD * (starting_cards - BASELINE_CARDS)
+        + COST_POWER * power_bought
+    )
+    if keyword:
+        pts += CREATION_KEYWORD_COST.get(keyword, 0)
+    return pts
 
 
-def attack_power(archetype: Archetype, mode: AttackMode, level: int = 1) -> int:
-    """Basic-attack Power for an (archetype, attack mode). Level-flat for now (R-3)."""
-    profiles = ARCHETYPE_ATTACK[Archetype(archetype)]
-    return profiles[AttackMode(mode)]
-
-
-def archetype_stats(archetype: Archetype, level: int = 1) -> dict:
-    """Resolved stats for an (archetype, level). Level is a placeholder for now."""
-    return dict(ARCHETYPE_STATS[Archetype(archetype)])
+def preset_character(archetype: Archetype, name: str, colors, starting_mana,
+                     **extra) -> "Character":
+    """Materialise a named 70-point preset (§P-4b) into a concrete Character."""
+    p = PRESETS[Archetype(archetype)]
+    return Character(
+        name=name, colors=list(colors), starting_mana=list(starting_mana),
+        hp=p["hp"], starting_cards=p["cards"], power_bought=p["power"],
+        attack_mode=p["mode"], preset=Archetype(archetype).value, **extra,
+    )
 
 
 class Character(BaseModel):
@@ -894,14 +965,49 @@ class Character(BaseModel):
     # Optional portrait, stored inline as a data URL (or any image URL) so a
     # saved loadout stays self-contained. Empty when unset.
     portrait: str = ""
-    archetype: Archetype  # required — drives derived stats (see ARCHETYPE_STATS)
     level: int = 1
     colors: List[Color]
+    # Starting-mana capacity as a per-slot colour list; its LENGTH is the mana
+    # capacity (§P-1), each colour within the character's identity.
     starting_mana: List[Color]
-    # Attack profile (R-3) and default battlefield row (R-1). `attack_mode` is
-    # chosen at creation; `row` is the character's starting row.
-    attack_mode: Optional[AttackMode] = None
+
+    # --- points-buy build (§P-1..P-4). Baseline is free; these are what was bought. ---
+    hp: int = BASELINE_HP                     # total HP; even, ≥ 8, bought in +2 steps
+    starting_cards: int = BASELINE_CARDS      # total opening-hand size, ≥ 1
+    power_bought: int = 0                     # Power above the mode's base (0..MAX_POWER_BOUGHT)
+    attack_mode: AttackMode = AttackMode.melee  # the one owned mode (§P-1)
+    keyword: Optional[str] = None             # at most one buyable keyword (§P-3)
     row: Row = Row.front
+
+    # Display-only label: the preset this build was loaded from, or None for a
+    # custom build. The engine derives nothing from it.
+    preset: Optional[str] = None
+    # True for a pre-Update-05 character migrated from an `archetype` key: it keeps
+    # its legacy (possibly odd) HP and is exempt from the even-HP/budget guardrails.
+    legacy: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_archetype(cls, data):
+        """Back-compat: a pre-Update-05 archetype-only character (an `archetype` key,
+        no build fields) loads as its legacy build — legacy HP, preset hand/mana/Power
+        — flagged `legacy` so the new guardrails don't reject its odd HP. New builds
+        (no `archetype` key) get the full Update-05 points-buy treatment."""
+        if not isinstance(data, dict):
+            return data
+        arch = data.get("archetype")
+        if arch is not None and "hp" not in data:
+            a = Archetype(arch)
+            p = PRESETS[a]
+            data = dict(data)
+            data["hp"] = LEGACY_ARCHETYPE_HP[a]  # only HP was re-baselined; keep legacy
+            data.setdefault("starting_cards", p["cards"])
+            data.setdefault("power_bought", p["power"])
+            data.setdefault("attack_mode", data.get("attack_mode") or p["mode"].value)
+            data.setdefault("preset", a.value)
+            data["legacy"] = True
+        data.pop("archetype", None)  # retired field; never stored going forward
+        return data
 
     @field_validator("colors")
     @classmethod
@@ -920,42 +1026,103 @@ class Character(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _mana_count(self) -> "Character":
-        amount = archetype_stats(self.archetype, self.level)["starting_mana"]
-        if len(self.starting_mana) != amount:
+    def _floors_and_caps(self) -> "Character":
+        """Enforce the §P-4 guardrails: floors, HP parity, and the Power cap. A
+        migrated legacy character is exempt from HP parity and the Power cap (its
+        odd HP / higher Power predate the rule); floors still hold."""
+        if self.hp < BASELINE_HP:
+            raise ValueError(f"HP floor is {BASELINE_HP} (§P-4)")
+        if self.starting_cards < BASELINE_CARDS:
+            raise ValueError("starting cards floor is 1 (§P-4)")
+        if self.legacy:
+            return self
+        if self.hp % 2 != 0:
+            raise ValueError("HP is bought in 2-point steps and must be even (§P-2)")
+        if not (0 <= self.power_bought <= MAX_POWER_BOUGHT):
+            cap = BASE_POWER[AttackMode(self.attack_mode)] + MAX_POWER_BOUGHT
             raise ValueError(
-                f"{self.archetype.value} starts with {amount} mana colours; "
-                f"got {len(self.starting_mana)}"
+                f"Power cap at creation is +{MAX_POWER_BOUGHT} "
+                f"({self.attack_mode.value} ≤ {cap}) — §P-4/T5-14"
             )
         return self
 
     @model_validator(mode="after")
-    def _attack_mode_valid(self) -> "Character":
-        """Fill the archetype default when unset; reject a mode the archetype
-        can't take (e.g. Fighter is melee-only) — R-3."""
-        allowed = ARCHETYPE_ATTACK[Archetype(self.archetype)]
-        if self.attack_mode is None:
-            object.__setattr__(self, "attack_mode", default_attack_mode(self.archetype))
-        elif AttackMode(self.attack_mode) not in allowed:
+    def _mana_floor(self) -> "Character":
+        """Mana capacity is len(starting_mana), and must meet the floor (§P-4). Slots
+        outside the colour identity stay a soft advisory (see `deck_status`), not a
+        hard error — the same non-blocking treatment as before Update 05."""
+        if len(self.starting_mana) < BASELINE_MANA:
+            raise ValueError(f"mana floor is {BASELINE_MANA} (§P-4)")
+        return self
+
+    @model_validator(mode="after")
+    def _keyword_valid(self) -> "Character":
+        """At most one keyword, from the buyable set — banned keywords are rejected."""
+        kw = self.keyword
+        if kw is None:
+            return self
+        if kw in BANNED_CREATION_KEYWORDS:
+            raise ValueError(f"'{kw}' cannot be bought at creation (§P-3 hard stop)")
+        if kw not in CREATION_KEYWORD_COST:
             raise ValueError(
-                f"{self.archetype.value} has no {self.attack_mode.value} attack profile; "
-                f"choose one of {[m.value for m in allowed]}"
+                f"'{kw}' is not a buyable creation keyword; "
+                f"choose one of {sorted(CREATION_KEYWORD_COST)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _within_budget(self) -> "Character":
+        """The build may not spend more than the 70-point creation budget (§P-1).
+        Migrated legacy characters are exempt (their odd HP can exceed it)."""
+        if not self.legacy and self.points_spent > CREATION_BUDGET:
+            raise ValueError(
+                f"build spends {self.points_spent} points, over the "
+                f"{CREATION_BUDGET}-point creation budget (§P-1)"
             )
         return self
 
     @property
+    def mana_capacity(self) -> int:
+        return len(self.starting_mana)
+
+    @property
     def power(self) -> int:
-        """Basic-attack Power, from the (archetype, attack mode) profile (R-3)."""
-        return attack_power(self.archetype, self.attack_mode or default_attack_mode(self.archetype),
-                            self.level)
+        """Basic-attack Power = the mode's free base + Power bought (§P-1/§P-2)."""
+        return BASE_POWER[AttackMode(self.attack_mode)] + self.power_bought
+
+    @property
+    def points_spent(self) -> int:
+        """Creation points this build spends against the §P-2 flat table."""
+        return creation_points(self.hp, self.mana_capacity, self.starting_cards,
+                               self.power_bought, self.keyword)
+
+    @property
+    def points_remaining(self) -> int:
+        return CREATION_BUDGET - self.points_spent
+
+    @property
+    def stat_block(self) -> dict:
+        """The §P-4c resolved stat block the combat engine consumes — no class name."""
+        return {
+            "hp": self.hp,
+            "mana_capacity": self.mana_capacity,
+            "starting_cards": self.starting_cards,
+            "attack_profile": {"mode": self.attack_mode.value, "power": self.power},
+            "keywords": [self.keyword] if self.keyword else [],
+        }
 
     @property
     def stats(self) -> dict:
-        """Derived HP / hand size / mana amount / Power — read-only, from the tables."""
-        s = archetype_stats(self.archetype, self.level)
-        s["power"] = self.power
-        s["attack_mode"] = (self.attack_mode or default_attack_mode(self.archetype)).value
-        return s
+        """Legacy-shaped view (starting_hp / starting_hand / starting_mana / power /
+        attack_mode) kept for the scenario loader; sourced from the build."""
+        return {
+            "starting_hp": self.hp,
+            "starting_hand": self.starting_cards,
+            "starting_mana": self.mana_capacity,
+            "power": self.power,
+            "attack_mode": self.attack_mode.value,
+            "keywords": [self.keyword] if self.keyword else [],
+        }
 
 
 class Loadout(BaseModel):

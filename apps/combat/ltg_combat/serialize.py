@@ -100,7 +100,8 @@ def _status_tags(char) -> List[str]:
     if char.prevent_pool:
         tags.append(f"reduce {char.prevent_pool}")
     for tag in getattr(char, "prevent_tags", []):
-        tags.append(f"prevent {tag}")
+        span = "next " if tag.uses is not None else ""
+        tags.append(f"prevent {span}{tag.parameter}")
     if getattr(char, "power_bonus", 0):
         tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
     if getattr(char, "protection", 0):
@@ -173,10 +174,9 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
 def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
     intent = None
     if enemy.intent is not None:
-        amount = enemy.intent.effects[0].amount if enemy.intent.effects else None
         intent = {
             "name": enemy.intent.name,
-            "amount": amount if isinstance(amount, int) else None,
+            "amount": enemy.intent.attack_damage(enemy.power_bonus),
             "target_id": enemy.intent.target_id,
             "target_name": _name_of(state, enemy.intent.target_id),
         }
@@ -194,6 +194,8 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "zone": "in_hand" if enemy.in_hand else ("exile" if enemy.exiled else "in_play"),
         "temp_mod": enemy.temp_mod,
         "prevent_pool": enemy.prevent_pool,
+        "prevent_tags": [f"{'next ' if t.uses is not None else ''}{t.parameter}"
+                         for t in enemy.prevent_tags],
         "protection": enemy.protection,
         "stunned": enemy.stunned,
         "power_bonus": enemy.power_bonus,
@@ -226,12 +228,27 @@ def _name_of(state: GameState, cid: Optional[str]) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Stack
 # --------------------------------------------------------------------------- #
+def action_mode(kind: str, attack_mode: Optional[str]) -> Optional[str]:
+    """The melee/ranged/spell tag shown beside an action (stack row or intent).
+
+    Spells read "spell"; attacks (and enemy ability-attacks that carry a reach)
+    read their melee/ranged reach; a generic ability with no reach reads nothing."""
+    if kind == "spell":
+        return "spell"
+    if attack_mode in ("melee", "ranged"):
+        return attack_mode
+    if kind == "attack":
+        return "melee"
+    return None
+
+
 def _stack_list(state: GameState) -> List[Dict[str, Any]]:
     out = []
     for i, item in enumerate(reversed(state.stack)):  # top first
         out.append({
             "label": item.label,
             "kind": item.kind,
+            "mode": action_mode(item.kind, item.attack_mode),
             "source_id": item.source_id,
             "source_name": _name_of(state, item.source_id),
             "source_side": item.source_side,

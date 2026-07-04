@@ -5,16 +5,28 @@ const COLORS = ["W", "U", "B", "R", "G"];
 // A spell's speed derives from its timing (matches backend spell_speed).
 const SPEED_BY_TIMING = { instant: "reactive", sorcery: "active", channeled: "sustained" };
 const derivedSpeed = (timing) => SPEED_BY_TIMING[timing] || "—";
-const ARCHETYPE_ORDER = ["Fighter", "Tactician", "Caster", "Channeler"];
-let ARCHETYPES = {}; // {Fighter:{starting_hp,…,attacks:{melee:3},default_mode}, …} from backend
+const PRESET_ORDER = ["Fighter", "Tactician", "Caster", "Channeler"];
+// The points-buy character-creation model (Design Update 05), fetched from
+// /api/character-model: budget, flat costs, keyword costs/bans, guardrails, presets.
+let CMODEL = {
+  budget: 70,
+  baseline: { hp: 8, mana: 1, cards: 1 },
+  base_power: { melee: 2, ranged: 1 },
+  costs: { hp_step: 5, mana: 15, card: 15, power: 10 },
+  caps: { power_bought: 2, keywords: 1 },
+  keywords: {},
+  presets: {},
+};
 let ROWS = ["front", "mid", "rear"];
 
+// A fresh character is the free baseline (§P-1): 8 HP, 1 mana, 1 card, melee Power 2.
 const blankLoadout = () => ({
   ltg_version: "0.1",
   character: {
     name: "New Character", description: "", portrait: "",
-    archetype: "Fighter", level: 1, colors: ["U"], starting_mana: ["U", "U"],
-    attack_mode: "melee", row: "front",
+    level: 1, colors: ["U"], starting_mana: ["U"],
+    hp: 8, starting_cards: 1, power_bought: 0,
+    attack_mode: "melee", keyword: null, row: "front", preset: null,
   },
   cards: [],
 });
@@ -79,39 +91,88 @@ function renderPortrait() {
   }
 }
 
-function manaAmount() {
-  return ARCHETYPES[state.character.archetype]?.starting_mana || 2;
+// Mana capacity IS the number of starting-mana slots (§P-1).
+function manaCapacity() {
+  return state.character.starting_mana.length;
 }
 
-// The {mode: power} attack profiles the current archetype allows.
-function attackOptions() {
-  return ARCHETYPES[state.character.archetype]?.attacks || { melee: 0 };
+// Basic-attack Power = the owned mode's free base + Power bought (§P-1/§P-2).
+function basePower() {
+  return CMODEL.base_power[state.character.attack_mode] ?? 2;
 }
-
-// Keep attack_mode valid for the archetype (Fighter is melee-only); default if not.
-function reconcileAttackMode() {
-  const ch = state.character;
-  const opts = attackOptions();
-  if (!(ch.attack_mode in opts)) {
-    ch.attack_mode = ARCHETYPES[ch.archetype]?.default_mode || Object.keys(opts)[0];
-  }
-}
-
-// Power is derived from (archetype, attack_mode) — never set directly.
 function currentPower() {
-  return attackOptions()[state.character.attack_mode];
+  return basePower() + (state.character.power_bought || 0);
 }
 
-// Keep starting_mana the right length for the archetype and within `colors`.
+// Points this build spends — mirrors the backend `creation_points` (§P-2) so the
+// budget meter and stepper gating respond instantly; the backend stays the gate.
+function pointsSpent() {
+  const ch = state.character;
+  const c = CMODEL.costs, b = CMODEL.baseline;
+  let p = c.hp_step * ((ch.hp - b.hp) / 2)
+        + c.mana * (manaCapacity() - b.mana)
+        + c.card * (ch.starting_cards - b.cards)
+        + c.power * (ch.power_bought || 0);
+  if (ch.keyword) p += CMODEL.keywords[ch.keyword]?.cost || 0;
+  return p;
+}
+function pointsRemaining() {
+  return CMODEL.budget - pointsSpent();
+}
+
+// Editing any build knob makes this a custom build (no longer a pristine preset).
+function markCustom() {
+  state.character.preset = null;
+}
+
+// Load a named 70-point preset (§P-4b) as the current build's starting point.
+function loadPreset(name) {
+  const p = CMODEL.presets[name];
+  if (!p) return;
+  const ch = state.character;
+  ch.hp = p.hp;
+  ch.starting_cards = p.cards;
+  ch.power_bought = p.power_bought;
+  ch.attack_mode = p.attack_mode;
+  // Resize starting mana to the preset's capacity, filling from the identity.
+  ch.starting_mana.length = 0;
+  for (let i = 0; i < p.mana; i++) ch.starting_mana.push(ch.colors[0]);
+  ch.preset = name;
+  renderCharacter();
+  scheduleValidate();
+}
+
+// Keep every starting-mana slot within the current colour identity.
 function reconcileStartingMana() {
   const ch = state.character;
-  const colors = ch.colors;
-  const amount = manaAmount();
+  if (!ch.starting_mana.length) ch.starting_mana.push(ch.colors[0]);
   for (let i = 0; i < ch.starting_mana.length; i++) {
-    if (!colors.includes(ch.starting_mana[i])) ch.starting_mana[i] = colors[0];
+    if (!ch.colors.includes(ch.starting_mana[i])) ch.starting_mana[i] = ch.colors[0];
   }
-  while (ch.starting_mana.length < amount) ch.starting_mana.push(colors[0]);
-  ch.starting_mana.length = amount;
+}
+
+// One buyable track: a label and a −/+ stepper around the current total. `plus` is
+// disabled when the next step would break a cap or blow the budget; `minus` when it
+// would drop below the floor. Cost is conveyed live by the budget meter, not text.
+function buyRow(label, totalText, canMinus, canPlus, onMinus, onPlus) {
+  const row = document.createElement("div");
+  row.className = "buy-row";
+  const lab = document.createElement("span");
+  lab.className = "buy-label";
+  lab.textContent = label;
+  const ctrl = document.createElement("div");
+  ctrl.className = "buy-ctrl";
+  const minus = document.createElement("button");
+  minus.type = "button"; minus.className = "step-btn"; minus.textContent = "−";
+  minus.disabled = !canMinus; minus.onclick = onMinus;
+  const val = document.createElement("span");
+  val.className = "buy-val"; val.textContent = totalText;
+  const plus = document.createElement("button");
+  plus.type = "button"; plus.className = "step-btn"; plus.textContent = "+";
+  plus.disabled = !canPlus; plus.onclick = onPlus;
+  ctrl.append(minus, val, plus);
+  row.append(lab, ctrl);
+  return row;
 }
 
 function renderCharacter() {
@@ -121,40 +182,93 @@ function renderCharacter() {
   $("#char-level").textContent = ch.level || 1;
   renderPortrait();
 
-  // Archetype picker
-  const archPick = $("#archetype-pick");
-  archPick.innerHTML = "";
-  ARCHETYPE_ORDER.forEach((a) => {
+  const spent = pointsSpent();
+  const remaining = CMODEL.budget - spent;
+  const over = remaining < 0;
+
+  // Budget meter
+  const meter = $("#budget-meter");
+  const pct = Math.max(0, Math.min(100, (spent / CMODEL.budget) * 100));
+  meter.className = "budget-meter" + (over ? " over" : "");
+  meter.innerHTML =
+    `<div class="budget-head"><b>${spent}</b> / ${CMODEL.budget} points` +
+    `<span class="budget-remaining">${over ? `${-remaining} over budget` : `${remaining} left`}</span></div>` +
+    `<div class="budget-bar"><span style="width:${pct}%"></span></div>`;
+
+  // Preset picker (loads a full 70-point build; the active one is highlighted).
+  const presetPick = $("#preset-pick");
+  presetPick.innerHTML = "";
+  PRESET_ORDER.forEach((a) => {
+    if (!CMODEL.presets[a]) return;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "archetype-btn" + (ch.archetype === a ? " on" : "");
+    btn.className = "archetype-btn" + (ch.preset === a ? " on" : "");
     btn.textContent = a;
-    btn.onclick = () => setArchetype(a);
-    archPick.appendChild(btn);
+    btn.onclick = () => loadPreset(a);
+    presetPick.appendChild(btn);
   });
 
-  // Derived stat block (read-only) — Power follows the chosen attack profile.
-  const stats = ARCHETYPES[ch.archetype];
-  $("#stat-block").innerHTML = stats
-    ? `<span class="stat"><b>${stats.starting_hp}</b> HP</span>
-       <span class="stat"><b>${stats.starting_hand}</b> hand</span>
-       <span class="stat"><b>${stats.starting_mana}</b> mana</span>
-       <span class="stat"><b>${currentPower()}</b> Power</span>`
-    : "";
+  // Resolved stat block — what the engine will consume (§P-4c).
+  $("#stat-block").innerHTML =
+    `<span class="stat"><b>${ch.hp}</b> HP</span>` +
+    `<span class="stat"><b>${ch.starting_cards}</b> hand</span>` +
+    `<span class="stat"><b>${manaCapacity()}</b> mana</span>` +
+    `<span class="stat"><b>${currentPower()}</b> Power</span>` +
+    (ch.keyword ? `<span class="stat kw"><b>${CMODEL.keywords[ch.keyword]?.display || ch.keyword}</b></span>` : "");
 
-  // Attack type: one button per profile the archetype offers (mode + Power).
+  // Attack mode — melee (base 2) or ranged (base 1); the character owns exactly one.
   const attackPick = $("#attack-pick");
   attackPick.innerHTML = "";
-  const opts = attackOptions();
-  Object.keys(opts).forEach((mode) => {
+  ["melee", "ranged"].forEach((mode) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "archetype-btn" + (ch.attack_mode === mode ? " on" : "");
-    btn.textContent = `${mode} ${opts[mode]}`;
-    btn.disabled = Object.keys(opts).length === 1;  // fixed (e.g. Fighter)
+    btn.textContent = `${mode} ${CMODEL.base_power[mode] + (ch.power_bought || 0)}`;
     btn.onclick = () => setAttackMode(mode);
     attackPick.appendChild(btn);
   });
+
+  // Build steppers (§P-2 flat costs; §P-4 caps/floors).
+  const buy = $("#buy-pick");
+  buy.innerHTML = "";
+  const cost = CMODEL.costs;
+  buy.appendChild(buyRow(
+    "HP", `${ch.hp}`,
+    ch.hp > CMODEL.baseline.hp, remaining >= cost.hp_step,
+    () => stepHp(-2), () => stepHp(+2)));
+  buy.appendChild(buyRow(
+    "Mana", `${manaCapacity()}`,
+    manaCapacity() > CMODEL.baseline.mana, remaining >= cost.mana,
+    () => stepMana(-1), () => stepMana(+1)));
+  buy.appendChild(buyRow(
+    "Cards", `${ch.starting_cards}`,
+    ch.starting_cards > CMODEL.baseline.cards, remaining >= cost.card,
+    () => stepCards(-1), () => stepCards(+1)));
+  buy.appendChild(buyRow(
+    "Power", `${currentPower()}`,
+    (ch.power_bought || 0) > 0,
+    (ch.power_bought || 0) < CMODEL.caps.power_bought && remaining >= cost.power,
+    () => stepPower(-1), () => stepPower(+1)));
+
+  // Keyword — a single dropdown (you may pick at most one, §P-3). Each option shows
+  // its cost; ones you can't afford are disabled. Banned keywords aren't offered.
+  const kwPick = $("#keyword-pick");
+  kwPick.innerHTML = "";
+  const sel = document.createElement("select");
+  sel.className = "kw-select";
+  sel.appendChild(new Option("None", ""));
+  Object.keys(CMODEL.keywords).forEach((kw) => {
+    const info = CMODEL.keywords[kw];
+    const opt = new Option(`${info.display} — ${info.cost} pts`, kw);
+    const selected = ch.keyword === kw;
+    const swapCost = info.cost - (ch.keyword ? CMODEL.keywords[ch.keyword].cost : 0);
+    opt.disabled = !selected && swapCost > remaining;  // unaffordable swap
+    opt.title = info.gloss || "";
+    sel.appendChild(opt);
+  });
+  sel.value = ch.keyword || "";
+  sel.onchange = () => setKeyword(sel.value || null);
+  kwPick.appendChild(sel);
 
   // Default row.
   const rowPick = $("#row-pick");
@@ -175,11 +289,11 @@ function renderCharacter() {
     colorPick.appendChild(makePip(c, ch.colors.includes(c), () => toggleColor(c)));
   });
 
-  // Starting mana: amount-many slots, each constrained to the character's colours.
-  $("#mana-label").textContent = `Starting mana (${manaAmount()}, from your colours)`;
+  // Starting mana: one slot per mana-capacity point, each within the colour identity.
+  $("#mana-label").textContent = "Starting mana";
   const manaPick = $("#mana-pick");
   manaPick.innerHTML = "";
-  for (let slot = 0; slot < manaAmount(); slot++) {
+  for (let slot = 0; slot < manaCapacity(); slot++) {
     const row = document.createElement("div");
     row.className = "pip-row mana-slot";
     const label = document.createElement("span");
@@ -193,16 +307,56 @@ function renderCharacter() {
   }
 }
 
-function setArchetype(a) {
-  state.character.archetype = a;
-  reconcileStartingMana();
-  reconcileAttackMode();  // archetypes differ in which attack profiles they allow
+function stepHp(delta) {
+  const ch = state.character;
+  const next = ch.hp + delta;
+  if (next < CMODEL.baseline.hp) return;
+  ch.hp = next;
+  markCustom();
+  renderCharacter();
+  scheduleValidate();
+}
+
+function stepMana(delta) {
+  const ch = state.character;
+  if (delta > 0) ch.starting_mana.push(ch.colors[0]);
+  else if (ch.starting_mana.length > CMODEL.baseline.mana) ch.starting_mana.pop();
+  else return;
+  markCustom();
+  renderCharacter();
+  scheduleValidate();
+}
+
+function stepCards(delta) {
+  const ch = state.character;
+  const next = ch.starting_cards + delta;
+  if (next < CMODEL.baseline.cards) return;
+  ch.starting_cards = next;
+  markCustom();
+  renderCharacter();
+  scheduleValidate();
+}
+
+function stepPower(delta) {
+  const ch = state.character;
+  const next = (ch.power_bought || 0) + delta;
+  if (next < 0 || next > CMODEL.caps.power_bought) return;
+  ch.power_bought = next;
+  markCustom();
+  renderCharacter();
+  scheduleValidate();
+}
+
+function setKeyword(kw) {
+  state.character.keyword = kw;
+  markCustom();
   renderCharacter();
   scheduleValidate();
 }
 
 function setAttackMode(mode) {
   state.character.attack_mode = mode;
+  markCustom();
   renderCharacter();
   scheduleValidate();
 }
@@ -422,16 +576,42 @@ async function loadSpecs() {
   } catch (e) { /* editor falls back to whatever the card already holds */ }
 }
 
-async function loadArchetypes() {
+async function loadCharacterModel() {
   try {
-    const resp = await api("GET", "/api/archetypes");
-    ARCHETYPES = resp.archetypes || resp;  // tolerate either shape
+    const resp = await api("GET", "/api/character-model");
+    CMODEL = resp;
     if (resp.rows) ROWS = resp.rows;
     reconcileStartingMana();
-    reconcileAttackMode();
     renderCharacter();
     scheduleValidate();
-  } catch (e) { /* picker falls back to defaults */ }
+  } catch (e) { /* picker falls back to the baked-in defaults */ }
+}
+
+// Normalise a loaded character to the Update-05 build shape. Pre-Update-05 files
+// carry an `archetype` and no build fields; map them to the legacy stats (the
+// backend does the same on validate) so the editor opens them without blowing up.
+function normalizeCharacter(ch) {
+  if (!ch) return blankLoadout().character;
+  if (ch.hp === undefined && ch.archetype) {
+    const p = CMODEL.presets[ch.archetype];
+    if (p) {
+      const LEGACY_HP = { Fighter: 25, Tactician: 15, Caster: 10, Channeler: 15 };
+      ch.hp = LEGACY_HP[ch.archetype] ?? p.hp;
+      if (ch.starting_cards === undefined) ch.starting_cards = p.cards;
+      if (ch.power_bought === undefined) ch.power_bought = p.power_bought;
+      if (!ch.attack_mode) ch.attack_mode = p.attack_mode;
+      ch.preset = ch.archetype;
+    }
+  }
+  if (ch.hp === undefined) ch.hp = 8;
+  if (ch.starting_cards === undefined) ch.starting_cards = 1;
+  if (ch.power_bought === undefined) ch.power_bought = 0;
+  if (!ch.attack_mode) ch.attack_mode = "melee";
+  if (ch.keyword === undefined) ch.keyword = null;
+  if (ch.preset === undefined) ch.preset = null;
+  delete ch.archetype;  // retired field
+  if (!ch.starting_mana || !ch.starting_mana.length) ch.starting_mana = [ch.colors?.[0] || "U"];
+  return ch;
 }
 
 // Mirror of backend describe_target, for slot/link labels.
@@ -760,6 +940,8 @@ function openDetail(idx) {
     <div class="block">
       <div class="label">Flavour name — editable</div>
       <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
+      <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
+      <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
     </div>
 
     <div class="block">
@@ -828,6 +1010,7 @@ function wireDetail(idx) {
   const card = state.cards[idx];
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
+  $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
   $("#detail-validate").onclick = () => toggleValidated(idx);
   $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
   $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
@@ -1110,10 +1293,10 @@ function applyLoadedText(text, handle, name) {
   try { data = JSON.parse(text); } catch (e) { toast("Load failed: invalid JSON"); return; }
   state = data;
   if (!state.character.row) state.character.row = "front";  // older loadouts
+  normalizeCharacter(state.character);  // migrate pre-Update-05 archetype builds
   currentFileHandle = handle || null;
   currentFileName = name || null;
   reconcileStartingMana();
-  reconcileAttackMode();
   renderAll();
   toast(`Loaded ${name || "loadout"}`);
 }
@@ -1298,7 +1481,7 @@ function init() {
     th.onclick = () => applySort(th.dataset.sort);
   });
   loadSpecs();
-  loadArchetypes();
+  loadCharacterModel();
   renderAll();
 }
 

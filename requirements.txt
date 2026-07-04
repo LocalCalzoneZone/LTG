@@ -4,6 +4,7 @@
 -e ./core
 -e ./apps/deckbuilder
 -e ./apps/combat
+-e ./apps/game-server
 
 # test / dev
 pytest>=8.0

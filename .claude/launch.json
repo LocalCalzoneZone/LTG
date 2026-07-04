@@ -12,6 +12,18 @@
       "runtimeExecutable": ".venv/bin/ltg-deckbuilder",
       "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8012"],
       "port": 8012
+    },
+    {
+      "name": "game",
+      "runtimeExecutable": ".venv/bin/ltg-game",
+      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8020"],
+      "port": 8020
+    },
+    {
+      "name": "game-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/game-ui", "run", "dev"],
+      "port": 5173
     }
   ]
 }
