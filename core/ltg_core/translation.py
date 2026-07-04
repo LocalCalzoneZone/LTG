@@ -16,6 +16,7 @@ To add text for a new effect primitive: add one entry to RENDERERS.
 
 from __future__ import annotations
 
+import contextvars
 import re
 from typing import Callable, List, Tuple
 
@@ -250,6 +251,14 @@ def translate(oracle_text: str, ctx: dict) -> List[Effect]:
 # --------------------------------------------------------------------------- #
 # Renderer (effects → LTG-language text)
 # --------------------------------------------------------------------------- #
+# The card's shared-target slots for the render in progress. The RENDERERS are
+# plain `e -> str` functions, so container effects (modal/conditional) recurse
+# through render_effects without a `targets` argument; this context var lets those
+# nested renders inherit the outer slot table so "$T1" resolves to its description
+# instead of leaking the raw slot ref.
+_RENDER_TARGETS = contextvars.ContextVar("ltg_render_targets", default={})
+
+
 # Noun by side for `chosen` targets; the article/another is added by describe().
 _SIDE_NOUN = {Side.ally: "ally", Side.enemy: "enemy", Side.any: "target"}
 
@@ -450,10 +459,11 @@ def _count_word(n: int) -> str:
 
 
 def _render_modal(e) -> str:
+    targets = _RENDER_TARGETS.get()
     parts = []
     for m in e.modes:
         label = f"{m.label}: " if m.label else ""
-        parts.append(f"• {label}{render_effects(m.effects)}")
+        parts.append(f"• {label}{render_effects(m.effects, targets)}")
     choose = _count_word(getattr(e, "choose", 1))
     if getattr(e, "or_more", False):
         choose += " or more"
@@ -549,7 +559,7 @@ def _targets_external(effect) -> bool:
 
 
 def _render_conditional(e) -> str:
-    inner = render_effects(e.effects)
+    inner = render_effects(e.effects, _RENDER_TARGETS.get())
     # A target_property condition qualifies the SAME target the effect already
     # acts on, so phrase it as "<effect> a target with <condition>." rather than
     # "If the target …, <effect> a target." (which reads as two distinct targets).
@@ -681,6 +691,15 @@ def render_effects(effects: List[Effect], targets=None, channeled: bool = False)
     single "Choose X: they …" sentence.
     """
     targets = targets or {}
+    # Publish the slot table so nested modal/conditional renders inherit it.
+    token = _RENDER_TARGETS.set(targets)
+    try:
+        return _render_effects(effects, targets, channeled)
+    finally:
+        _RENDER_TARGETS.reset(token)
+
+
+def _render_effects(effects: List[Effect], targets, channeled: bool) -> str:
     if channeled:
         return _render_channeled(effects, targets)
 

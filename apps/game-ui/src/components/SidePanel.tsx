@@ -42,52 +42,35 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
 
       {snapshot && (
         <>
-      {/* Stack + Intents */}
-      <div className="grid grid-cols-2 gap-2">
-        <Panel title="Stack">
-          {snapshot.stack.length === 0 ? (
-            <Empty>empty</Empty>
-          ) : (
-            snapshot.stack.map((s, i) => {
-              const isTarget = targetIds.has(`#${s.uid}`);
-              return (
-                <div
-                  key={i}
-                  onClick={() => isTarget && pickTargetId(`#${s.uid}`)}
-                  className={`rounded px-1.5 py-1 text-[11px] ${
-                    isTarget
-                      ? "cursor-pointer bg-yellow-400/20 ring-2 ring-yellow-400"
-                      : s.top
-                        ? "bg-amber-500/20"
-                        : "bg-white/5"
-                  }`}
-                >
-                  <span className="font-semibold">{s.source_name}</span>
-                  <span className="text-gray-400"> · {s.label}</span>
-                  {s.mode && <span className="text-sky-300/80"> ({s.mode})</span>}
-                  {s.target_name && <span className="text-gray-400"> → {s.target_name}</span>}
-                </div>
-              );
-            })
-          )}
-          <div className="mt-1 text-[9px] text-gray-500">bottom = resolves last</div>
-        </Panel>
-
-        <Panel title="Intents">
-          {snapshot.intents.length === 0 ? (
-            <Empty>none</Empty>
-          ) : (
-            snapshot.intents.map((it, i) => (
-              <div key={i} className="rounded bg-white/5 px-1.5 py-1 text-[11px]">
-                <span className="font-semibold text-rose-300">{it.creature_name}</span>
-                <span className="text-gray-400"> · {it.intent_text}</span>
-                {it.mode && <span className="text-sky-300/80"> ({it.mode})</span>}
-                {it.target_name && <span className="text-gray-400"> → {it.target_name}</span>}
+      {/* Stack */}
+      <Panel title="Stack">
+        {snapshot.stack.length === 0 ? (
+          <Empty>empty</Empty>
+        ) : (
+          snapshot.stack.map((s, i) => {
+            const isTarget = targetIds.has(`#${s.uid}`);
+            return (
+              <div
+                key={i}
+                onClick={() => isTarget && pickTargetId(`#${s.uid}`)}
+                className={`rounded px-1.5 py-1 text-[11px] ${
+                  isTarget
+                    ? "cursor-pointer bg-yellow-400/20 ring-2 ring-yellow-400"
+                    : s.top
+                      ? "bg-amber-500/20"
+                      : "bg-white/5"
+                }`}
+              >
+                <span className="font-semibold">{s.source_name}</span>
+                <span className="text-gray-400"> · {s.label}</span>
+                {s.mode && <span className="text-sky-300/80"> ({s.mode})</span>}
+                {s.target_name && <span className="text-gray-400"> → {s.target_name}</span>}
               </div>
-            ))
-          )}
-        </Panel>
-      </div>
+            );
+          })
+        )}
+        <div className="mt-1 text-[9px] text-gray-500">bottom = resolves last</div>
+      </Panel>
 
       {/* Game Log (fills the rest) */}
       <Panel title="Game Log" className="min-h-0 flex-1">

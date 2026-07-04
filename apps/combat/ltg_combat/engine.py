@@ -1490,11 +1490,11 @@ def _break_channels(st: GameState, char: CharacterState, reason: str) -> None:
 
 def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
                   reason: str) -> None:
-    """End the given channels: lift their continuous effects and release their
-    reserved mana into the pool as one respondable stack trigger (GDD §8). The
-    card is already in the graveyard (R-9) — the channel simply ends. `channels`
-    is a subset of the holder's channels (all of them for a break; one for a
-    voluntary single drop)."""
+    """End the given channels: lift their continuous effects and release their reserved
+    mana straight into the pool (GDD §8). The release does NOT use the stack — it just
+    happens, so it opens no reaction window. The card is already in the graveyard (R-9) —
+    the channel simply ends. `channels` is a subset of the holder's channels (all of them
+    for a break; one for a voluntary single drop)."""
     channels = [ch for ch in channels if ch in char.channels]
     if not channels:
         return
@@ -1507,13 +1507,8 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
         _log(st, "channel_end", f"{channel.card.name}'s channel ends (the card is "
              f"already in the graveyard).", character=char.id, card=channel.card.id, reason=reason)
     char.channels = [ch for ch in char.channels if ch not in channels]
-    # Release the reserved mana immediately so it can fund a reaction this window,
-    # and put a respondable trigger on the stack (GDD §8).
+    # The reserved mana returns to the pool immediately — no stack, no trigger.
     char.pool.extend(released)
-    _push(st, StackItem(kind="ability", source_id=char.id, source_side="party",
-                        label="Mana Release", effects=[], target_id=None))
-    st.priority = None
-    st.passes = 0
     _log(st, "mana_released",
          f"{char.name}'s channels break ({reason}); {_mana_str(released)} released "
          f"(pool now {_mana_str(char.pool)}).",
@@ -2735,12 +2730,25 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
     return out
 
 
+def _modal_bullets(card: Card) -> List[str]:
+    """Per-mode descriptions parsed from the card's rules text bullets — the same
+    'Choose one — • A. • B.' wording shown on the card face — so the mode picker names
+    what each option does instead of a bare 'Option N'. [] when there are no bullets."""
+    text = card.translated_text or card.original_text or ""
+    if "•" not in text:
+        return []
+    return [seg.strip().rstrip(".").strip() for seg in text.split("•")[1:] if seg.strip()]
+
+
 def _mode_specs(card: Card):
     """[(mode_index, effects, mode_label)] — one entry per modal mode, or a single
-    (None, card.effects, "") for a non-modal card."""
+    (None, card.effects, "") for a non-modal card. A mode's label is its own `label`,
+    else its rules-text bullet, else a bare 'Option N'."""
     modal = next((e for e in card.effects if e.kind == "modal"), None)
     if modal is not None:
-        return [(i, list(m.effects), m.label or f"Option {i + 1}")
+        bullets = _modal_bullets(card)
+        return [(i, list(m.effects),
+                 m.label or (bullets[i] if i < len(bullets) else "") or f"Option {i + 1}")
                 for i, m in enumerate(modal.modes)]
     return [(None, list(card.effects), "")]
 

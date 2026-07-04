@@ -31,6 +31,11 @@ from ltg_combat.state import Action, GameState
 
 LOG_TAIL = 60  # how many recent log entries to ship (newest-first)
 
+# Enemy intents are hidden from the player-facing log: the engine still declares
+# them (they drive targeting, stun, strip, etc.), we just don't surface the
+# telegraph in the log feed.
+HIDDEN_LOG_TYPES = {"intent_declared"}
+
 
 # --------------------------------------------------------------------------- #
 # priority.kind — derived (INTERFACE_NOTES §2)
@@ -217,9 +222,10 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         }
         for r in _stack_list(view)
     ]
+    visible = [e for e in stored.log if e.type not in HIDDEN_LOG_TYPES]
     log = [
         {"type": e.type, "msg": e.msg, "data": e.data}
-        for e in reversed(stored.log[-LOG_TAIL:])  # newest-first tail
+        for e in reversed(visible[-LOG_TAIL:])  # newest-first tail
     ]
 
     return {

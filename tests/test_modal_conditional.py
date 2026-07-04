@@ -85,6 +85,24 @@ def test_modal_auto_build():
     assert c.translated_text.startswith("Choose one —")
 
 
+def test_modal_mode_resolves_shared_slot():
+    """Healing Salve shape: slot refs inside modal modes must resolve to their
+    slot description, not leak the raw '$T1'/'$T2' (regression for reported bug)."""
+    c = card(
+        [{"kind": "modal", "modes": [
+            {"effects": [{"kind": "heal", "amount": 3, "target": "$T1"}]},
+            {"effects": [{"kind": "prevent", "parameter": "combat_damage",
+                          "uses": "next", "target": "$T2", "duration": "this_turn"}]},
+        ]}],
+        targets={"T1": {"mode": "chosen", "side": "ally"},
+                 "T2": {"mode": "chosen", "side": "any"}},
+    )
+    out = render_effects(c.effects, c.targets)
+    assert "$" not in out
+    assert out == ("Choose one — • Choose an ally: they heal 3. "
+                   "• Choose a target: they have the next combat damage prevented.")
+
+
 def test_parse_modal_skips_non_modal():
     assert parse_modal("Draw a card.") is None
 

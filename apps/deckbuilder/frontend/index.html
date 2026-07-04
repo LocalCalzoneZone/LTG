@@ -33,14 +33,23 @@
         <input id="char-name" class="char-name" type="text" placeholder="Name" />
         <div class="char-level">Level <span id="char-level">1</span></div>
         <textarea id="char-desc" class="char-desc" rows="4" placeholder="Description"></textarea>
+        <div id="budget-meter" class="budget-meter"></div>
         <div class="field">
-          <span>Archetype</span>
-          <div id="archetype-pick" class="archetype-row"></div>
+          <span>Preset — a 70-point starting point</span>
+          <div id="preset-pick" class="archetype-row"></div>
         </div>
         <div id="stat-block" class="stat-block"></div>
         <div class="field">
-          <span>Attack type</span>
+          <span>Attack mode — the one you own</span>
           <div id="attack-pick" class="archetype-row"></div>
+        </div>
+        <div class="field">
+          <span>Build — spend your points</span>
+          <div id="buy-pick" class="buy-list"></div>
+        </div>
+        <div class="field">
+          <span>Keyword — at most one</span>
+          <div id="keyword-pick" class="keyword-list"></div>
         </div>
         <div class="field">
           <span>Default row</span>

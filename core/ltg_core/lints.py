@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import List
 
-from .schema import Duration, Side, TargetMode, Timing, slot_name
+from .schema import Duration, Side, TargetMode, Timing, iter_effects, slot_name
 
 
 def _lint_no_effects(card):
@@ -68,7 +68,9 @@ def _lint_slots(card):
     out = []
     declared = set(card.targets.keys())
     referenced = set()
-    for e in card.effects:
+    # Descend into modal modes / conditional branches — slots are commonly
+    # referenced by effects nested inside a "Choose one" block.
+    for e in iter_effects(card.effects):
         # Every target-bearing field counts (fight references two: target + other).
         for attr in ("target", "other"):
             s = slot_name(getattr(e, attr, None))

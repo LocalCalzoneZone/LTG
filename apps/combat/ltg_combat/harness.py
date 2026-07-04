@@ -227,8 +227,9 @@ def run_channeling_scenario(verbose: bool = False, state: Optional[GameState] = 
            state.enemy("cinder").power_bonus == 0)
     _check("Reserved mana released into the pool",
            "B" in mira.pool or "U" in mira.pool)
-    _check("Mana Release is a respondable trigger",
-           _in_window(state) and state.stack[-1].label == "Mana Release")
+    # Mana release no longer uses the stack — it just happens, opening no trigger/window.
+    _check("Mana Release does not go on the stack",
+           not any(getattr(s, "label", None) == "Mana Release" for s in state.stack))
 
     state = _pass_window(state)
     _check("Game still going (not a loss)", state.result is None)

@@ -124,7 +124,7 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
             "meta": {
                 "id": cid,
                 "name": char.name,
-                "archetype": char.archetype.value,
+                "archetype": char.preset or "Custom",  # display label; presets or a custom build
                 "colors": [c.value for c in char.colors],
                 "identity": [c.value for c in char.starting_mana],
                 "description": char.description,

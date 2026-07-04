@@ -226,6 +226,8 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
             row=p.get("row", "front"), committed=p.get("row", "front"),
             attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
+            # Keywords bought at creation (§P-3) — permanent for the encounter.
+            keywords=_keyword_dict(p.get("keywords")),
         ))
 
     enemies: List[EnemyState] = []
@@ -300,18 +302,19 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
     """
     lo = Loadout.model_validate(raw_loadout)
     char = lo.character
-    stats = char.stats
+    block = char.stat_block  # §P-4c resolved stat block: what the engine consumes
     return {
         "id": _slug(char.name),
         "name": char.name,
-        "archetype": char.archetype.value,
-        "hp": stats["starting_hp"],
-        "power": char.power,                 # from the (archetype, attack mode) profile
-        "attack_mode": stats["attack_mode"],
+        "archetype": char.preset or "",      # display label only; no stats derive from it
+        "hp": block["hp"],
+        "power": block["attack_profile"]["power"],
+        "attack_mode": block["attack_profile"]["mode"],
         "row": char.row.value,
         "level": char.level,
-        "hand_size": stats["starting_hand"],
+        "hand_size": block["starting_cards"],
         "identity": [c.value for c in char.starting_mana],
+        "keywords": list(block["keywords"]),  # the one bought keyword (§P-3), if any
         "parry_reduce": 2,
         "library": [c.model_dump(mode="json") for c in lo.cards],
     }

@@ -137,6 +137,25 @@ def test_lint_zero_amount_and_unused_slot():
     assert any("T2" in m and "never used" in m for m in lints)
 
 
+def test_lint_slots_referenced_inside_modal_are_used():
+    # Healing Salve shape: "Choose one — heal $T1 / prevent damage to $T2". The
+    # slot refs live inside modal modes; the slot lint must descend into them.
+    c = card(
+        targets={"T1": CHOSEN_ALLY_T, "T2": CHOSEN_ANY_T},
+        effects=[{
+            "kind": "modal",
+            "choose": 1,
+            "modes": [
+                {"effects": [{"kind": "heal", "amount": 3, "target": "$T1"}]},
+                {"effects": [{"kind": "prevent", "parameter": "combat_damage",
+                              "uses": "next", "target": "$T2",
+                              "duration": "this_turn"}]},
+            ],
+        }],
+    )
+    assert not any("never used" in m for m in lint_card(c))
+
+
 def test_duration_end_of_turn_is_legacy_alias_of_this_turn():
     from ltg_core.schema import Duration
     # `end_of_turn` was merged into `this_turn`; it is no longer a member but old

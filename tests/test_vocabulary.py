@@ -111,6 +111,23 @@ def test_modal_other_mode_draws_instead_of_damaging():
     assert "filler" in [c.id for c in hero(after).hand]  # drew into hand
 
 
+def test_modal_labels_come_from_the_rules_text_bullets():
+    # An unlabelled modal takes each option's name from the matching rules-text bullet,
+    # so the mode picker shows what each option does instead of a bare 'Option 1/2'.
+    card = C("relief", "instant", [{"kind": "modal", "modes": [
+        {"label": "", "effects": [{"kind": "heal", "amount": 3,
+            "target": {"mode": "chosen", "side": "ally", "targeted": False}}]},
+        {"label": "", "effects": [{"kind": "draw", "amount": 1, "target": {"mode": "self"}}]},
+    ]}], colors={"W": 1})
+    card["translated_text"] = "Choose one — • Restore 3 HP to an ally. • Draw a card."
+    state = make_state([card])
+    labels = [a.label for a in legal_actions(state)
+              if a.kind == "cast" and a.card_id == "relief"]
+    assert any("Restore 3 HP to an ally" in l for l in labels)
+    assert any("Draw a card" in l for l in labels)
+    assert not any("Option" in l for l in labels)   # no bare 'Option N' fallback
+
+
 def _modal_with_conditional():
     # Choose one — [0] deal 2; [1] if the target is level 3+, destroy it.
     return C("verdict", "instant", [{"kind": "modal", "choose": 1, "modes": [

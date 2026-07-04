@@ -19,16 +19,28 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from ltg_core.schema import (
-    ARCHETYPE_ATTACK,
-    ARCHETYPE_STATS,
+    BANNED_CREATION_KEYWORDS,
+    BASE_POWER,
+    BASELINE_CARDS,
+    BASELINE_HP,
+    BASELINE_MANA,
     Card,
     Character,
+    COST_CARD,
+    COST_HP_STEP,
+    COST_MANA,
+    COST_POWER,
+    CREATION_BUDGET,
+    CREATION_KEYWORD_COST,
+    KEYWORDS,
     Loadout,
+    MAX_KEYWORDS,
+    MAX_POWER_BOUGHT,
     MODE_VALUES,
+    PRESETS,
     Row,
     SIDE_VALUES,
     deck_status,
-    default_attack_mode,
     effect_specs,
 )
 from ltg_core.lints import lint_card
@@ -163,16 +175,60 @@ def api_effect_specs() -> dict:
     return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES}
 
 
-@app.get("/api/archetypes")
-def api_archetypes() -> dict:
-    """The archetype → stats table plus each archetype's attack profile options
-    and the row list (single source of truth for the character pickers)."""
-    out = {}
-    for a, stats in ARCHETYPE_STATS.items():
-        attacks = {mode.value: power for mode, power in ARCHETYPE_ATTACK[a].items()}
-        out[a.value] = {**stats, "attacks": attacks,
-                        "default_mode": default_attack_mode(a).value}
-    return {"archetypes": out, "rows": [r.value for r in Row]}
+class CharacterPriceBody(BaseModel):
+    character: dict
+
+
+@app.get("/api/character-model")
+def api_character_model() -> dict:
+    """The points-buy character-creation model (Design Update 05, §P-1..P-4): the
+    single source of truth for the Deckbuilder's build UI — budget, flat costs,
+    keyword costs/bans, guardrails, and the four archetypes as loadable presets."""
+    presets = {}
+    for a, p in PRESETS.items():
+        presets[a.value] = {
+            "hp": p["hp"], "mana": p["mana"], "cards": p["cards"],
+            "power_bought": p["power"], "attack_mode": p["mode"].value,
+        }
+    keywords = {
+        kw: {"cost": cost, "display": KEYWORDS.get(kw, {}).get("display", kw),
+             "gloss": KEYWORDS.get(kw, {}).get("gloss", "")}
+        for kw, cost in CREATION_KEYWORD_COST.items()
+    }
+    return {
+        "budget": CREATION_BUDGET,
+        "baseline": {"hp": BASELINE_HP, "mana": BASELINE_MANA, "cards": BASELINE_CARDS},
+        "base_power": {m.value: p for m, p in BASE_POWER.items()},
+        "costs": {"hp_step": COST_HP_STEP, "mana": COST_MANA,
+                  "card": COST_CARD, "power": COST_POWER},
+        "caps": {"power_bought": MAX_POWER_BOUGHT, "keywords": MAX_KEYWORDS},
+        "keywords": keywords,
+        "banned_keywords": sorted(BANNED_CREATION_KEYWORDS),
+        "presets": presets,
+        "modes": MODE_VALUES,
+        "rows": [r.value for r in Row],
+    }
+
+
+@app.post("/api/character/price")
+def api_character_price(body: CharacterPriceBody) -> dict:
+    """Validate a build and return its points/stat block for live UI feedback.
+
+    Non-blocking by design: an over-budget or malformed build returns `valid:
+    False` with the reasons rather than a 4xx, so the editor can show the overage
+    while the player keeps adjusting."""
+    try:
+        char = Character.model_validate(body.character)
+    except ValidationError as exc:
+        return {"valid": False, "errors": _format_errors(exc),
+                "points_spent": None, "points_remaining": None, "stat_block": None}
+    return {
+        "valid": True,
+        "errors": [],
+        "points_spent": char.points_spent,
+        "points_remaining": char.points_remaining,
+        "stat_block": char.stat_block,
+    }
 
 
 @app.post("/api/cards/validate")

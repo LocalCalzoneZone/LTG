@@ -113,6 +113,22 @@ def test_attack_profile_resolves_power_from_archetype_and_mode():
 
 
 # --------------------------------------------------------------------------- #
+# Update 05 §P-3/§P-4c — a keyword bought at creation reaches the engine
+# --------------------------------------------------------------------------- #
+def test_creation_keyword_flows_through_loadout_to_engine():
+    # A custom Update-05 build: baseline flying glass cannon (§P-4b "Ys the fae").
+    lo = {"ltg_version": "0.1", "cards": [],
+          "character": {"name": "Ys", "colors": ["U", "B"], "starting_mana": ["U", "B"],
+                        "hp": 8, "starting_cards": 3, "attack_mode": "ranged",
+                        "keyword": "flying", "row": "front"}}
+    entry = party_entry_from_loadout(lo)
+    assert entry["keywords"] == ["flying"]
+    st = state_from_dict({"party": [{**entry, "hand_size": entry["hand_size"]}],
+                          "enemies": [_enemy("orc", "Orc", 5)]})
+    assert st.party[0].keywords == {"flying": ""}  # permanent for the encounter (§P-3)
+
+
+# --------------------------------------------------------------------------- #
 # R-7 — positive temp HP is a shield that absorbs the blow before base HP
 # --------------------------------------------------------------------------- #
 def _bolt(amount, cid="bolt", colors=None):
