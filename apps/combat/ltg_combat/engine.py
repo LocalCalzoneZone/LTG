@@ -1299,7 +1299,7 @@ def _new_ctx(st: GameState, item: StackItem) -> dict:
         modal = next((e for e in item.effects if e.kind == "modal"), None)
         if modal is not None:
             top = _effects_of_mode(item, modal)
-        ctx["site_target"] = {key: tid for (key, _side, _t), tid
+        ctx["site_target"] = {key: tid for (key, *_), tid
                               in zip(_target_sites(top, item.card), item.targets)}
     return ctx
 
@@ -1824,9 +1824,13 @@ def _is_targeted(effect) -> bool:
 
 
 def _legal_target(target) -> bool:
-    # A legal target must be alive AND on the battlefield. An off-field enemy — bounced
-    # (in hand) or channel-suspended (exiled) — can't be targeted (Update 03 §E-D), so
-    # an effect aimed at one that has just left play fizzles.
+    # On the battlefield == targetable. A DOWNED character stays on the field
+    # (incapacitation is recoverable — R-7) and remains a legal heal/revive
+    # target; enemies and tokens leave play at 0 HP so they must be alive, and
+    # an off-field enemy — bounced (in hand) or channel-suspended (exiled) —
+    # can't be targeted (Update 03 §E-D).
+    if isinstance(target, CharacterState):
+        return True
     if not getattr(target, "alive", False):
         return False
     if isinstance(target, EnemyState) and (target.in_hand or target.exiled):
@@ -2960,7 +2964,7 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
         sites = _target_sites(effects, card)
         if len(sites) >= 2:
             per_site = []
-            for _key, side, targeted in sites:
+            for _key, side, targeted, kind in sites:
                 if isinstance(side, str) and side.startswith("stack:"):
                     filt = side[len("stack:"):]
                     opts = [(f"#{s.uid}", s.label) for s in st.stack
@@ -2970,6 +2974,8 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
                     if targeted:  # hexproof hostiles can't be TARGETED (GDD §7)
                         opts = [(tid, tl) for tid, tl in opts
                                 if not _hexproof_hostile(st, tid)]
+                    if kind == "revive":  # only a DOWNED ally can be revived
+                        opts = _downed_only(st, opts)
                 per_site.append(opts)
             if not all(per_site):
                 continue  # a required site has no legal pick — combo uncastable
@@ -3049,15 +3055,33 @@ def _hexproof_hostile(st: GameState, tid) -> bool:
     return e is not None and _has_kw(e, "hexproof")
 
 
+def _downed_only(st: GameState, opts):
+    """Filter creature options to DOWNED characters — the only legal picks for a
+    revive (a standing ally has nothing to come back from)."""
+    out = []
+    for tid, tl in opts:
+        c = st.character(tid) if tid is not None else None
+        if c is not None and not c.alive:
+            out.append((tid, tl))
+    return out
+
+
 def _side_options(st: GameState, side):
-    """[(creature_id, label)] of the living creatures a target on `side` may pick."""
+    """[(creature_id, label)] of the creatures a target on `side` may pick.
+
+    Party options include DOWNED characters — incapacitation is recoverable
+    (R-7), the body stays on the battlefield, and it must be pickable so heals
+    and revives can reach it. Enemies/tokens leave play at 0 HP, so only living
+    ones are offered."""
     if side == "enemy":
         return [(e.id, e.name) for e in st.living_enemies()]
     if side == "ally":
-        return [(c.id, c.name) for c in (st.living_party() + st.living_tokens())]
+        return ([(c.id, c.name) for c in st.party]
+                + [(t.id, t.name) for t in st.living_tokens()])
     if side == "any":
-        return [(c.id, c.name) for c in
-                (st.living_enemies() + st.living_party() + st.living_tokens())]
+        return ([(e.id, e.name) for e in st.living_enemies()]
+                + [(c.id, c.name) for c in st.party]
+                + [(t.id, t.name) for t in st.living_tokens()])
     return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)
 
 
@@ -3071,7 +3095,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if s.source_side == "enemy" and _filter_matches(filt, s)]
-    side, targeted = None, False
+    side, targeted, kind = None, False, None
     for e in _iter_leaf(effects):
         desc = getattr(e, "target", None)
         if isinstance(desc, str):  # "$T1" slot ref — resolve its side from the card
@@ -3079,6 +3103,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
             if sd is not None:
                 side = sd.side.value if sd.side is not None else "any"
                 targeted = bool(getattr(sd, "targeted", False))
+                kind = e.kind
                 break
             continue
         # Any CHOSEN descriptor needs a pick at cast — `targeted` governs
@@ -3087,10 +3112,13 @@ def _target_options_for(st: GameState, effects, card: Card = None):
         if desc is not None and getattr(desc, "mode", None) == TargetMode.chosen:
             side = desc.side.value
             targeted = bool(getattr(desc, "targeted", False))
+            kind = e.kind
             break
     opts = _side_options(st, side)
     if targeted:  # a TARGETED pick may not name a hexproof hostile (GDD §7)
         opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
+    if kind == "revive":  # only a DOWNED ally can be revived
+        opts = _downed_only(st, opts)
     return opts
 
 
@@ -3104,15 +3132,17 @@ def _target_sites(effects, card: Card):
     one shared site. A counter is a site whose options are enemy STACK actions
     (side "stack:<filter>"). conditional/modal/self/all contribute none, so a
     conditional's nested effects reuse the primary (first) target. Returns
-    [(key, side, targeted)] where key is ('slot', name) or ('eff', id(effect));
+    [(key, side, targeted, kind)] where key is ('slot', name) or ('eff', id(effect));
     `targeted` carries the descriptor's flag so enumeration can honour hexproof
     (a targeted pick may not offer a hexproof hostile; an untargeted-chosen one
-    may — non-targeting effects beat hexproof, GDD §7). Used by enumeration AND
+    may — non-targeting effects beat hexproof, GDD §7), and `kind` is the owning
+    effect's kind so kind-specific pick rules apply (revive: downed allies only).
+    Used by enumeration AND
     resolution, so site order matches between them."""
     sites = []
     seen_slots = set()
 
-    def add(desc, eff_key, forced=False):
+    def add(desc, eff_key, kind, forced=False):
         if isinstance(desc, str):  # "$T1" slot ref — one shared site per slot name
             name = desc[1:]
             if name in seen_slots:
@@ -3120,25 +3150,26 @@ def _target_sites(effects, card: Card):
             seen_slots.add(name)
             sd = card.targets.get(name) if card is not None else None
             side = sd.side.value if sd is not None and sd.side is not None else "any"
-            sites.append((("slot", name), side, bool(getattr(sd, "targeted", False))))
+            sites.append((("slot", name), side, bool(getattr(sd, "targeted", False)), kind))
         elif desc is not None and (forced
                                    or getattr(desc, "mode", None) == TargetMode.chosen):
-            sites.append((eff_key, desc.side.value, bool(getattr(desc, "targeted", False))))
+            sites.append((eff_key, desc.side.value,
+                          bool(getattr(desc, "targeted", False)), kind))
 
     for e in effects:
         if e.kind in ("conditional", "modal"):
             continue
         if e.kind == "counter":
             # The counter's target is an enemy action on the stack, not a creature.
-            sites.append((("eff", id(e)), f"stack:{e.filter}", True))
+            sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter"))
             continue
         if e.kind == "fight":
             # Fight's two targets are always chosen (even authored inline). Force both
             # sites, keying `other` apart from the primary so each binds independently.
-            add(getattr(e, "target", None), ("eff", id(e)), forced=True)
-            add(getattr(e, "other", None), ("eff_other", id(e)), forced=True)
+            add(getattr(e, "target", None), ("eff", id(e)), "fight", forced=True)
+            add(getattr(e, "other", None), ("eff_other", id(e)), "fight", forced=True)
             continue
-        add(getattr(e, "target", None), ("eff", id(e)))
+        add(getattr(e, "target", None), ("eff", id(e)), e.kind)
     return sites
 
 
@@ -3209,7 +3240,7 @@ def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:
     if effects is None:
         effects = _mode_specs(card)[0][1]
     return [_site_label(key, effects, card)
-            for key, _side, _t in _target_sites(effects, card)]
+            for key, *_ in _target_sites(effects, card)]
 
 
 # --------------------------------------------------------------------------- #

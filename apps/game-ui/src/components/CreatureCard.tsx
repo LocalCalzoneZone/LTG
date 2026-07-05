@@ -11,16 +11,21 @@ const NAME = "text-[clamp(9px,1.4vh,15px)]";
 export function CreatureCard({ creature, isTarget }: { creature: CreatureView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  // This enemy has an action (attack / spell / ability) pending on the stack.
+  const acting = useGame((s) => (s.snapshot?.stack ?? []).some((r) => r.source_id === creature.id));
 
   // Boss hooks are dormant (engine has no boss support — INTERFACE_NOTES §4.3).
   // Creatures share the player-card width (aspect-square, so shorter than a 9:16 PC).
+  // A boss gets no ring of its own — the larger card is its signifier. One ring at a
+  // time, highest-stakes first, so conflicting Tailwind ring classes never stack.
   const size = creature.is_boss ? BOSS_CARD_WIDTH : CARD_WIDTH;
-  const border = creature.is_boss
-    ? "ring-2 ring-amber-500"
-    : isTarget
-      ? "ring-4 ring-yellow-400"
-      : "ring-1 ring-black/40";
-  const execute = creature.in_execute_window ? "ring-4 ring-red-500 ring-active" : "";
+  const border = isTarget
+    ? "ring-4 ring-yellow-400"
+    : creature.in_execute_window
+      ? "ring-4 ring-red-500 ring-active"
+      : acting
+        ? "ring-2 ring-red-500"
+        : "ring-1 ring-black/40";
   const dimUntargeted = armed && !isTarget ? "opacity-40" : "";
 
   return (
@@ -28,7 +33,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       onClick={() => isTarget && pickTargetId(creature.id)}
       title={creature.name}
       style={{ width: size }}
-      className={`relative aspect-square shrink-0 select-none rounded-lg bg-gradient-to-b from-rose-900 to-slate-900 shadow-lg transition ${border} ${execute} ${dimUntargeted} ${
+      className={`relative aspect-square shrink-0 select-none rounded-lg bg-gradient-to-b from-rose-900 to-slate-900 shadow-lg transition ${border} ${dimUntargeted} ${
         isTarget ? "cursor-pointer" : "cursor-default"
       } ${creature.is_boss ? "z-10" : ""}`}
     >

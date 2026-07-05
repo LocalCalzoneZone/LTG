@@ -234,6 +234,26 @@ export interface EnemyIntentSpec {
   action_type?: string;
   intent_type?: string;
 }
+// One enemy component (Design Update 04 §F-3) as authored JSON. The editor edits
+// the common scalars directly; `verbs`/`condition` are edited as JSON blobs and
+// validated server-side (the engine gate rejects anything malformed on save).
+export interface ComponentSpec {
+  id?: string;
+  archetype?: string;
+  timing?: "proactive" | "reactive";
+  trigger?: string;
+  condition?: unknown;
+  cooldown?: number;
+  once_per_encounter?: boolean;
+  priority?: number;
+  target_rule?: string;
+  action_type?: string; // "spell" for magic (counterable by spell counters)
+  channel?: boolean;    // held ongoing effect (broken by a ≥25% hit / removal)
+  phase?: string;       // boss: "pre_enrage" | "post_enrage"
+  move_home?: boolean;
+  telegraph?: string;
+  verbs?: unknown[];
+}
 export interface EnemySpec {
   id?: string;
   name: string;
@@ -241,13 +261,25 @@ export interface EnemySpec {
   level: number;
   power?: number;
   row?: Row;
+  home_row?: Row;
+  attack_mode?: "melee" | "ranged";
+  is_boss?: boolean;
   keywords?: string[];
-  intent: EnemyIntentSpec;
+  flavor?: string;
+  description?: string; // physical appearance (art/narration)
+  // Legacy enemies carry a flat `intent`; framework enemies carry `components`
+  // (their basic attack is synthesized from `power` by the engine).
+  intent?: EnemyIntentSpec;
   ranged_intent?: EnemyIntentSpec | null;
+  components?: ComponentSpec[];
 }
 export interface EncounterDetail {
   id: string;
   name: string;
+  // LLM-generated battle backdrop ("" for hand-authored). Rides the encounter
+  // for the image-generation / narration systems; the editor round-trips it.
+  // (Per-enemy physical `description`s travel inside the enemy dicts.)
+  scene?: string;
   enemies: EnemySpec[];
   tokens: Record<string, unknown>;
 }
