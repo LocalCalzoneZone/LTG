@@ -253,6 +253,42 @@ def test_channel_cannot_be_voluntarily_dropped_the_turn_it_starts():
     assert hero(state).channels == []
 
 
+def _seal():
+    # A channel with a break rider: +1/+1 on the holder while held, and 3 damage to
+    # every enemy — on the stack, respondable — when the channel ends for any reason.
+    return C("seal", "channeled", [
+        {"kind": "pump", "power": 1, "toughness": 1, "target": {"mode": "self"}},
+        {"kind": "deal_damage", "amount": 3, "trigger": "channel_break",
+         "target": {"mode": "all", "side": "enemy"}},
+    ], colors={"R": 1})
+
+
+def test_channel_break_trigger_fires_on_voluntary_drop():
+    state = make_state([_seal()], enemy_hp=10, intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="seal")
+    assert len(hero(state).channels) == 1 and orc(state).hp == 10  # armed, not fired
+
+    for ch in hero(state).channels:            # make the drop legal this turn
+        ch.started_turn = state.turn - 1
+    # Apply the drop WITHOUT settling: the trigger must sit on the stack first.
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    assert [i.kind for i in mid.stack] == ["triggered"]
+    assert orc(mid).hp == 10                   # not yet — the window is open
+    after = settle_window(mid)
+    assert orc(after).hp == 7                  # the break trigger resolved
+    assert hero(after).channels == []
+
+
+def test_channel_break_trigger_fires_on_breaking_hit():
+    # A ≥25%-max-HP hit breaks concentration; the rider still fires (any reason).
+    state = make_state([_seal()], hero_hp=20, intent_amount=5)  # 5 ≥ ceil(20/4)
+    state, _ = do(state, kind="cast", card_id="seal")
+    assert len(hero(state).channels) == 1
+    state = _advance_to_turn(state, 2)         # the enemy's hit lands en route
+    assert hero(state).channels == []          # broken by the hit
+    assert orc(state).hp == 7                  # and the rider went off
+
+
 def test_lethal_wound_aura_kills_target_without_breaking_other_channels():
     # Regression: channelling a −2/−2 aura onto a 2-HP enemy kills it outright (a wound
     # that empties toughness is lethal), and losing that aura's target does NOT break

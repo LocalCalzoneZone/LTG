@@ -36,6 +36,7 @@ from ltg_core.schema import (
     Card,
     DealDamage,
     Duration,
+    EventTrigger,
     Ref,
     TargetMode,
     Timing,
@@ -287,6 +288,85 @@ def _fire_capacity_increase(st: GameState, char: CharacterState) -> None:
                 _resolve_effect(st, item, effect, ctx)
 
 
+def _event_who_matches(who: str, holder, holder_side: str,
+                       channel_target_id: Optional[str], actor) -> bool:
+    """Whether `actor`'s event counts for an EventTrigger, relative to the channel's
+    holder: you = the holder · target = the channel's chosen target · ally = anyone
+    on the holder's side (including the holder) · enemy = anyone opposing · any."""
+    aid = getattr(actor, "id", None)
+    if who == "you":
+        return aid == holder.id
+    if who == "target":
+        return channel_target_id is not None and aid == channel_target_id
+    actor_side = "enemy" if isinstance(actor, EnemyState) else "party"
+    if who == "ally":
+        return actor_side == holder_side
+    if who == "enemy":
+        return actor_side != holder_side
+    return True  # "any"
+
+
+def _matching_event_effects(effects, event: str, holder, holder_side: str,
+                            channel_target_id: Optional[str], actor,
+                            spell_timing: Optional[str]) -> List:
+    out = []
+    for e in effects:
+        t = getattr(e, "trigger", None)
+        if not isinstance(t, EventTrigger) or t.event != event:
+            continue
+        if not _event_who_matches(t.who, holder, holder_side, channel_target_id, actor):
+            continue
+        if (t.spell_type is not None
+                and getattr(t.spell_type, "value", t.spell_type) != spell_timing):
+            continue
+        out.append(e)
+    return out
+
+
+def _fire_event(st: GameState, event: str, actor,
+                spell_timing: Optional[str] = None) -> None:
+    """Event-triggered channel effects: whenever a combatant attacks, is dealt
+    damage, gains life, casts a spell, or draws a card, every held channel with a
+    matching EventTrigger fires its effect(s) immediately (like an upkeep tick).
+    `event_depth` caps trigger-fires-trigger chains (an on-draw draw, an on-damage
+    hit) so they always terminate instead of recursing forever."""
+    if actor is None or st.event_depth >= 8:
+        return
+    party_watch = [(h, ch) for h in st.living_party() for ch in list(h.channels)]
+    enemy_watch = [(e, ch) for e in st.living_enemies() for ch in list(e.channels)]
+    if not party_watch and not enemy_watch:
+        return
+    st.event_depth += 1
+    try:
+        for holder, ch in party_watch:
+            if ch not in holder.channels:  # broken by an earlier trigger this event
+                continue
+            fired = _matching_event_effects(ch.card.effects, event, holder, "party",
+                                            ch.target_id, actor, spell_timing)
+            if not fired:
+                continue
+            item = StackItem(kind="ability", source_id=holder.id, source_side="party",
+                             label=f"{ch.card.name} — trigger", effects=[],
+                             target_id=ch.target_id, card=ch.card)
+            ctx = {"capacity": holder.capacity}
+            for eff in fired:
+                _resolve_effect(st, item, eff, ctx)
+        for holder, ch in enemy_watch:
+            if ch not in holder.channels:
+                continue
+            fired = _matching_event_effects(ch.effects, event, holder, "enemy",
+                                            ch.target_id, actor, spell_timing)
+            if not fired:
+                continue
+            item = StackItem(kind="ability", source_id=holder.id, source_side="enemy",
+                             label=f"{ch.name} — trigger", effects=[],
+                             target_id=ch.target_id)
+            for eff in fired:
+                _resolve_effect(st, item, eff, {})
+    finally:
+        st.event_depth -= 1
+
+
 def _upkeep_draws(st: GameState) -> None:
     """After capacity is set: mana refreshes (channels keep their reserve out of
     the pool), each character draws 1, and per-round uses / turn flags reset."""
@@ -297,6 +377,7 @@ def _upkeep_draws(st: GameState) -> None:
         c.acted_mode = None
         c.turn_ended = False
         c.taunted_to = None  # enemy taunt is a this-turn bind (§F-3)
+        c.spells_cast_turn = 0  # `spells_cast` conditions count per turn
         _log(st, "mana_refresh",
              f"{c.name} mana refreshes to {_mana_str(c.pool)} (capacity {c.capacity}, "
              f"reserved {len(c.reserved)}).",
@@ -1151,6 +1232,10 @@ def _do_cast(st: GameState, action: Action) -> None:
     _log(st, "cast", f"{actor.name} casts {card.name}"
          + (f" on {tgt.name}" if tgt else "") + f". Mana: {_mana_str(actor.pool)}.",
          character=actor.id, card=card.id, target=action.target_id)
+    # `spells_cast` conditions count this cast; on-cast channel triggers fire now
+    # (at cast, MTG-style — even if the spell is later countered).
+    actor.spells_cast_turn += 1
+    _fire_event(st, "spell_cast", actor, spell_timing=card.timing.value)
 
 
 def _do_defend(st: GameState, action: Action) -> None:
@@ -1283,6 +1368,10 @@ def _resolve_top(st: GameState) -> StackItem:
     if item.starts_channel:
         _start_enemy_channel(st, item)
         return item
+    # On-attack channel triggers fire as the swing resolves (any side: a player's
+    # or token's basic attack, an enemy attack intent) — before its damage lands.
+    if item.kind == "attack":
+        _fire_event(st, "attack", st.combatant(item.source_id))
     ctx = _new_ctx(st, item)
     _resolve_effect_list(st, item, item.effects, ctx)
     return item
@@ -1434,7 +1523,9 @@ def _enemy_channel_targets(st: GameState, ch: EnemyChannel, effect) -> List:
 
 def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None:
     """End ALL of an enemy's channels (all-or-nothing, like a player break §8):
-    lift their continuous effects and log what the party just turned off."""
+    lift their continuous effects and log what the party just turned off. A
+    `channel_break` verb fires as a respondable stack trigger, same as the party
+    side — breaking the ritual can spring its dying sting."""
     if not enemy.channels:
         return
     for ch in list(enemy.channels):
@@ -1445,7 +1536,10 @@ def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None
                                   holder_id=enemy.id)
         _log(st, "channel_end", f"{enemy.name}'s {ch.name} is broken ({reason}).",
              enemy=enemy.id, component=ch.component_id, label=ch.name, reason=reason)
+    ended = list(enemy.channels)
     enemy.channels = []
+    for ch in ended:
+        _fire_channel_break(st, enemy.id, "enemy", ch.name, ch.effects, ch.target_id)
 
 
 def _reap_aura_kills(st: GameState) -> None:
@@ -1654,7 +1748,9 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
     mana straight into the pool (GDD §8). The release does NOT use the stack — it just
     happens, so it opens no reaction window. The card is already in the graveyard (R-9) —
     the channel simply ends. `channels` is a subset of the holder's channels (all of them
-    for a break; one for a voluntary single drop)."""
+    for a break; one for a voluntary single drop). Any `channel_break` effects on an
+    ending card DO use the stack: each ending channel pushes one respondable triggered
+    ability (so a counter can answer it) — see _fire_channel_break."""
     channels = [ch for ch in channels if ch in char.channels]
     if not channels:
         return
@@ -1673,6 +1769,29 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
          f"{char.name}'s channels break ({reason}); {_mana_str(released)} released "
          f"(pool now {_mana_str(char.pool)}).",
          character=char.id, released=list(released), reason=reason)
+    for channel in channels:
+        _fire_channel_break(st, char.id, "party", channel.card.name,
+                            channel.card.effects, channel.target_id)
+
+
+def _fire_channel_break(st: GameState, source_id: str, source_side: str, name: str,
+                        effects, target_id: Optional[str]) -> None:
+    """Push an ending channel's `channel_break` effects onto the stack as one
+    triggered ability (GDD taxonomy: triggered → reactive), reopening the reaction
+    window — the other side may respond (a "triggered"/"ability" counter answers it)
+    before it resolves. Fires on ANY end: voluntary drop, breaking hit, or the
+    channeler's incapacitation. No `card` is set on the item — a channeled card on
+    the stack would re-start the channel at resolution instead of running these."""
+    breaks = [e for e in effects if getattr(e, "trigger", None) == "channel_break"]
+    if not breaks:
+        return
+    _push(st, StackItem(kind="triggered", source_id=source_id, source_side=source_side,
+                        label=f"{name} — break trigger", effects=breaks,
+                        target_id=target_id))
+    st.priority = None  # fresh window — re-seeded by _advance
+    st.passes = 0
+    _log(st, "channel_break_trigger",
+         f"{name}'s break trigger goes on the stack.", source=source_id, label=name)
 
 
 # Effects that act on the source or a stack item, not on the resolved `target`
@@ -1789,6 +1908,30 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
     cond = cond_effect.condition
     if cond.kind == "cast_mode":
         return item.cast_mode == cond.mode
+    if cond.kind == "self_hp":
+        # The caster's CURRENT base HP against a % of max (integer math: no floats).
+        src = st.combatant(item.source_id)
+        if src is None or getattr(src, "max_hp", 0) <= 0:
+            return False
+        if cond.compare == "or_more":
+            return src.hp * 100 >= cond.percent * src.max_hp
+        return src.hp * 100 <= cond.percent * src.max_hp
+    if cond.kind == "enemy_count":
+        enemies, party = len(st.living_enemies()), len(st.living_party())
+        if cond.compare == "more":
+            return enemies > party
+        if cond.compare == "fewer":
+            return enemies < party
+        return enemies == party
+    if cond.kind == "spells_cast":
+        # Spells the caster has cast this turn, counting this one (the counter is
+        # bumped at cast, before resolution). Non-characters (enemies) count 0.
+        n = getattr(st.character(item.source_id), "spells_cast_turn", 0) or 0
+        if cond.compare == "or_more":
+            return n >= cond.count
+        if cond.compare == "or_less":
+            return n <= cond.count
+        return n == cond.count
     # target_property: read the main chosen target's property.
     target = st.combatant(item.target_id)
     if cond.property == "has_keyword":
@@ -2586,6 +2729,9 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
         target.hp = 0
         target.temp_mod = min(target.temp_mod, 0)
     _after_damage(st, target)
+    # On-damage channel triggers key off the blow that connected (soak + HP lost).
+    if connected > 0:
+        _fire_event(st, "damage_taken", target)
     # Overkill only cleaves when the blow actually felled the target (dead / incapacitated).
     return overkill if target.effective_hp <= 0 else 0
 
@@ -2595,18 +2741,23 @@ def _heal(st: GameState, target, amount: int, reason: str = "") -> None:
     cancelling it toward 0, and only then restores `hp` (never above max) — R-7."""
     if amount <= 0 or target is None:
         return
+    gained = 0  # wound closed + HP restored — what on-life-gain triggers key off
     if target.temp_mod < 0:  # cancel the wound toward 0 first
         fill = min(-target.temp_mod, amount)
         target.temp_mod += fill
         amount -= fill
+        gained += fill
         if fill:
             _log(st, "wound_mend", f"{fill} healing to {target.name} closes a wound "
                  f"(temp_mod {target.temp_mod}).", target=_tid(target), amount=fill)
     before = target.hp
     target.hp = min(target.max_hp, target.hp + amount)
+    gained += target.hp - before
     if target.hp != before or reason:
         _log(st, "heal", f"{target.name} heals {target.hp - before} (HP {target.hp}).",
              target=_tid(target), amount=target.hp - before, hp=target.hp, reason=reason)
+    if gained > 0:
+        _fire_event(st, "life_gain", target)
 
 
 def _after_damage(st: GameState, target) -> None:
@@ -2688,6 +2839,7 @@ def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None
             ctx.setdefault("drawn_cards", []).append(card)
         _log(st, "draw", f"{char.name} draws {card.name}.",
              character=char.id, card=card.id, card_name=card.name)
+        _fire_event(st, "card_draw", char)  # one event per card drawn
 
 
 def _check_end(st: GameState) -> None:

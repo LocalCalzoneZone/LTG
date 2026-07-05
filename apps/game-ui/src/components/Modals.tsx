@@ -95,6 +95,11 @@ export function ZoneModal() {
                   <div className="font-semibold">{ch.card_name}</div>
                   {ch.target_name && <div className="text-xs text-gray-400">on {ch.target_name}</div>}
                   <div className="text-xs text-gray-300">{ch.text}</div>
+                  {ch.break_text && (
+                    <div className="mt-0.5 text-xs text-amber-300">
+                      When this channel ends: {ch.break_text}.
+                    </div>
+                  )}
                 </div>
                 {dropIdx != null && (
                   <button

@@ -137,3 +137,30 @@ def test_snapshot_names_the_channel():
     assert creature["is_channeling"]
     assert creature["channels"] == [{"name": _RITUAL["telegraph"]}]
     assert creature["break_threshold"] == 3              # ceil(12/4)
+
+# "Cursed Pact": a channelled aura with a dying sting — breaking it fires 3 damage
+# at the party as a respondable stack trigger (channel_break, §8 both ways).
+_PACT = {
+    "id": "pact", "archetype": "Debilitate", "timing": "proactive",
+    "priority": 10, "cooldown": 2, "target_rule": "self",
+    "channel": True, "action_type": "spell",
+    "telegraph": "Cursed Pact — all heroes -1/-1; 3 damage to all heroes if broken",
+    "verbs": [
+        {"kind": "wound", "power": 1, "toughness": 1, "duration": "while_channeled",
+         "target": {"mode": "all", "side": "ally"}},
+        {"kind": "deal_damage", "amount": 3, "trigger": "channel_break",
+         "target": {"mode": "all", "side": "ally"}},
+    ],
+}
+
+
+def test_break_verb_fires_when_the_channel_is_broken():
+    st = _advance(_state(_PACT, power=4), _channeling)   # 4 ≥ ceil(12/4): a breaking hit
+    hp_before = st.character("p").hp
+    assert st.character("p").temp_mod == -1              # aura on; sting not yet fired
+    st = _advance(st, lambda s: any(a.kind == "attack" for a in legal_actions(s)))
+    st = apply_action(st, next(a for a in legal_actions(st) if a.kind == "attack"))[0]
+    st = _advance(st, lambda s: not s.stack)
+    assert not st.enemy("warlock").channels              # broken
+    assert st.character("p").hp == hp_before - 3         # the sting resolved off the stack
+    assert any(e.type == "channel_break_trigger" for e in st.log)

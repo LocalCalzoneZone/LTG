@@ -564,6 +564,9 @@ function renderDeck() {
 let EFFECT_SPECS = {};   // { kind: { params:[{name,control,...}] } }
 let MODES = ["self", "chosen", "all"];
 let SIDES = ["ally", "enemy", "any"];
+// Resolvable value references (name → display label) for the reference dropdown.
+let REFS = { "mana_capacity": "your mana capacity",
+             "destroyed_target.level": "the destroyed target's level" };
 const MODE_LABEL = { self: "You", chosen: "Choose one", all: "All" };
 const SIDE_LABEL = { ally: "Ally", enemy: "Enemy", any: "Either" };
 
@@ -573,6 +576,7 @@ async function loadSpecs() {
     EFFECT_SPECS = r.specs;
     MODES = r.modes;
     SIDES = r.sides;
+    if (r.refs) REFS = r.refs;
   } catch (e) { /* editor falls back to whatever the card already holds */ }
 }
 
@@ -705,6 +709,14 @@ function targetControlHtml(i, current, card, field = "target") {
   return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}</span>`;
 }
 
+// The reference names offered by the dropdown: every registry ref except
+// mana_capacity (it has its own option in the value-type select).
+function refNames(current) {
+  const names = Object.keys(REFS).filter((r) => r !== "mana_capacity");
+  if (current && !names.includes(current)) names.push(current); // keep a legacy/unknown ref visible
+  return names;
+}
+
 function valueControlHtml(i, p, val) {
   let type = "number", num = 1, ref = "";
   if (val === "all") type = "all";
@@ -712,6 +724,8 @@ function valueControlHtml(i, p, val) {
     if (val.ref === "mana_capacity") type = "capacity";
     else { type = "ref"; ref = val.ref; }
   } else num = val;
+  const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refNames(ref).map((r) =>
+    `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(REFS[r] || r)}</option>`).join("")}</select>`;
   return `
     <select class="val-type" data-i="${i}" data-p="${p}">
       <option value="number" ${type === "number" ? "selected" : ""}>number</option>
@@ -720,7 +734,38 @@ function valueControlHtml(i, p, val) {
       <option value="ref" ${type === "ref" ? "selected" : ""}>reference</option>
     </select>
     ${type === "number" ? `<input class="val-input" type="number" data-i="${i}" data-p="${p}" value="${num}" />` : ""}
-    ${type === "ref" ? `<input class="val-input" type="text" data-i="${i}" data-p="${p}" value="${escapeAttr(ref)}" placeholder="e.g. destroyed_target.level" />` : ""}`;
+    ${type === "ref" ? refSel : ""}`;
+}
+
+// The trigger control: (none) / a lifecycle trigger / "on event…" which opens
+// who + event selects (and a spell-type filter for spell_cast).
+const TRIGGER_LABEL = { upkeep: "upkeep (each turn)", capacity_increase: "capacity increase",
+                        channel_break: "channel break" };
+const EVENT_LABEL = { attack: "attacks", damage_taken: "is dealt damage",
+                      life_gain: "gains life", spell_cast: "casts a spell",
+                      card_draw: "draws a card" };
+const WHO_LABEL = { you: "you", target: "the target", ally: "any ally",
+                    enemy: "any enemy", any: "anyone" };
+const SPELL_TYPE_LABEL = { instant: "an instant", sorcery: "a sorcery",
+                           channeled: "a channeled spell" };
+
+function triggerControlHtml(i, p, val) {
+  const isEvt = val && typeof val === "object";
+  const base = `<select class="trg-base" data-i="${i}">
+      <option value="" ${val == null ? "selected" : ""}>(none)</option>
+      ${(p.options || []).map((o) => `<option value="${o}" ${val === o ? "selected" : ""}>${TRIGGER_LABEL[o] || o}</option>`).join("")}
+      <option value="__event__" ${isEvt ? "selected" : ""}>on event…</option>
+    </select>`;
+  if (!isEvt) return `<label class="inline">trigger ${base}</label>`;
+  const who = `<select class="trg-who" data-i="${i}">${(p.whos || []).map((w) =>
+    `<option value="${w}" ${val.who === w ? "selected" : ""}>${WHO_LABEL[w] || w}</option>`).join("")}</select>`;
+  const evt = `<select class="trg-event" data-i="${i}">${(p.events || []).map((ev) =>
+    `<option value="${ev}" ${val.event === ev ? "selected" : ""}>${EVENT_LABEL[ev] || ev}</option>`).join("")}</select>`;
+  const stype = val.event === "spell_cast"
+    ? `<select class="trg-spelltype" data-i="${i}">
+        <option value="" ${!val.spell_type ? "selected" : ""}>of any type</option>
+        ${(p.spell_types || []).map((t) => `<option value="${t}" ${val.spell_type === t ? "selected" : ""}>${SPELL_TYPE_LABEL[t] || t}</option>`).join("")}</select>` : "";
+  return `<label class="inline">trigger ${base} when ${who} ${evt} ${stype}</label>`;
 }
 
 function paramHtml(i, p, val) {
@@ -736,6 +781,8 @@ function paramHtml(i, p, val) {
     }
     case "value":
       return `<label class="inline">${p.name} ${valueControlHtml(i, p.name, val)}</label>`;
+    case "trigger":
+      return triggerControlHtml(i, p, val);
     case "keyword_list": {
       const sel = new Set(val || []);
       return `<span class="kw-list"><span class="kw-label">${p.name}</span>${(p.options || []).map((o) =>
@@ -746,7 +793,8 @@ function paramHtml(i, p, val) {
       if (p.name === "modes") summary = `${(val || []).length} modes`;
       else if (p.name === "effects") summary = `${(val || []).length} effect(s)`;
       else if (p.name === "condition") summary = val
-        ? (val.kind === "cast_mode" ? `cast as ${val.mode}` : `target ${val.property}`) : "—";
+        ? (val.kind === "cast_mode" ? `cast as ${val.mode}`
+           : val.kind === "target_property" ? `target ${val.property}` : val.kind) : "—";
       else summary = "—";
       return `<span class="nested-note">${p.name}: ${escapeHtml(summary)} · edit in { } raw JSON</span>`;
     }
@@ -828,12 +876,31 @@ function conditionControlHtml(i, cond) {
   const kindSel = `<select class="cond-kind" data-i="${i}">
       <option value="cast_mode" ${cond.kind === "cast_mode" ? "selected" : ""}>cast mode</option>
       <option value="target_property" ${cond.kind === "target_property" ? "selected" : ""}>target property</option>
+      <option value="self_hp" ${cond.kind === "self_hp" ? "selected" : ""}>your HP</option>
+      <option value="enemy_count" ${cond.kind === "enemy_count" ? "selected" : ""}>enemies vs party</option>
+      <option value="spells_cast" ${cond.kind === "spells_cast" ? "selected" : ""}>spells cast this turn</option>
     </select>`;
   let rest = "";
   if (cond.kind === "cast_mode") {
     rest = `<select class="cond-mode" data-i="${i}">
         <option value="action" ${cond.mode === "action" ? "selected" : ""}>cast as an action</option>
         <option value="reaction" ${cond.mode === "reaction" ? "selected" : ""}>cast as a reaction</option></select>`;
+  } else if (cond.kind === "self_hp") {
+    rest = `is <input type="number" class="cond-percent" data-i="${i}" min="0" max="100" value="${cond.percent ?? 50}" />% of max
+      <select class="cond-compare" data-i="${i}">
+        <option value="or_less" ${cond.compare !== "or_more" ? "selected" : ""}>or less</option>
+        <option value="or_more" ${cond.compare === "or_more" ? "selected" : ""}>or more</option></select>`;
+  } else if (cond.kind === "enemy_count") {
+    rest = `living enemies are <select class="cond-compare" data-i="${i}">
+        <option value="more" ${cond.compare === "more" || !cond.compare ? "selected" : ""}>more than</option>
+        <option value="equal" ${cond.compare === "equal" ? "selected" : ""}>equal to</option>
+        <option value="fewer" ${cond.compare === "fewer" ? "selected" : ""}>fewer than</option></select> the party`;
+  } else if (cond.kind === "spells_cast") {
+    rest = `you have cast <input type="number" class="cond-count" data-i="${i}" min="0" value="${cond.count ?? 2}" />
+      <select class="cond-compare" data-i="${i}">
+        <option value="or_more" ${cond.compare === "or_more" || !cond.compare ? "selected" : ""}>or more</option>
+        <option value="exactly" ${cond.compare === "exactly" ? "selected" : ""}>exactly</option>
+        <option value="or_less" ${cond.compare === "or_less" ? "selected" : ""}>or fewer</option></select> spells this turn`;
   } else {
     const prop = cond.property || "has_keyword";
     rest = `<select class="cond-prop" data-i="${i}">
@@ -1056,7 +1123,7 @@ function wireDetail(idx) {
       const i = +sel.dataset.i, p = sel.dataset.p;
       editorItems[i][p] = sel.value === "all" ? "all"
         : sel.value === "capacity" ? { ref: "mana_capacity" }
-        : sel.value === "ref" ? { ref: "" } : 1;
+        : sel.value === "ref" ? { ref: refNames()[0] || "destroyed_target.level" } : 1;
       commitEffects(idx, true);
     };
   });
@@ -1080,9 +1147,27 @@ function wireDetail(idx) {
   document.querySelectorAll(".modal-ormore").forEach((cb) => { cb.onchange = () => { editorItems[+cb.dataset.i].or_more = cb.checked; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-kind").forEach((sel) => {
     sel.onchange = () => {
-      editorItems[+sel.dataset.i].condition = sel.value === "cast_mode"
-        ? { kind: "cast_mode", mode: "reaction" }
-        : { kind: "target_property", property: "has_keyword", keyword: "flying" };
+      const byKind = {
+        cast_mode: { kind: "cast_mode", mode: "reaction" },
+        target_property: { kind: "target_property", property: "has_keyword", keyword: "flying" },
+        self_hp: { kind: "self_hp", percent: 50, compare: "or_less" },
+        enemy_count: { kind: "enemy_count", compare: "more" },
+        spells_cast: { kind: "spells_cast", count: 2, compare: "or_more" },
+      };
+      editorItems[+sel.dataset.i].condition = byKind[sel.value] || byKind.cast_mode;
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".cond-percent").forEach((inp) => {
+    inp.onchange = () => {
+      editorItems[+inp.dataset.i].condition.percent =
+        Math.max(0, Math.min(100, parseInt(inp.value) || 0));
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".cond-count").forEach((inp) => {
+    inp.onchange = () => {
+      editorItems[+inp.dataset.i].condition.count = Math.max(0, parseInt(inp.value) || 0);
       commitEffects(idx, true);
     };
   });
@@ -1102,6 +1187,33 @@ function wireDetail(idx) {
   document.querySelectorAll(".cond-side").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.side = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-level").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].condition.level = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-compare").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.compare = sel.value; commitEffects(idx, true); }; });
+
+  // Trigger control (lifecycle literal or event trigger object).
+  document.querySelectorAll(".trg-base").forEach((sel) => {
+    sel.onchange = () => {
+      editorItems[+sel.dataset.i].trigger = sel.value === "" ? null
+        : sel.value === "__event__" ? { event: "attack", who: "you" } : sel.value;
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".trg-event").forEach((sel) => {
+    sel.onchange = () => {
+      const t = editorItems[+sel.dataset.i].trigger;
+      t.event = sel.value;
+      if (sel.value !== "spell_cast") delete t.spell_type;  // spell_cast-only filter
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".trg-who").forEach((sel) => {
+    sel.onchange = () => { editorItems[+sel.dataset.i].trigger.who = sel.value; commitEffects(idx, true); };
+  });
+  document.querySelectorAll(".trg-spelltype").forEach((sel) => {
+    sel.onchange = () => {
+      const t = editorItems[+sel.dataset.i].trigger;
+      if (sel.value === "") delete t.spell_type; else t.spell_type = sel.value;
+      commitEffects(idx, true);
+    };
+  });
 
   document.querySelectorAll(".eff-up").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, -1));
   document.querySelectorAll(".eff-down").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, 1));
@@ -1407,6 +1519,50 @@ async function doImport() {
   }
 }
 
+// --- Custom-card JSON import (adds to the deck, never replaces) ------------
+function openImportCustom() {
+  $("#import-custom-text").value = "";
+  $("#import-custom-status").textContent = "";
+  $("#import-custom-overlay").classList.remove("hidden");
+  $("#import-custom-text").focus();
+}
+function closeImportCustom() { $("#import-custom-overlay").classList.add("hidden"); }
+
+async function doImportCustom() {
+  const status = $("#import-custom-status");
+  let parsed;
+  try { parsed = JSON.parse($("#import-custom-text").value); }
+  catch (e) { status.textContent = `Invalid JSON: ${e.message}`; return; }
+  const cards = Array.isArray(parsed) ? parsed
+    : (parsed && Array.isArray(parsed.cards)) ? parsed.cards : null;
+  if (!cards || !cards.length) {
+    status.textContent = 'No cards found — expected an array of cards or {"cards": [...]}.';
+    return;
+  }
+  status.textContent = `Importing ${cards.length} card(s)…`;
+  $("#import-custom-go").disabled = true;
+  try {
+    const res = await api("POST", "/api/cards/import-custom", { cards });
+    res.cards.forEach(({ card, lints }) => state.cards.push({ ...card, _lints: lints }));
+    renderDeck();
+    scheduleValidate();
+    if (res.errors.length) {
+      // Keep the dialog open so the user can fix rejected entries in place.
+      const lines = res.errors.map((e) => `• ${e.name}: ${e.reason}`).join("\n");
+      status.textContent = `Imported ${res.cards.length} card(s); ${res.errors.length} rejected:\n${lines}`;
+      console.warn("Rejected on custom import:", res.errors);
+      if (res.cards.length) toast(`Imported ${res.cards.length} custom card(s) — ${res.errors.length} rejected.`);
+    } else {
+      closeImportCustom();
+      toast(`Imported ${res.cards.length} custom card(s).`);
+    }
+  } catch (e) {
+    status.textContent = `Import failed: ${e.message}`;
+  } finally {
+    $("#import-custom-go").disabled = false;
+  }
+}
+
 // Edit-a-game-character mode (opened from the game's Options → Characters →
 // Edit with ?edit=<character id>): the export button becomes "Update Game
 // Character" and writes the engine loadout over that character's file in the
@@ -1512,6 +1668,10 @@ function init() {
   $("#import-cancel").onclick = closeImport;
   $("#import-go").onclick = doImport;
   $("#import-overlay").onclick = (e) => { if (e.target.id === "import-overlay") closeImport(); };
+  $("#btn-import-custom").onclick = openImportCustom;
+  $("#import-custom-cancel").onclick = closeImportCustom;
+  $("#import-custom-go").onclick = doImportCustom;
+  $("#import-custom-overlay").onclick = (e) => { if (e.target.id === "import-custom-overlay") closeImportCustom(); };
   $("#portrait").onclick = (e) => { if (e.target.id !== "portrait-clear") $("#portrait-file").click(); };
   $("#portrait-clear").onclick = (e) => { e.stopPropagation(); state.character.portrait = ""; renderPortrait(); };
   $("#portrait-file").onchange = (e) => {

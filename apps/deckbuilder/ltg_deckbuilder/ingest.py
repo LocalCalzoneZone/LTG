@@ -104,29 +104,17 @@ def parse_modal(oracle_text: str):
     return Modal(modes=modes, choose=choose, or_more=bool(m.group(2)))
 
 
-def build_card(scryfall_json: dict) -> Card:
-    """Map a Scryfall card payload onto a Card, best-effort translating it."""
-    source_name = scryfall_json["name"]
-    oracle_text = scryfall_json.get("oracle_text", "") or ""
-    type_line = scryfall_json.get("type_line", "")
-    timing = derive_timing(type_line)
-
+def translate_rules_text(rules_text: str, timing: Timing, context: dict | None = None):
+    """(effects, translated_text, needs_translation) — the MTG-style rules-text
+    translation pass, shared by Scryfall ingestion and custom-card import."""
     # Modal cards ("Choose one —") become a single Modal effect over their bullets.
-    modal = parse_modal(oracle_text)
+    modal = parse_modal(rules_text)
     if modal is not None:
-        translated = render_effects([modal])
-        return Card(
-            id=slugify(source_name), name=source_name, source_name=source_name,
-            rarity=normalize_rarity(scryfall_json.get("rarity", "common")),
-            level=int(scryfall_json.get("cmc", 0) or 0), type=type_line,
-            cost=parse_mana_cost(scryfall_json.get("mana_cost", "")), timing=timing,
-            original_text=oracle_text, translated_text=translated, effects=[modal],
-            needs_translation=False,
-        )
+        return [modal], render_effects([modal]), False
 
-    effects = translate(oracle_text, {"source": scryfall_json})
+    effects = translate(rules_text, context or {})
 
-    low = oracle_text.lower()
+    low = (rules_text or "").lower()
     # "for each land you control" → scale the amount by mana capacity.
     if re.search(r"for each (?:basic )?land you control", low):
         for e in effects:
@@ -139,6 +127,15 @@ def build_card(scryfall_json: dict) -> Card:
     ):
         for e in effects:
             e.trigger = "capacity_increase"
+    # "when ~ leaves the battlefield / dies / is put into a graveyard" and
+    # "sacrifice ~:" abilities → a channel_break trigger: the effect fires (on the
+    # stack) when the channel ends, dropped or broken for any reason.
+    if timing == Timing.channeled and re.search(
+        r"when .* (?:leaves the battlefield|dies|is put into a graveyard)"
+        r"|sacrifice [^.:,]*:", low
+    ):
+        for e in effects:
+            e.trigger = "channel_break"
 
     # On channeled (enchantment) cards, a static (untriggered) effect with a
     # duration field is continuous: make it `while_channeled`.
@@ -148,6 +145,19 @@ def build_card(scryfall_json: dict) -> Card:
                 e.duration = Duration.while_channeled
 
     translated = render_effects(effects, channeled=(timing == Timing.channeled))
+    return effects, translated, len(effects) == 0
+
+
+def build_card(scryfall_json: dict) -> Card:
+    """Map a Scryfall card payload onto a Card, best-effort translating it."""
+    source_name = scryfall_json["name"]
+    oracle_text = scryfall_json.get("oracle_text", "") or ""
+    type_line = scryfall_json.get("type_line", "")
+    timing = derive_timing(type_line)
+
+    effects, translated, needs_translation = translate_rules_text(
+        oracle_text, timing, {"source": scryfall_json}
+    )
 
     return Card(
         id=slugify(source_name),
@@ -161,5 +171,78 @@ def build_card(scryfall_json: dict) -> Card:
         original_text=oracle_text,
         translated_text=translated,
         effects=effects,
-        needs_translation=len(effects) == 0,
+        needs_translation=needs_translation,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Custom-card JSON → Card (see apps/deckbuilder/CUSTOM_CARD_SCHEMA.md)
+# --------------------------------------------------------------------------- #
+# The three card types custom import accepts, mapped onto LTG timing.
+CUSTOM_TYPES = {
+    "instant": Timing.instant,
+    "sorcery": Timing.sorcery,
+    "enchantment": Timing.channeled,
+}
+
+
+def parse_mana_cost_loose(mana_cost) -> Cost:
+    """Parse a custom card's mana cost: '{1}{B}' braces, compact '2GG'/'1B',
+    a bare int, or empty. Unknown symbols are ignored (same as brace parsing)."""
+    if isinstance(mana_cost, int):
+        return Cost(generic=max(mana_cost, 0))
+    s = str(mana_cost or "").strip()
+    if "{" in s:
+        return parse_mana_cost(s)
+    generic = 0
+    colors: dict = {}
+    for token in re.findall(r"\d+|[A-Za-z]", s):
+        if token.isdigit():
+            generic += int(token)
+        elif token.upper() in _COLOR_LETTERS:
+            c = token.upper()
+            colors[c] = colors.get(c, 0) + 1
+    return Cost(generic=generic, colors=colors)
+
+
+def build_custom_card(entry: dict) -> Card:
+    """Map one custom-card JSON entry onto a Card, running the same rules-text
+    translation pass as Scryfall ingestion. Raises ValueError on a bad entry."""
+    if not isinstance(entry, dict):
+        raise ValueError("each card must be a JSON object")
+    name = str(entry.get("name") or "").strip()
+    if not name:
+        raise ValueError("missing required field 'name'")
+
+    type_raw = str(entry.get("type") or "").strip().lower()
+    timing = CUSTOM_TYPES.get(type_raw)
+    if timing is None:
+        raise ValueError(
+            f"'type' must be one of {', '.join(CUSTOM_TYPES)} (got {entry.get('type')!r})"
+        )
+
+    effect_text = str(entry.get("effect") or "").strip()
+    if not effect_text:
+        raise ValueError("missing required field 'effect'")
+
+    # Both spellings accepted. Flavour is the editor's "how the effect works
+    # 'in character'" description (Card.flavor_text) — never rules text.
+    flavour = str(entry.get("flavour") or entry.get("flavor") or "").strip()
+    cost = parse_mana_cost_loose(entry.get("mana_cost", ""))
+    effects, translated, needs_translation = translate_rules_text(effect_text, timing)
+
+    return Card(
+        id=slugify(name),
+        name=name,
+        source_name=name,
+        rarity=normalize_rarity(str(entry.get("rarity") or "common")),
+        level=cost.generic + sum(cost.colors.values()),  # level = converted cost
+        type=type_raw.capitalize(),
+        cost=cost,
+        timing=timing,
+        original_text=effect_text,
+        translated_text=translated,
+        flavor_text=flavour,
+        effects=effects,
+        needs_translation=needs_translation,
     )

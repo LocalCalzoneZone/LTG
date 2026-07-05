@@ -201,16 +201,55 @@ class Duration(str, Enum):
         return None
 
 
-# Effects on channeled cards may fire on a recurring trigger instead of being
-# continuous: "upkeep" (start of each of your turns) or "capacity_increase"
-# (landfall — whenever your mana capacity goes up).
-TriggerType = Literal["upkeep", "capacity_increase"]
+# Effects on channeled cards may fire on a trigger instead of being continuous:
+# "upkeep" (start of each of your turns), "capacity_increase" (landfall —
+# whenever your mana capacity goes up), or "channel_break" (once, as a
+# respondable stack trigger, when the channel ends — dropped or broken, for any
+# reason; the MTG analogue is a "when this leaves play" / sacrifice ability).
+TriggerType = Literal["upkeep", "capacity_increase", "channel_break"]
+
+# Combat events a channeled effect can watch (EventTrigger below), and whose
+# events count — relative to the channel's HOLDER: "you" = the holder,
+# "target" = the channel's chosen target, "ally" = anyone on the holder's side
+# (including the holder), "enemy" = anyone opposing, "any" = anyone at all.
+TRIGGER_EVENTS = ["attack", "damage_taken", "life_gain", "spell_cast", "card_draw"]
+TRIGGER_WHO = ["you", "target", "ally", "enemy", "any"]
+
+
+class EventTrigger(BaseModel):
+    """A channeled effect that fires on a combat event: someone attacks, is
+    dealt damage, gains life, casts a spell (optionally of one card type), or
+    draws a card. `who` scopes whose events count, relative to the holder."""
+
+    event: Literal["attack", "damage_taken", "life_gain", "spell_cast", "card_draw"]
+    who: Literal["you", "target", "ally", "enemy", "any"] = "you"
+    # spell_cast only: fire only for this card type (instant/sorcery/channeled).
+    spell_type: Optional[Timing] = None
+
+    @model_validator(mode="after")
+    def _coherent(self) -> "EventTrigger":
+        if self.spell_type is not None and self.event != "spell_cast":
+            raise ValueError("spell_type is only valid on a 'spell_cast' event trigger")
+        return self
+
+
+# A trigger is either one of the fixed channel-lifecycle triggers or an event watch.
+Trigger = Union[TriggerType, EventTrigger]
 
 
 class Ref(BaseModel):
     """A late-bound value the resolver fills in, e.g. {"ref": "destroyed_target.level"}."""
 
     ref: str
+
+
+# The value references the engine can resolve, with display labels. The editor
+# builds its "reference" dropdown from this registry — no free-text refs.
+# (mana_capacity also has its own shortcut in the editor's value control.)
+REF_VALUES = {
+    "mana_capacity": "your mana capacity",
+    "destroyed_target.level": "the destroyed target's level",
+}
 
 
 # Value = int | "all" | {"ref": str}
@@ -283,9 +322,11 @@ class EffectBase(BaseModel):
 
     `trigger="upkeep"` makes a channeled effect fire once at the start of each of
     the controller's turns (a discrete event, no `while_channeled` duration).
+    An EventTrigger instead fires the effect whenever the watched combat event
+    happens (someone attacks, takes damage, gains life, casts, or draws).
     """
 
-    trigger: Optional[TriggerType] = None
+    trigger: Optional[Trigger] = None
 
 
 class DealDamage(EffectBase):
@@ -612,8 +653,50 @@ class TargetPropertyCondition(BaseModel):
         return self
 
 
+class SelfHpCondition(BaseModel):
+    """True when the caster's HP, as a percentage of max HP, is at/below or
+    at/above the threshold (e.g. 'you are at or below half health')."""
+
+    kind: Literal["self_hp"] = "self_hp"
+    percent: int = 50
+    compare: Literal["or_less", "or_more"] = "or_less"
+
+    @field_validator("percent")
+    @classmethod
+    def _pct(cls, v: int) -> int:
+        if not 0 <= v <= 100:
+            raise ValueError("self_hp percent must be between 0 and 100")
+        return v
+
+
+class EnemyCountCondition(BaseModel):
+    """True when the number of living enemy creatures compares as given to the
+    party's size (living player characters)."""
+
+    kind: Literal["enemy_count"] = "enemy_count"
+    compare: Literal["more", "equal", "fewer"] = "more"
+
+
+class SpellsCastCondition(BaseModel):
+    """True when the caster has cast N spells this turn, counting this one
+    (the count resets at the start of each of their turns)."""
+
+    kind: Literal["spells_cast"] = "spells_cast"
+    count: int = 2
+    compare: Literal["exactly", "or_more", "or_less"] = "or_more"
+
+    @field_validator("count")
+    @classmethod
+    def _non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("spells_cast count must be >= 0")
+        return v
+
+
 Condition = Annotated[
-    Union[CastModeCondition, TargetPropertyCondition], Field(discriminator="kind")
+    Union[CastModeCondition, TargetPropertyCondition, SelfHpCondition,
+          EnemyCountCondition, SpellsCastCondition],
+    Field(discriminator="kind"),
 ]
 
 
@@ -747,6 +830,17 @@ def effect_specs() -> dict:
                 # Container fields (modal modes / conditional branch). The guided
                 # editor shows a summary; deep edits go through the raw-JSON hatch.
                 params.append({"name": fname, "control": "nested", "required": True})
+                continue
+            if fname == "trigger":
+                # `trigger` is a union (lifecycle literal | EventTrigger) — give the
+                # editor a dedicated control with the full vocabulary.
+                params.append({
+                    "name": "trigger", "control": "trigger", "optional": True,
+                    "default": None, "required": False,
+                    "options": list(_t.get_args(TriggerType)),
+                    "events": list(TRIGGER_EVENTS), "whos": list(TRIGGER_WHO),
+                    "spell_types": [t.value for t in Timing],
+                })
                 continue
             spec = {"name": fname, **_control_for(finfo.annotation)}
             default = finfo.default

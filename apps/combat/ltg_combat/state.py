@@ -143,6 +143,8 @@ class CharacterState:
     acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" | "move" this turn
     turn_ended: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
+    # Spells cast this turn (reset at upkeep) — read by `spells_cast` conditions.
+    spells_cast_turn: int = 0
 
     # Enemy Debilitate effects on players (Design Update 04 §F-3 "stun / taunt-us").
     # `stunned` = whole turns whose proactive window is denied (decremented as each
@@ -526,6 +528,9 @@ class GameState:
     reacted_window: List[str] = field(default_factory=list)
     pending_break: List[str] = field(default_factory=list)  # channelers owed a break
     pending_choice: Optional["PendingChoice"] = None  # mid-resolution card-move choice
+    # Re-entrancy depth for event-triggered channel effects (an on-draw draw, an
+    # on-damage hit, …). Capped so trigger-fires-trigger chains always terminate.
+    event_depth: int = 0
     result: Optional[str] = None      # None | "victory" | "defeat"
     log: List[Event] = field(default_factory=list)
 

@@ -14,6 +14,7 @@
       <button id="btn-load">Load</button>
       <input type="file" id="file-load" accept="application/json,.json" hidden />
       <button id="btn-import">Import</button>
+      <button id="btn-import-custom">Import Custom Cards</button>
       <button id="btn-save">Save</button>
       <button id="btn-export-engine" class="primary">Export engine loadout</button>
     </div>
@@ -121,6 +122,26 @@
       <div class="detail-actions">
         <button id="import-cancel">Cancel</button>
         <button class="primary" id="import-go">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-custom-overlay" class="overlay hidden">
+    <div class="detail-card">
+      <h3>Import custom cards</h3>
+      <div class="meta">Paste JSON — an array of cards (or <code>{"cards": [...]}</code>),
+        each with <code>name</code>, <code>type</code> (instant / sorcery / enchantment),
+        <code>mana_cost</code>, <code>effect</code>, and optional <code>flavour</code>
+        (an in-character description of how the effect works — the card editor's Flavour field).
+        Cards are added to the current deck; nothing is replaced. Effect text is run
+        through the same translation pass as MTG imports — anything it can't parse is
+        flagged for hand-authoring. See <code>CUSTOM_CARD_SCHEMA.md</code> for the full format.</div>
+      <textarea id="import-custom-text" rows="14" spellcheck="false"
+        placeholder='[&#10;  {&#10;    "name": "Crystal Lance",&#10;    "type": "instant",&#10;    "mana_cost": "{1}{W}",&#10;    "effect": "Crystal Lance deals 3 damage to any target.",&#10;    "flavour": "A shard of razor-sharp crystal, summoned and directed — deadly as a spear strike."&#10;  }&#10;]'></textarea>
+      <div id="import-custom-status" class="meta" style="white-space: pre-line;"></div>
+      <div class="detail-actions">
+        <button id="import-custom-cancel">Cancel</button>
+        <button class="primary" id="import-custom-go">Import</button>
       </div>
     </div>
   </div>

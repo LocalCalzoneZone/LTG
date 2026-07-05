@@ -55,6 +55,8 @@ export interface ChannelSummary {
   target_id: string | null;
   target_name: string | null;
   text: string;
+  // What ending this channel fires (the channel_break trigger), "" when none.
+  break_text: string;
 }
 
 export interface CharacterView {

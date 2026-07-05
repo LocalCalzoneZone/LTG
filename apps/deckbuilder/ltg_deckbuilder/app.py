@@ -38,6 +38,7 @@ from ltg_core.schema import (
     MAX_POWER_BOUGHT,
     MODE_VALUES,
     PRESETS,
+    REF_VALUES,
     Row,
     SIDE_VALUES,
     deck_status,
@@ -78,6 +79,10 @@ class CardBody(BaseModel):
 
 class ImportBody(BaseModel):
     names: List[str]
+
+
+class ImportCustomBody(BaseModel):
+    cards: List[dict]
 
 
 # --------------------------------------------------------------------------- #
@@ -131,6 +136,27 @@ def api_import(body: ImportBody) -> dict:
     return {"cards": out, "not_found": not_found}
 
 
+@app.post("/api/cards/import-custom")
+def api_import_custom(body: ImportCustomBody) -> dict:
+    """Import hand-authored custom cards from JSON (schema documented in
+    apps/deckbuilder/CUSTOM_CARD_SCHEMA.md). Cards are ADDED to the loadout,
+    never replacing existing ones. Each card's `effect` text gets the same
+    deterministic translation pass as Scryfall imports — untranslated text
+    flags the card `needs_translation` for hand-authoring, it never blocks.
+    A malformed entry is reported in `errors` without failing the batch.
+    """
+    out, errors = [], []
+    for i, entry in enumerate(body.cards):
+        label = (entry.get("name") if isinstance(entry, dict) else None) or f"card #{i + 1}"
+        try:
+            card = ingest.build_custom_card(entry)
+        except Exception as exc:
+            errors.append({"name": str(label), "reason": str(exc)})
+            continue
+        out.append({"card": card.model_dump(), "lints": lint_card(card)})
+    return {"cards": out, "errors": errors}
+
+
 @app.post("/api/cards/add")
 def api_add_card(body: AddCardBody) -> Card:
     try:
@@ -175,8 +201,11 @@ def _format_errors(exc: ValidationError) -> List[str]:
 # --------------------------------------------------------------------------- #
 @app.get("/api/effect-specs")
 def api_effect_specs() -> dict:
-    """Param descriptors per primitive + target-builder vocab, for the editor."""
-    return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES}
+    """Param descriptors per primitive + target-builder vocab, for the editor.
+    `refs` is the registry of resolvable value references (name → display label)
+    that backs the editor's reference dropdown."""
+    return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES,
+            "refs": REF_VALUES}
 
 
 class CharacterPriceBody(BaseModel):
