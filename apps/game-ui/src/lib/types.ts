@@ -140,6 +140,9 @@ export interface StackRow {
   target_id: string | null;
   target_name: string | null;
   reserved_pips: string;
+  // The full card behind the action (cast / card-carried trigger), for the
+  // hover tooltip; null for basic attacks and enemy components.
+  card: CardView | null;
   top: boolean;
   uid: number;
 }
@@ -176,6 +179,12 @@ export interface LegalAction {
   target_labels?: (string | null)[];
   color: Color | null;
   mode: number | null;
+  // X chosen for an {X}-cost cast (one legal action per affordable X); null
+  // for non-X actions.
+  x?: number | null;
+  // Candidate handle for a choose_card / choose_scry pick — indexes into
+  // GameSnapshot.pending_choice.candidates.
+  choice?: number | null;
   label: string;
 }
 
@@ -194,6 +203,9 @@ export interface GameSnapshot {
   tokens: TokenView[];
   stack: StackRow[];
   intents: IntentRow[];
+  // A pending card pick's candidates as full cards (only sent to the chooser's
+  // client — hidden information, gated like hands). Null when no pick is open.
+  pending_choice: { kind: string; chooser_id: string; candidates: CardView[] } | null;
   log: LogEntry[];
   legal_actions: LegalAction[];
   result: string | null;

@@ -31,7 +31,7 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
   );
 }
 
-function HandCard({ card, playable, active, onClick }: {
+export function HandCard({ card, playable, active, onClick }: {
   card: CardView;
   playable: boolean;
   active: boolean;

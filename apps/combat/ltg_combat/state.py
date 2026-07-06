@@ -79,6 +79,9 @@ class Channel:
     # LATER turn (started_turn < current turn) — cancelling it the same turn would be a
     # discounted one-turn cast of its continuous effect (GDD §8).
     started_turn: int = 0
+    # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
+    # value references on the channel's triggered effects.
+    x: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -415,6 +418,7 @@ class StackItem:
     component_id: Optional[str] = None
     mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
+    x: int = 0                  # the X chosen at cast (0 for a non-X card)
     attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
     # Base (pre-bonus) Power of a basic attack. The damage it deals is recomputed at
     # RESOLUTION as max(0, attack_power + source.power_bonus) — so a wound/anthem landing
@@ -425,6 +429,13 @@ class StackItem:
     # mode, an ally's id for interception). Applied per hit at resolution.
     mitigate_by: Optional[str] = None
     mitigate_for: Optional[str] = None
+    # A pushed triggered ability (channel_break) whose chosen target / modal mode
+    # has not been picked yet: the holder picks as it goes on the stack
+    # (MTG-style), before the reaction window opens — mode first (it decides which
+    # effects resolve, and so which targets are needed), then target. See
+    # engine._raise_next_trigger_pick. Cleared by the picks.
+    needs_target: bool = False
+    needs_mode: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -453,12 +464,15 @@ class Action:
     # a settlement detail, not the action's identity, so legality still matches the
     # engine's offered cast. The engine re-validates it covers the cost at apply time.
     mana: Optional[List[str]] = None
+    # X chosen for an {X}-cost cast. Part of the action's identity: the engine
+    # offers one cast per affordable X value.
+    x: Optional[int] = None
     label: str = ""
 
     def key(self) -> tuple:
         """Identity used to match a chosen action against the legal set."""
         return (self.kind, self.actor_id, self.card_id, self.target_id,
-                self.color, self.mode, self.targets, self.choice)
+                self.color, self.mode, self.targets, self.choice, self.x)
 
 
 @dataclass
@@ -485,15 +499,26 @@ class PendingChoice:
 
     For a scry (`kind == "scry"`) the chooser assigns each of the `looked` revealed
     top cards to either `top` (in pick order — the first chosen is drawn first) or
-    `bottom`; the choice is complete once `candidates` is empty."""
+    `bottom`; the choice is complete once `candidates` is empty.
+
+    For a trigger-time target pick (`kind == "target"`, a channel_break ability
+    just pushed with `needs_target`): the chooser names the creature the triggered
+    ability aims at; `effect` is the chosen-target effect (for side/labels),
+    `candidates`/`need`/`remaining` are unused.
+
+    For a mode pick on a triggered modal (`kind == "mode"`): `effect` is the modal.
+    With `resolve_now` False the pick binds `item.mode` as the trigger goes on the
+    stack (channel_break); True means the modal is firing right now (channel_start)
+    — the chosen mode resolves immediately and `remaining` then resumes."""
 
     chooser_id: str
-    effect: "Effect"                     # the move_card / scry effect being resolved
+    effect: "Effect"                     # the move_card / scry / chosen-target / modal effect
     candidates: List["Card"]             # the cards the chooser may pick from
     need: int                            # cards still to move (move_card)
     remaining: List["Effect"]            # effects to resolve after this choice completes
     item: "StackItem"                    # the originating stack item (to resume on)
-    kind: str = "move"                   # "move" (move_card) | "scry"
+    kind: str = "move"                   # "move" (move_card) | "scry" | "target" | "mode"
+    resolve_now: bool = False            # mode pick: resolve the chosen mode immediately
     # Scry accumulators (kind == "scry"): the revealed cards the chooser has so far
     # sent to the top / bottom of the library, in pick order.
     top: List["Card"] = field(default_factory=list)

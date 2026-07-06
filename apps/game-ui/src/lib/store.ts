@@ -5,16 +5,64 @@ import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choic
 
 export type ZoneModal = { kind: "library" | "graveyard" | "channel"; charId: string } | null;
 
-// A cast whose generic mana can be paid more than one way: the player clicks mana
-// symbols to choose which colours to spend before the cast is submitted.
+// A cast that needs the player to pay its cost by hand ({X}, or a generic
+// portion payable more than one way): the player clicks mana symbols for the
+// ENTIRE cost — coloured pips included, in any order — then hits Cast. Nothing
+// is set aside automatically: what you see in the pool is what you pay from,
+// exactly like tapping lands for a full MTG cost.
 export interface ManaSelect {
   actorId: string;
-  index: number; // the cast action's legal index
+  index: number; // the cast action's legal index (the X=0 one for an {X} cast)
   cardId: string | null;
   cardName: string;
-  colored: string[]; // mandatory coloured pips, spent automatically
-  generic: number; // how many generic pips the player still picks
-  picked: string[]; // generic colours chosen so far
+  cost: string; // the full pip string ("{X}{U}{B}{R}") shown in the header
+  colored: string[]; // the coloured pips the payment must include
+  generic: number; // the fixed generic portion of the cost
+  picked: string[]; // every colour clicked so far (the whole payment)
+  // {X} cast: total-picks -> legal index for that X (total = coloured + generic
+  // + X). Every extra pip past the base cost raises X. Null for a non-X cast.
+  xByCount: Record<number, number> | null;
+  maxPicks: number; // coloured + generic (+ the largest affordable X)
+}
+
+/** How the picks so far pay the cost: each pick first covers a matching coloured
+ *  pip, the rest count toward the generic (+X) portion — order-free, so the
+ *  player can click colours in any sequence and never dead-ends. */
+export function paymentState(ms: ManaSelect) {
+  const needC: Record<string, number> = {};
+  for (const c of ms.colored) needC[c] = (needC[c] ?? 0) + 1;
+  const paidC: Record<string, number> = {};
+  let genericPaid = 0;
+  for (const p of ms.picked) {
+    if ((paidC[p] ?? 0) < (needC[p] ?? 0)) paidC[p] = (paidC[p] ?? 0) + 1;
+    else genericPaid += 1;
+  }
+  const coloredPaid = Object.values(paidC).reduce((a, b) => a + b, 0);
+  return {
+    needC, paidC, genericPaid,
+    coloredLeft: ms.colored.length - coloredPaid,
+    genericCap: ms.maxPicks - ms.colored.length,
+  };
+}
+
+/** Whether one more `color` pip is a legal pick: still in the pool, and it either
+ *  covers an unmet coloured pip or fits the generic/X capacity. */
+export function canPickMana(ms: ManaSelect, color: string, pool: Record<string, number>): boolean {
+  if (ms.picked.length >= ms.maxPicks) return false;
+  const spent = ms.picked.filter((x) => x === color).length;
+  if ((pool[color] ?? 0) - spent <= 0) return false;
+  const st = paymentState(ms);
+  return (st.paidC[color] ?? 0) < (st.needC[color] ?? 0) || st.genericPaid < st.genericCap;
+}
+
+/** The legal index the current picks cast, or null while the payment is short:
+ *  every coloured pip covered, and the total matches the cost (for an {X} cast,
+ *  any total with a matching X action). */
+export function castIndexFor(ms: ManaSelect): number | null {
+  const st = paymentState(ms);
+  if (st.coloredLeft > 0) return null;
+  if (ms.xByCount) return ms.xByCount[ms.picked.length] ?? null;
+  return ms.picked.length === ms.maxPicks ? ms.index : null;
 }
 
 // A target-selection in progress. Walks the candidate actions site-by-site:
@@ -83,10 +131,13 @@ interface StoreState {
   submitIndex: (index: number, mana?: string[]) => void;
   startPassAll: () => void; // pass now and keep passing until the stack resolves
   _arm: (c: Choice) => void;
-  _finishAction: (kind: string, action: LegalAction) => void; // submit, or detour a cast
-  // Casts route through here so an ambiguous mana payment can prompt a pick first.
-  beginCast: (action: LegalAction) => void;
-  pickMana: (color: string) => void; // choose one generic mana in the pending cast
+  // Submit a finished action; `actions` are the matching candidates (several for
+  // an {X} cast — one per affordable X — the cast detour then asks which).
+  _finishAction: (kind: string, actions: LegalAction[]) => void;
+  // Casts route through here so an {X} choice / ambiguous payment can prompt first.
+  beginCast: (actions: LegalAction[]) => void;
+  pickMana: (color: string) => void; // add one pip to the pending cast's payment
+  confirmMana: () => void; // submit the cast once the picks cover the cost
   resetMana: () => void; // clear the picks and start the selection over
 
   openZone: (z: ZoneModal) => void;
@@ -215,7 +266,7 @@ export const useGame = create<StoreState>((set, get) => ({
     if (n === 0) {
       // Untargeted (Defend / Pass / a self-only cast): finish the sole action.
       set({ armed: null, chooseModeFor: null });
-      get()._finishAction(c.kind, c.candidates[0]);
+      get()._finishAction(c.kind, c.candidates);
       return;
     }
     set({
@@ -235,7 +286,7 @@ export const useGame = create<StoreState>((set, get) => ({
     // Done when we've filled every site, or only one action can still match.
     if (nextSite >= armed.numSites || filtered.length === 1) {
       set({ armed: null });
-      get()._finishAction(armed.kind, filtered[0]);
+      get()._finishAction(armed.kind, filtered);
       return;
     }
     set({ armed: { ...armed, candidates: filtered, site: nextSite, picks: [...armed.picks, id] } });
@@ -251,12 +302,13 @@ export const useGame = create<StoreState>((set, get) => ({
 
   // Submit a finished action — but casts detour through beginCast so an ambiguous
   // mana payment can prompt a pick before the action is sent.
-  _finishAction: (kind: string, action: LegalAction) => {
-    if (kind === "cast") get().beginCast(action);
-    else get().submitIndex(action.index);
+  _finishAction: (kind: string, actions: LegalAction[]) => {
+    if (kind === "cast") get().beginCast(actions);
+    else get().submitIndex(actions[0].index);
   },
 
-  beginCast: (action) => {
+  beginCast: (actions) => {
+    const action = actions[0];
     const snap = get().snapshot;
     const char = snap?.characters.find((c) => c.id === action.actor_id) ?? null;
     const card = char?.hand?.find((c) => c.id === action.card_id) ?? null;
@@ -267,6 +319,28 @@ export const useGame = create<StoreState>((set, get) => ({
     const pool: Record<string, number> = {};
     for (const m of char.mana.by_color) pool[m.color] = m.pool;
     const pay = castPayment(card.cost, pool);
+    const base = pay.colored.length + pay.generic;
+    if (action.x != null) {
+      // An {X} cast ALWAYS opens the picker: the player pays the WHOLE cost by
+      // hand (coloured pips included); every pip past the base cost raises X,
+      // and Cast locks in the action matching the total.
+      const xByCount: Record<number, number> = {};
+      let maxPicks = base;
+      for (const a of actions) {
+        if (a.x == null) continue;
+        xByCount[base + a.x] = a.index;
+        maxPicks = Math.max(maxPicks, base + a.x);
+      }
+      set({
+        manaSelect: {
+          actorId: char.id, index: action.index, cardId: card.id, cardName: card.name,
+          cost: card.cost, colored: pay.colored, generic: pay.generic, picked: [],
+          xByCount, maxPicks,
+        },
+        armed: null,
+      });
+      return;
+    }
     if (!pay.ambiguous) {
       get().submitIndex(action.index); // one valid payment — no need to ask
       return;
@@ -274,7 +348,8 @@ export const useGame = create<StoreState>((set, get) => ({
     set({
       manaSelect: {
         actorId: char.id, index: action.index, cardId: card.id, cardName: card.name,
-        colored: pay.colored, generic: pay.generic, picked: [],
+        cost: card.cost, colored: pay.colored, generic: pay.generic, picked: [],
+        xByCount: null, maxPicks: base,
       },
       armed: null,
     });
@@ -282,15 +357,22 @@ export const useGame = create<StoreState>((set, get) => ({
 
   pickMana: (color) => {
     const ms = get().manaSelect;
-    if (!ms || ms.picked.length >= ms.generic) return;
-    const picked = [...ms.picked, color];
-    if (picked.length >= ms.generic) {
-      // Full payment settled — spend the coloured pips plus the chosen generic.
-      set({ manaSelect: null });
-      get().submitIndex(ms.index, [...ms.colored, ...picked]);
-      return;
-    }
-    set({ manaSelect: { ...ms, picked } });
+    if (!ms) return;
+    const snap = get().snapshot;
+    const char = snap?.characters.find((c) => c.id === ms.actorId) ?? null;
+    const pool: Record<string, number> = {};
+    for (const m of char?.mana.by_color ?? []) pool[m.color] = m.pool;
+    if (!canPickMana(ms, color, pool)) return;
+    set({ manaSelect: { ...ms, picked: [...ms.picked, color] } });
+  },
+
+  confirmMana: () => {
+    const ms = get().manaSelect;
+    if (!ms) return;
+    const index = castIndexFor(ms);
+    if (index == null) return; // the payment is still short
+    set({ manaSelect: null });
+    get().submitIndex(index, [...ms.picked]);
   },
 
   resetMana: () => {

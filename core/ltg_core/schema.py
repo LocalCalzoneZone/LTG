@@ -202,11 +202,13 @@ class Duration(str, Enum):
 
 
 # Effects on channeled cards may fire on a trigger instead of being continuous:
-# "upkeep" (start of each of your turns), "capacity_increase" (landfall —
-# whenever your mana capacity goes up), or "channel_break" (once, as a
-# respondable stack trigger, when the channel ends — dropped or broken, for any
-# reason; the MTG analogue is a "when this leaves play" / sacrifice ability).
-TriggerType = Literal["upkeep", "capacity_increase", "channel_break"]
+# "channel_start" (once, as the channel begins — the MTG analogue is an
+# enchantment's "when ~ enters the battlefield" trigger), "upkeep" (start of
+# each of your turns), "capacity_increase" (landfall — whenever your mana
+# capacity goes up), or "channel_break" (once, as a respondable stack trigger,
+# when the channel ends — dropped or broken, for any reason; the MTG analogue
+# is a "when this leaves play" / sacrifice ability).
+TriggerType = Literal["channel_start", "upkeep", "capacity_increase", "channel_break"]
 
 # Combat events a channeled effect can watch (EventTrigger below), and whose
 # events count — relative to the channel's HOLDER: "you" = the holder,
@@ -249,11 +251,28 @@ class Ref(BaseModel):
 REF_VALUES = {
     "mana_capacity": "your mana capacity",
     "destroyed_target.level": "the destroyed target's level",
+    "casting_cost": "this card's casting cost (mana paid, X included)",
+    "x": "X (chosen at cast)",
+    # The number of player characters in the encounter (downed members still
+    # count — incapacitation is recoverable, the seat remains).
+    "party_size": "the party size (number of players)",
+    # Live combat stats, read at RESOLUTION (a pump landing first changes them).
+    # "caster" is the card's controller; "target" is the creature the effect is
+    # landing on (per-creature for a mode:all effect — each reads its own stats).
+    "caster_power": "your Power (the caster's, at resolution)",
+    "caster_hp": "your current HP (the caster's, at resolution)",
+    "target_power": "the target's Power",
+    "target_hp": "the target's current HP",
 }
 
 
 # Value = int | "all" | {"ref": str}
 Value = Union[int, Literal["all"], Ref]
+
+# A stat delta (pump/wound/counters power & toughness): a constant or a dynamic
+# reference ("+X/+X", "+1 per party member") — never "all", which only makes
+# sense for amounts ("draw all", "destroy all damage").
+StatValue = Union[int, Ref]
 
 
 # --------------------------------------------------------------------------- #
@@ -411,24 +430,24 @@ class Stun(EffectBase):
 
 class Pump(EffectBase):
     kind: Literal["pump"] = "pump"
-    power: int
-    toughness: int
+    power: StatValue
+    toughness: StatValue
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
 
 class Wound(EffectBase):
     kind: Literal["wound"] = "wound"
-    power: int
-    toughness: int
+    power: StatValue
+    toughness: StatValue
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
 
 
 class Counters(EffectBase):
     kind: Literal["counters"] = "counters"
-    power: int
-    toughness: int
+    power: StatValue
+    toughness: StatValue
     target: TargetOrSlot
     duration: Duration = Duration.encounter
 
@@ -629,14 +648,15 @@ class CastModeCondition(BaseModel):
 
 
 class TargetPropertyCondition(BaseModel):
-    """True when the (main) target has a property — a keyword, a side, or a level
-    (compared with exactly / or_more / or_less)."""
+    """True when the (main) target has a property — a keyword, a side, a level
+    (compared with exactly / or_more / or_less), or a battlefield row."""
 
     kind: Literal["target_property"] = "target_property"
-    property: Literal["has_keyword", "side", "level"]
+    property: Literal["has_keyword", "side", "level", "row"]
     keyword: Optional[str] = None
     side: Optional[Side] = None
     level: Optional[int] = None
+    row: Optional[Row] = None
     compare: Literal["exactly", "or_more", "or_less"] = "exactly"
 
     @model_validator(mode="after")
@@ -650,6 +670,30 @@ class TargetPropertyCondition(BaseModel):
             raise ValueError("target_property 'side' requires a side")
         if self.property == "level" and self.level is None:
             raise ValueError("target_property 'level' requires a level")
+        if self.property == "row" and self.row is None:
+            raise ValueError("target_property 'row' requires a row")
+        return self
+
+
+class CasterPropertyCondition(BaseModel):
+    """True when the CASTER (the spell's controller / a channel's holder) has a
+    property — their battlefield row, a keyword, or whether they are actively
+    channeling (holding at least one channel)."""
+
+    kind: Literal["caster_property"] = "caster_property"
+    property: Literal["row", "has_keyword", "channeling"]
+    row: Optional[Row] = None
+    keyword: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _coherent(self) -> "CasterPropertyCondition":
+        if self.property == "row" and self.row is None:
+            raise ValueError("caster_property 'row' requires a row")
+        if self.property == "has_keyword":
+            if self.keyword is None:
+                raise ValueError("caster_property 'has_keyword' requires a keyword")
+            if self.keyword not in KEYWORDS:
+                raise ValueError(f"unknown keyword '{self.keyword}'")
         return self
 
 
@@ -694,8 +738,8 @@ class SpellsCastCondition(BaseModel):
 
 
 Condition = Annotated[
-    Union[CastModeCondition, TargetPropertyCondition, SelfHpCondition,
-          EnemyCountCondition, SpellsCastCondition],
+    Union[CastModeCondition, TargetPropertyCondition, CasterPropertyCondition,
+          SelfHpCondition, EnemyCountCondition, SpellsCastCondition],
     Field(discriminator="kind"),
 ]
 
@@ -796,7 +840,12 @@ def _control_for(annotation) -> dict:
                 return {"control": "int", "optional": True}
             if inner is float:
                 return {"control": "float", "optional": True}
-        return {"control": "value"}  # Value = int | "all" | {ref}
+        # Value = int | "all" | {ref}; StatValue = int | {ref} — the editor's
+        # value control hides the "all" option when the type doesn't admit it.
+        spec = {"control": "value"}
+        if not any(_t.get_origin(a) is Literal and "all" in _t.get_args(a) for a in args):
+            spec["no_all"] = True
+        return spec
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         return {"control": "enum", "options": [e.value for e in annotation]}
     return {"control": "str"}
@@ -872,10 +921,15 @@ SIDE_VALUES = [s.value for s in Side]
 # Card / Character / Loadout
 # --------------------------------------------------------------------------- #
 class Cost(BaseModel):
-    """Parsed mana cost. `colors` holds only the pips that are present."""
+    """Parsed mana cost. `colors` holds only the pips that are present.
+
+    `x` marks an {X} in the cost: the caster picks X at cast time and pays that
+    much extra generic mana. Effects read the choice via the `x` value reference
+    (and `casting_cost` = generic + pips + X paid)."""
 
     generic: int = 0
     colors: Dict[Color, int] = Field(default_factory=dict)
+    x: bool = False
 
     @field_validator("colors")
     @classmethod
@@ -1228,14 +1282,19 @@ class Loadout(BaseModel):
 # --------------------------------------------------------------------------- #
 # Deck status (live, non-blocking advisory — never raises)
 # --------------------------------------------------------------------------- #
-DECK_LIMIT = 40
-RARITY_LIMITS = {"mythic": 2, "rare": 6, "uncommon": 12, "common": 20}
+# A deck is 20 cards: 1 mythic + 3 rare + 6 uncommon + 10 common, as MINIMUMS.
+# Going over 20 is fine as long as the excess is all commons — so the non-common
+# rarities are exact quotas (minimum == cap) and common is a floor with no cap.
+# Violations WARN in the Deckbuilder; they never block save, export, or play.
+DECK_MINIMUM = 20
+RARITY_MINIMUMS = {"mythic": 1, "rare": 3, "uncommon": 6, "common": 10}
+UNCAPPED_RARITIES = frozenset({"common"})  # only commons may exceed their quota
 
 
 def deck_status(loadout: Loadout) -> dict:
     """Compute the advisory deck-status readout. Warnings, never errors."""
     cards = loadout.cards
-    rarity_counts = {r: 0 for r in RARITY_LIMITS}
+    rarity_counts = {r: 0 for r in RARITY_MINIMUMS}
     for c in cards:
         rarity_counts[c.rarity.value] = rarity_counts.get(c.rarity.value, 0) + 1
 
@@ -1267,10 +1326,11 @@ def deck_status(loadout: Loadout) -> dict:
     ]
 
     return {
-        "size": {"count": len(cards), "limit": DECK_LIMIT},
+        "size": {"count": len(cards), "minimum": DECK_MINIMUM},
         "rarity": {
-            r: {"count": rarity_counts[r], "limit": RARITY_LIMITS[r]}
-            for r in RARITY_LIMITS
+            r: {"count": rarity_counts[r], "minimum": RARITY_MINIMUMS[r],
+                "capped": r not in UNCAPPED_RARITIES}
+            for r in RARITY_MINIMUMS
         },
         "duplicates": duplicates,
         "off_color": off_color,

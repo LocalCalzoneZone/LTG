@@ -2,7 +2,7 @@ import { useGame, focusedChoices } from "../lib/store";
 import { ActionBar } from "./ActionBar";
 import { ArmingHint } from "./ArmingHint";
 import { Hand } from "./Hand";
-import { ManaWidget } from "./ManaWidget";
+import { ManaPayPopup, ManaWidget } from "./ManaWidget";
 
 export function BottomBar() {
   const snapshot = useGame((s) => s.snapshot);
@@ -28,6 +28,7 @@ export function BottomBar() {
       className="relative flex shrink-0 items-stretch gap-3 border-t border-white/10 bg-black/40 p-3"
     >
       <ArmingHint />
+      <ManaPayPopup />
       <ManaWidget char={char} manaChoices={choices?.mana ?? []} />
 
       {/* Zones — a vertical column of the controlled character's hidden zones. */}

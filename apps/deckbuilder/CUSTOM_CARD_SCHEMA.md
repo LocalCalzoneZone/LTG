@@ -31,7 +31,7 @@ or remove existing cards.
 |-------------|----------|--------|-------------|
 | `name`      | yes      | string | The card's display name. Also used to derive its id. |
 | `type`      | yes      | string | One of `"instant"`, `"sorcery"`, `"enchantment"` (case-insensitive). Enchantments become *channeled* cards in LTG (persistent, upkeep-paid effects). |
-| `mana_cost` | yes      | string | The card's cost. Accepts MTG brace syntax `"{1}{R}"`, compact syntax `"1R"` / `"2GG"`, or a bare integer for pure generic costs. Colours are the five MTG letters W/U/B/R/G. An empty string means free. |
+| `mana_cost` | yes      | string | The card's cost. Accepts MTG brace syntax `"{1}{R}"`, compact syntax `"1R"` / `"2GG"`, or a bare integer for pure generic costs. Colours are the five MTG letters W/U/B/R/G. An `X` (`"{X}{R}"` / `"X1R"`) marks a variable cost: the caster picks X at cast time and pays that much extra mana. An empty string means free. |
 | `effect`    | yes      | string | The card's rules text, written **in Magic: The Gathering oracle wording** (see below). |
 | `flavour`   | no       | string | An **in-character description of how the effect works** — what the spell physically/magically does in the game's fiction, not MTG-style flavour prose. Shown in the Deckbuilder's *"Flavour — how the effect works 'in character'"* field. Never parsed as rules. `flavor` is accepted as an alternate spelling. |
 | `rarity`    | no       | string | One of `"common"`, `"uncommon"`, `"rare"`, `"mythic"`. Defaults to `"common"`. |
@@ -62,6 +62,9 @@ Notes for the translation pass:
 - On enchantments, static effects become *while channeled* continuous effects,
   and `"whenever a land enters the battlefield"` / landfall wording becomes a
   mana-capacity trigger, matching real-card import behaviour.
+- On enchantments, `"when <name> enters the battlefield, …"` wording becomes a
+  **channel-start trigger** (the ETB analogue): the effect fires once as the
+  channel begins, distinct from *while channeled* statics and *upkeep* ticks.
 - On enchantments, `"when <name> leaves the battlefield/dies, …"` or
   `"Sacrifice <name>: …"` wording becomes a **channel-break trigger**: the
   effect goes on the stack (respondable) when the channel ends — dropped or
@@ -78,6 +81,13 @@ grounding the mechanical effect in the character's magic. For example, for a
 card named **Crystal Lance** that deals damage to a target:
 
 > A shard of razor-sharp crystal, summoned and directed — deadly as a spear strike.
+
+## Deck composition (when generating a full deck)
+
+A deck is **20 cards**: 1 mythic, 3 rare, 6 uncommon, and 10 common, as
+minimums. Going over 20 is allowed only with additional **commons** — the
+mythic/rare/uncommon counts are exact quotas. A deck outside this breakdown
+still imports, saves, exports, and plays; the Deckbuilder just shows a warning.
 
 ## Derived values (do not supply)
 

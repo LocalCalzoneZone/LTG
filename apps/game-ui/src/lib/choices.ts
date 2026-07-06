@@ -81,7 +81,7 @@ export interface Choices {
   endTurn?: Choice;
   casts: Record<string, Choice>; // cardId -> Choice (may carry modes[])
   mana: { color: string; index: number; label: string }[];
-  // A mandatory mid-resolution pick (move_card / scry): rendered as a prompt modal.
+  // A mandatory pick (move_card / scry / trigger target): rendered as a prompt modal.
   cardPicks: { index: number; label: string; kind: string }[];
 }
 
@@ -131,7 +131,10 @@ export function buildChoices(legal: LegalAction[]): Choices {
   for (const a of pick("choose_mana")) {
     if (a.color) out.mana.push({ color: a.color, index: a.index, label: a.label });
   }
-  for (const a of legal.filter((x) => x.kind === "choose_card" || x.kind === "choose_scry")) {
+  for (const a of legal.filter(
+    (x) => x.kind === "choose_card" || x.kind === "choose_scry" || x.kind === "choose_target" ||
+      x.kind === "choose_mode",
+  )) {
     out.cardPicks.push({ index: a.index, label: a.label, kind: a.kind });
   }
 

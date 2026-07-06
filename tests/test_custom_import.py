@@ -40,7 +40,7 @@ def test_import_custom_translates_and_maps_fields(client):
     assert card["name"] == "Ember Lash"
     assert card["source_name"] == "Ember Lash"
     assert card["timing"] == "instant"
-    assert card["cost"] == {"generic": 1, "colors": {"R": 1}}
+    assert card["cost"] == {"generic": 1, "colors": {"R": 1}, "x": False}
     assert card["level"] == 2  # converted cost
     # `flavour` maps onto Card.flavor_text — the Deckbuilder's "how the
     # effect works 'in character'" editor field.
@@ -91,13 +91,20 @@ def test_import_custom_enchantment_is_channeled(client):
     [item] = res.json()["cards"]
     assert item["card"]["timing"] == "channeled"
     assert item["card"]["type"] == "Enchantment"
-    assert item["card"]["cost"] == {"generic": 1, "colors": {"W": 2}}
+    assert item["card"]["cost"] == {"generic": 1, "colors": {"W": 2}, "x": False}
 
 
 def test_parse_mana_cost_loose_forms():
     assert ingest.parse_mana_cost_loose("{2}{G}{G}").model_dump() == {
-        "generic": 2, "colors": {"G": 2}}
+        "generic": 2, "colors": {"G": 2}, "x": False}
     assert ingest.parse_mana_cost_loose("2GG").model_dump() == {
-        "generic": 2, "colors": {"G": 2}}
-    assert ingest.parse_mana_cost_loose(3).model_dump() == {"generic": 3, "colors": {}}
-    assert ingest.parse_mana_cost_loose("").model_dump() == {"generic": 0, "colors": {}}
+        "generic": 2, "colors": {"G": 2}, "x": False}
+    assert ingest.parse_mana_cost_loose(3).model_dump() == {
+        "generic": 3, "colors": {}, "x": False}
+    assert ingest.parse_mana_cost_loose("").model_dump() == {
+        "generic": 0, "colors": {}, "x": False}
+    # X costs — brace and compact forms both set the flag.
+    assert ingest.parse_mana_cost_loose("{X}{1}{R}").model_dump() == {
+        "generic": 1, "colors": {"R": 1}, "x": True}
+    assert ingest.parse_mana_cost_loose("X2G").model_dump() == {
+        "generic": 2, "colors": {"G": 1}, "x": True}

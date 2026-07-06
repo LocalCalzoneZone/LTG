@@ -500,12 +500,19 @@ function updateSortIndicators() {
 // Mana cost as icons (matches the search-result presentation).
 function costIconsHtml(cost) {
   const parts = [];
+  if (cost.x) parts.push(`<span class="mc-generic">X</span>`);
   if (cost.generic) parts.push(`<span class="mc-generic">${cost.generic}</span>`);
   for (const c of COLORS) {
     const n = (cost.colors && cost.colors[c]) || 0;
     for (let i = 0; i < n; i++) parts.push(manaIcon(c));
   }
   return parts.length ? `<span class="res-cost">${parts.join("")}</span>` : "—";
+}
+
+// Level always mirrors the converted cost (generic + pips; X counts 0).
+function syncLevelToCost(card) {
+  const pips = COLORS.reduce((n, c) => n + ((card.cost.colors && card.cost.colors[c]) || 0), 0);
+  card.level = (card.cost.generic || 0) + pips;
 }
 
 // Card types LTG doesn't accept (mirror of backend FORBIDDEN_TYPES) — for the flag.
@@ -717,7 +724,8 @@ function refNames(current) {
   return names;
 }
 
-function valueControlHtml(i, p, val) {
+function valueControlHtml(i, spec, val) {
+  const p = spec.name;
   let type = "number", num = 1, ref = "";
   if (val === "all") type = "all";
   else if (val && typeof val === "object" && "ref" in val) {
@@ -726,10 +734,14 @@ function valueControlHtml(i, p, val) {
   } else num = val;
   const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refNames(ref).map((r) =>
     `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(REFS[r] || r)}</option>`).join("")}</select>`;
+  // Stat values (pump/wound/counters power & toughness) admit no "all" — the
+  // spec flags it (no_all) and the option is simply not offered.
+  const allOpt = spec.no_all ? "" :
+    `<option value="all" ${type === "all" ? "selected" : ""}>all</option>`;
   return `
     <select class="val-type" data-i="${i}" data-p="${p}">
       <option value="number" ${type === "number" ? "selected" : ""}>number</option>
-      <option value="all" ${type === "all" ? "selected" : ""}>all</option>
+      ${allOpt}
       <option value="capacity" ${type === "capacity" ? "selected" : ""}>mana capacity</option>
       <option value="ref" ${type === "ref" ? "selected" : ""}>reference</option>
     </select>
@@ -739,7 +751,8 @@ function valueControlHtml(i, p, val) {
 
 // The trigger control: (none) / a lifecycle trigger / "on event…" which opens
 // who + event selects (and a spell-type filter for spell_cast).
-const TRIGGER_LABEL = { upkeep: "upkeep (each turn)", capacity_increase: "capacity increase",
+const TRIGGER_LABEL = { channel_start: "channel start (on cast)",
+                        upkeep: "upkeep (each turn)", capacity_increase: "capacity increase",
                         channel_break: "channel break" };
 const EVENT_LABEL = { attack: "attacks", damage_taken: "is dealt damage",
                       life_gain: "gains life", spell_cast: "casts a spell",
@@ -780,7 +793,7 @@ function paramHtml(i, p, val) {
       return `<label class="inline">${p.name} <select class="eff-param" data-i="${i}" data-p="${p.name}">${none}${(p.options || []).map((o) => `<option ${val === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`;
     }
     case "value":
-      return `<label class="inline">${p.name} ${valueControlHtml(i, p.name, val)}</label>`;
+      return `<label class="inline">${p.name} ${valueControlHtml(i, p, val)}</label>`;
     case "trigger":
       return triggerControlHtml(i, p, val);
     case "keyword_list": {
@@ -814,7 +827,10 @@ function flattenEffects(effects) {
   // leaf flattens to itself. Used at top level AND inside a modal mode.
   const pushEffect = (e) => {
     if (e.kind === "conditional") {
-      items.push({ kind: "conditional", condition: clone(e.condition) });
+      // Keep the conditional's own trigger (channeled "when … if …") on the marker.
+      const marker = { kind: "conditional", condition: clone(e.condition) };
+      if (e.trigger != null) marker.trigger = clone(e.trigger);
+      items.push(marker);
       (e.effects || []).forEach((inner) => items.push(clone(inner)));
     } else {
       items.push(clone(e));
@@ -822,14 +838,17 @@ function flattenEffects(effects) {
   };
   for (const e of effects || []) {
     if (e.kind === "modal") {
-      // The 'choose' count belongs to the whole modal; replicate it onto every
-      // mode-marker so the controls (shown on the first marker) round-trip. A mode
-      // may itself hold a conditional, so flatten each mode effect recursively.
-      for (const m of e.modes || []) {
-        items.push({ kind: "modal", label: m.label || "",
-                     choose: e.choose ?? 1, or_more: e.or_more ?? false });
+      // The 'choose' count (and the modal's trigger, for a triggered modal on a
+      // channeled card) belongs to the whole modal; the first marker carries them
+      // so the controls round-trip. A mode may itself hold a conditional, so
+      // flatten each mode effect recursively.
+      (e.modes || []).forEach((m, mi) => {
+        const marker = { kind: "modal", label: m.label || "",
+                         choose: e.choose ?? 1, or_more: e.or_more ?? false };
+        if (mi === 0 && e.trigger != null) marker.trigger = clone(e.trigger);
+        items.push(marker);
         (m.effects || []).forEach(pushEffect);
-      }
+      });
     } else {
       pushEffect(e);
     }
@@ -846,13 +865,15 @@ function rebuildEffects(items) {
       mode = { label: it.label || "", effects: [] };
       if (modal) { modal.modes.push(mode); }
       else {
-        // First marker of the group carries the modal's choose count.
+        // First marker of the group carries the modal's choose count + trigger.
         modal = { kind: "modal", modes: [mode],
                   choose: it.choose ?? 1, or_more: it.or_more ?? false };
+        if (it.trigger != null) modal.trigger = clone(it.trigger);
         out.push(modal);
       }
     } else if (it.kind === "conditional") {
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
+      if (it.trigger != null) cond.trigger = clone(it.trigger);
       // Nest the conditional inside the open modal mode (modal > conditional >
       // effect); only a conditional with no modal above it sits at top level.
       if (mode) mode.effects.push(cond);
@@ -876,6 +897,7 @@ function conditionControlHtml(i, cond) {
   const kindSel = `<select class="cond-kind" data-i="${i}">
       <option value="cast_mode" ${cond.kind === "cast_mode" ? "selected" : ""}>cast mode</option>
       <option value="target_property" ${cond.kind === "target_property" ? "selected" : ""}>target property</option>
+      <option value="caster_property" ${cond.kind === "caster_property" ? "selected" : ""}>caster property</option>
       <option value="self_hp" ${cond.kind === "self_hp" ? "selected" : ""}>your HP</option>
       <option value="enemy_count" ${cond.kind === "enemy_count" ? "selected" : ""}>enemies vs party</option>
       <option value="spells_cast" ${cond.kind === "spells_cast" ? "selected" : ""}>spells cast this turn</option>
@@ -885,6 +907,20 @@ function conditionControlHtml(i, cond) {
     rest = `<select class="cond-mode" data-i="${i}">
         <option value="action" ${cond.mode === "action" ? "selected" : ""}>cast as an action</option>
         <option value="reaction" ${cond.mode === "reaction" ? "selected" : ""}>cast as a reaction</option></select>`;
+  } else if (cond.kind === "caster_property") {
+    const prop = cond.property || "row";
+    rest = `you <select class="cond-cprop" data-i="${i}">
+        <option value="row" ${prop === "row" ? "selected" : ""}>are in row</option>
+        <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>have keyword</option>
+        <option value="channeling" ${prop === "channeling" ? "selected" : ""}>are channeling</option></select>`;
+    if (prop === "row") {
+      rest += `<select class="cond-row" data-i="${i}">${ROWS.map((r) =>
+        `<option value="${r}" ${cond.row === r ? "selected" : ""}>${r}</option>`).join("")}</select>`;
+    } else if (prop === "has_keyword") {
+      const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
+      rest += `<select class="cond-keyword" data-i="${i}">${(kwSpec.options || []).map((o) =>
+        `<option value="${o}" ${cond.keyword === o ? "selected" : ""}>${escapeHtml((kwSpec.labels && kwSpec.labels[o]) || o)}</option>`).join("")}</select>`;
+    }
   } else if (cond.kind === "self_hp") {
     rest = `is <input type="number" class="cond-percent" data-i="${i}" min="0" max="100" value="${cond.percent ?? 50}" />% of max
       <select class="cond-compare" data-i="${i}">
@@ -906,7 +942,8 @@ function conditionControlHtml(i, cond) {
     rest = `<select class="cond-prop" data-i="${i}">
         <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>has keyword</option>
         <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option>
-        <option value="level" ${prop === "level" ? "selected" : ""}>is level</option></select>`;
+        <option value="level" ${prop === "level" ? "selected" : ""}>is level</option>
+        <option value="row" ${prop === "row" ? "selected" : ""}>is in row</option></select>`;
     if (prop === "has_keyword") {
       const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
       const opts = kwSpec.options || [];
@@ -918,6 +955,9 @@ function conditionControlHtml(i, cond) {
           <option value="exactly" ${cond.compare === "exactly" || !cond.compare ? "selected" : ""}>exactly</option>
           <option value="or_more" ${cond.compare === "or_more" ? "selected" : ""}>or more</option>
           <option value="or_less" ${cond.compare === "or_less" ? "selected" : ""}>or less</option></select>`;
+    } else if (prop === "row") {
+      rest += `<select class="cond-row" data-i="${i}">${ROWS.map((r) =>
+        `<option value="${r}" ${cond.row === r ? "selected" : ""}>${r}</option>`).join("")}</select>`;
     } else {
       rest += `<select class="cond-side" data-i="${i}">${["ally", "enemy"].map((s) =>
         `<option value="${s}" ${cond.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
@@ -941,17 +981,27 @@ function effectRowHtml(e, i, card, depth = 0) {
     const chooseCtl = isFirstModal ? `
           <label class="inline">choose <input type="number" min="1" class="modal-choose" data-i="${i}" value="${e.choose ?? 1}" /></label>
           <label class="inline mini"><input type="checkbox" class="modal-ormore" data-i="${i}" ${e.or_more ? "checked" : ""}/> or more</label>` : "";
+    // On a channeled card the whole modal may ride a trigger ("when this channel
+    // ends: choose one — …"); the mode is then picked when the trigger fires.
+    const modalTrgSpec = (EFFECT_SPECS.modal?.params || []).find((p) => p.name === "trigger");
+    const modalTrg = isFirstModal && card.timing === "channeled" && modalTrgSpec
+      ? `<span class="param">${triggerControlHtml(i, modalTrgSpec, e.trigger ?? null)}</span>` : "";
     return `<div class="effect-row marker">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">
           <span class="marker-note">choose option — effects below (until the next block) are this option</span>
-          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}
+          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}${modalTrg}
         </div></div>`;
   }
   if (e.kind === "conditional") {
+    // On a channeled card a conditional may carry its own trigger — "when
+    // <trigger> … if <condition> …" — so the trigger control rides the marker.
+    const trgSpec = (EFFECT_SPECS.conditional?.params || []).find((p) => p.name === "trigger");
+    const trg = card.timing === "channeled" && trgSpec
+      ? `<span class="param">${triggerControlHtml(i, trgSpec, e.trigger ?? null)}</span>` : "";
     return `<div class="effect-row marker${indent}">
         <div class="effect-head">${kindSel}${tools}</div>
-        <div class="effect-params">${conditionControlHtml(i, e.condition)}
+        <div class="effect-params">${trg}${conditionControlHtml(i, e.condition)}
           <span class="marker-note">applies to the effects below</span></div></div>`;
   }
 
@@ -1012,6 +1062,19 @@ function openDetail(idx) {
       <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
       <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
       <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
+    </div>
+
+    <div class="block">
+      <div class="label">Mana cost — level mirrors it (generic + pips; X counts 0)</div>
+      <div class="cost-edit">
+        <label class="inline mini" title="{X} in the cost — the caster picks X at cast and pays that much extra mana">
+          <input type="checkbox" id="cost-x" ${card.cost.x ? "checked" : ""}/> X</label>
+        <label class="inline">generic <input type="number" id="cost-generic" min="0" style="width:56px"
+          value="${card.cost.generic || 0}" /></label>
+        ${COLORS.map((c) => `<label class="inline mini">${manaIcon(c)}
+          <input type="number" class="cost-pip" data-c="${c}" min="0" style="width:44px"
+            value="${(card.cost.colors && card.cost.colors[c]) || 0}" /></label>`).join(" ")}
+      </div>
     </div>
 
     <div class="block">
@@ -1081,6 +1144,19 @@ function wireDetail(idx) {
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
+
+  // Mana cost editing — any change re-derives level and re-checks the card.
+  const costChanged = () => { syncLevelToCost(card); recheckCard(idx, true); };
+  $("#cost-x").onchange = (e) => { card.cost.x = e.target.checked; costChanged(); };
+  $("#cost-generic").onchange = (e) => { card.cost.generic = Math.max(0, parseInt(e.target.value) || 0); costChanged(); };
+  document.querySelectorAll(".cost-pip").forEach((inp) => {
+    inp.onchange = () => {
+      const n = Math.max(0, parseInt(inp.value) || 0);
+      card.cost.colors = card.cost.colors || {};
+      if (n) card.cost.colors[inp.dataset.c] = n; else delete card.cost.colors[inp.dataset.c];
+      costChanged();
+    };
+  });
   $("#detail-validate").onclick = () => toggleValidated(idx);
   $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
   $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
@@ -1150,6 +1226,7 @@ function wireDetail(idx) {
       const byKind = {
         cast_mode: { kind: "cast_mode", mode: "reaction" },
         target_property: { kind: "target_property", property: "has_keyword", keyword: "flying" },
+        caster_property: { kind: "caster_property", property: "row", row: "front" },
         self_hp: { kind: "self_hp", percent: 50, compare: "or_less" },
         enemy_count: { kind: "enemy_count", compare: "more" },
         spells_cast: { kind: "spells_cast", count: 2, compare: "or_more" },
@@ -1178,12 +1255,25 @@ function wireDetail(idx) {
         has_keyword: { kind: "target_property", property: "has_keyword", keyword: "flying" },
         side: { kind: "target_property", property: "side", side: "enemy" },
         level: { kind: "target_property", property: "level", level: 1, compare: "exactly" },
+        row: { kind: "target_property", property: "row", row: "front" },
       };
       editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.has_keyword;
       commitEffects(idx, true);
     };
   });
   document.querySelectorAll(".cond-keyword").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.keyword = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-row").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.row = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-cprop").forEach((sel) => {
+    sel.onchange = () => {
+      const byProp = {
+        row: { kind: "caster_property", property: "row", row: "front" },
+        has_keyword: { kind: "caster_property", property: "has_keyword", keyword: "flying" },
+        channeling: { kind: "caster_property", property: "channeling" },
+      };
+      editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.row;
+      commitEffects(idx, true);
+    };
+  });
   document.querySelectorAll(".cond-side").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.side = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-level").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].condition.level = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-compare").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.compare = sel.value; commitEffects(idx, true); }; });
@@ -1364,16 +1454,25 @@ async function refreshStatus() {
 }
 
 function renderStatus(s) {
-  const sizePct = Math.min(100, (s.size.count / s.size.limit) * 100);
-  const sizeOver = s.size.count > s.size.limit;
+  // 20-card deck: 1 mythic / 3 rare / 6 uncommon / 10 common as MINIMUMS; going
+  // over is fine only on commons. Violations warn — they never block anything.
+  const min = s.size.minimum;
+  const sizePct = Math.min(100, (s.size.count / min) * 100);
+  const under = s.size.count < min;
   let html = "";
-  html += `<div>Cards <strong>${s.size.count} / ${s.size.limit}</strong>
-    <div class="bar"><span class="${sizeOver ? "over" : ""}" style="width:${sizePct}%"></span></div></div>`;
+  html += `<div>Cards <strong>${s.size.count} / ${min}</strong>${under ? "" : " ✓"}
+    <div class="bar"><span class="${under ? "over" : ""}" style="width:${sizePct}%"></span></div></div>`;
+  const problems = [];
   html += `<div>Rarity: ` + ["mythic", "rare", "uncommon", "common"].map((r) => {
-    const { count, limit } = s.rarity[r];
-    const cls = count > limit ? "warn" : "";
-    return `<span class="${cls}">${r} ${count}/${limit}</span>`;
+    const { count, minimum, capped } = s.rarity[r];
+    const short = count < minimum, over = capped && count > minimum;
+    if (short) problems.push(`needs ${minimum - count} more ${r}`);
+    if (over) problems.push(`${count - minimum} ${r} over quota — extras must be common`);
+    return `<span class="${short || over ? "warn" : ""}">${r} ${count}/${minimum}${capped ? "" : "+"}</span>`;
   }).join(" · ") + `</div>`;
+  if (problems.length) {
+    html += `<div class="warn">Deck breakdown: ${problems.join("; ")}.</div>`;
+  }
   html += `<div class="${s.duplicates.length ? "warn" : "ok"}">Singleton: ${
     s.duplicates.length ? "dupes — " + s.duplicates.join(", ") : "ok"}</div>`;
   html += `<div class="${s.off_color.length ? "warn" : "ok"}">Off-colour: ${

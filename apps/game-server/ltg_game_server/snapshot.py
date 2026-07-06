@@ -227,6 +227,19 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
             # Agony Warp's two wounds) rather than "target 1 / target 2".
             entry["target_labels"] = cast_target_labels(view, act)
 
+    # A pending card pick's candidates, as FULL cards (cost/text/type), so the
+    # client can show the whole card instead of a name list. Hidden-information
+    # gated exactly like hands: only the chooser's client receives them.
+    pending_cards = None
+    pc = view.pending_choice
+    if (pc is not None and pc.kind in ("move", "scry")
+            and pc.chooser_id in controlled_ids):
+        pending_cards = {
+            "kind": pc.kind,
+            "chooser_id": pc.chooser_id,
+            "candidates": [card_dict(c) for c in pc.candidates],
+        }
+
     characters = [
         _character_snapshot(view, c, c.id in controlled_ids, holder_id, kind,
                             portraits.get(c.id, ""))
@@ -243,7 +256,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
             "source_id": r["source_id"], "source_name": r["source_name"],
             "source_side": r["source_side"], "target_id": r["target_id"],
             "target_name": r["target_name"], "reserved_pips": r["reserved_pips"],
-            "top": r["top"], "uid": r["raw"].get("uid"),
+            "card": r["card"], "top": r["top"], "uid": r["raw"].get("uid"),
         }
         for r in _stack_list(view)
     ]
@@ -263,6 +276,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "tokens": tokens,
         "stack": stack,
         "intents": _intents(view),
+        "pending_choice": pending_cards,
         "log": log,
         "legal_actions": legal_payload,   # for the controlled holder only
         "result": view.result,

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { actionModeColor } from "../lib/format";
 import { useGame } from "../lib/store";
-import type { StackRow } from "../lib/types";
+import type { LegalAction, StackRow } from "../lib/types";
+import { HandCard } from "./Hand";
 
-function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function Backdrop({ children, onClose, wide = false }: {
+  children: React.ReactNode; onClose: () => void; wide?: boolean;
+}) {
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
@@ -13,7 +16,12 @@ function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: (
         onClose();
       }}
     >
-      <div className="max-h-[80vh] w-[min(90vw,560px)] overflow-y-auto rounded-xl bg-slate-800 p-4 shadow-2xl ring-1 ring-white/10" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`max-h-[80vh] overflow-y-auto rounded-xl bg-slate-800 p-4 shadow-2xl ring-1 ring-white/10 ${
+          wide ? "w-[min(94vw,1080px)]" : "w-[min(90vw,560px)]"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>
@@ -157,7 +165,11 @@ function CardList({ cards }: { cards: { id: string; name: string; type: string; 
   );
 }
 
-/** §4.6 mandatory mid-resolution pick (move_card / scry) — a blocking prompt. */
+/** §4.6 mandatory mid-resolution pick (move_card / scry / trigger target /
+ * trigger mode) — a blocking prompt. Card picks (scry / tutor / discard) show
+ * the FULL cards in a horizontal, scrollable row — the whole card is the
+ * information the choice needs — with the placement buttons under each one.
+ * Target/mode picks (no cards involved) keep the simple button list. */
 export function CardPickPrompt() {
   const snapshot = useGame((s) => s.snapshot);
   const submit = useGame((s) => s.submitIndex);
@@ -167,9 +179,68 @@ export function CardPickPrompt() {
   const holder = snapshot.priority.holder_character_id;
   if (!holder || !you.includes(holder)) return null; // only the controlling client acts
   const picks = snapshot.legal_actions.filter(
-    (a) => a.kind === "choose_card" || a.kind === "choose_scry",
+    (a) =>
+      a.kind === "choose_card" || a.kind === "choose_scry" || a.kind === "choose_target" ||
+      a.kind === "choose_mode",
   );
   if (!picks.length) return null;
+
+  const pending = snapshot.pending_choice;
+  const cardPicks = picks.filter((a) => a.kind === "choose_card" || a.kind === "choose_scry");
+  if (pending && pending.candidates.length && cardPicks.length === picks.length) {
+    // Group the actions by the candidate they act on.
+    const byChoice: Record<number, LegalAction[]> = {};
+    for (const a of cardPicks) if (a.choice != null) (byChoice[a.choice] ||= []).push(a);
+    const isScry = pending.kind === "scry";
+    return (
+      <Backdrop wide onClose={() => {}}>
+        <h2 className="mb-3 text-lg font-bold">
+          {isScry ? "Scry — place each card on top or bottom" : "Choose a card"}
+        </h2>
+        <div className="scroll-thin flex items-stretch gap-3 overflow-x-auto pb-2">
+          {pending.candidates.map((card, i) => {
+            const acts = byChoice[i] ?? [];
+            const single = acts.length === 1 ? acts[0] : null;
+            return (
+              <div key={`${card.id}-${i}`} className="flex w-44 shrink-0 flex-col gap-1.5">
+                <div className="h-64">
+                  <HandCard
+                    card={card}
+                    playable={single != null}
+                    active={false}
+                    onClick={() => single && submit(single.index)}
+                  />
+                </div>
+                {single ? (
+                  <button
+                    onClick={() => submit(single.index)}
+                    className="rounded bg-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-blue-600"
+                  >
+                    {single.label}
+                  </button>
+                ) : (
+                  acts.map((a) => (
+                    <button
+                      key={a.index}
+                      onClick={() => submit(a.index)}
+                      className="rounded bg-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-blue-600"
+                    >
+                      {a.target_id === "top"
+                        ? `▲ Top${(a.label.match(/\(draw #\d+\)/) ?? [""])[0] && ` ${(a.label.match(/\(draw #\d+\)/) ?? [""])[0]}`}`
+                        : a.target_id === "bottom"
+                          ? "▼ Bottom"
+                          : a.label}
+                    </button>
+                  ))
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Backdrop>
+    );
+  }
+
   return (
     <Backdrop onClose={() => {}}>
       <h2 className="mb-3 text-lg font-bold">Make a choice</h2>

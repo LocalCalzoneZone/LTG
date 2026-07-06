@@ -47,7 +47,7 @@ export function parsePips(cost: string): Pip[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(cost)) !== null) {
     const v = m[1];
-    if (/^\d+$/.test(v)) out.push({ kind: "generic", value: v });
+    if (/^\d+$/.test(v) || /^[Xx]$/.test(v)) out.push({ kind: "generic", value: v.toUpperCase() });
     else out.push({ kind: "color", value: v });
   }
   return out;

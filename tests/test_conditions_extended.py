@@ -142,3 +142,96 @@ def test_bad_percent_rejected():
     with pytest.raises(Exception):
         Card.model_validate(_conditional_card(
             "x", {"kind": "self_hp", "percent": 150, "compare": "or_less"}))
+
+
+# --- target_property: row ------------------------------------------------------ #
+def test_row_condition_fires_on_matching_row():
+    cond = {"kind": "target_property", "property": "row", "row": "rear"}
+    st = _state([_conditional_card("snipe", cond)])
+    st.enemy("ogre0").row = "rear"
+    st = _cast(st, "snipe", target_id="ogre0")
+    assert _enemy_hp(st) == 25
+
+
+def test_row_condition_skips_on_other_row():
+    cond = {"kind": "target_property", "property": "row", "row": "rear"}
+    st = _state([_conditional_card("snipe", cond)])  # ogre defaults to front
+    st = _cast(st, "snipe", target_id="ogre0")
+    assert _enemy_hp(st) == 30
+
+
+def test_row_condition_validates_and_renders():
+    from ltg_core.translation import render_effects
+    card = Card.model_validate(_conditional_card(
+        "x", {"kind": "target_property", "property": "row", "row": "front"}))
+    assert card.effects[0].condition.row.value == "front"
+    text = render_effects(card.effects)
+    assert "in the front row" in text
+    with pytest.raises(Exception):  # row property demands a row value
+        Card.model_validate(_conditional_card(
+            "x", {"kind": "target_property", "property": "row"}))
+
+
+# --- caster_property ------------------------------------------------------------ #
+def _caster_state(cards, row="front", keywords=None):
+    return state_from_dict({
+        "party": [{"id": "p", "name": "P", "hp": 20, "power": 2,
+                   "hand_size": len(cards), "identity": ["U", "U", "U"], "row": row,
+                   "attack_mode": "melee", "keywords": keywords or [],
+                   "library": cards}],
+        "enemies": [{"id": "ogre0", "name": "Ogre0", "hp": 30, "level": 1,
+                     "intent": {"name": "Bash", "amount": 0, "action_type": "ability",
+                                "intent_type": "attack", "targeting": "lowest_hp_party",
+                                "mode": "melee"}}],
+    })
+
+
+def test_caster_row_condition():
+    cond = {"kind": "caster_property", "property": "row", "row": "rear"}
+    st = _caster_state([_conditional_card("volley", cond)], row="rear")
+    st = _cast(st, "volley", target_id="ogre0")
+    assert _enemy_hp(st) == 25
+    st = _caster_state([_conditional_card("volley", cond)], row="front")
+    st = _cast(st, "volley", target_id="ogre0")
+    assert _enemy_hp(st) == 30  # caster not in the rear — skipped
+
+
+def test_caster_keyword_condition():
+    cond = {"kind": "caster_property", "property": "has_keyword", "keyword": "flying"}
+    st = _caster_state([_conditional_card("skystrike", cond)], keywords=["flying"])
+    st = _cast(st, "skystrike", target_id="ogre0")
+    assert _enemy_hp(st) == 25
+    st = _caster_state([_conditional_card("skystrike", cond)])
+    st = _cast(st, "skystrike", target_id="ogre0")
+    assert _enemy_hp(st) == 30  # no flying — skipped
+
+
+def test_caster_channeling_condition():
+    channel = {"id": "hum", "name": "hum", "source_name": "hum", "rarity": "common",
+               "level": 0, "type": "Enchantment", "timing": "channeled",
+               "cost": {"generic": 0, "colors": {}},
+               "effects": [{"kind": "heal", "amount": 1, "target": {"mode": "self"},
+                            "trigger": "upkeep"}],
+               "validated": True}
+    cond = {"kind": "caster_property", "property": "channeling"}
+    st = _caster_state([channel, _conditional_card("resonance", cond)])
+    st = _cast(st, "resonance", target_id="ogre0")
+    assert _enemy_hp(st) == 30  # not channeling yet — skipped
+    st = _cast(st, "hum")       # start a channel
+    st2 = _caster_state([channel, _conditional_card("resonance", cond)])
+    st2 = _cast(st2, "hum")
+    st2 = _cast(st2, "resonance", target_id="ogre0")
+    assert _enemy_hp(st2) == 25  # actively channeling — fires
+
+
+def test_caster_property_validates_and_renders():
+    from ltg_core.translation import render_effects
+    card = Card.model_validate(_conditional_card(
+        "x", {"kind": "caster_property", "property": "channeling"}))
+    assert "If you are channeling" in render_effects(card.effects)
+    card = Card.model_validate(_conditional_card(
+        "x", {"kind": "caster_property", "property": "row", "row": "rear"}))
+    assert "If you are in the rear row" in render_effects(card.effects)
+    with pytest.raises(Exception):  # keyword property demands a keyword
+        Card.model_validate(_conditional_card(
+            "x", {"kind": "caster_property", "property": "has_keyword"}))

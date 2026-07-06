@@ -55,15 +55,19 @@ def forbidden_type(type_line: str) -> str | None:
 
 
 def parse_mana_cost(mana_cost: str) -> Cost:
-    """'{1}{B}' -> Cost(generic=1, colors={B:1}). Hybrids/X ignored for now."""
+    """'{1}{B}' -> Cost(generic=1, colors={B:1}); '{X}{R}' sets x=True. Hybrids
+    are still ignored."""
     generic = 0
     colors: dict = {}
+    x = False
     for token in _MANA_TOKEN.findall(mana_cost or ""):
         if token.isdigit():
             generic += int(token)
         elif token in _COLOR_LETTERS:
             colors[token] = colors.get(token, 0) + 1
-    return Cost(generic=generic, colors=colors)
+        elif token.upper() == "X":
+            x = True
+    return Cost(generic=generic, colors=colors, x=x)
 
 
 def derive_timing(type_line: str) -> Timing:
@@ -136,6 +140,15 @@ def translate_rules_text(rules_text: str, timing: Timing, context: dict | None =
     ):
         for e in effects:
             e.trigger = "channel_break"
+    # An enchantment's ETB ("when ~ enters the battlefield, …") → a channel_start
+    # trigger: fires once as the channel begins. `\bwhen\b` keeps landfall's
+    # "whenever a land enters" out of this rule (handled above).
+    if timing == Timing.channeled and re.search(
+        r"\bwhen\b [^.,]{0,60}? enters(?: the battlefield)?,", low
+    ):
+        for e in effects:
+            if e.trigger is None:
+                e.trigger = "channel_start"
 
     # On channeled (enchantment) cards, a static (untriggered) effect with a
     # duration field is continuous: make it `while_channeled`.
@@ -187,7 +200,7 @@ CUSTOM_TYPES = {
 
 
 def parse_mana_cost_loose(mana_cost) -> Cost:
-    """Parse a custom card's mana cost: '{1}{B}' braces, compact '2GG'/'1B',
+    """Parse a custom card's mana cost: '{1}{B}' braces, compact '2GG'/'1B'/'X2R',
     a bare int, or empty. Unknown symbols are ignored (same as brace parsing)."""
     if isinstance(mana_cost, int):
         return Cost(generic=max(mana_cost, 0))
@@ -196,13 +209,16 @@ def parse_mana_cost_loose(mana_cost) -> Cost:
         return parse_mana_cost(s)
     generic = 0
     colors: dict = {}
+    x = False
     for token in re.findall(r"\d+|[A-Za-z]", s):
         if token.isdigit():
             generic += int(token)
         elif token.upper() in _COLOR_LETTERS:
             c = token.upper()
             colors[c] = colors.get(c, 0) + 1
-    return Cost(generic=generic, colors=colors)
+        elif token.upper() == "X":
+            x = True
+    return Cost(generic=generic, colors=colors, x=x)
 
 
 def build_custom_card(entry: dict) -> Card:

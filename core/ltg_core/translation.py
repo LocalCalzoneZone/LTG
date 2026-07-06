@@ -317,6 +317,20 @@ def _value(v) -> str:
     if isinstance(v, Ref):
         if v.ref == "mana_capacity":
             return "your mana capacity"
+        if v.ref == "x":
+            return "X"
+        if v.ref == "party_size":
+            return "the party size"
+        if v.ref == "caster_power":
+            return "your Power"
+        if v.ref == "caster_hp":
+            return "your current HP"
+        if v.ref == "target_power":
+            return "its Power"
+        if v.ref == "target_hp":
+            return "its current HP"
+        if v.ref == "casting_cost":
+            return "its casting cost"
         if v.ref.endswith(".level"):
             return "its Level"
         return v.ref
@@ -430,6 +444,13 @@ def _grant_duration(e) -> str:
 def _condition_phrase(cond) -> str:
     if cond.kind == "cast_mode":
         return "cast as an action" if cond.mode == "action" else "cast as a reaction"
+    if cond.kind == "caster_property":
+        if cond.property == "row":
+            row = cond.row.value if hasattr(cond.row, "value") else cond.row
+            return f"you are in the {row} row"
+        if cond.property == "has_keyword":
+            return f"you have {KEYWORDS.get(cond.keyword, {}).get('display', cond.keyword)}"
+        return "you are channeling"
     if cond.kind == "self_hp":
         rel = "or less" if getattr(cond, "compare", "or_less") == "or_less" else "or more"
         return f"your HP is {cond.percent}% of your maximum {rel}"
@@ -452,6 +473,9 @@ def _condition_phrase(cond) -> str:
     if cond.property == "level":
         suffix = {"or_more": " or more", "or_less": " or less"}.get(getattr(cond, "compare", "exactly"), "")
         return f"the target is level {cond.level}{suffix}"
+    if cond.property == "row":
+        row = cond.row.value if hasattr(cond.row, "value") else cond.row
+        return f"the target is in the {row} row"
     return "the condition holds"
 
 
@@ -560,6 +584,9 @@ def _target_condition_qualifier(cond) -> str:
     if cond.property == "side":
         s = cond.side.value if hasattr(cond.side, "value") else cond.side
         return {"ally": "that is an ally", "enemy": "that is an enemy"}.get(s, "that qualifies")
+    if cond.property == "row":
+        row = cond.row.value if hasattr(cond.row, "value") else cond.row
+        return f"in the {row} row"
     return "that qualifies"
 
 
@@ -592,17 +619,17 @@ def _render_conditional(e) -> str:
 # Power/toughness convention: power → "attack", toughness → "temp HP" (buff) / "HP" (debuff).
 def _render_pump(e) -> str:
     verb = "gain" if _plural(e.target) else "gains"
-    return f"{_subject(e.target).capitalize()} {verb} +{e.power} attack and +{e.toughness} temp HP{_duration_suffix(e)}."
+    return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)} attack and +{_value(e.toughness)} temp HP{_duration_suffix(e)}."
 
 
 def _render_wound(e) -> str:
     verb = "have" if _plural(e.target) else "has"
-    return f"{_subject(e.target).capitalize()} {verb} -{e.power} attack and -{e.toughness} HP{_duration_suffix(e)}."
+    return f"{_subject(e.target).capitalize()} {verb} -{_value(e.power)} attack and -{_value(e.toughness)} HP{_duration_suffix(e)}."
 
 
 def _render_counters(e) -> str:
     verb = "gain" if _plural(e.target) else "gains"
-    return f"{_subject(e.target).capitalize()} {verb} +{e.power}/+{e.toughness}{_duration_suffix(e) or ' for the encounter'}."
+    return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)}/+{_value(e.toughness)}{_duration_suffix(e) or ' for the encounter'}."
 
 
 RENDERERS = {
@@ -670,8 +697,8 @@ _CLAUSE = {
         if isinstance(e.amount, Ref)
         else f"lose {e.amount} HP"
     ),
-    "pump": lambda e: f"gain +{e.power}/+{e.toughness} this turn",
-    "wound": lambda e: f"suffer -{e.power}/-{e.toughness} this turn",
+    "pump": lambda e: f"gain +{_value(e.power)}/+{_value(e.toughness)} this turn",
+    "wound": lambda e: f"suffer -{_value(e.power)}/-{_value(e.toughness)} this turn",
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
     "bounce": lambda e: "are returned to hand",
@@ -685,7 +712,7 @@ _CLAUSE = {
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
     "protection": lambda e: f"gain protection ({e.scope})",
-    "counters": lambda e: f"gain +{e.power}/+{e.toughness} counters",
+    "counters": lambda e: f"gain +{_value(e.power)}/+{_value(e.toughness)} counters",
     "prevent": lambda e: (
         "can't attack" if e.parameter == "attack"
         else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
@@ -774,10 +801,10 @@ def _channeled_body(e, targets) -> str:
     k = e.kind
     if k in ("pump", "counters"):
         verb = "gain" if _plural(e.target, targets) else "gains"
-        return f"{_subject(e.target, targets, True)} {verb} +{e.power} attack and +{e.toughness} temp HP"
+        return f"{_subject(e.target, targets, True)} {verb} +{_value(e.power)} attack and +{_value(e.toughness)} temp HP"
     if k == "wound":
         verb = "have" if _plural(e.target, targets) else "has"
-        return f"{_subject(e.target, targets, True)} {verb} -{e.power} attack and -{e.toughness} HP"
+        return f"{_subject(e.target, targets, True)} {verb} -{_value(e.power)} attack and -{_value(e.toughness)} HP"
     if k == "grant_keyword":
         verb = "have" if _plural(e.target, targets) else "has"
         return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
@@ -856,6 +883,7 @@ def _render_channeled(effects, targets) -> str:
             parts.append("While channeled: " + _channeled_body(e, targets) + ".")
     # Each recurring trigger groups its effects under its own lead-in.
     for trigger, lead in (
+        ("channel_start", "When this channel begins: "),
         ("upkeep", "At the start of every turn while channeled: "),
         ("capacity_increase", "Whenever your mana capacity increases: "),
         ("channel_break", "When this channel ends (dropped or broken): "),
