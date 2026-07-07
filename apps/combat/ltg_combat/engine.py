@@ -36,6 +36,7 @@ from ltg_core.schema import (
     Card,
     DealDamage,
     Duration,
+    EventTrigger,
     Ref,
     TargetMode,
     Timing,
@@ -48,6 +49,7 @@ from .state import (
     Channel,
     CharacterState,
     Component,
+    EnemyChannel,
     EnemyState,
     Event,
     GameState,
@@ -278,12 +280,109 @@ def _fire_capacity_increase(st: GameState, char: CharacterState) -> None:
     """Recurring `capacity_increase` channel effects (landfall) fire whenever this
     holder's mana capacity rises — the +1/turn lock and any ramp (GDD §8)."""
     for ch in list(char.channels):
-        item = StackItem(kind="ability", source_id=char.id, source_side="party",
-                         label=ch.card.name, effects=[], target_id=ch.target_id, card=ch.card)
-        ctx = {"capacity": char.capacity}
-        for effect in ch.card.effects:
-            if getattr(effect, "trigger", None) == "capacity_increase":
-                _resolve_effect(st, item, effect, ctx)
+        fired = [e for e in ch.card.effects
+                 if getattr(e, "trigger", None) == "capacity_increase"]
+        if fired:
+            _fire_channel_effects(st, char, "party", ch, fired)
+
+
+def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
+    """Push a channel's just-fired triggered effects (event / upkeep /
+    capacity_increase) onto the stack as ONE triggered ability — MTG-style,
+    every trigger uses the stack: a reaction window opens on it (a "triggered"/
+    "ability" counter answers it) and it resolves like any stack action. The
+    holder picks a triggered modal's mode and any owed chosen target as it is
+    pushed (_raise_next_trigger_pick); a trigger fired mid-resolution waits on
+    the stack until the current resolution finishes, exactly like MTG."""
+    card = getattr(ch, "card", None)
+    name = getattr(card, "name", None) or getattr(ch, "name", "channel")
+    item = _push(st, StackItem(kind="triggered", source_id=holder.id, source_side=side,
+                               label=f"{name} — trigger", effects=list(fired),
+                               target_id=ch.target_id, card=card,
+                               x=getattr(ch, "x", 0)))
+    if side == "party":
+        item.needs_mode = any(getattr(e, "kind", None) == "modal" for e in fired)
+        item.needs_target = _trigger_pick_effect(item) is not None
+    st.priority = None  # fresh window — re-seeded by _advance
+    st.passes = 0
+    _log(st, "channel_trigger",
+         f"{name}'s trigger goes on the stack.", source=holder.id, label=name)
+    _raise_next_trigger_pick(st)
+
+
+def _event_who_matches(who: str, holder, holder_side: str,
+                       channel_target_id: Optional[str], actor) -> bool:
+    """Whether `actor`'s event counts for an EventTrigger, relative to the channel's
+    holder: you = the holder · target = the channel's chosen target · ally = anyone
+    on the holder's side (including the holder) · enemy = anyone opposing · any."""
+    aid = getattr(actor, "id", None)
+    if who == "you":
+        return aid == holder.id
+    if who == "target":
+        return channel_target_id is not None and aid == channel_target_id
+    actor_side = "enemy" if isinstance(actor, EnemyState) else "party"
+    if who == "ally":
+        return actor_side == holder_side
+    if who == "enemy":
+        return actor_side != holder_side
+    return True  # "any"
+
+
+def _matching_event_effects(effects, event: str, holder, holder_side: str,
+                            channel_target_id: Optional[str], actor,
+                            spell_timing: Optional[str]) -> List:
+    out = []
+    for e in effects:
+        t = getattr(e, "trigger", None)
+        if not isinstance(t, EventTrigger) or t.event != event:
+            continue
+        if not _event_who_matches(t.who, holder, holder_side, channel_target_id, actor):
+            continue
+        if (t.spell_type is not None
+                and getattr(t.spell_type, "value", t.spell_type) != spell_timing):
+            continue
+        out.append(e)
+    return out
+
+
+def _fire_event(st: GameState, event: str, actor,
+                spell_timing: Optional[str] = None) -> None:
+    """Event-triggered channel effects: whenever a combatant attacks, is dealt
+    damage, gains life, casts a spell, or draws a card, every held channel with a
+    matching EventTrigger fires its effect(s) immediately (like an upkeep tick).
+    `event_depth` caps trigger-fires-trigger chains (an on-draw draw, an on-damage
+    hit) so they always terminate instead of recursing forever."""
+    if actor is None or st.event_depth >= 8:
+        return
+    party_watch = [(h, ch) for h in st.living_party() for ch in list(h.channels)]
+    enemy_watch = [(e, ch) for e in st.living_enemies() for ch in list(e.channels)]
+    if not party_watch and not enemy_watch:
+        return
+    st.event_depth += 1
+    try:
+        for holder, ch in party_watch:
+            if ch not in holder.channels:  # broken by an earlier trigger this event
+                continue
+            fired = _matching_event_effects(ch.card.effects, event, holder, "party",
+                                            ch.target_id, actor, spell_timing)
+            if not fired:
+                continue
+            _fire_channel_effects(st, holder, "party", ch, fired)
+        for holder, ch in enemy_watch:
+            if ch not in holder.channels:
+                continue
+            fired = _matching_event_effects(ch.effects, event, holder, "enemy",
+                                            ch.target_id, actor, spell_timing)
+            if not fired:
+                continue
+            item = StackItem(kind="ability", source_id=holder.id, source_side="enemy",
+                             label=f"{ch.name} — trigger", effects=[],
+                             target_id=ch.target_id)
+            for eff in fired:
+                _resolve_effect(st, item, eff,
+                                {"party_size": len(st.party), "caster_obj": holder})
+    finally:
+        st.event_depth -= 1
 
 
 def _upkeep_draws(st: GameState) -> None:
@@ -295,6 +394,8 @@ def _upkeep_draws(st: GameState) -> None:
         c.used_attack = c.used_defend = c.used_mitigate = False
         c.acted_mode = None
         c.turn_ended = False
+        c.taunted_to = None  # enemy taunt is a this-turn bind (§F-3)
+        c.spells_cast_turn = 0  # `spells_cast` conditions count per turn
         _log(st, "mana_refresh",
              f"{c.name} mana refreshes to {_mana_str(c.pool)} (capacity {c.capacity}, "
              f"reserved {len(c.reserved)}).",
@@ -314,15 +415,20 @@ def _refreshed_pool(char: CharacterState) -> List[str]:
 
 def _fire_recurring(st: GameState) -> None:
     """Recurring channel effects (`trigger: upkeep`) fire once at the start of
-    each holder's turn, in hold order (GDD §8)."""
+    each holder's turn, in hold order (GDD §8) — party channels first, then
+    enemy channels (the ritual ticks players must decide to interrupt)."""
     for holder in st.living_party():
         for ch in list(holder.channels):
-            item = StackItem(kind="ability", source_id=holder.id, source_side="party",
-                             label=ch.card.name, effects=[], target_id=ch.target_id,
-                             card=ch.card)
-            for effect in ch.card.effects:
-                if getattr(effect, "trigger", None) == "upkeep":
-                    _resolve_effect(st, item, effect, {})
+            fired = [e for e in ch.card.effects
+                     if getattr(e, "trigger", None) == "upkeep"]
+            if fired:
+                _fire_channel_effects(st, holder, "party", ch, fired)
+    for e in _ordered(st.living_enemies()):
+        for ch in list(e.channels):
+            fired = [eff for eff in ch.effects
+                     if getattr(eff, "trigger", None) == "upkeep"]
+            if fired:
+                _fire_channel_effects(st, e, "enemy", ch, fired)
 
 
 def _declare_intents(st: GameState) -> None:
@@ -467,6 +573,16 @@ def _component_eligible(st: GameState, e: EnemyState, comp: Component) -> bool:
         return False
     if comp.condition is not None and not _condition_met(st, e, comp.condition):
         return False
+    # Boss phase gate (§F-9): a pre_enrage rule retires when the boss enrages; a
+    # post_enrage rule sleeps until then. Ignored on non-bosses (never enraged).
+    if comp.phase == "pre_enrage" and e.enraged:
+        return False
+    if comp.phase == "post_enrage" and not e.enraged:
+        return False
+    # A channel-component sleeps while its channel holds — one instance at a time;
+    # after a break, its cooldown gates the re-channel.
+    if comp.channel and any(ch.component_id == comp.id for ch in e.channels):
+        return False
     return True
 
 
@@ -564,7 +680,10 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
     if comp.target_rule != "self" and target is None:
         return None  # wanted a target it can't reach — skip to the next rule
     name = comp.telegraph or comp.archetype or "Ability"
-    return Intent(name=name, action_type="ability", effects=list(comp.verbs),
+    # A "spell"-classed component stacks as a spell (GDD taxonomy): thematic —
+    # enemies have no cards — but mechanically real: spell counters answer it.
+    kind = "spell" if comp.action_type == "spell" else "ability"
+    return Intent(name=name, action_type=kind, effects=list(comp.verbs),
                   target_id=(target.id if target is not None else None),
                   source_component=comp.id)
 
@@ -728,15 +847,23 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     # Carry the base attack Power so the damage is recomputed from the enemy's CURRENT
     # power when it RESOLVES — a wound (e.g. Agony Warp −3/−0) applied after declaration,
     # or while the swing sits on the stack, must reduce what lands (R-7).
+    # A channel-component's intent starts an EnemyChannel when it RESOLVES —
+    # marked here so counters can still kill it on the stack first (§8).
+    src_comp = next((c for c in enemy.components
+                     if c.id == intent.source_component), None)
     _push(st, StackItem(kind=intent.action_type, source_id=enemy.id,
                         source_side="enemy", label=intent.name,
                         effects=intent.effects, target_id=intent.target_id,
-                        attack_mode=enemy.attack_mode, attack_power=intent.attack_power))
+                        attack_mode=enemy.attack_mode, attack_power=intent.attack_power,
+                        starts_channel=bool(src_comp is not None and src_comp.channel),
+                        component_id=intent.source_component))
     enemy.intent = None
     st.priority = None  # open a fresh reaction window (party order, set in _advance)
     st.passes = 0
     _log(st, "intent_execute", f"{enemy.name} executes {intent.name}.",
          enemy=enemy.id, label=intent.name)
+    if intent.action_type == "attack":
+        _fire_event(st, "attack", enemy)  # attack triggers fire at declaration
 
 
 def _execute_ally(st: GameState, token: TokenState) -> None:
@@ -751,14 +878,18 @@ def _execute_ally(st: GameState, token: TokenState) -> None:
     token.intent = None
     if target is None:
         return
+    # `attack_power` makes the damage re-read the token's CURRENT Power at
+    # resolution (R-7) — the amount here is only the declared/telegraphed figure.
     effects = [DealDamage(amount=token.current_power, target=t_chosen("enemy", targeted=True))]
     _push(st, StackItem(kind="attack", source_id=token.id, source_side="party",
                         label=f"{token.name}'s attack", effects=effects,
-                        target_id=target.id, attack_mode=token.attack_mode))
+                        target_id=target.id, attack_mode=token.attack_mode,
+                        attack_power=token.power))
     st.priority = None
     st.passes = 0
     _log(st, "ally_attack", f"{token.name} attacks {target.name} (Power {token.current_power}).",
          token=token.id, target=target.id, power=token.current_power)
+    _fire_event(st, "attack", token)  # attack triggers fire at declaration
 
 
 def _end_step(st: GameState) -> None:
@@ -830,6 +961,8 @@ def _apply(st: GameState, action: Action) -> None:
         "choose_mana": _do_choose_mana,
         "choose_card": _do_choose_card,
         "choose_scry": _do_choose_scry,
+        "choose_target": _do_choose_target,
+        "choose_mode": _do_choose_mode,
         "drop_channels": _do_drop_channels,
     }[action.kind]
     handler(st, action)
@@ -995,6 +1128,25 @@ def _trigger_matches(st: GameState, e: EnemyState, comp: Component, ctx: dict) -
         return any(h != e.id and st.enemy(h) is not None for h in hits)
     if trig == "on_ally_death":
         return any(d != e.id for d in deaths)
+    if trig == "on_enrage":
+        # §F-9 enrage: fires in the first reaction window after its boss crossed the
+        # 25% threshold (the crossing set `enraged` in _after_damage). Once-per-
+        # encounter bookkeeping (forced at load) keeps this a single firing.
+        return e.is_boss and e.enraged
+    if isinstance(trig, str) and trig.startswith("on_ally_below_"):
+        # `on_ally_below_50` (§F-3.2): an ally was hit this resolution and now sits
+        # below the named percentage of its max HP. Reads the hit list (not the whole
+        # board) so the trigger fires on the crossing event, not every window after.
+        try:
+            pct = int(trig.rsplit("_", 1)[1])
+        except ValueError:
+            return False
+        for hid in hits:
+            ally = st.enemy(hid)
+            if (ally is not None and ally.id != e.id and ally.alive
+                    and ally.effective_hp * 100 < pct * ally.max_hp):
+                return True
+        return False
     return False
 
 
@@ -1031,7 +1183,11 @@ def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> 
     st.reacted_window.append(e.id)
     label = comp.telegraph or comp.archetype or "Reaction"
     tid = target.id if target is not None else None
-    _push(st, StackItem(kind="ability", source_id=e.id, source_side="enemy",
+    # A reaction is a TRIGGERED ability in the GDD taxonomy (Retaliate) — so a
+    # "triggered"/"ability" counter answers it while "spell" doesn't — unless
+    # the component is spell-classed (an arcane riposte counters as a spell).
+    kind = "spell" if comp.action_type == "spell" else "triggered"
+    _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
                         label=label, effects=list(comp.verbs), target_id=tid))
     st.priority = None   # reopen the window; party order re-seeded by _advance
     st.passes = 0
@@ -1041,6 +1197,10 @@ def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> 
 
 def _do_end_turn(st: GameState, action: Action) -> None:
     actor = st.character(action.actor_id)
+    if actor.stunned > 0:  # a stunned turn ends — one stack of the stun is spent
+        actor.stunned -= 1
+        _log(st, "stun_spent", f"{actor.name} shakes off the stun "
+             f"({actor.stunned} turn(s) remain).", character=actor.id)
     actor.turn_ended = True
     st.priority = None
     _log(st, "end_turn", f"{actor.name} ends their turn.", character=actor.id)
@@ -1070,6 +1230,10 @@ def _do_attack(st: GameState, action: Action) -> None:
          f"{actor.name} attacks {tgt.name} ({actor.attack_mode} Power {actor.current_power}).",
          character=actor.id, target=action.target_id, power=actor.current_power,
          mode=actor.attack_mode)
+    # On-attack channel triggers fire at DECLARATION (MTG: attack triggers go on
+    # the stack above the swing and resolve before its damage). A stacked trigger
+    # (chosen target) lands on top; an inline one resolves before the window opens.
+    _fire_event(st, "attack", actor)
 
 
 def _do_cast(st: GameState, action: Action) -> None:
@@ -1078,7 +1242,8 @@ def _do_cast(st: GameState, action: Action) -> None:
     actor = st.character(action.actor_id)
     card = _card_in_hand(actor, action.card_id)
     reactive = bool(st.stack)  # a cast made inside an open window stacks above
-    paid = _pay(actor, card, action.mana)
+    x = max(0, int(action.x or 0))
+    paid = _pay(actor, card, action.mana, x=x)
     actor.hand.remove(card)
     actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
     if card.timing in _SORCERY_SPEED and not reactive:
@@ -1088,13 +1253,17 @@ def _do_cast(st: GameState, action: Action) -> None:
                         label=card.name, effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card_id=card.id,
-                        card=card, reserved=reserved, mode=action.mode,
+                        card=card, reserved=reserved, mode=action.mode, x=x,
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
     _log(st, "cast", f"{actor.name} casts {card.name}"
          + (f" on {tgt.name}" if tgt else "") + f". Mana: {_mana_str(actor.pool)}.",
          character=actor.id, card=card.id, target=action.target_id)
+    # `spells_cast` conditions count this cast; on-cast channel triggers fire now
+    # (at cast, MTG-style — even if the spell is later countered).
+    actor.spells_cast_turn += 1
+    _fire_event(st, "spell_cast", actor, spell_timing=card.timing.value)
 
 
 def _do_defend(st: GameState, action: Action) -> None:
@@ -1219,27 +1388,58 @@ def _resolve_top(st: GameState) -> StackItem:
     post-resolution reaction context — §F-7.4)."""
     item = st.stack.pop()
     _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
-    # A channeled card doesn't run its effects once — it becomes a held channel.
-    if item.card is not None and item.card.timing == Timing.channeled:
+    # A channeled card CAST doesn't run its effects once — it becomes a held
+    # channel. Only the cast (kind "spell") starts it: a pushed triggered ability
+    # (kind "triggered") carries the same card purely for slot descriptors and
+    # labels, and resolves its effects normally.
+    if item.card is not None and item.card.timing == Timing.channeled and item.kind == "spell":
         _start_channel(st, item)
+        return item
+    # An enemy channel-component's intent likewise becomes a held channel (§8).
+    if item.starts_channel:
+        _start_enemy_channel(st, item)
         return item
     ctx = _new_ctx(st, item)
     _resolve_effect_list(st, item, item.effects, ctx)
     return item
 
 
+def _cost_total(card: Optional[Card], x: int = 0) -> int:
+    """A card's converted casting cost: generic + colour pips + the X paid."""
+    if card is None:
+        return int(x or 0)
+    return card.cost.generic + sum(card.cost.colors.values()) + max(0, int(x or 0))
+
+
+def _channel_ctx(st: GameState, holder, ch) -> dict:
+    """The resolution context for a held channel's triggered effects: capacity plus
+    the `x`/`casting_cost` the card was cast with (enemy channels have no card),
+    and the party size for `party_size` refs."""
+    card = getattr(ch, "card", None)
+    x = getattr(ch, "x", 0)
+    return {"capacity": getattr(holder, "capacity", 0), "x": x,
+            "casting_cost": _cost_total(card, x), "party_size": len(st.party),
+            "caster_obj": holder}
+
+
 def _new_ctx(st: GameState, item: StackItem) -> dict:
-    """A fresh per-resolution context: mana capacity for `mana_capacity` values and
-    the per-site target bindings for an independent multi-target card."""
+    """A fresh per-resolution context: mana capacity for `mana_capacity` values,
+    the cast's X / casting cost, and the per-site target bindings for an
+    independent multi-target card."""
     ctx: dict = {}
     src = st.character(item.source_id)
     ctx["capacity"] = src.capacity if src is not None else 0
+    ctx["x"] = item.x
+    ctx["casting_cost"] = _cost_total(item.card, item.x)
+    ctx["party_size"] = len(st.party)
+    ctx["caster_obj"] = st.combatant(item.source_id)
     if item.targets:
         top = item.effects
-        modal = next((e for e in item.effects if e.kind == "modal"), None)
+        modal = next((e for e in item.effects
+                      if e.kind == "modal" and getattr(e, "trigger", None) is None), None)
         if modal is not None:
             top = _effects_of_mode(item, modal)
-        ctx["site_target"] = {key: tid for (key, _side), tid
+        ctx["site_target"] = {key: tid for (key, *_), tid
                               in zip(_target_sites(top, item.card), item.targets)}
     return ctx
 
@@ -1249,11 +1449,28 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
     move_card needs the player to pick which cards move (more legal candidates than
     it moves), pause: record a PendingChoice with the not-yet-resolved effects and
     return. `_do_choose_card` performs the move and resumes here. Effects nested in
-    a conditional/modal keep auto-picking (handled inside `_resolve_effect`)."""
+    a conditional/modal keep auto-picking (handled inside `_resolve_effect`).
+
+    The pauses apply regardless of the effect's `trigger`: everything routed
+    through this list is a stack-style resolution (a cast, a channel_break /
+    channel_start firing), where the player must get their pick — a break-trigger
+    scry pauses exactly like a sorcery's. Upkeep/event ticks resolve effects
+    directly via `_resolve_effect` and stay non-interactive."""
     for i, effect in enumerate(effects):
         kind = getattr(effect, "kind", None)
-        trigger = getattr(effect, "trigger", None)
-        if kind == "move_card" and trigger is None:
+        # A TRIGGERED modal firing in this list (channel_start) has had no cast-time
+        # mode pick — pause for it; _do_choose_mode resolves the pick and resumes.
+        if (kind == "modal" and getattr(effect, "trigger", None) is not None
+                and item.mode is None):
+            char = st.character(item.source_id)
+            options = _modal_pick_options(effect)
+            if char is not None and len(options) > 1:
+                st.pending_choice = PendingChoice(
+                    kind="mode", chooser_id=char.id, effect=effect, candidates=[],
+                    need=1, remaining=list(effects[i + 1:]), item=item,
+                    resolve_now=True)
+                return
+        if kind == "move_card":
             char = st.character(item.source_id)
             if char is not None:
                 cands = _move_candidates(char, effect, ctx)
@@ -1265,16 +1482,33 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
         # A top-level scry pauses for the player to order the revealed top cards
         # (top/bottom, and the order on top). Nested scry (modal/conditional) keeps
         # the non-interactive reveal in `_resolve_effect`.
-        if kind == "scry" and trigger is None and _raise_scry_choice(st, item, effect, ctx, i, effects):
+        if kind == "scry" and _raise_scry_choice(st, item, effect, ctx, i, effects):
             return
         _resolve_effect(st, item, effect, ctx)
 
 
 def _effects_of_mode(item: StackItem, modal_effect) -> List:
-    """The chosen mode's effects for a modal card (the mode picked at cast)."""
+    """The chosen mode(s)' effects for a modal card (picked at cast).
+
+    A single-choice modal ("choose one") stores the mode INDEX. A multi-choice
+    modal ("choose two" / "choose one or more" — `choose`>1 or `or_more`) stores a
+    BITMASK over mode indices; its effects are the chosen modes' effects
+    concatenated in mode order — the same order `_mode_specs` enumerates, so the
+    per-site target zip in `_new_ctx` stays aligned."""
+    if _modal_is_multi(modal_effect):
+        mask = item.mode if item.mode is not None else 0
+        idxs = [i for i in range(len(modal_effect.modes)) if (mask >> i) & 1] or [0]
+        return [e for i in idxs for e in modal_effect.modes[i].effects]
     idx = item.mode if item.mode is not None else 0
     idx = max(0, min(idx, len(modal_effect.modes) - 1))
     return list(modal_effect.modes[idx].effects)
+
+
+def _modal_is_multi(modal_effect) -> bool:
+    """True for a multi-select modal (Cryptic Command's "choose two"): the mode an
+    action/stack-item carries is then a bitmask of mode indices, not an index."""
+    return ((getattr(modal_effect, "choose", 1) or 1) > 1
+            or bool(getattr(modal_effect, "or_more", False)))
 
 
 # --------------------------------------------------------------------------- #
@@ -1287,11 +1521,12 @@ def _is_continuous(effect) -> bool:
 
 def _start_channel(st: GameState, item: StackItem) -> None:
     """Hold a resolved channeled card on its caster: reserve its mana and apply
-    its continuous effects. Recurring effects are armed (they fire at upkeep)."""
+    its continuous effects. Recurring effects are armed (they fire at upkeep);
+    `channel_start` effects (the ETB analogue) fire once, now."""
     holder = st.character(item.source_id)
     channel = Channel(card=item.card, holder_id=holder.id,
                       reserved=list(item.reserved), target_id=item.target_id,
-                      started_turn=st.turn)
+                      started_turn=st.turn, x=item.x)
     holder.channels.append(channel)
     _log(st, "channel_start",
          f"{holder.name} channels {item.card.name} (reserves {_mana_str(channel.reserved)}).",
@@ -1299,12 +1534,89 @@ def _start_channel(st: GameState, item: StackItem) -> None:
     for effect in item.card.effects:
         if _is_continuous(effect):
             _apply_continuous(st, channel, effect)
+    # channel_start effects resolve as a list so an interactive scry/move_card
+    # pauses for the player's pick (same as any stack resolution).
+    starts = [e for e in item.card.effects
+              if getattr(e, "trigger", None) == "channel_start"]
+    if starts:
+        _resolve_effect_list(st, item, starts, _channel_ctx(st, holder, channel))
     # State-based check: a wound aura that drops a creature to ≤0 effective HP kills it
     # now (GDD §8: a −X/−X that empties toughness is lethal). The death sticks — the
     # channel keeps holding, its target simply gone, until the caster drops it. Losing
     # an aura's target is NOT a break cause (only a ≥25% hit, incapacitation, or a
     # voluntary drop is), so the caster's other channels are untouched.
     _reap_aura_kills(st)
+
+
+def _start_enemy_channel(st: GameState, item: StackItem) -> None:
+    """Hold a resolved enemy channel-component (§8, enemy side): apply its
+    continuous verbs, fire its one-shot verbs once, and arm its `upkeep` verbs.
+    The channel then persists until broken — one ≥25%-max-HP hit, or the
+    channeler's death / bounce / suspension (see _break_enemy_channels)."""
+    enemy = st.enemy(item.source_id)
+    if enemy is None or not enemy.alive:
+        return
+    ch = EnemyChannel(component_id=item.component_id or "", name=item.label,
+                      effects=list(item.effects), holder_id=enemy.id,
+                      target_id=item.target_id, started_turn=st.turn)
+    enemy.channels.append(ch)
+    _log(st, "channel_start",
+         f"{enemy.name} begins channeling {item.label} — break it with one hit of "
+         f"≥{_break_threshold(enemy)} damage, or remove the channeler.",
+         enemy=enemy.id, component=ch.component_id, label=item.label,
+         threshold=_break_threshold(enemy))
+    for effect in ch.effects:
+        if _is_continuous(effect):
+            for target in _enemy_channel_targets(st, ch, effect):
+                _apply_static(st, target, effect, +1, holder_id=enemy.id)
+    # One-shot verbs (not continuous, not recurring) and explicit `channel_start`
+    # verbs fire once as it starts.
+    once = [e for e in ch.effects
+            if not _is_continuous(e)
+            and getattr(e, "trigger", None) in (None, "channel_start")]
+    if once:
+        _resolve_effect_list(st, item, once, _new_ctx(st, item))
+    _reap_aura_kills(st)
+
+
+def _enemy_channel_targets(st: GameState, ch: EnemyChannel, effect) -> List:
+    """The creature(s) an enemy channel's continuous effect covers. Verb-target
+    convention matches one-shot enemy verbs: `self` = the channeler, `all`+side
+    resolves from the card-authoring perspective ("ally" = the party), `chosen` =
+    the single target picked when the intent declared."""
+    desc = getattr(effect, "target", None)
+    mode = getattr(desc, "mode", None) if not isinstance(desc, str) else None
+    if mode == TargetMode.self_:
+        holder = st.enemy(ch.holder_id)
+        return [holder] if holder is not None else []
+    if mode == TargetMode.all:
+        side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
+        item = StackItem(kind="ability", source_id=ch.holder_id, source_side="enemy",
+                         label=ch.name, effects=[])
+        return _creatures_on_side(st, side, item, desc)
+    tgt = st.combatant(ch.target_id)
+    return [tgt] if tgt is not None else []
+
+
+def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None:
+    """End ALL of an enemy's channels (all-or-nothing, like a player break §8):
+    lift their continuous effects and log what the party just turned off. A
+    `channel_break` verb fires as a respondable stack trigger, same as the party
+    side — breaking the ritual can spring its dying sting."""
+    if not enemy.channels:
+        return
+    for ch in list(enemy.channels):
+        for effect in ch.effects:
+            if _is_continuous(effect):
+                for target in _enemy_channel_targets(st, ch, effect):
+                    _apply_static(st, target, effect, -1, log_it=False,
+                                  holder_id=enemy.id)
+        _log(st, "channel_end", f"{enemy.name}'s {ch.name} is broken ({reason}).",
+             enemy=enemy.id, component=ch.component_id, label=ch.name, reason=reason)
+    ended = list(enemy.channels)
+    enemy.channels = []
+    for ch in ended:
+        _fire_channel_break(st, enemy.id, "enemy", ch.name, ch.effects, ch.target_id)
 
 
 def _reap_aura_kills(st: GameState) -> None:
@@ -1339,7 +1651,7 @@ _STAT_CONTINUOUS = ("pump", "counters", "wound")  # auras that ride the temp lay
 
 
 def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
-                  holder_id: Optional[str] = None) -> None:
+                  holder_id: Optional[str] = None, x: int = 0) -> None:
     """Apply (sign +1) or lift (sign −1) one continuous effect on one creature.
 
     Stat auras (pump/counters add, wound subtracts) ride `power_bonus`/`temp_mod`
@@ -1405,8 +1717,14 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
         # here — it resolves once through `_r_exile` and removes the enemy for good.
         if isinstance(target, EnemyState):
             if sign > 0:
+                if target.is_boss and not target.in_execute_window:
+                    if log_it:
+                        _log(st, "boss_immune", f"{target.name} shrugs off the exile — "
+                             "a boss can't be removed above 25% HP.", enemy=target.id)
+                    return
                 target.exiled = True
                 target.intent = None  # a suspended enemy telegraphs nothing
+                _break_enemy_channels(st, target, "channeler suspended")
                 if target.id in st.acted_enemies:
                     st.acted_enemies.remove(target.id)
                 _purge_stack_from(st, target.id, "exiled")  # its swings go with it
@@ -1422,12 +1740,22 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
                  "(channeled exile is only modelled for enemies this milestone)", kind=k)
     elif k in _STAT_CONTINUOUS and hasattr(target, "power_bonus"):
         polarity = -1 if k == "wound" else 1  # wound is a −X/−X aura (R-7)
-        target.power_bonus += sign * polarity * effect.power
-        target.temp_mod += sign * polarity * effect.toughness  # re-applied every end step
+        # Stat refs (pump X aura, +1 per player) resolve against the holder's
+        # current state. x/party_size are constant for a channel's life; a
+        # capacity ref can drift between apply and lift within one turn — the
+        # temp layers reset every end step, so any drift clears at End.
+        holder = st.combatant(holder_id) if holder_id is not None else None
+        ctx = {"capacity": getattr(holder, "capacity", 0), "x": x,
+               "party_size": len(st.party), "caster_obj": holder,
+               "target_obj": target}
+        power = _value(effect.power, ctx)
+        toughness = _value(effect.toughness, ctx)
+        target.power_bonus += sign * polarity * power
+        target.temp_mod += sign * polarity * toughness  # re-applied every end step
         if log_it:
             verb = "gains" if sign > 0 else "loses"
             sgn = "-" if polarity < 0 else "+"
-            _log(st, "aura", f"{target.name} {verb} {sgn}{effect.power}/{sgn}{effect.toughness} "
+            _log(st, "aura", f"{target.name} {verb} {sgn}{power}/{sgn}{toughness} "
                  f"(channel).", target=_tid(target))
     elif log_it:
         _log(st, "unhandled", f"(continuous '{k}' not modelled this milestone)", kind=k)
@@ -1435,12 +1763,12 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
 
 def _apply_continuous(st: GameState, channel: Channel, effect) -> None:
     for target in _continuous_targets(st, channel, effect):
-        _apply_static(st, target, effect, +1, holder_id=channel.holder_id)
+        _apply_static(st, target, effect, +1, holder_id=channel.holder_id, x=channel.x)
 
 
 def _remove_continuous(st: GameState, channel: Channel, effect) -> None:
     for target in _continuous_targets(st, channel, effect):
-        _apply_static(st, target, effect, -1, holder_id=channel.holder_id)
+        _apply_static(st, target, effect, -1, holder_id=channel.holder_id, x=channel.x)
 
 
 # Continuous effects that reset each end step and must be re-asserted every turn:
@@ -1458,7 +1786,15 @@ def _reapply_channel_stats(st: GameState) -> None:
                 if _is_continuous(effect) and effect.kind in _REAPPLIED_CONTINUOUS:
                     for target in _continuous_targets(st, channel, effect):
                         _apply_static(st, target, effect, +1, log_it=False,
-                                      holder_id=channel.holder_id)
+                                      holder_id=channel.holder_id, x=channel.x)
+    # Enemy channels sustain their auras across turns the same way (§8 both ways).
+    for e in st.living_enemies():
+        for ch in e.channels:
+            for effect in ch.effects:
+                if _is_continuous(effect) and effect.kind in _REAPPLIED_CONTINUOUS:
+                    for target in _enemy_channel_targets(st, ch, effect):
+                        _apply_static(st, target, effect, +1, log_it=False,
+                                      holder_id=e.id)
 
 
 def _note_break(st: GameState, char: CharacterState, reason: str) -> None:
@@ -1472,12 +1808,17 @@ def _break_threshold(char: CharacterState) -> int:
 
 
 def _process_breaks(st: GameState) -> None:
-    """After a resolution, end the channels of any channeler owed a break."""
+    """After a resolution, end the channels of any channeler owed a break —
+    party characters and enemy channelers alike (§8, both sides of the table)."""
     for cid in list(st.pending_break):
         st.pending_break.remove(cid)
         char = st.character(cid)
         if char is not None and char.channels:
             _break_channels(st, char, reason="break")
+            continue
+        enemy = st.enemy(cid)
+        if enemy is not None and enemy.channels:
+            _break_enemy_channels(st, enemy, reason="break")
 
 
 def _break_channels(st: GameState, char: CharacterState, reason: str) -> None:
@@ -1494,7 +1835,9 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
     mana straight into the pool (GDD §8). The release does NOT use the stack — it just
     happens, so it opens no reaction window. The card is already in the graveyard (R-9) —
     the channel simply ends. `channels` is a subset of the holder's channels (all of them
-    for a break; one for a voluntary single drop)."""
+    for a break; one for a voluntary single drop). Any `channel_break` effects on an
+    ending card DO use the stack: each ending channel pushes one respondable triggered
+    ability (so a counter can answer it) — see _fire_channel_break."""
     channels = [ch for ch in channels if ch in char.channels]
     if not channels:
         return
@@ -1513,6 +1856,177 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
          f"{char.name}'s channels break ({reason}); {_mana_str(released)} released "
          f"(pool now {_mana_str(char.pool)}).",
          character=char.id, released=list(released), reason=reason)
+    for channel in channels:
+        _fire_channel_break(st, char.id, "party", channel.card.name,
+                            channel.card.effects, channel.target_id, x=channel.x,
+                            card=channel.card)
+    _raise_next_trigger_pick(st)
+
+
+def _fire_channel_break(st: GameState, source_id: str, source_side: str, name: str,
+                        effects, target_id: Optional[str], x: int = 0,
+                        card=None) -> None:
+    """Push an ending channel's `channel_break` effects onto the stack as one
+    triggered ability (GDD taxonomy: triggered → reactive), reopening the reaction
+    window — the other side may respond (a "triggered"/"ability" counter answers it)
+    before it resolves. Fires on ANY end: voluntary drop, breaking hit, or the
+    channeler's incapacitation. The item carries the `card` for slot descriptors
+    and labels (only a kind-"spell" cast re-starts a channel at resolution).
+
+    A break effect with a chosen target had no cast-time pick (see
+    _target_sites); the item is flagged `needs_target` and the holder picks as the
+    trigger goes on the stack (`_raise_next_trigger_pick` — the caller invokes it
+    after all of a batch's triggers are pushed)."""
+    breaks = [e for e in effects if getattr(e, "trigger", None) == "channel_break"]
+    if not breaks:
+        return
+    item = _push(st, StackItem(kind="triggered", source_id=source_id,
+                               source_side=source_side, effects=breaks,
+                               label=f"{name} — break trigger",
+                               target_id=target_id, x=x, card=card))
+    if source_side == "party":
+        item.needs_mode = any(getattr(e, "kind", None) == "modal" for e in breaks)
+        item.needs_target = _trigger_pick_effect(item) is not None
+    st.priority = None  # fresh window — re-seeded by _advance
+    st.passes = 0
+    _log(st, "channel_break_trigger",
+         f"{name}'s break trigger goes on the stack.", source=source_id, label=name)
+
+
+def _trigger_pick_effect(item: StackItem):
+    """The first effect of a fired triggered ability that still owes a target
+    pick, or None. A DIRECT chosen target always needs the pick; a "$slot" target
+    needs it only when nothing bound the slot at cast (`item.target_id` empty —
+    a slot shared with an untriggered aura effect was chosen at cast instead)."""
+    for e in _pending_trigger_effects(item):
+        desc = getattr(e, "target", None)
+        if isinstance(desc, str):
+            if item.target_id is None:
+                return e
+        elif getattr(desc, "mode", None) == TargetMode.chosen:
+            return e
+    return None
+
+
+def _pending_trigger_effects(item: StackItem):
+    """The effects a pushed trigger will actually resolve: a modal expands to its
+    chosen mode once `item.mode` is bound (an unchosen modal contributes nothing
+    yet — the target scan waits for the mode pick)."""
+    out = []
+    for e in item.effects:
+        if getattr(e, "kind", None) == "modal":
+            if item.mode is not None:
+                out.extend(_effects_of_mode(item, e))
+        else:
+            out.append(e)
+    return out
+
+
+def _modal_pick_options(modal):
+    """[(mode_key, label)] a trigger-time mode pick offers — one per mode for
+    "choose one", one per legal combination (bitmask keys) for "choose N [or
+    more]"; mirrors `_mode_specs`' enumeration for casts."""
+    labels = [m.label or f"Option {i + 1}" for i, m in enumerate(modal.modes)]
+    if not _modal_is_multi(modal):
+        return list(enumerate(labels))
+    n = len(modal.modes)
+    k = min(max(1, getattr(modal, "choose", 1) or 1), n)
+    sizes = range(k, n + 1) if getattr(modal, "or_more", False) else (k,)
+    return [(sum(1 << i for i in combo), " + ".join(labels[i] for i in combo))
+            for size in sizes for combo in itertools.combinations(range(n), size)]
+
+
+def _raise_next_trigger_pick(st: GameState) -> bool:
+    """Raise the next pick a pushed triggered ability still owes — the topmost
+    flagged stack item first (it resolves first), its MODE before its TARGET (the
+    mode decides which effects resolve, and so which targets are needed). The
+    pending choice blocks `_advance` BEFORE the reaction window opens, so every
+    trigger on the stack is fully chosen by the time anyone may respond (MTG:
+    modes and targets are chosen as the ability is put on the stack). Returns
+    True while a pick is pending."""
+    if st.pending_choice is not None:
+        return True
+    for item in reversed(st.stack):
+        if not (item.needs_mode or item.needs_target):
+            continue
+        char = st.character(item.source_id)
+        if char is None:  # no chooser — resolve with the defaults / fizzle
+            item.needs_mode = item.needs_target = False
+            continue
+        if item.needs_mode:
+            modal = next((e for e in item.effects
+                          if getattr(e, "kind", None) == "modal"), None)
+            options = _modal_pick_options(modal) if modal is not None else []
+            if len(options) > 1:
+                st.pending_choice = PendingChoice(
+                    kind="mode", chooser_id=char.id, effect=modal, candidates=[],
+                    need=1, remaining=[], item=item)
+                return True
+            # A single legal option binds itself; fall through to the target scan.
+            item.mode = options[0][0] if options else None
+            item.needs_mode = False
+            if _trigger_pick_effect(item) is not None:
+                item.needs_target = True
+        if item.needs_target:
+            effect = _trigger_pick_effect(item)
+            # Nothing legal to aim at: resolve untargeted — the effect fizzles
+            # rather than soft-locking the game.
+            if effect is None or not _effect_target_options(st, effect, item.card):
+                item.needs_target = False
+                continue
+            st.pending_choice = PendingChoice(
+                kind="target", chooser_id=char.id, effect=effect, candidates=[],
+                need=1, remaining=[], item=item)
+            return True
+    return False
+
+
+def _do_choose_mode(st: GameState, action: Action) -> None:
+    """Bind the picked mode of a triggered modal. For a channel_break trigger
+    (`resolve_now` False) the mode is bound as the ability sits on the stack; any
+    chosen-target inside the picked mode then raises its own pick before the
+    window opens. For a modal firing right now (channel_start) the chosen mode
+    resolves immediately and the rest of the firing resumes."""
+    pc = st.pending_choice
+    st.pending_choice = None
+    item, modal = pc.item, pc.effect
+    item.mode = action.mode
+    item.needs_mode = False
+    label = dict(_modal_pick_options(modal)).get(action.mode, f"mode {action.mode}")
+    _log(st, "mode_chosen", f"{item.label}: {label}.",
+         source=item.source_id, mode=action.mode, label=label)
+    if pc.resolve_now:
+        # channel_start: the modal fires now — resolve the chosen mode, then the
+        # rest of the interrupted effect list (same resume shape as a card pick).
+        ctx = _new_ctx(st, item)
+        _resolve_effect(st, item, modal, ctx)
+        _resolve_effect_list(st, item, pc.remaining, ctx)
+        if st.pending_choice is None:
+            _process_breaks(st)
+            st.priority = None
+        return
+    if _trigger_pick_effect(item) is not None:
+        item.needs_target = True
+    if not _raise_next_trigger_pick(st):
+        st.passes = 0
+        st.priority = None  # fresh window on the fully-chosen trigger(s)
+
+
+def _do_choose_target(st: GameState, action: Action) -> None:
+    """Bind the picked creature onto a pending triggered ability (channel_break),
+    then either raise the next pending pick or open the reaction window on the
+    now fully-targeted stack."""
+    pc = st.pending_choice
+    pc.item.target_id = action.target_id
+    pc.item.needs_target = False
+    st.pending_choice = None
+    tgt = st.combatant(action.target_id)
+    _log(st, "target_chosen",
+         f"{pc.item.label} targets {tgt.name if tgt is not None else action.target_id}.",
+         source=pc.item.source_id, target=action.target_id)
+    if not _raise_next_trigger_pick(st):
+        st.passes = 0
+        st.priority = None  # fresh window on the fully-targeted trigger(s)
 
 
 # Effects that act on the source or a stack item, not on the resolved `target`
@@ -1561,13 +2075,18 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
             _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no legal target).",
                  kind=effect.kind)
             continue
-        # Hexproof: an enemy's targeted effect can't land on a hexproof character
-        # (friendly targeting is fine) — GDD §6/§7.
-        if (_is_targeted(effect) and item.source_side == "enemy"
-                and target is not None and _has_kw(target, "hexproof")):
+        # Hexproof: a TARGETED effect can't land on a hexproof HOSTILE — an enemy's
+        # on a character, or a player's on an enemy creature (friendly targeting is
+        # fine; untargeted-chosen effects beat hexproof) — GDD §6/§7.
+        if (_is_targeted(effect) and target is not None and _has_kw(target, "hexproof")
+                and ((item.source_side == "enemy" and not isinstance(target, EnemyState))
+                     or (item.source_side != "enemy" and isinstance(target, EnemyState)))):
             _log(st, "fizzle", f"{item.label} fizzles — {target.name} has Hexproof.",
                  kind=effect.kind)
             continue
+        # target_* value refs read the creature this iteration lands on (each of
+        # a mode:all set reads its own stats); caster_obj is set by the ctx builder.
+        ctx["target_obj"] = target
         handler(st, item, effect, target, ctx)
 
 
@@ -1627,6 +2146,41 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
     cond = cond_effect.condition
     if cond.kind == "cast_mode":
         return item.cast_mode == cond.mode
+    if cond.kind == "caster_property":
+        # The caster's own row / keyword / channeling state, read at resolution.
+        src = st.combatant(item.source_id)
+        if src is None:
+            return False
+        if cond.property == "row":
+            want = cond.row.value if hasattr(cond.row, "value") else cond.row
+            return getattr(src, "row", None) == want
+        if cond.property == "has_keyword":
+            return _has_kw(src, cond.keyword)
+        return bool(getattr(src, "channels", []))  # "channeling": holds a channel
+    if cond.kind == "self_hp":
+        # The caster's CURRENT base HP against a % of max (integer math: no floats).
+        src = st.combatant(item.source_id)
+        if src is None or getattr(src, "max_hp", 0) <= 0:
+            return False
+        if cond.compare == "or_more":
+            return src.hp * 100 >= cond.percent * src.max_hp
+        return src.hp * 100 <= cond.percent * src.max_hp
+    if cond.kind == "enemy_count":
+        enemies, party = len(st.living_enemies()), len(st.living_party())
+        if cond.compare == "more":
+            return enemies > party
+        if cond.compare == "fewer":
+            return enemies < party
+        return enemies == party
+    if cond.kind == "spells_cast":
+        # Spells the caster has cast this turn, counting this one (the counter is
+        # bumped at cast, before resolution). Non-characters (enemies) count 0.
+        n = getattr(st.character(item.source_id), "spells_cast_turn", 0) or 0
+        if cond.compare == "or_more":
+            return n >= cond.count
+        if cond.compare == "or_less":
+            return n <= cond.count
+        return n == cond.count
     # target_property: read the main chosen target's property.
     target = st.combatant(item.target_id)
     if cond.property == "has_keyword":
@@ -1647,6 +2201,9 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
         if compare == "or_less":
             return lvl <= cond.level
         return lvl == cond.level
+    if cond.property == "row":
+        want = cond.row.value if hasattr(cond.row, "value") else cond.row
+        return target is not None and getattr(target, "row", None) == want
     return False
 
 
@@ -1662,9 +2219,13 @@ def _is_targeted(effect) -> bool:
 
 
 def _legal_target(target) -> bool:
-    # A legal target must be alive AND on the battlefield. An off-field enemy — bounced
-    # (in hand) or channel-suspended (exiled) — can't be targeted (Update 03 §E-D), so
-    # an effect aimed at one that has just left play fizzles.
+    # On the battlefield == targetable. A DOWNED character stays on the field
+    # (incapacitation is recoverable — R-7) and remains a legal heal/revive
+    # target; enemies and tokens leave play at 0 HP so they must be alive, and
+    # an off-field enemy — bounced (in hand) or channel-suspended (exiled) —
+    # can't be targeted (Update 03 §E-D).
+    if isinstance(target, CharacterState):
+        return True
     if not getattr(target, "alive", False):
         return False
     if isinstance(target, EnemyState) and (target.in_hand or target.exiled):
@@ -1684,10 +2245,31 @@ def _value(amount, ctx: dict) -> int:
             return int(ctx.get("destroyed_target", {}).get("level", 0))
         if amount.ref == "mana_capacity":
             return int(ctx.get("capacity", 0))
+        if amount.ref == "x":
+            return int(ctx.get("x", 0) or 0)
+        if amount.ref == "casting_cost":
+            return int(ctx.get("casting_cost", 0) or 0)
+        if amount.ref == "party_size":
+            return int(ctx.get("party_size", 0) or 0)
+        if amount.ref in ("caster_power", "caster_hp"):
+            return _live_stat(ctx.get("caster_obj"), amount.ref.split("_", 1)[1])
+        if amount.ref in ("target_power", "target_hp"):
+            return _live_stat(ctx.get("target_obj"), amount.ref.split("_", 1)[1])
         raise ValueError(f"unsupported value reference '{amount.ref}'")
     if amount == "all":
         return 0  # guarded earlier; never reached for a real effect
     return int(amount)
+
+
+def _live_stat(obj, stat: str) -> int:
+    """A combatant's live stat for a caster_/target_ value ref, read at the moment
+    the effect resolves: `power` = current Power (base + bonuses), `hp` = effective
+    HP (temp buffers included). 0 when there is no such combatant."""
+    if obj is None:
+        return 0
+    if stat == "power":
+        return max(0, int(getattr(obj, "current_power", 0) or 0))
+    return max(0, int(getattr(obj, "effective_hp", 0) or 0))
 
 
 # ---- one handler per effect primitive --------------------------------------- #
@@ -1701,10 +2283,16 @@ def _r_deal_damage(st, item, effect, target, ctx):
         if item.attack_power is not None and source_obj is None:
             _log(st, "fizzle", f"{item.label} fizzles — its attacker is gone.", kind="attack")
             return
-        # A basic attack's damage is its source's CURRENT Power, evaluated now (R-7):
-        # a wound/anthem landing after the swing was declared changes what lands.
+        # A basic attack's damage is its source's CURRENT Power, evaluated in full
+        # at RESOLUTION (R-7): pumps/wounds AND +1/+1 counters landing after the
+        # swing was declared all change what lands. Enemy attack amounts come from
+        # their intent TEMPLATE (not a power stat), so only the live bonus layer is
+        # re-read on top of the declared base for them.
         if item.attack_power is not None:
-            amount = max(0, item.attack_power + source_obj.power_bonus)
+            if isinstance(source_obj, EnemyState):
+                amount = max(0, item.attack_power + source_obj.power_bonus)
+            else:
+                amount = max(0, source_obj.current_power)
         # Mitigate answers attack-type hits only (Update 02 §M-A.1)
         target, amount = _apply_mitigation(st, item, target, amount)
     overkill = _deal_damage(st, target, amount, source=item.label,
@@ -1763,9 +2351,23 @@ def _r_lose_life(st, item, effect, target, ctx):
     _after_damage(st, target)
 
 
+def _boss_shrugs_removal(st: GameState, label: str, target) -> bool:
+    """§9.4 / §F-9: a boss outside its execute window (>25% max HP) cannot be removed —
+    destroy / exile / bounce / deathtouch-execute all fizzle against it. Whittle it
+    into the window first. Returns True (and logs) when the removal is denied."""
+    if isinstance(target, EnemyState) and target.is_boss and not target.in_execute_window:
+        _log(st, "boss_immune",
+             f"{target.name} shrugs off {label} — a boss can't be removed above 25% HP "
+             f"({target.effective_hp}/{target.max_hp}).", enemy=target.id, label=label)
+        return True
+    return False
+
+
 def _r_destroy(st, item, effect, target, ctx):
     # `destroy` DECLARES removal; the resolver DECIDES it means a minion kill.
     if isinstance(target, EnemyState):
+        if _boss_shrugs_removal(st, item.label, target):
+            return
         ctx["destroyed_target"] = {"level": target.level}
         _log(st, "destroyed", f"{target.name} is destroyed (Level {target.level}).",
              target=target.id, level=target.level)
@@ -1774,13 +2376,14 @@ def _r_destroy(st, item, effect, target, ctx):
 
 def _r_pump(st, item, effect, target, ctx):
     # Pump (+X/+X): +X Power and +X temp_mod — a buffer that lifts effective_hp and
-    # expires at End (R-7).
+    # expires at End (R-7). power/toughness may be refs (pump X, +1 per player…).
+    power, toughness = _value(effect.power, ctx), _value(effect.toughness, ctx)
     if hasattr(target, "power_bonus"):
-        target.power_bonus += effect.power
-    target.temp_mod += effect.toughness
-    _log(st, "pump", f"{target.name} gets +{effect.power}/+{effect.toughness} "
+        target.power_bonus += power
+    target.temp_mod += toughness
+    _log(st, "pump", f"{target.name} gets +{power}/+{toughness} "
          f"(eff HP {target.effective_hp}).", target=_tid(target),
-         power=effect.power, toughness=effect.toughness)
+         power=power, toughness=toughness)
 
 
 def _r_draw(st, item, effect, target, ctx):
@@ -1979,6 +2582,8 @@ def _r_exile(st, item, effect, target, ctx):
     # character/token is removed to 0 (incapacitated / destroyed) — indestructible
     # does NOT save against exile (GDD §7).
     if isinstance(target, EnemyState):
+        if _boss_shrugs_removal(st, item.label, target):
+            return
         _log(st, "exiled", f"{target.name} is exiled.", target=target.id, level=target.level)
         ctx["destroyed_target"] = {"level": target.level}
         _kill_enemy(st, target)
@@ -1994,6 +2599,8 @@ def _r_bounce(st, item, effect, target, ctx):
     # kill — it leaves the field, loses its next action, and redeploys a turn later.
     # An ally token has no hand to return to, so for it bounce is removal (existing).
     if isinstance(target, EnemyState):
+        if _boss_shrugs_removal(st, item.label, target):
+            return
         _bounce_enemy(st, target)
     elif isinstance(target, TokenState):
         _remove_token(st, target)
@@ -2007,6 +2614,7 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
     enemy.in_hand = True
     enemy.intent = None                       # pending intent reset — declares fresh on redeploy
     enemy.pending_voluntary = None            # a queued Move is dropped; it re-enters at its row
+    _break_enemy_channels(st, enemy, "channeler bounced")  # off-field = concentration gone
     enemy.committed = enemy.row
     # Shed temporary modifiers (the pump/wound layers would expire at End anyway, R-7).
     enemy.temp_mod = enemy.prevent_pool = enemy.power_bonus = 0
@@ -2052,7 +2660,11 @@ def _r_fight(st, item, effect, target, ctx):
 def _r_counter(st, item, effect, target, ctx):
     # Cancel the enemy action this counter named, if it's still on the stack and
     # matches the filter (a filter node matches its descendants — GDD §5.4).
-    uid = _parse_uid(item.target_id)
+    # The counter's own site binding wins (a multi-mode combo may aim its counter
+    # at one thing and its other mode elsewhere); a single-target cast falls back
+    # to the item's primary target as before.
+    tid = _site_target(item, ctx, effect, getattr(effect, "target", None))
+    uid = _parse_uid(tid)
     victim = next((s for s in st.stack if s.uid == uid), None) if uid is not None else None
     if victim is None or victim.source_side != "enemy" or not _filter_matches(effect.filter, victim):
         _log(st, "counter_fizzle", f"{item.label} has nothing to counter.", kind="counter")
@@ -2075,28 +2687,40 @@ def _r_stun(st, item, effect, target, ctx):
         target.stunned += int(getattr(effect, "intents", 1))
         _log(st, "stun", f"{target.name} is stunned (skips {target.stunned} intent(s)).",
              enemy=target.id, intents=target.stunned)
+    elif isinstance(target, CharacterState):
+        # Enemy Debilitate on a player (§F-3): the character loses their proactive
+        # window for the next `intents` turn(s) — only End Turn is offered. Reactions
+        # (instants / Mitigate) stay available; stun dazes, it doesn't paralyse.
+        target.stunned += int(getattr(effect, "intents", 1))
+        _log(st, "stun", f"{target.name} is stunned (loses {target.stunned} turn(s)).",
+             character=target.id, intents=target.stunned)
 
 
 def _r_wound(st, item, effect, target, ctx):
     # Wound (−X/−X): −X Power and −X to temp_mod (R-7). If that drives effective_hp
     # ≤ 0 it kills/incaps immediately — even through indestructible.
+    power, toughness = _value(effect.power, ctx), _value(effect.toughness, ctx)
     if hasattr(target, "power_bonus"):
-        target.power_bonus -= effect.power
-    target.temp_mod -= effect.toughness
-    _log(st, "wound", f"{target.name} suffers -{effect.power}/-{effect.toughness} "
+        target.power_bonus -= power
+    target.temp_mod -= toughness
+    _log(st, "wound", f"{target.name} suffers -{power}/-{toughness} "
          f"(eff HP {target.effective_hp}).", target=_tid(target),
-         power=effect.power, toughness=effect.toughness)
+         power=power, toughness=toughness)
     if target.effective_hp <= 0:
         _after_damage(st, target)
 
 
 def _r_counters(st, item, effect, target, ctx):
     # Persistent +X/+X counters: permanent Power and max HP (not cleared at End).
+    power, toughness = _value(effect.power, ctx), _value(effect.toughness, ctx)
     if hasattr(target, "power"):
-        target.power += effect.power
-    target.max_hp += effect.toughness
-    target.hp += effect.toughness
-    _log(st, "counters", f"{target.name} gains +{effect.power}/+{effect.toughness} "
+        target.power += power
+    target.max_hp += toughness
+    target.hp += toughness
+    # Tally the counters themselves so the UI can badge them separately from
+    # the (already-applied) stat change.
+    target.counters = getattr(target, "counters", 0) + max(power, toughness)
+    _log(st, "counters", f"{target.name} gains +{power}/+{toughness} "
          f"counters (HP {target.hp}/{target.max_hp}).", target=_tid(target))
 
 
@@ -2129,6 +2753,15 @@ def _r_taunt(st, item, effect, target, ctx):
                 target.intent.target_id = item.source_id
             _log(st, "taunt", f"{target.name} is taunted into targeting {who.name}.",
                  enemy=target.id, by=item.source_id)
+    elif isinstance(target, CharacterState) and item.source_side == "enemy":
+        # Enemy "taunt-us" on a player (§F-3): this character's basic attacks must
+        # target the taunting enemy while it lives, until upkeep. Spells are free —
+        # the taunt bullies the sword arm, not the mind.
+        taunter = st.enemy(item.source_id)
+        if taunter is not None:
+            target.taunted_to = taunter.id
+            _log(st, "taunt", f"{target.name} is taunted — attacks must target "
+                 f"{taunter.name}.", character=target.id, by=taunter.id)
 
 
 def _r_revive(st, item, effect, target, ctx):
@@ -2306,9 +2939,19 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
             _log(st, "prevented", f"{source or 'the hit'} on {target.name} is prevented "
                  f"({tag.parameter}).", target=_tid(target), parameter=tag.parameter)
             return 0
+    # Shields stood but none matched (e.g. Holy Day's combat_damage vs a Drain's
+    # ability damage): say WHY the hit landed, or the player reads it as a bug.
+    standing = sorted({t.parameter for t in getattr(target, "prevent_tags", [])
+                       if t.parameter not in _ACTION_PREVENT})
+    if standing:
+        _log(st, "not_prevented",
+             f"{source or 'The hit'} is {damage_kind} damage — {target.name}'s "
+             f"prevent ({', '.join(standing)}) does not cover it.",
+             target=_tid(target), damage_kind=damage_kind, shields=standing)
 
     # Protection negates the next incoming spell/attack outright (GDD §7).
-    if getattr(target, "protection", 0) > 0 and damage_kind in ("attack", "spell", "ability"):
+    if getattr(target, "protection", 0) > 0 and damage_kind in (
+            "attack", "spell", "ability", "activated", "triggered"):
         target.protection -= 1
         _log(st, "protected", f"{target.name}'s protection negates {source or 'the hit'}.",
              target=_tid(target))
@@ -2326,9 +2969,10 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
 
     # A hit of ≥25% of max HP breaks concentration (the amount that lands — before the
     # temp-HP buffer soaks it: a big blow still rattles the channel, GDD §8).
-    if (isinstance(target, CharacterState) and target.channels
-            and amount >= _break_threshold(target)):
-        _note_break(st, target, "hit")
+    # Same rule both ways: an ENEMY channeler hit that hard drops its channel too.
+    if (isinstance(target, (CharacterState, EnemyState)) and target.channels
+            and amount >= _break_threshold(target) and target.id not in st.pending_break):
+        st.pending_break.append(target.id)
 
     # Shield: positive temporary HP (Defend / a pump's toughness) absorbs the blow
     # before base HP — GDD §4.9 "a buffer that absorbs a blow". A negative temp_mod
@@ -2361,11 +3005,15 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     if source_obj is not None and connected > 0 and _has_kw(source_obj, "lifelink"):
         _heal(st, source_obj, connected, reason="lifelink")
     if (source_obj is not None and connected > 0 and _has_kw(source_obj, "deathtouch")
-            and isinstance(target, EnemyState) and target.alive):
+            and isinstance(target, EnemyState) and target.alive
+            and not (target.is_boss and not target.in_execute_window)):
         _log(st, "deathtouch", f"{target.name} is executed by deathtouch.", target=target.id)
         target.hp = 0
         target.temp_mod = min(target.temp_mod, 0)
     _after_damage(st, target)
+    # On-damage channel triggers key off the blow that connected (soak + HP lost).
+    if connected > 0:
+        _fire_event(st, "damage_taken", target)
     # Overkill only cleaves when the blow actually felled the target (dead / incapacitated).
     return overkill if target.effective_hp <= 0 else 0
 
@@ -2375,21 +3023,35 @@ def _heal(st: GameState, target, amount: int, reason: str = "") -> None:
     cancelling it toward 0, and only then restores `hp` (never above max) — R-7."""
     if amount <= 0 or target is None:
         return
+    gained = 0  # wound closed + HP restored — what on-life-gain triggers key off
     if target.temp_mod < 0:  # cancel the wound toward 0 first
         fill = min(-target.temp_mod, amount)
         target.temp_mod += fill
         amount -= fill
+        gained += fill
         if fill:
             _log(st, "wound_mend", f"{fill} healing to {target.name} closes a wound "
                  f"(temp_mod {target.temp_mod}).", target=_tid(target), amount=fill)
     before = target.hp
     target.hp = min(target.max_hp, target.hp + amount)
+    gained += target.hp - before
     if target.hp != before or reason:
         _log(st, "heal", f"{target.name} heals {target.hp - before} (HP {target.hp}).",
              target=_tid(target), amount=target.hp - before, hp=target.hp, reason=reason)
+    if gained > 0:
+        _fire_event(st, "life_gain", target)
 
 
 def _after_damage(st: GameState, target) -> None:
+    # Boss enrage (§F-9): the first time a boss falls to ≤25% max HP it enrages —
+    # one-way, checked on every HP change (all damage paths converge here). The flag
+    # flips phase gates immediately; the Enrage component itself fires as an
+    # `on_enrage` reaction in the next reaction window.
+    if (isinstance(target, EnemyState) and target.is_boss and not target.enraged
+            and target.alive and target.in_execute_window):
+        target.enraged = True
+        _log(st, "enrage", f"{target.name} ENRAGES ({target.effective_hp}/"
+             f"{target.max_hp} HP) — the execute window is open.", enemy=target.id)
     # Lethality is on effective_hp (R-7): hp + temp_mod. A pump buffer can keep a
     # creature alive at hp 0; a wound can kill at hp > 0.
     if target.effective_hp > 0:
@@ -2424,6 +3086,7 @@ def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
     """A removed enemy leaves the board and its pending intent is discarded. A channel
     aimed at it simply loses its target and holds inert — losing an aura target is not
     a break cause (GDD §8), so the caster keeps concentrating until they drop it."""
+    _break_enemy_channels(st, enemy, "channeler died")  # its OWN channels die with it
     if enemy in st.enemies:
         st.enemies.remove(enemy)
     if enemy.id in st.acted_enemies:
@@ -2458,6 +3121,7 @@ def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None
             ctx.setdefault("drawn_cards", []).append(card)
         _log(st, "draw", f"{char.name} draws {card.name}.",
              character=char.id, card=card.id, card_name=card.name)
+        _fire_event(st, "card_draw", char)  # one event per card drawn
 
 
 def _check_end(st: GameState) -> None:
@@ -2534,8 +3198,19 @@ def _lowest_hp(combatants: List):
 
 
 def _legal_attack_targets(st: GameState, actor: CharacterState) -> List[EnemyState]:
-    """The enemies `actor` may basic-attack, honouring its attack mode + rows."""
-    return _reachable_targets(actor, st.living_enemies())
+    """The enemies `actor` may basic-attack, honouring its attack mode + rows — and a
+    live enemy taunt (§F-3 "taunt-us"): while the taunter lives and is reachable, it is
+    the ONLY legal basic-attack target. An unreachable/dead taunter lifts the bind."""
+    reachable = _reachable_targets(actor, st.living_enemies())
+    if actor.taunted_to is not None:
+        bound = [e for e in reachable if e.id == actor.taunted_to]
+        taunter = st.enemy(actor.taunted_to)
+        if taunter is None or not taunter.alive:
+            actor.taunted_to = None  # taunter gone — the bind dies with it
+        elif bound:
+            return bound
+        # taunter alive but unreachable: attacks fall back to the normal pool
+    return reachable
 
 
 # --------------------------------------------------------------------------- #
@@ -2575,8 +3250,19 @@ def _move_choice_label(effect, card) -> str:
 def _legal_choice(st: GameState) -> List[Action]:
     """A mandatory mid-resolution card pick: one action per candidate (no pass —
     the choice must be made while cards remain). For a scry each revealed card
-    offers two actions (top / bottom)."""
+    offers two actions (top / bottom). For a trigger-time target pick one action
+    per legal creature (the ability is on the stack; it must be aimed)."""
     pc = st.pending_choice
+    if pc.kind == "mode":
+        return [Action("choose_mode", pc.chooser_id, mode=key,
+                       label=f"{pc.item.label}: {label}")
+                for key, label in _modal_pick_options(pc.effect)]
+    if pc.kind == "target":
+        what = _effect_site_label(pc.effect)
+        suffix = f" — {what}" if what else ""
+        return [Action("choose_target", pc.chooser_id, target_id=tid,
+                       label=f"Target {tl}{suffix}")
+                for tid, tl in _effect_target_options(st, pc.effect, pc.item.card)]
     if pc.kind == "scry":
         actions: List[Action] = []
         draw_pos = len(pc.top) + 1  # the next 'on top' pick becomes draw position N
@@ -2604,6 +3290,11 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     where Cast may cast several sorcery-speed spells — plus free instants, the
     free voluntary drop, and end turn."""
     actions: List[Action] = []
+    # Stunned (§F-3 enemy Debilitate): the proactive window is denied outright — the
+    # only move is to end the turn (which spends one stack of the stun). Reaction
+    # windows (instants / Mitigate) are unaffected; see _r_stun.
+    if actor.stunned > 0:
+        return [Action("end_turn", actor.id, label="Stunned — end turn")]
     mode = actor.acted_mode
     vig = _has_kw(actor, "vigilance")  # lifts the attack-vs-cast restriction (GDD §7)
     # Attack (basic, once per round): locked out after a Cast unless vigilant, and
@@ -2653,7 +3344,7 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     # The tactical payoff: you can spend your turn action on Move/Defend/Cast and still hold
     # the swing for the enemy step.
     if (st.phase == "enemy" and _has_kw(actor, "first_strike") and not actor.used_attack
-            and not _prevented_action(actor, "attack")):
+            and not _prevented_action(actor, "attack") and actor.stunned == 0):
         dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
         for e in _legal_attack_targets(st, actor):
             actions.append(Action("attack", actor.id, target_id=e.id,
@@ -2704,29 +3395,58 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
     """One cast Action per (mode × legal target). Modal cards offer one branch per
     mode (the option is chosen here, at cast); a counter offers one option per
     enemy action it could answer; other cards offer one option per legal target.
+    An {X}-cost card additionally offers one cast per affordable X value.
     The engine enumerates every choice — the UI never invents one."""
+    base = _cost_total(card)
+    # X options: every value the pool can cover beyond the base cost (the caller
+    # already checked _can_pay, so spare >= 0). Non-X cards get the single None.
+    x_options = (range(0, len(actor.pool) - base + 1)
+                 if getattr(card.cost, "x", False) else (None,))
+    return [a for x in x_options for a in _cast_actions_at_x(st, actor, card, x)]
+
+
+def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
+                       x: Optional[int]) -> List[Action]:
+    xlabel = f" (X={x})" if x is not None else ""
     out: List[Action] = []
     for mode_idx, effects, mlabel in _mode_specs(card):
         prefix = f"Cast {card.name}"
         if mlabel:
             prefix += f" — {mlabel}"
-        # A card whose effects target independently (≥2 sites, e.g. Agony Warp)
-        # offers one cast per COMBINATION of per-site targets. A counter or a
-        # single-site card keeps one cast per primary target.
+        # A cast whose effects target independently (≥2 sites — Agony Warp's two
+        # wounds, or a multi-mode combo like Cryptic Command's "counter + bounce")
+        # offers one cast per COMBINATION of per-site picks. A site with no legal
+        # option (a counter with nothing on the stack) makes that mode/combo
+        # uncastable — matching "you can't choose a mode you can't target".
         sites = _target_sites(effects, card)
-        if _counter_filter(effects) is None and len(sites) >= 2:
-            per_site = [_side_options(st, side) for _key, side in sites]
+        if len(sites) >= 2:
+            per_site = []
+            for _key, side, targeted, kind in sites:
+                if isinstance(side, str) and side.startswith("stack:"):
+                    filt = side[len("stack:"):]
+                    opts = [(f"#{s.uid}", s.label) for s in st.stack
+                            if s.source_side == "enemy" and _filter_matches(filt, s)]
+                else:
+                    opts = _side_options(st, side)
+                    if targeted:  # hexproof hostiles can't be TARGETED (GDD §7)
+                        opts = [(tid, tl) for tid, tl in opts
+                                if not _hexproof_hostile(st, tid)]
+                    if kind == "revive":  # only a DOWNED ally can be revived
+                        opts = _downed_only(st, opts)
+                per_site.append(opts)
+            if not all(per_site):
+                continue  # a required site has no legal pick — combo uncastable
             for combo in itertools.product(*per_site):
                 tids = tuple(tid for tid, _ in combo)
-                labels = ", ".join(tl for _, tl in combo)
+                labels = ", ".join(tl for _, tl in combo if tl)
                 out.append(Action("cast", actor.id, card_id=card.id, target_id=tids[0],
-                                  targets=tids, mode=mode_idx,
-                                  label=prefix + f" on {labels}"))
+                                  targets=tids, mode=mode_idx, x=x,
+                                  label=prefix + (f" on {labels}" if labels else "") + xlabel))
         else:
             for tid, tlabel in _target_options_for(st, effects, card):
-                label = prefix + (f" on {tlabel}" if tlabel else "")
+                label = prefix + (f" on {tlabel}" if tlabel else "") + xlabel
                 out.append(Action("cast", actor.id, card_id=card.id, target_id=tid,
-                                  mode=mode_idx, label=label))
+                                  mode=mode_idx, x=x, label=label))
     return out
 
 
@@ -2741,16 +3461,32 @@ def _modal_bullets(card: Card) -> List[str]:
 
 
 def _mode_specs(card: Card):
-    """[(mode_index, effects, mode_label)] — one entry per modal mode, or a single
-    (None, card.effects, "") for a non-modal card. A mode's label is its own `label`,
-    else its rules-text bullet, else a bare 'Option N'."""
-    modal = next((e for e in card.effects if e.kind == "modal"), None)
-    if modal is not None:
-        bullets = _modal_bullets(card)
-        return [(i, list(m.effects),
-                 m.label or (bullets[i] if i < len(bullets) else "") or f"Option {i + 1}")
-                for i, m in enumerate(modal.modes)]
-    return [(None, list(card.effects), "")]
+    """[(mode_key, effects, mode_label)] — one entry per castable mode CHOICE, or a
+    single (None, card.effects, "") for a non-modal card.
+
+    "Choose one": one entry per mode; mode_key is the mode index. "Choose two" /
+    "choose one or more" (`choose`>1 / `or_more`): one entry per legal COMBINATION
+    of modes; mode_key is a bitmask of the chosen indices and the effects are the
+    modes' effects concatenated in mode order (`_effects_of_mode` mirrors both)."""
+    modal = next((e for e in card.effects
+                  if e.kind == "modal" and getattr(e, "trigger", None) is None), None)
+    if modal is None:
+        return [(None, list(card.effects), "")]
+    bullets = _modal_bullets(card)
+    labels = [m.label or (bullets[i] if i < len(bullets) else "") or f"Option {i + 1}"
+              for i, m in enumerate(modal.modes)]
+    if not _modal_is_multi(modal):
+        return [(i, list(m.effects), labels[i]) for i, m in enumerate(modal.modes)]
+    n = len(modal.modes)
+    k = min(max(1, getattr(modal, "choose", 1) or 1), n)
+    sizes = range(k, n + 1) if getattr(modal, "or_more", False) else (k,)
+    out = []
+    for size in sizes:
+        for combo in itertools.combinations(range(n), size):
+            out.append((sum(1 << i for i in combo),
+                        [e for i in combo for e in modal.modes[i].effects],
+                        " + ".join(labels[i] for i in combo)))
+    return out
 
 
 def _iter_leaf(effects):
@@ -2770,15 +3506,57 @@ def _counter_filter(effects) -> Optional[str]:
     return None
 
 
+def _effect_target_options(st: GameState, effect, card=None):
+    """[(id, label)] one effect's chosen target may pick, under the usual pick
+    rules (`targeted` honours hexproof; revive needs a downed ally). Used for the
+    trigger-time target pick of a fired triggered ability. A "$slot" target
+    resolves its descriptor through the card's slot table."""
+    desc = getattr(effect, "target", None)
+    if isinstance(desc, str) and card is not None:
+        desc = card.targets.get(desc[1:])
+    side = desc.side.value if getattr(desc, "side", None) is not None else "any"
+    opts = _side_options(st, side)
+    if getattr(desc, "targeted", False):
+        opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
+    if effect.kind == "revive":
+        opts = _downed_only(st, opts)
+    return opts
+
+
+def _hexproof_hostile(st: GameState, tid) -> bool:
+    """True when `tid` is a hexproof ENEMY from a player caster's point of view —
+    illegal for a TARGETED pick. Friendly targeting is always fine (GDD §6/§7)."""
+    e = st.enemy(tid) if tid is not None else None
+    return e is not None and _has_kw(e, "hexproof")
+
+
+def _downed_only(st: GameState, opts):
+    """Filter creature options to DOWNED characters — the only legal picks for a
+    revive (a standing ally has nothing to come back from)."""
+    out = []
+    for tid, tl in opts:
+        c = st.character(tid) if tid is not None else None
+        if c is not None and not c.alive:
+            out.append((tid, tl))
+    return out
+
+
 def _side_options(st: GameState, side):
-    """[(creature_id, label)] of the living creatures a target on `side` may pick."""
+    """[(creature_id, label)] of the creatures a target on `side` may pick.
+
+    Party options include DOWNED characters — incapacitation is recoverable
+    (R-7), the body stays on the battlefield, and it must be pickable so heals
+    and revives can reach it. Enemies/tokens leave play at 0 HP, so only living
+    ones are offered."""
     if side == "enemy":
         return [(e.id, e.name) for e in st.living_enemies()]
     if side == "ally":
-        return [(c.id, c.name) for c in (st.living_party() + st.living_tokens())]
+        return ([(c.id, c.name) for c in st.party]
+                + [(t.id, t.name) for t in st.living_tokens()])
     if side == "any":
-        return [(c.id, c.name) for c in
-                (st.living_enemies() + st.living_party() + st.living_tokens())]
+        return ([(e.id, e.name) for e in st.living_enemies()]
+                + [(c.id, c.name) for c in st.party]
+                + [(t.id, t.name) for t in st.living_tokens()])
     return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)
 
 
@@ -2792,33 +3570,57 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if s.source_side == "enemy" and _filter_matches(filt, s)]
-    side = None
-    for e in _iter_leaf(effects):
+    side, targeted, kind = None, False, None
+    # Triggered effects pick their targets when the trigger fires, not at cast
+    # (mirrors the _target_sites exclusion). Nested effects never carry triggers,
+    # so filtering the top level before descending is sufficient.
+    for e in _iter_leaf([e for e in effects if getattr(e, "trigger", None) is None]):
         desc = getattr(e, "target", None)
         if isinstance(desc, str):  # "$T1" slot ref — resolve its side from the card
             sd = card.targets.get(desc[1:]) if card is not None else None
-            if sd is not None and getattr(sd, "targeted", False):
+            if sd is not None:
                 side = sd.side.value if sd.side is not None else "any"
+                targeted = bool(getattr(sd, "targeted", False))
+                kind = e.kind
                 break
             continue
-        if desc is not None and getattr(desc, "targeted", False):
+        # Any CHOSEN descriptor needs a pick at cast — `targeted` governs
+        # interaction rules, not whether a target is chosen. (An untargeted-chosen
+        # effect cast without one fizzled at resolution: the Cryptic-bounce bug.)
+        if desc is not None and getattr(desc, "mode", None) == TargetMode.chosen:
             side = desc.side.value
+            targeted = bool(getattr(desc, "targeted", False))
+            kind = e.kind
             break
-    return _side_options(st, side)
+    opts = _side_options(st, side)
+    if targeted:  # a TARGETED pick may not name a hexproof hostile (GDD §7)
+        opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
+    if kind == "revive":  # only a DOWNED ally can be revived
+        opts = _downed_only(st, opts)
+    return opts
 
 
 def _target_sites(effects, card: Card):
     """Ordered independent target sites for a mode's TOP-LEVEL effects. Each
-    top-level chosen+targeted direct descriptor is its own site (an independent
-    target — e.g. Agony Warp's two wounds); each distinct slot ref is one shared
-    site. conditional/modal/self/all/untargeted contribute none, so a conditional's
-    nested effects reuse the primary (first) target. Returns [(key, side)] where
-    key is ('slot', name) or ('eff', id(effect)). Used by enumeration AND
+    top-level CHOSEN direct descriptor is its own site (an independent target —
+    e.g. Agony Warp's two wounds) whether or not it is `targeted` — `targeted`
+    governs interaction rules (hexproof, "target" wording), not whether a pick is
+    needed; an untargeted-chosen effect (Cryptic Command's bounce) still needs its
+    creature chosen at cast, or it fizzles at resolution. Each distinct slot ref is
+    one shared site. A counter is a site whose options are enemy STACK actions
+    (side "stack:<filter>"). conditional/modal/self/all contribute none, so a
+    conditional's nested effects reuse the primary (first) target. Returns
+    [(key, side, targeted, kind)] where key is ('slot', name) or ('eff', id(effect));
+    `targeted` carries the descriptor's flag so enumeration can honour hexproof
+    (a targeted pick may not offer a hexproof hostile; an untargeted-chosen one
+    may — non-targeting effects beat hexproof, GDD §7), and `kind` is the owning
+    effect's kind so kind-specific pick rules apply (revive: downed allies only).
+    Used by enumeration AND
     resolution, so site order matches between them."""
     sites = []
     seen_slots = set()
 
-    def add(desc, eff_key, forced=False):
+    def add(desc, eff_key, kind, forced=False):
         if isinstance(desc, str):  # "$T1" slot ref — one shared site per slot name
             name = desc[1:]
             if name in seen_slots:
@@ -2826,21 +3628,32 @@ def _target_sites(effects, card: Card):
             seen_slots.add(name)
             sd = card.targets.get(name) if card is not None else None
             side = sd.side.value if sd is not None and sd.side is not None else "any"
-            sites.append((("slot", name), side))
-        elif desc is not None and (forced or (getattr(desc, "targeted", False)
-                                   and getattr(desc, "mode", None) == TargetMode.chosen)):
-            sites.append((eff_key, desc.side.value))
+            sites.append((("slot", name), side, bool(getattr(sd, "targeted", False)), kind))
+        elif desc is not None and (forced
+                                   or getattr(desc, "mode", None) == TargetMode.chosen):
+            sites.append((eff_key, desc.side.value,
+                          bool(getattr(desc, "targeted", False)), kind))
 
     for e in effects:
         if e.kind in ("conditional", "modal"):
             continue
+        # A TRIGGERED effect's chosen target is NOT a cast-time site: it is
+        # picked when the trigger fires (MTG-style — see _raise_next_trigger_pick).
+        # A `$slot` still becomes a cast site when an untriggered effect (a
+        # continuous aura) shares it — the fired effect then reuses that target.
+        if getattr(e, "trigger", None) is not None:
+            continue
+        if e.kind == "counter":
+            # The counter's target is an enemy action on the stack, not a creature.
+            sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter"))
+            continue
         if e.kind == "fight":
             # Fight's two targets are always chosen (even authored inline). Force both
             # sites, keying `other` apart from the primary so each binds independently.
-            add(getattr(e, "target", None), ("eff", id(e)), forced=True)
-            add(getattr(e, "other", None), ("eff_other", id(e)), forced=True)
+            add(getattr(e, "target", None), ("eff", id(e)), "fight", forced=True)
+            add(getattr(e, "other", None), ("eff_other", id(e)), "fight", forced=True)
             continue
-        add(getattr(e, "target", None), ("eff", id(e)))
+        add(getattr(e, "target", None), ("eff", id(e)), e.kind)
     return sites
 
 
@@ -2850,12 +3663,16 @@ def _effect_site_label(e) -> Optional[str]:
     wounds) instead of the ambiguous "target 1 / target 2". None == let the UI use
     its generic fallback."""
     k = e.kind
+
+    def stat(v):  # a Ref power/toughness ("pump X") displays as X
+        return v if isinstance(v, int) else "X"
+
     if k == "wound":
-        return f"weaken −{e.power}/−{e.toughness}"
+        return f"weaken −{stat(e.power)}/−{stat(e.toughness)}"
     if k == "pump":
-        return f"buff +{e.power}/+{e.toughness}"
+        return f"buff +{stat(e.power)}/+{stat(e.toughness)}"
     if k == "counters":
-        return f"+{e.power}/+{e.toughness} counters"
+        return f"+{stat(e.power)}/+{stat(e.toughness)} counters"
     if k == "deal_damage":
         return f"deal {e.amount} damage" if isinstance(e.amount, int) else "deal damage"
     if k == "heal":
@@ -2910,7 +3727,8 @@ def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:
     effects = next((eff for midx, eff, _ in _mode_specs(card) if midx == action.mode), None)
     if effects is None:
         effects = _mode_specs(card)[0][1]
-    return [_site_label(key, effects, card) for key, _side in _target_sites(effects, card)]
+    return [_site_label(key, effects, card)
+            for key, *_ in _target_sites(effects, card)]
 
 
 # --------------------------------------------------------------------------- #
@@ -2927,15 +3745,17 @@ def _can_pay(actor: CharacterState, card: Card) -> bool:
     return len(pool) >= card.cost.generic
 
 
-def _pay(actor: CharacterState, card: Card, explicit: Optional[List[str]] = None) -> List[str]:
+def _pay(actor: CharacterState, card: Card, explicit: Optional[List[str]] = None,
+         x: int = 0) -> List[str]:
     """Spend the cost from the pool; return the actual colours paid (so a channel
-    can reserve exactly those and release them on end).
+    can reserve exactly those and release them on end). `x` is the chosen X for
+    an {X} cost — paid as that much extra generic mana.
 
     `explicit` (a player-chosen list of colours) overrides the deterministic WUBRG
     order when the generic portion could be paid multiple ways — it is validated to
     exactly cover the cost and be available before anything is spent."""
     if explicit is not None:
-        _validate_payment(actor, card, explicit)
+        _validate_payment(actor, card, explicit, x=x)
         for c in explicit:
             actor.pool.remove(c)
         return list(explicit)
@@ -2945,8 +3765,8 @@ def _pay(actor: CharacterState, card: Card, explicit: Optional[List[str]] = None
         for _ in range(n):
             pool.remove(color.value)
             paid.append(color.value)
-    for _ in range(card.cost.generic):
-        for c in _PAY_ORDER:  # deterministic: spend generic in WUBRG order
+    for _ in range(card.cost.generic + max(0, int(x or 0))):
+        for c in _PAY_ORDER:  # deterministic: spend generic (and X) in WUBRG order
             if c in pool:
                 pool.remove(c)
                 paid.append(c)
@@ -2954,12 +3774,13 @@ def _pay(actor: CharacterState, card: Card, explicit: Optional[List[str]] = None
     return paid
 
 
-def _validate_payment(actor: CharacterState, card: Card, chosen: List[str]) -> None:
+def _validate_payment(actor: CharacterState, card: Card, chosen: List[str],
+                      x: int = 0) -> None:
     """Reject an explicit mana payment that doesn't exactly settle `card`'s cost.
 
     The payment must (1) be drawable from the pool, (2) include each coloured pip
-    the cost demands, and (3) total exactly coloured + generic mana. Extra colours
-    beyond the coloured pips count toward the generic portion."""
+    the cost demands, and (3) total exactly coloured + generic (+ chosen X) mana.
+    Extra colours beyond the coloured pips count toward the generic portion."""
     from collections import Counter
     have = Counter(actor.pool)
     pay = Counter(chosen)
@@ -2970,7 +3791,7 @@ def _validate_payment(actor: CharacterState, card: Card, chosen: List[str]) -> N
     for color, n in need_colored.items():
         if pay.get(color, 0) < n:
             raise ValueError(f"payment is missing {n}×{color} for {card.name}")
-    total_needed = sum(need_colored.values()) + card.cost.generic
+    total_needed = sum(need_colored.values()) + card.cost.generic + max(0, int(x or 0))
     if len(chosen) != total_needed:
         raise ValueError(f"payment must total {total_needed} mana for {card.name}, "
                          f"got {len(chosen)}")

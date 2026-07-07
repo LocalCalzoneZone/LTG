@@ -40,6 +40,14 @@ export interface ManaBlock {
   pending_capacity_choice: boolean;
 }
 
+// A keyword static, pre-labelled by the server (registry display name + rules
+// gloss) so the client renders icon + tooltip without knowing any rules.
+export interface KeywordInfo {
+  id: string; // registry id, e.g. "first_strike"
+  name: string; // display name, e.g. "First Strike"
+  gloss: string; // one-line rules explanation for the tooltip
+}
+
 export interface ChannelSummary {
   card_id: string;
   card_name: string;
@@ -47,6 +55,8 @@ export interface ChannelSummary {
   target_id: string | null;
   target_name: string | null;
   text: string;
+  // What ending this channel fires (the channel_break trigger), "" when none.
+  break_text: string;
 }
 
 export interface CharacterView {
@@ -61,6 +71,9 @@ export interface CharacterView {
   is_channeling: boolean;
   channels_summary: ChannelSummary[];
   status_tags: string[];
+  keywords: KeywordInfo[];
+  // +1/+1 counters received; their stat change is already inside power/hp.
+  counters: number;
   mitigate_value: number;
   acted_mode: string | null;
   turn_ended: boolean;
@@ -91,10 +104,16 @@ export interface CreatureView {
   power: StatBlock;
   hp: StatBlock;
   attack_mode: string;
-  keywords: string[];
+  keywords: KeywordInfo[];
+  // +1/+1 counters received; their stat change is already inside power/hp.
+  counters: number;
   intent: IntentView | null;
   is_boss: boolean;
   is_channeling: boolean;
+  // Held enemy channels (§8): named so the player knows what breaking does.
+  channels: { name: string }[];
+  // One hit of at least this much breaks the enemy's channel(s).
+  break_threshold: number;
   in_execute_window: boolean;
 }
 
@@ -104,19 +123,26 @@ export interface TokenView {
   row: Row;
   power: StatBlock;
   hp: StatBlock;
+  keywords: KeywordInfo[];
+  counters: number;
   is_channeling: boolean;
 }
 
 export interface StackRow {
   label: string;
   kind: string;
-  mode: string | null; // melee | ranged | spell (null for a generic ability)
+  // Engine vocabulary (serialize.py action_mode): "melee attack" | "ranged attack"
+  // | "spell" | "ability" — the damage lane, so what answers it is unambiguous.
+  mode: string | null;
   source_id: string;
   source_name: string | null;
   source_side: string;
   target_id: string | null;
   target_name: string | null;
   reserved_pips: string;
+  // The full card behind the action (cast / card-carried trigger), for the
+  // hover tooltip; null for basic attacks and enemy components.
+  card: CardView | null;
   top: boolean;
   uid: number;
 }
@@ -125,7 +151,8 @@ export interface IntentRow {
   creature_id: string;
   creature_name: string;
   intent_text: string;
-  mode: string | null; // melee | ranged | spell (null for a generic ability)
+  // Same vocabulary as StackRow.mode: "melee attack" | "ranged attack" | "spell" | "ability".
+  mode: string | null;
   target_id: string | null;
   target_name: string | null;
 }
@@ -134,6 +161,9 @@ export interface LogEntry {
   type: string;
   msg: string;
   data: Record<string, unknown>;
+  // The full card this line references (cast / draw / channel events), for the
+  // hover tooltip; null when the line names no known card.
+  card?: CardView | null;
 }
 
 export interface LegalAction {
@@ -152,6 +182,12 @@ export interface LegalAction {
   target_labels?: (string | null)[];
   color: Color | null;
   mode: number | null;
+  // X chosen for an {X}-cost cast (one legal action per affordable X); null
+  // for non-X actions.
+  x?: number | null;
+  // Candidate handle for a choose_card / choose_scry pick — indexes into
+  // GameSnapshot.pending_choice.candidates.
+  choice?: number | null;
   label: string;
 }
 
@@ -170,6 +206,9 @@ export interface GameSnapshot {
   tokens: TokenView[];
   stack: StackRow[];
   intents: IntentRow[];
+  // A pending card pick's candidates as full cards (only sent to the chooser's
+  // client — hidden information, gated like hands). Null when no pick is open.
+  pending_choice: { kind: string; chooser_id: string; candidates: CardView[] } | null;
   log: LogEntry[];
   legal_actions: LegalAction[];
   result: string | null;
@@ -212,6 +251,26 @@ export interface EnemyIntentSpec {
   action_type?: string;
   intent_type?: string;
 }
+// One enemy component (Design Update 04 §F-3) as authored JSON. The editor edits
+// the common scalars directly; `verbs`/`condition` are edited as JSON blobs and
+// validated server-side (the engine gate rejects anything malformed on save).
+export interface ComponentSpec {
+  id?: string;
+  archetype?: string;
+  timing?: "proactive" | "reactive";
+  trigger?: string;
+  condition?: unknown;
+  cooldown?: number;
+  once_per_encounter?: boolean;
+  priority?: number;
+  target_rule?: string;
+  action_type?: string; // "spell" for magic (counterable by spell counters)
+  channel?: boolean;    // held ongoing effect (broken by a ≥25% hit / removal)
+  phase?: string;       // boss: "pre_enrage" | "post_enrage"
+  move_home?: boolean;
+  telegraph?: string;
+  verbs?: unknown[];
+}
 export interface EnemySpec {
   id?: string;
   name: string;
@@ -219,17 +278,49 @@ export interface EnemySpec {
   level: number;
   power?: number;
   row?: Row;
+  home_row?: Row;
+  attack_mode?: "melee" | "ranged";
+  is_boss?: boolean;
   keywords?: string[];
-  intent: EnemyIntentSpec;
+  flavor?: string;
+  description?: string; // physical appearance (art/narration)
+  // Legacy enemies carry a flat `intent`; framework enemies carry `components`
+  // (their basic attack is synthesized from `power` by the engine).
+  intent?: EnemyIntentSpec;
   ranged_intent?: EnemyIntentSpec | null;
+  components?: ComponentSpec[];
 }
 export interface EncounterDetail {
   id: string;
   name: string;
+  // LLM-generated battle backdrop ("" for hand-authored). Rides the encounter
+  // for the image-generation / narration systems; the editor round-trips it.
+  // (Per-enemy physical `description`s travel inside the enemy dicts.)
+  scene?: string;
   enemies: EnemySpec[];
   tokens: Record<string, unknown>;
 }
 export interface SetupOptions {
   characters: CharacterOption[];
   encounters: EncounterOption[];
+}
+
+// LLM / encounter generation (Options → LLM).
+export interface LlmModel {
+  id: string; // exact OpenRouter slug
+  label: string;
+}
+export interface LlmSettings {
+  model: string;
+  instructions: string;
+  models: LlmModel[];
+  has_key: boolean; // the raw key is never sent to the client
+  difficulties: string[]; // e.g. ["easy","standard","hard"]
+}
+// Partial update; omit `api_key` (or send "") to leave the stored key untouched.
+// `instructions: null` resets the prompt to the server's built-in default.
+export interface LlmSettingsPatch {
+  api_key?: string;
+  model?: string;
+  instructions?: string | null;
 }

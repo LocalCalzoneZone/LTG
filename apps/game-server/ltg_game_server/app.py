@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import content
+from . import content, llm
 from .session import SessionManager
 
 APP_ROOT = Path(__file__).resolve().parent.parent          # apps/game-server
@@ -121,6 +121,50 @@ def delete_encounter(encounter_id: str) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# REST: LLM settings + encounter generation
+# --------------------------------------------------------------------------- #
+class LlmSettingsBody(BaseModel):
+    # All optional: send only what changed. `api_key` absent/"" leaves the stored
+    # key untouched; `api_key: null` clears it (see llm.save_settings).
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    instructions: Optional[str] = None
+
+
+class GenerateEncounterBody(BaseModel):
+    character_ids: List[str]
+    difficulty: str = "standard"
+    note: str = ""
+
+
+@app.get("/api/llm/settings")
+def get_llm_settings() -> Dict[str, Any]:
+    """Public LLM settings for the Options UI (model, instructions, models list,
+    whether a key is set) — never the raw key."""
+    return llm.public_settings()
+
+
+@app.put("/api/llm/settings")
+def put_llm_settings(body: LlmSettingsBody) -> Dict[str, Any]:
+    """Persist a partial settings update; returns the refreshed public settings."""
+    try:
+        return llm.save_settings(body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.post("/api/encounters/generate")
+def generate_encounter(body: GenerateEncounterBody) -> Dict[str, Any]:
+    """Generate + persist a new encounter scoped to the picked party and difficulty,
+    returning its meta (so the client can immediately start a game with it)."""
+    try:
+        meta = llm.generate_encounter(body.character_ids, body.difficulty, body.note)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"encounter": meta}
 
 
 @app.get("/api/games/{session_id}")

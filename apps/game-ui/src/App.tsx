@@ -104,7 +104,10 @@ export default function App() {
       <ChooseModeModal />
       <ZoneModal />
       <CardPickPrompt />
-      <GameOverOverlay onNewGame={() => setShowNewGame(true)} />
+      <GameOverOverlay
+        onNewGame={() => setShowNewGame(true)}
+        onOptions={() => setShowOptions(true)}
+      />
       <PhaseBanner />
       <Toast />
     </div>

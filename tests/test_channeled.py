@@ -141,3 +141,52 @@ def test_channeled_fixture_round_trips(name):
     card = Card.model_validate(data)
     assert card.timing.value == "channeled"
     assert Card.model_validate(card.model_dump()) == card
+
+
+# --- channel_break trigger (goes on the stack when the channel ends) --------- #
+def test_channel_break_render():
+    from ltg_core.translation import channel_break_clause
+    c = chan_card([
+        {"kind": "pump", "power": 1, "toughness": 1,
+         "target": {"mode": "all", "side": "ally"}, "duration": "while_channeled"},
+        {"kind": "deal_damage", "amount": 3,
+         "target": {"mode": "all", "side": "enemy"}, "trigger": "channel_break"},
+    ])
+    text = render(c)
+    assert "While channeled: all allies gain +1 attack and +1 temp HP." in text
+    assert "When this channel ends (dropped or broken): deal 3 damage to all enemies." in text
+    # The clause alone (no lead-in) — what the combat UI's channel note shows.
+    assert channel_break_clause(c.effects, c.targets) == "deal 3 damage to all enemies"
+    # A card without the trigger yields no note.
+    plain = chan_card([{"kind": "pump", "power": 1, "toughness": 1,
+                        "target": {"mode": "all", "side": "ally"}, "duration": "while_channeled"}])
+    assert channel_break_clause(plain.effects, plain.targets) == ""
+
+
+def test_channel_break_rejected_on_non_channeled():
+    with pytest.raises(ValidationError):
+        Card.model_validate({
+            "id": "x", "name": "x", "source_name": "x", "rarity": "common", "level": 1,
+            "type": "Instant", "timing": "instant",
+            "effects": [{"kind": "deal_damage", "amount": 2, "trigger": "channel_break",
+                         "target": {"mode": "all", "side": "enemy"}}],
+        })
+
+
+def test_channel_break_and_while_channeled_are_mutually_exclusive():
+    with pytest.raises(ValidationError):
+        chan_card([{"kind": "pump", "power": 1, "toughness": 1,
+                    "target": {"mode": "all", "side": "ally"},
+                    "duration": "while_channeled", "trigger": "channel_break"}])
+
+
+def test_leaves_the_battlefield_builds_as_channel_break():
+    # MTG "when ~ leaves the battlefield" wording on an enchantment imports as a
+    # channel_break trigger (the sacrifice/leave-play analogue, GDD §8).
+    card = build_card({
+        "name": "Seal of Fire", "cmc": 1.0, "type_line": "Enchantment", "rarity": "common",
+        "oracle_text": "When Seal of Fire leaves the battlefield, Seal of Fire deals 2 damage to any target.",
+    })
+    assert card.timing.value == "channeled"
+    assert card.effects and all(e.trigger == "channel_break" for e in card.effects)
+    assert "When this channel ends" in card.translated_text

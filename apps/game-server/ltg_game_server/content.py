@@ -204,6 +204,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
     for eid, scen in _BUILTIN_ENCOUNTERS.items():
         reg[eid] = {
             "name": scen["name"],
+            "scene": scen.get("scene", ""),
             "enemies": copy.deepcopy(scen["enemies"]),
             "tokens": copy.deepcopy(scen.get("tokens", {})),
             "source": "builtin",
@@ -218,6 +219,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
         eid = path.stem
         reg[eid] = {
             "name": raw.get("name", eid),
+            "scene": str(raw.get("scene") or ""),
             "enemies": copy.deepcopy(raw["enemies"]),
             "tokens": copy.deepcopy(raw.get("tokens", {})),
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
@@ -257,13 +259,16 @@ def encounter_for(encounter_id: str) -> Optional[Dict[str, Any]]:
 
 
 def encounter_detail(encounter_id: str) -> Optional[Dict[str, Any]]:
-    """The full, editable encounter (id + name + raw enemy specs + tokens)."""
+    """The full, editable encounter (id + name + scene + raw enemy specs + tokens).
+    `scene` and the per-enemy `description` fields feed the image-generation /
+    narration systems; the editor round-trips them untouched."""
     scen = _encounter_registry().get(encounter_id)
     if scen is None:
         return None
     return {
         "id": encounter_id,
         "name": scen["name"],
+        "scene": scen.get("scene", ""),
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
     }
@@ -288,11 +293,28 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError
         except (KeyError, TypeError, ValueError):
             raise ValueError(f"{name}: hp must be a positive number")
+        try:
+            if int(e["level"]) <= 0:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"{name}: level must be a positive number")
+        # An enemy defines its behaviour either through a legacy `intent` template or
+        # through the Update-04 framework (`components`, with the basic attack derived
+        # from Power). A plain chassis with neither is legal — it just attacks. So the
+        # only requirement is that, if an `intent` is present, it carries a name.
         intent = e.get("intent")
-        if not isinstance(intent, dict) or not str(intent.get("name", "")).strip():
-            raise ValueError(f"{name}: needs an attack (intent) with a name")
+        if intent is not None and (
+            not isinstance(intent, dict) or not str(intent.get("name", "")).strip()
+        ):
+            raise ValueError(f"{name}: intent, if given, needs a name")
+    if sum(1 for e in enemies if isinstance(e, dict) and e.get("is_boss")) > 1:
+        raise ValueError("an encounter can have at most one boss")
     cleaned = {
         "name": str(raw.get("name") or "Encounter"),
+        # The battle backdrop (LLM-generated; "" for hand-authored encounters).
+        # Rides the file for the image-generation / narration systems — as do the
+        # per-enemy "description" fields, which travel inside the enemy dicts.
+        "scene": str(raw.get("scene") or ""),
         "enemies": copy.deepcopy(enemies),
         "tokens": copy.deepcopy(raw.get("tokens", {})) if isinstance(raw.get("tokens"), dict) else {},
     }

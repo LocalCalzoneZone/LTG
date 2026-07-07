@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { actionModeColor } from "../lib/format";
 import { useGame } from "../lib/store";
-import type { StackRow } from "../lib/types";
+import type { LegalAction, StackRow } from "../lib/types";
+import { HandCard } from "./Hand";
 
-function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function Backdrop({ children, onClose, wide = false }: {
+  children: React.ReactNode; onClose: () => void; wide?: boolean;
+}) {
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
@@ -12,7 +16,14 @@ function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: (
         onClose();
       }}
     >
-      <div className="max-h-[80vh] w-[min(90vw,560px)] overflow-y-auto rounded-xl bg-slate-800 p-4 shadow-2xl ring-1 ring-white/10" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`max-h-[80vh] overflow-y-auto rounded-xl p-4 shadow-2xl ring-1 ring-white/10 ${
+          wide
+            ? "w-fit min-w-[320px] max-w-[min(94vw,1080px)] bg-slate-950"
+            : "w-[min(90vw,560px)] bg-slate-800"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>
@@ -94,6 +105,11 @@ export function ZoneModal() {
                   <div className="font-semibold">{ch.card_name}</div>
                   {ch.target_name && <div className="text-xs text-gray-400">on {ch.target_name}</div>}
                   <div className="text-xs text-gray-300">{ch.text}</div>
+                  {ch.break_text && (
+                    <div className="mt-0.5 text-xs text-amber-300">
+                      When this channel ends: {ch.break_text}.
+                    </div>
+                  )}
                 </div>
                 {dropIdx != null && (
                   <button
@@ -151,7 +167,11 @@ function CardList({ cards }: { cards: { id: string; name: string; type: string; 
   );
 }
 
-/** §4.6 mandatory mid-resolution pick (move_card / scry) — a blocking prompt. */
+/** §4.6 mandatory mid-resolution pick (move_card / scry / trigger target /
+ * trigger mode) — a blocking prompt. Card picks (scry / tutor / discard) show
+ * the FULL cards in a horizontal, scrollable row — the whole card is the
+ * information the choice needs — with the placement buttons under each one.
+ * Target/mode picks (no cards involved) keep the simple button list. */
 export function CardPickPrompt() {
   const snapshot = useGame((s) => s.snapshot);
   const submit = useGame((s) => s.submitIndex);
@@ -161,9 +181,70 @@ export function CardPickPrompt() {
   const holder = snapshot.priority.holder_character_id;
   if (!holder || !you.includes(holder)) return null; // only the controlling client acts
   const picks = snapshot.legal_actions.filter(
-    (a) => a.kind === "choose_card" || a.kind === "choose_scry",
+    (a) =>
+      a.kind === "choose_card" || a.kind === "choose_scry" || a.kind === "choose_target" ||
+      a.kind === "choose_mode",
   );
   if (!picks.length) return null;
+
+  const pending = snapshot.pending_choice;
+  const cardPicks = picks.filter((a) => a.kind === "choose_card" || a.kind === "choose_scry");
+  if (pending && pending.candidates.length && cardPicks.length === picks.length) {
+    // Group the actions by the candidate they act on.
+    const byChoice: Record<number, LegalAction[]> = {};
+    for (const a of cardPicks) if (a.choice != null) (byChoice[a.choice] ||= []).push(a);
+    const isScry = pending.kind === "scry";
+    return (
+      <Backdrop wide onClose={() => {}}>
+        <h2 className="mb-3 text-lg font-bold">
+          {isScry ? "Scry — place each card on top or bottom" : "Choose a card"}
+        </h2>
+        <div className="scroll-thin flex overflow-x-auto pb-2">
+          <div className="mx-auto flex items-stretch gap-3">
+          {pending.candidates.map((card, i) => {
+            const acts = byChoice[i] ?? [];
+            const single = acts.length === 1 ? acts[0] : null;
+            return (
+              <div key={`${card.id}-${i}`} className="flex w-44 shrink-0 flex-col gap-1.5">
+                <div className={`h-64 ${single ? "" : "pointer-events-none"}`}>
+                  <HandCard
+                    card={card}
+                    playable
+                    active={false}
+                    onClick={() => single && submit(single.index)}
+                  />
+                </div>
+                {single ? (
+                  <button
+                    onClick={() => submit(single.index)}
+                    className="rounded bg-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-blue-600"
+                  >
+                    {single.label}
+                  </button>
+                ) : (
+                  acts.map((a) => (
+                    <button
+                      key={a.index}
+                      onClick={() => submit(a.index)}
+                      className="rounded bg-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-blue-600"
+                    >
+                      {a.target_id === "top"
+                        ? `▲ Top${(a.label.match(/\(draw #\d+\)/) ?? [""])[0] && ` ${(a.label.match(/\(draw #\d+\)/) ?? [""])[0]}`}`
+                        : a.target_id === "bottom"
+                          ? "▼ Bottom"
+                          : a.label}
+                    </button>
+                  ))
+                )}
+              </div>
+            );
+          })}
+          </div>
+        </div>
+      </Backdrop>
+    );
+  }
+
   return (
     <Backdrop onClose={() => {}}>
       <h2 className="mb-3 text-lg font-bold">Make a choice</h2>
@@ -183,7 +264,13 @@ export function CardPickPrompt() {
 }
 
 /** §4.16 game-over overlay (board stays visible behind). */
-export function GameOverOverlay({ onNewGame }: { onNewGame: () => void }) {
+export function GameOverOverlay({
+  onNewGame,
+  onOptions,
+}: {
+  onNewGame: () => void;
+  onOptions: () => void;
+}) {
   const result = useGame((s) => s.gameOver ?? s.snapshot?.result ?? null);
   if (!result) return null;
   const win = result === "victory";
@@ -193,12 +280,23 @@ export function GameOverOverlay({ onNewGame }: { onNewGame: () => void }) {
         <div className={`text-4xl font-black ${win ? "text-emerald-400" : "text-red-500"}`}>
           {win ? "Victory" : "Defeat"}
         </div>
-        <button
-          onClick={onNewGame}
-          className="mt-5 rounded-lg bg-blue-600 px-5 py-2 font-semibold hover:bg-blue-500"
-        >
-          New Game
-        </button>
+        <div className="mt-2 text-sm text-gray-400">
+          Tweak your party, encounters, or generation settings, then start again.
+        </div>
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <button
+            onClick={onOptions}
+            className="rounded-lg bg-slate-600 px-5 py-2 font-semibold hover:bg-slate-500"
+          >
+            Options
+          </button>
+          <button
+            onClick={onNewGame}
+            className="rounded-lg bg-blue-600 px-5 py-2 font-semibold hover:bg-blue-500"
+          >
+            New Game
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -280,7 +378,7 @@ export function PhaseBanner() {
               {banner.row.source_name}
             </span>
             <span className="text-gray-300"> · {banner.row.label}</span>
-            {banner.row.mode && <span className="text-sky-300/90"> ({banner.row.mode})</span>}
+            {banner.row.mode && <span className={actionModeColor(banner.row.mode)}> ({banner.row.mode})</span>}
             {banner.row.target_name && <span className="text-gray-300"> → {banner.row.target_name}</span>}
           </div>
         ) : (

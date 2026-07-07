@@ -253,6 +253,113 @@ def test_channel_cannot_be_voluntarily_dropped_the_turn_it_starts():
     assert hero(state).channels == []
 
 
+def _seal():
+    # A channel with a break rider: +1/+1 on the holder while held, and 3 damage to
+    # every enemy — on the stack, respondable — when the channel ends for any reason.
+    return C("seal", "channeled", [
+        {"kind": "pump", "power": 1, "toughness": 1, "target": {"mode": "self"}},
+        {"kind": "deal_damage", "amount": 3, "trigger": "channel_break",
+         "target": {"mode": "all", "side": "enemy"}},
+    ], colors={"R": 1})
+
+
+def test_channel_break_trigger_fires_on_voluntary_drop():
+    state = make_state([_seal()], enemy_hp=10, intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="seal")
+    assert len(hero(state).channels) == 1 and orc(state).hp == 10  # armed, not fired
+
+    for ch in hero(state).channels:            # make the drop legal this turn
+        ch.started_turn = state.turn - 1
+    # Apply the drop WITHOUT settling: the trigger must sit on the stack first.
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    assert [i.kind for i in mid.stack] == ["triggered"]
+    assert orc(mid).hp == 10                   # not yet — the window is open
+    after = settle_window(mid)
+    assert orc(after).hp == 7                  # the break trigger resolved
+    assert hero(after).channels == []
+
+
+def test_channel_break_trigger_fires_on_breaking_hit():
+    # A ≥25%-max-HP hit breaks concentration; the rider still fires (any reason).
+    state = make_state([_seal()], hero_hp=20, intent_amount=5)  # 5 ≥ ceil(20/4)
+    state, _ = do(state, kind="cast", card_id="seal")
+    assert len(hero(state).channels) == 1
+    state = _advance_to_turn(state, 2)         # the enemy's hit lands en route
+    assert hero(state).channels == []          # broken by the hit
+    assert orc(state).hp == 7                  # and the rider went off
+
+
+def _sunstone():
+    # A break rider with a CHOSEN target: "when this channel ends, deal 2 damage
+    # to the chosen enemy". The pick happens when the trigger fires, not at cast.
+    return C("sunstone", "channeled", [
+        {"kind": "pump", "power": 1, "toughness": 1, "target": {"mode": "self"},
+         "duration": "while_channeled"},
+        {"kind": "deal_damage", "amount": 2, "trigger": "channel_break",
+         "target": {"mode": "chosen", "side": "enemy", "targeted": True}},
+    ], colors={"R": 1})
+
+
+def test_channel_break_chosen_target_is_picked_at_trigger_not_cast():
+    state = make_state([_sunstone()],
+                       enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    # The cast is UNTARGETED: the break effect's chosen target is not a cast-time
+    # site, so exactly one cast action with no target is offered.
+    casts = [a for a in legal_actions(state) if a.kind == "cast"]
+    assert len(casts) == 1 and casts[0].target_id is None
+    state, _ = do(state, kind="cast", card_id="sunstone")
+    assert len(hero(state).channels) == 1
+
+    for ch in hero(state).channels:            # make the drop legal this turn
+        ch.started_turn = state.turn - 1
+    # Dropping fires the trigger; the target pick comes as it goes on the stack,
+    # BEFORE the reaction window opens (MTG: targets chosen on put-on-stack).
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    assert mid.pending_choice is not None and mid.pending_choice.kind == "target"
+    opts = legal_actions(mid)
+    assert {a.kind for a in opts} == {"choose_target"}
+    assert {a.target_id for a in opts} == {"orc", "gob"}
+    mid, _ = apply_action(mid, pick(mid, kind="choose_target", target_id="gob"))
+    assert mid.stack[-1].target_id == "gob" and not mid.stack[-1].needs_target
+    after = settle_window(mid)
+    assert after.enemy("gob").hp == 8          # the pick landed
+    assert after.enemy("orc").hp == 10         # the other enemy untouched
+
+
+def test_channel_break_target_pick_on_breaking_hit():
+    # The pick also appears when the channel breaks involuntarily (a ≥25% hit).
+    state = make_state([_sunstone()], hero_hp=20, intent_amount=5)
+    state, _ = do(state, kind="cast", card_id="sunstone")
+    state, _ = apply_action(state, pick(state, kind="end_turn"))
+    while state.pending_choice is None and state.stack:   # enemy attack window
+        state, _ = apply_action(state, pick(state, kind="pass"))
+    assert state.pending_choice is not None and state.pending_choice.kind == "target"
+    assert hero(state).channels == []                     # broken by the hit
+    state, _ = apply_action(state, pick(state, kind="choose_target", target_id="orc"))
+    state = settle_window(state)
+    assert orc(state).hp == 8
+
+
+def test_channel_break_slot_target_shares_the_cast_pick():
+    # A break effect on a SHARED $slot reuses the aura target chosen at cast —
+    # the cast still asks (once), and no trigger-time pick is raised.
+    brand = C("brand", "channeled", [
+        {"kind": "wound", "power": 1, "toughness": 0, "target": "$T1",
+         "duration": "while_channeled"},
+        {"kind": "deal_damage", "amount": 2, "trigger": "channel_break", "target": "$T1"},
+    ], colors={"B": 1}, targets={"T1": {"mode": "chosen", "side": "enemy", "targeted": True}})
+    state = make_state([brand], enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    assert all(a.target_id is not None
+               for a in legal_actions(state) if a.kind == "cast")  # cast-time pick
+    state, _ = do(state, kind="cast", card_id="brand", target_id="gob")
+    for ch in hero(state).channels:
+        ch.started_turn = state.turn - 1
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    assert mid.pending_choice is None          # no trigger-time pick — slot is bound
+    after = settle_window(mid)
+    assert after.enemy("gob").hp == 8 and after.enemy("orc").hp == 10
+
+
 def test_lethal_wound_aura_kills_target_without_breaking_other_channels():
     # Regression: channelling a −2/−2 aura onto a 2-HP enemy kills it outright (a wound
     # that empties toughness is lethal), and losing that aura's target does NOT break
@@ -502,6 +609,7 @@ def test_counters_are_persistent_power_and_max_hp():
     after, _ = do(make_state([card], hero_power=3), kind="cast", card_id="grow")
     h = hero(after)
     assert h.power == 5 and h.max_hp == 22 and h.hp == 22  # not cleared at end step
+    assert h.counters == 2  # tallied separately so the UI can badge them
 
 
 def test_wound_lowers_effective_hp_and_a_heal_fills_it_first():
@@ -834,3 +942,220 @@ def test_every_example_card_is_executable(name, card):
             for a in [x for x in legal_actions(st2) if x.kind == "cast" and x.card_id == card["id"]]:
                 branch, _ = apply_action(st2, a)
                 settle_window(branch)
+
+
+def _pact(modal_trigger="channel_break"):
+    # A channeled card whose triggered ability is MODAL: the mode (and any target
+    # inside it) is chosen when the trigger fires, not at cast.
+    return C("pact", "channeled", [
+        {"kind": "pump", "power": 1, "toughness": 1, "target": {"mode": "self"},
+         "duration": "while_channeled"},
+        {"kind": "modal", "trigger": modal_trigger, "modes": [
+            {"label": "Nova", "effects": [{"kind": "deal_damage", "amount": 2,
+                "target": {"mode": "all", "side": "enemy"}}]},
+            {"label": "Mend", "effects": [{"kind": "heal", "amount": 3,
+                "target": {"mode": "self"}}]},
+        ]},
+    ], colors={"W": 1})
+
+
+def test_triggered_modal_mode_is_picked_when_the_trigger_fires():
+    state = make_state([_pact()], enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    # The cast is plain: no cast-time mode enumeration for a TRIGGERED modal.
+    casts = [a for a in legal_actions(state) if a.kind == "cast"]
+    assert len(casts) == 1 and casts[0].mode is None
+    state, _ = do(state, kind="cast", card_id="pact")
+    hero(state).hp = 15                              # room for the Mend mode to heal
+
+    for ch in hero(state).channels:                  # make the drop legal this turn
+        ch.started_turn = state.turn - 1
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    assert mid.pending_choice is not None and mid.pending_choice.kind == "mode"
+    opts = legal_actions(mid)
+    assert {a.kind for a in opts} == {"choose_mode"} and len(opts) == 2
+    mid, _ = apply_action(mid, pick(mid, kind="choose_mode", mode=1))   # Mend
+    assert mid.stack[-1].mode == 1 and not mid.stack[-1].needs_mode
+    after = settle_window(mid)
+    assert hero(after).hp == 18                      # healed 3 —
+    assert after.enemy("orc").hp == 10               # — and Nova never fired
+    assert after.enemy("gob").hp == 10
+
+
+def test_triggered_modal_mode_pick_then_target_pick():
+    # A chosen target INSIDE the picked mode raises its own pick after the mode.
+    card = C("pact2", "channeled", [
+        {"kind": "modal", "trigger": "channel_break", "modes": [
+            {"label": "Bolt", "effects": [{"kind": "deal_damage", "amount": 2,
+                "target": {"mode": "chosen", "side": "enemy", "targeted": True}}]},
+            {"label": "Mend", "effects": [{"kind": "heal", "amount": 3,
+                "target": {"mode": "self"}}]},
+        ]},
+    ], colors={"R": 1})
+    state = make_state([card], enemies=[_enemy("orc", "Orc"), _enemy("gob", "Goblin")])
+    state, _ = do(state, kind="cast", card_id="pact2")
+    for ch in hero(state).channels:
+        ch.started_turn = state.turn - 1
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    assert mid.pending_choice.kind == "mode"
+    mid, _ = apply_action(mid, pick(mid, kind="choose_mode", mode=0))   # Bolt
+    assert mid.pending_choice is not None and mid.pending_choice.kind == "target"
+    mid, _ = apply_action(mid, pick(mid, kind="choose_target", target_id="gob"))
+    after = settle_window(mid)
+    assert after.enemy("gob").hp == 8 and after.enemy("orc").hp == 10
+
+
+def test_channel_start_modal_picks_mode_as_the_channel_begins():
+    card = C("gate", "channeled", [
+        {"kind": "modal", "trigger": "channel_start", "modes": [
+            {"label": "Nova", "effects": [{"kind": "deal_damage", "amount": 2,
+                "target": {"mode": "all", "side": "enemy"}}]},
+            {"label": "Brace", "effects": [{"kind": "pump", "power": 0, "toughness": 2,
+                "target": {"mode": "self"}}]},
+        ]},
+    ], colors={"U": 1})
+    state = make_state([card])
+    mid, _ = apply_action(state, pick(state, kind="cast", card_id="gate"))
+    while mid.pending_choice is None and mid.stack:  # resolve the cast
+        mid, _ = apply_action(mid, pick(mid, kind="pass"))
+    assert mid.pending_choice is not None and mid.pending_choice.kind == "mode"
+    mid, _ = apply_action(mid, pick(mid, kind="choose_mode", mode=0))   # Nova
+    after = settle_window(mid)
+    assert orc(after).hp == 8
+    assert len(hero(after).channels) == 1            # the channel held through it
+
+
+def test_event_trigger_slot_target_is_picked_when_the_trigger_fires():
+    # "Whenever an ally attacks while channeled: $T1 gains +1/+1" — the slot is
+    # used ONLY by the triggered effect, so the cast asks for NO target; the pick
+    # comes when the trigger fires (per firing), with the trigger on the stack.
+    angels = C("angels", "channeled", [
+        {"kind": "counters", "power": 1, "toughness": 1, "target": "$T1",
+         "trigger": {"event": "attack", "who": "ally"}},
+    ], colors={"W": 1}, targets={"T1": {"mode": "chosen", "side": "ally", "targeted": False}})
+    state = make_state([angels], intent_amount=1)
+    casts = [a for a in legal_actions(state) if a.kind == "cast"]
+    assert len(casts) == 1 and casts[0].target_id is None    # untargeted cast
+    state, _ = do(state, kind="cast", card_id="angels")
+    assert len(hero(state).channels) == 1
+
+    state = _advance_to_turn(state, 2)                       # cast locks out Attack
+    atk = next(a for a in legal_actions(state) if a.kind == "attack")
+    st, _ = apply_action(state, atk)                         # your own attack counts (ally)
+    while st.pending_choice is None and st.stack:
+        st, _ = apply_action(st, pick(st, kind="pass"))
+    assert st.pending_choice is not None and st.pending_choice.kind == "target"
+    assert all(a.kind == "choose_target" for a in legal_actions(st))
+    st, _ = apply_action(st, pick(st, kind="choose_target", target_id="hero"))
+    st = settle_window(st)
+    assert hero(st).counters == 1 and hero(st).max_hp == 21  # the pick landed
+    assert len(hero(st).channels) == 1                       # channel still held
+
+
+def test_upkeep_trigger_chosen_target_is_picked_at_each_firing():
+    blessing = C("blessing", "channeled", [
+        {"kind": "pump", "power": 1, "toughness": 2, "target": "$T1", "trigger": "upkeep"},
+    ], colors={"W": 1}, targets={"T1": {"mode": "chosen", "side": "ally"}})
+    state = make_state([blessing], intent_amount=1)
+    assert all(a.target_id is None
+               for a in legal_actions(state) if a.kind == "cast")
+    state, _ = do(state, kind="cast", card_id="blessing")
+
+    st, _ = apply_action(state, pick(state, kind="end_turn"))
+    guard = 0                                # ride out enemy turn + capacity lock
+    while st.pending_choice is None and guard < 40:
+        guard += 1
+        acts = legal_actions(st)
+        st, _ = apply_action(st, next((x for x in acts if x.kind == "pass"), acts[0]))
+    assert st.pending_choice is not None and st.pending_choice.kind == "target"
+    st, _ = apply_action(st, pick(st, kind="choose_target", target_id="hero"))
+    st = settle_window(st)
+    assert hero(st).power_bonus == 1         # the upkeep blessing landed on the pick
+
+
+def test_stack_rows_carry_the_full_card_for_hover():
+    # The UI shows the whole card on hover of a stack row — both a cast and a
+    # card-carried trigger (break) must ship `card`; a basic attack ships None.
+    from ltg_combat.serialize import _stack_list
+    state = make_state([_seal()])
+    mid, _ = apply_action(state, pick(state, kind="cast", card_id="seal"))
+    row = _stack_list(mid)[0]
+    assert row["card"] is not None and row["card"]["name"] == "Seal"
+    state = settle_window(mid)
+    for ch in hero(state).channels:
+        ch.started_turn = state.turn - 1
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    row = _stack_list(mid)[0]
+    assert "break trigger" in row["label"]
+    assert row["card"] is not None and row["card"]["name"] == "Seal"
+
+
+def test_attack_trigger_stacks_above_the_swing_and_resolves_first():
+    # MTG ordering: an on-attack trigger goes on the stack at DECLARATION, above
+    # the swing — window, trigger resolves, window, THEN the attack's damage.
+    angels = C("angels2", "channeled", [
+        {"kind": "counters", "power": 1, "toughness": 1, "target": "$T1",
+         "trigger": {"event": "attack", "who": "ally"}},
+    ], colors={"W": 1}, targets={"T1": {"mode": "chosen", "side": "ally", "targeted": False}})
+    state = make_state([angels], intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="angels2")
+    state = _advance_to_turn(state, 2)
+
+    atk = next(a for a in legal_actions(state) if a.kind == "attack")
+    st, _ = apply_action(state, atk)
+    # Pushed immediately at declaration, ABOVE the attack (top resolves first)…
+    assert [i.kind for i in st.stack] == ["attack", "triggered"]
+    # …owing its target pick before any reaction window opens.
+    assert st.pending_choice is not None and st.pending_choice.kind == "target"
+    st, _ = apply_action(st, pick(st, kind="choose_target", target_id="hero"))
+
+    hp_before = orc(st).hp
+    st, _ = apply_action(st, pick(st, kind="pass"))   # window 1 → trigger resolves
+    assert hero(st).counters == 1                     # trigger effect landed…
+    assert orc(st).hp == hp_before                    # …before any attack damage
+    assert [i.kind for i in st.stack] == ["attack"]   # the swing still waits
+    st, _ = apply_action(st, pick(st, kind="pass"))   # window 2 → the attack lands
+    # …and the damage reads Power at RESOLUTION: base 3 + the counter = 4.
+    assert orc(st).hp == hp_before - 4
+
+
+def test_pickless_attack_trigger_still_uses_the_stack():
+    # MTG: EVERY trigger goes on the stack — even one with no choices to make —
+    # so it is respondable, and resolves before the swing underneath it.
+    hymn = C("hymn", "channeled", [
+        {"kind": "heal", "amount": 1, "target": {"mode": "self"},
+         "trigger": {"event": "attack", "who": "you"}},
+    ], colors={"W": 1})
+    state = make_state([hymn], intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="hymn")
+    state = _advance_to_turn(state, 2)
+    hero(state).hp = 10                               # room for the heal to land
+
+    atk = next(a for a in legal_actions(state) if a.kind == "attack")
+    st, _ = apply_action(state, atk)
+    assert [i.kind for i in st.stack] == ["attack", "triggered"]
+    assert st.pending_choice is None                  # nothing to pick — but it stacks
+    hp = hero(st).hp
+    st, _ = apply_action(st, pick(st, kind="pass"))   # window → trigger resolves
+    assert hero(st).hp == hp + 1
+    assert [i.kind for i in st.stack] == ["attack"]   # the swing still waits
+
+
+def test_upkeep_tick_goes_on_the_stack():
+    blossom = C("blossom", "channeled", [
+        {"kind": "lose_life", "amount": 1, "target": {"mode": "self"},
+         "trigger": "upkeep"},
+    ], colors={"B": 1})
+    state = make_state([blossom], intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="blossom")
+
+    st, _ = apply_action(state, pick(state, kind="end_turn"))
+    guard = 0                                # ride to turn 2's upkeep firing
+    while guard < 30 and not (st.turn == 2 and st.stack
+                              and st.stack[-1].kind == "triggered"):
+        guard += 1
+        acts = legal_actions(st)
+        st, _ = apply_action(st, next((x for x in acts if x.kind == "pass"), acts[0]))
+    assert st.turn == 2 and st.stack[-1].kind == "triggered"  # tick is respondable
+    hp = hero(st).hp
+    st, _ = apply_action(st, pick(st, kind="pass"))
+    assert hero(st).hp == hp - 1                              # then it resolves

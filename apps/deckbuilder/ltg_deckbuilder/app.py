@@ -38,6 +38,7 @@ from ltg_core.schema import (
     MAX_POWER_BOUGHT,
     MODE_VALUES,
     PRESETS,
+    REF_VALUES,
     Row,
     SIDE_VALUES,
     deck_status,
@@ -53,6 +54,10 @@ from . import ingest, scryfall
 APP_ROOT = Path(__file__).resolve().parent.parent
 LOADOUT_DIR = APP_ROOT / "loadouts"
 FRONTEND_DIR = APP_ROOT / "frontend"
+# Bundled example loadouts (repo /examples) — readable fallbacks for the edit
+# flow (Options → Characters → Edit), never written to. A save/update of an
+# example writes into LOADOUT_DIR, shadowing it (same rule as the game server).
+EXAMPLES_DIR = APP_ROOT.parent.parent / "examples"
 
 app = FastAPI(title="Langelier Tactical Game — Deck Builder")
 
@@ -74,6 +79,10 @@ class CardBody(BaseModel):
 
 class ImportBody(BaseModel):
     names: List[str]
+
+
+class ImportCustomBody(BaseModel):
+    cards: List[dict]
 
 
 # --------------------------------------------------------------------------- #
@@ -127,6 +136,27 @@ def api_import(body: ImportBody) -> dict:
     return {"cards": out, "not_found": not_found}
 
 
+@app.post("/api/cards/import-custom")
+def api_import_custom(body: ImportCustomBody) -> dict:
+    """Import hand-authored custom cards from JSON (schema documented in
+    apps/deckbuilder/CUSTOM_CARD_SCHEMA.md). Cards are ADDED to the loadout,
+    never replacing existing ones. Each card's `effect` text gets the same
+    deterministic translation pass as Scryfall imports — untranslated text
+    flags the card `needs_translation` for hand-authoring, it never blocks.
+    A malformed entry is reported in `errors` without failing the batch.
+    """
+    out, errors = [], []
+    for i, entry in enumerate(body.cards):
+        label = (entry.get("name") if isinstance(entry, dict) else None) or f"card #{i + 1}"
+        try:
+            card = ingest.build_custom_card(entry)
+        except Exception as exc:
+            errors.append({"name": str(label), "reason": str(exc)})
+            continue
+        out.append({"card": card.model_dump(), "lints": lint_card(card)})
+    return {"cards": out, "errors": errors}
+
+
 @app.post("/api/cards/add")
 def api_add_card(body: AddCardBody) -> Card:
     try:
@@ -171,8 +201,11 @@ def _format_errors(exc: ValidationError) -> List[str]:
 # --------------------------------------------------------------------------- #
 @app.get("/api/effect-specs")
 def api_effect_specs() -> dict:
-    """Param descriptors per primitive + target-builder vocab, for the editor."""
-    return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES}
+    """Param descriptors per primitive + target-builder vocab, for the editor.
+    `refs` is the registry of resolvable value references (name → display label)
+    that backs the editor's reference dropdown."""
+    return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES,
+            "refs": REF_VALUES}
 
 
 class CharacterPriceBody(BaseModel):
@@ -270,7 +303,13 @@ def api_list_loadouts() -> dict:
 def api_load(name: str) -> dict:
     path = _safe_path(name)
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"No loadout named {name!r}")
+        # Fall back to the bundled examples (read-only): lets the game's
+        # "Edit in Deckbuilder" open characters that only exist as examples.
+        example = EXAMPLES_DIR / f"{_slug(name)}.json"
+        if example.exists():
+            path = example
+        else:
+            raise HTTPException(status_code=404, detail=f"No loadout named {name!r}")
     data = json.loads(path.read_text())
     # Validate on the way out so callers always get a known-good shape.
     return Loadout.model_validate(data).model_dump()
@@ -289,14 +328,10 @@ def api_save(body: LoadoutBody) -> dict:
     return {"saved": name}
 
 
-@app.post("/api/loadout/export")
-def api_export(body: LoadoutBody) -> dict:
-    """Emit an engine loadout containing ONLY structurally-valid, validated cards.
-
-    Unvalidated or malformed cards are omitted and reported (explicit behaviour);
-    this is separate from the normal Save, which keeps drafts as-is.
-    """
-    raw = body.loadout
+def _build_engine_loadout(raw: dict):
+    """(engine_loadout, omitted) — ONLY structurally-valid, validated cards, texts
+    re-rendered, character stats resolved. Raises HTTPException 422 on a bad
+    character. Shared by the file export and the in-place game update."""
     try:
         character = Character.model_validate(raw.get("character", {}))
     except ValidationError as exc:
@@ -328,9 +363,47 @@ def api_export(body: LoadoutBody) -> dict:
         "character": {**character.model_dump(), "stats": character.stats},
         "cards": exported,
     }
+    return engine_loadout, omitted
+
+
+@app.post("/api/loadout/export")
+def api_export(body: LoadoutBody) -> dict:
+    """Emit an engine loadout containing ONLY structurally-valid, validated cards.
+
+    Unvalidated or malformed cards are omitted and reported (explicit behaviour);
+    this is separate from the normal Save, which keeps drafts as-is.
+    """
+    engine_loadout, omitted = _build_engine_loadout(body.loadout)
     return {
         "engine_loadout": engine_loadout,
-        "exported_count": len(exported),
+        "exported_count": len(engine_loadout["cards"]),
+        "omitted": omitted,
+    }
+
+
+class UpdateGameBody(BaseModel):
+    name: str            # the game character id being edited (the file stem)
+    loadout: dict
+
+
+@app.post("/api/loadout/update-game")
+def api_update_game(body: UpdateGameBody) -> dict:
+    """The edit-flow save (Options → Characters → Edit): write the engine-ready
+    loadout over the game's character file, keeping the ORIGINAL id even if the
+    character was renamed — so the game updates in place rather than forking.
+    Editing a bundled example writes into LOADOUT_DIR, shadowing it (the same
+    rule the game server applies). The game re-scans per request: the updated
+    character appears in the next New Game without a restart."""
+    engine_loadout, omitted = _build_engine_loadout(body.loadout)
+    if not engine_loadout["cards"]:
+        raise HTTPException(status_code=422,
+                            detail=["nothing to update — no validated cards"])
+    path = _safe_path(body.name)
+    LOADOUT_DIR.mkdir(exist_ok=True)
+    path.write_text(json.dumps(engine_loadout, indent=2))
+    return {
+        "updated": path.stem,
+        "exported_count": len(engine_loadout["cards"]),
         "omitted": omitted,
     }
 

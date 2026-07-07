@@ -1,9 +1,38 @@
+import { useState } from "react";
+import { actionModeColor } from "../lib/format";
 import { armedTargetIdSet, useGame } from "../lib/store";
+import type { CardView } from "../lib/types";
+import { HandCard } from "./Hand";
+
+/** `text` with the card name dotted-underlined (the hover-a-card affordance). */
+function withCardName(text: string, name: string | undefined) {
+  const i = name ? text.indexOf(name) : -1;
+  if (i < 0 || !name) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, i)}
+      <span className="text-gray-100 underline decoration-dotted underline-offset-2">{name}</span>
+      {text.slice(i + name.length)}
+    </>
+  );
+}
 
 export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onOptions: () => void }) {
   const snapshot = useGame((s) => s.snapshot);
   const armed = useGame((s) => s.armed);
   const pickTargetId = useGame((s) => s.pickTargetId);
+  // The card a hovered log line references, floated at a FIXED position (the
+  // log scrolls, so an absolutely-positioned child would be clipped).
+  const [hoverCard, setHoverCard] = useState<{ card: CardView; top: number; right: number } | null>(null);
+  const showCard = (card: CardView | null | undefined) => (e: React.MouseEvent) => {
+    if (!card) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setHoverCard({
+      card,
+      top: Math.max(8, Math.min(r.top - 120, window.innerHeight - 300)),
+      right: window.innerWidth - r.left + 8,
+    });
+  };
 
   // A counter arms with stack-ref targets ("#<uid>"): those rows become clickable.
   const targetIds = armedTargetIdSet(armed);
@@ -53,7 +82,7 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
               <div
                 key={i}
                 onClick={() => isTarget && pickTargetId(`#${s.uid}`)}
-                className={`rounded px-1.5 py-1 text-[11px] ${
+                className={`group relative rounded px-1.5 py-1 text-[11px] ${
                   isTarget
                     ? "cursor-pointer bg-yellow-400/20 ring-2 ring-yellow-400"
                     : s.top
@@ -62,9 +91,16 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
                 }`}
               >
                 <span className="font-semibold">{s.source_name}</span>
-                <span className="text-gray-400"> · {s.label}</span>
-                {s.mode && <span className="text-sky-300/80"> ({s.mode})</span>}
+                <span className="text-gray-400"> · {withCardName(s.label, s.card?.name)}</span>
+                {s.mode && <span className={actionModeColor(s.mode)}> ({s.mode})</span>}
                 {s.target_name && <span className="text-gray-400"> → {s.target_name}</span>}
+                {/* Hovering a card-backed action pops the FULL card, so the whole
+                    effect (e.g. what a break trigger will do) is readable. */}
+                {s.card && (
+                  <div className="pointer-events-none absolute right-full top-0 z-50 mr-2 hidden h-72 w-48 group-hover:block">
+                    <HandCard card={s.card} playable active={false} onClick={() => {}} />
+                  </div>
+                )}
               </div>
             );
           })
@@ -79,13 +115,27 @@ export function SidePanel({ onNewGame, onOptions }: { onNewGame: () => void; onO
             <Empty>no events yet</Empty>
           ) : (
             snapshot.log.map((e, i) => (
-              <div key={i} className="text-[11px] leading-snug text-gray-300">
-                {e.msg}
+              <div
+                key={i}
+                onMouseEnter={showCard(e.card)}
+                onMouseLeave={() => setHoverCard(null)}
+                className="text-[11px] leading-snug text-gray-300"
+              >
+                {e.card ? withCardName(e.msg, e.card.name) : e.msg}
               </div>
             ))
           )}
         </div>
       </Panel>
+
+      {hoverCard && (
+        <div
+          className="pointer-events-none fixed z-50 h-72 w-48"
+          style={{ top: hoverCard.top, right: hoverCard.right }}
+        >
+          <HandCard card={hoverCard.card} playable active={false} onClick={() => {}} />
+        </div>
+      )}
         </>
       )}
     </div>

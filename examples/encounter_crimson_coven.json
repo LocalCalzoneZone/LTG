@@ -1,13 +1,16 @@
 {
-  "name": "Crimson Coven — Drain & Reactions",
+  "name": "Crimson Coven \u2014 Drain & Reactions",
   "faction": "The Crimson Coven",
-  "colors": ["B", "R"],
-  "notes": "Design Update 04 §F-8 worked statblocks (vampires). Level derives from budget B(L)=5L+5. Showcases: the valuation brain, a multi-verb Drain that self-heals, an on_spell_cast reaction that punishes your casting, lifelink, and Evasive repositioning. Total enemy Levels 7 — a hard fight for a two-hero Level-1 party.",
+  "colors": [
+    "B",
+    "R"
+  ],
+  "notes": "Design Update 04 \u00a7F-8 worked statblocks (vampires). Level derives from budget B(L)=5L+5. Showcases: the valuation brain, a multi-verb Drain that self-heals, an on_spell_cast reaction that punishes your casting, lifelink, and Evasive repositioning. Total enemy Levels 7 \u2014 a hard fight for a two-hero Level-1 party.",
   "enemies": [
     {
       "id": "grave_thrall",
       "name": "Grave Thrall",
-      "flavor": "Husk +4 HP (9/10). A wall that shambles forward — the baseline, no components.",
+      "flavor": "Husk +4 HP (9/10). A wall that shambles forward \u2014 the baseline, no components.",
       "hp": 6,
       "power": 1,
       "level": 1,
@@ -24,7 +27,9 @@
       "row": "mid",
       "home_row": "rear",
       "attack_mode": "melee",
-      "keywords": ["flying"],
+      "keywords": [
+        "flying"
+      ],
       "components": [
         {
           "id": "evasive",
@@ -40,13 +45,15 @@
     {
       "id": "vampire_adept",
       "name": "Vampire Adept",
-      "flavor": "Caster-frame +4 HP, lifelink (25/25). Drains from safety and punishes your casting — the piece you must answer.",
+      "flavor": "Caster-frame +4 HP, lifelink (25/25). Drains from safety and punishes your casting \u2014 the piece you must answer.",
       "hp": 6,
       "power": 1,
       "level": 4,
       "row": "rear",
       "attack_mode": "ranged",
-      "keywords": ["lifelink"],
+      "keywords": [
+        "lifelink"
+      ],
       "components": [
         {
           "id": "drain",
@@ -55,10 +62,24 @@
           "priority": 30,
           "cooldown": 2,
           "target_rule": "valuation",
-          "telegraph": "Life Drain — deal 3, heal 3",
+          "telegraph": "Life Drain \u2014 deal 3, heal 3",
           "verbs": [
-            {"kind": "deal_damage", "amount": 3, "target": {"mode": "chosen", "side": "ally", "targeted": true}},
-            {"kind": "heal", "amount": 3, "target": {"mode": "self"}}
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 3,
+              "target": {
+                "mode": "self"
+              }
+            }
           ]
         },
         {
@@ -69,10 +90,20 @@
           "cooldown": 2,
           "priority": 20,
           "target_rule": "trigger_source",
-          "telegraph": "Withering Curse — wound the caster -1/-1",
+          "telegraph": "Withering Curse \u2014 wound the caster -1/-1",
           "verbs": [
-            {"kind": "wound", "power": 1, "toughness": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}}
-          ]
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "action_type": "spell"
         }
       ]
     }

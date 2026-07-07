@@ -32,17 +32,30 @@ _VERBS = TypeAdapter(List[Effect])
 
 def _component_from_dict(spec: Dict[str, Any]) -> Component:
     """Build a runtime `Component` (Design Update 04 §F-3) from its JSON form. `verbs`
-    are schema-validated §11 primitives; everything else is a scalar the engine reads."""
+    are schema-validated §11 primitives; everything else is a scalar the engine reads.
+
+    An **Enrage** component (§F-9) is canonicalised on load: whatever the author wrote,
+    it becomes reactive on the `on_enrage` trigger and once-per-encounter — the engine
+    auto-fires it in the first reaction window after its boss falls to ≤25% max HP."""
+    is_enrage = (str(spec.get("archetype", "")).lower() == "enrage"
+                 or spec.get("trigger") == "on_enrage")
     return Component(
         id=spec["id"], archetype=spec.get("archetype", ""),
-        timing=spec.get("timing", "proactive"), trigger=spec.get("trigger"),
+        timing="reactive" if is_enrage else spec.get("timing", "proactive"),
+        trigger="on_enrage" if is_enrage else spec.get("trigger"),
         condition=spec.get("condition"), cooldown=int(spec.get("cooldown", 0)),
-        once_per_encounter=bool(spec.get("once_per_encounter", False)),
+        once_per_encounter=True if is_enrage else bool(spec.get("once_per_encounter", False)),
         priority=int(spec.get("priority", 90)),
         verbs=list(_VERBS.validate_python(spec.get("verbs", []))),
         target_rule=spec.get("target_rule", "valuation"),
         telegraph=spec.get("telegraph", ""),
-        move_home=bool(spec.get("move_home", False)))
+        move_home=bool(spec.get("move_home", False)),
+        phase=spec.get("phase"),
+        # "spell" marks a thematically magical component (Fireball, Meteor …):
+        # it stacks as kind "spell", so spell counters (Negate) answer it.
+        action_type=("spell" if spec.get("action_type") == "spell" else "ability"),
+        # A channelled component starts an EnemyChannel instead of firing once.
+        channel=bool(spec.get("channel", False)))
 
 
 def _default_attack_template(e: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,5 +1,6 @@
 import type { CharacterView } from "../lib/types";
-import { useGame } from "../lib/store";
+import { canPickMana, castIndexFor, useGame } from "../lib/store";
+import { Pips } from "./Pips";
 
 const WUBRG = ["W", "U", "B", "R", "G", "C"];
 
@@ -28,12 +29,11 @@ export function ManaWidget({ char, manaChoices }: {
   const submit = useGame((s) => s.submitIndex);
   const manaSelect = useGame((s) => s.manaSelect);
   const pickMana = useGame((s) => s.pickMana);
-  const resetMana = useGame((s) => s.resetMana);
   const pending = char.mana.pending_capacity_choice;
   const choiceByColor: Record<string, number> = {};
   for (const m of manaChoices) choiceByColor[m.color] = m.index;
 
-  // An ambiguous cast by THIS character is picking its generic mana here.
+  // A cast by THIS character is paying its full cost here.
   const selecting = manaSelect && manaSelect.actorId === char.id ? manaSelect : null;
 
   const colorSet = new Set<string>([
@@ -49,23 +49,23 @@ export function ManaWidget({ char, manaChoices }: {
 
   const circle = "clamp(28px, 4.8vh, 46px)";
 
-  // How many of each colour are still free to spend on the generic portion:
-  // pool minus the mandatory coloured pips minus what's already picked.
+  // Paying a cast: the player clicks the ENTIRE cost (coloured pips included) —
+  // nothing is set aside behind their back; the pool reads exactly as shown.
+  // An {X} cast (xByCount set) accepts extra pips past the base cost to raise X.
   const count = (arr: string[], c: string) => arr.filter((x) => x === c).length;
-  const genericLeft = selecting ? selecting.generic - selecting.picked.length : 0;
-  const freeForGeneric = (c: string) =>
-    (byColor[c]?.pool ?? 0) - count(selecting?.colored ?? [], c) - count(selecting?.picked ?? [], c);
+  const poolRecord: Record<string, number> = Object.fromEntries(
+    colors.map((c) => [c, byColor[c]?.pool ?? 0]));
 
   return (
+    // The pane's footprint never changes: paying a cast only lights the ring,
+    // makes the symbols clickable, and counts the Pool down live. Everything
+    // about the payment itself (card, cost, Cast/reset) lives in the floating
+    // ManaPayPopup above — nothing is crammed in here.
     <div className={`flex h-full w-max shrink-0 flex-col justify-between rounded-lg bg-black/40 p-2.5 ring-1 ${
       selecting ? "ring-yellow-400" : "ring-white/10"
     }`}>
       <div className="text-center text-[11px] font-bold uppercase tracking-wide text-gray-300">
-        {selecting ? (
-          <span className="text-yellow-300">
-            Pay {selecting.cardName} — pick {genericLeft} mana
-          </span>
-        ) : pending ? (
+        {pending ? (
           <span className="text-yellow-300">Pick +1 Capacity</span>
         ) : (
           "Mana"
@@ -81,10 +81,15 @@ export function ManaWidget({ char, manaChoices }: {
             {colors.map((color) => {
               const m = byColor[color] ?? { pool: 0, capacity: 0, channel_occupied: 0 };
               const value = m[row.key];
+              // While paying, the Pool row counts DOWN live — you always see the
+              // mana you'd have left if you cast right now.
+              const spent = row.key === "pool" && selecting
+                ? count(selecting.picked, color) : 0;
+              const shown = value - spent;
               return (
                 <div
                   key={color}
-                  title={`${color} ${row.label.toLowerCase()}`}
+                  title={`${color} ${row.label.toLowerCase()}${spent > 0 ? ` (${spent} being spent)` : ""}`}
                   style={{
                     width: circle,
                     height: circle,
@@ -92,11 +97,11 @@ export function ManaWidget({ char, manaChoices }: {
                     border: `2px solid ${RING[color] ?? "#c2c2c2"}`,
                     fontSize: "clamp(13px, 2.3vh, 22px)",
                   }}
-                  className={`flex items-center justify-center rounded-full font-black leading-none text-white ${
-                    value === 0 ? "opacity-45" : ""
-                  }`}
+                  className={`flex items-center justify-center rounded-full font-black leading-none ${
+                    spent > 0 ? "text-yellow-300" : "text-white"
+                  } ${shown === 0 ? "opacity-45" : ""}`}
                 >
-                  {value}
+                  {shown}
                 </div>
               );
             })}
@@ -110,17 +115,18 @@ export function ManaWidget({ char, manaChoices }: {
       <div className="flex justify-center gap-2 pt-0.5">
         {colors.map((color) => {
           const capacityClickable = pending && choiceByColor[color] != null;
-          const manaClickable = !!selecting && genericLeft > 0 && freeForGeneric(color) > 0;
+          const manaClickable = !!selecting && canPickMana(selecting, color, poolRecord);
           const clickable = capacityClickable || manaClickable;
           const onClick = () => {
             if (capacityClickable) submit(choiceByColor[color]);
             else if (manaClickable) pickMana(color);
           };
           const picked = selecting ? count(selecting.picked, color) : 0;
+          const free = (byColor[color]?.pool ?? 0) - picked;
           const title = capacityClickable
             ? `Lock +1 capacity as ${color}`
             : selecting
-              ? `Spend ${color} (${freeForGeneric(color)} free)`
+              ? `Spend ${color} (${free} left in pool)`
               : color;
           return (
             <div key={color} className="relative">
@@ -143,15 +149,51 @@ export function ManaWidget({ char, manaChoices }: {
         })}
       </div>
 
-      {selecting && (
-        <button
-          onClick={resetMana}
-          disabled={selecting.picked.length === 0}
-          className="mt-1 text-center text-[10px] font-semibold text-gray-400 hover:text-white disabled:opacity-40"
-        >
-          reset picks
-        </button>
-      )}
+    </div>
+  );
+}
+
+
+/** The floating payment panel for a cast that needs its cost paid by hand ({X},
+ *  or an ambiguous generic). Names the card and shows the FULL casting cost;
+ *  the mana is spent by clicking the pane's mana symbols as usual, with the
+ *  Pool counting down live. Floats above the bottom bar so the pane itself
+ *  keeps its exact everyday footprint. */
+export function ManaPayPopup() {
+  const manaSelect = useGame((s) => s.manaSelect);
+  const confirmMana = useGame((s) => s.confirmMana);
+  const resetMana = useGame((s) => s.resetMana);
+  const cancelArm = useGame((s) => s.cancelArm);
+  if (!manaSelect) return null;
+  const isX = !!manaSelect.xByCount;
+  const baseCost = manaSelect.colored.length + manaSelect.generic;
+  const xSoFar = isX ? Math.max(0, manaSelect.picked.length - baseCost) : 0;
+  const castIndex = castIndexFor(manaSelect);
+  return (
+    <div className="absolute -top-10 left-3 z-20 flex items-center gap-3 rounded-full bg-yellow-500 px-4 py-1.5 text-sm font-semibold text-black shadow-lg">
+      <span className="flex items-center gap-1.5">
+        Pay {manaSelect.cardName}
+        <Pips cost={manaSelect.cost} size={16} />
+        {isX ? <span>· X = {xSoFar}</span> : null}
+        <span className="text-xs font-normal">— click mana below</span>
+      </span>
+      <button
+        onClick={confirmMana}
+        disabled={castIndex == null}
+        className="rounded bg-black px-3 py-0.5 text-xs font-bold text-yellow-400 hover:bg-black/80 disabled:opacity-40"
+      >
+        {isX ? `Cast (X=${xSoFar})` : "Cast"}
+      </button>
+      <button
+        onClick={resetMana}
+        disabled={manaSelect.picked.length === 0}
+        className="rounded bg-black/20 px-2 py-0.5 text-xs hover:bg-black/40 disabled:opacity-40"
+      >
+        reset
+      </button>
+      <button onClick={cancelArm} className="rounded bg-black/20 px-2 py-0.5 text-xs hover:bg-black/40">
+        Esc ✕
+      </button>
     </div>
   );
 }

@@ -500,12 +500,19 @@ function updateSortIndicators() {
 // Mana cost as icons (matches the search-result presentation).
 function costIconsHtml(cost) {
   const parts = [];
+  if (cost.x) parts.push(`<span class="mc-generic">X</span>`);
   if (cost.generic) parts.push(`<span class="mc-generic">${cost.generic}</span>`);
   for (const c of COLORS) {
     const n = (cost.colors && cost.colors[c]) || 0;
     for (let i = 0; i < n; i++) parts.push(manaIcon(c));
   }
   return parts.length ? `<span class="res-cost">${parts.join("")}</span>` : "—";
+}
+
+// Level always mirrors the converted cost (generic + pips; X counts 0).
+function syncLevelToCost(card) {
+  const pips = COLORS.reduce((n, c) => n + ((card.cost.colors && card.cost.colors[c]) || 0), 0);
+  card.level = (card.cost.generic || 0) + pips;
 }
 
 // Card types LTG doesn't accept (mirror of backend FORBIDDEN_TYPES) — for the flag.
@@ -564,6 +571,9 @@ function renderDeck() {
 let EFFECT_SPECS = {};   // { kind: { params:[{name,control,...}] } }
 let MODES = ["self", "chosen", "all"];
 let SIDES = ["ally", "enemy", "any"];
+// Resolvable value references (name → display label) for the reference dropdown.
+let REFS = { "mana_capacity": "your mana capacity",
+             "destroyed_target.level": "the destroyed target's level" };
 const MODE_LABEL = { self: "You", chosen: "Choose one", all: "All" };
 const SIDE_LABEL = { ally: "Ally", enemy: "Enemy", any: "Either" };
 
@@ -573,6 +583,7 @@ async function loadSpecs() {
     EFFECT_SPECS = r.specs;
     MODES = r.modes;
     SIDES = r.sides;
+    if (r.refs) REFS = r.refs;
   } catch (e) { /* editor falls back to whatever the card already holds */ }
 }
 
@@ -656,7 +667,10 @@ function defaultEffect(kind) {
     else if (p.control === "bool") eff[p.name] = false;
     else if (p.control === "int" || p.control === "float" || p.control === "value") eff[p.name] = 1;
     else if (p.control === "enum") eff[p.name] = (p.options || [])[0];
-    else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: false };
+    // Chosen targets default to TARGETED: MTG "target …" wording is the common
+    // case, and the flag drives hexproof/protection interaction. Untick "targets"
+    // for the rare untargeted-chosen effect (which then beats hexproof).
+    else if (p.control === "target") eff[p.name] = { mode: "chosen", side: "any", targeted: true };
     else if (p.control === "action_target") eff[p.name] = { class: "action", side: "enemy" };
     else if (p.control === "keyword_list") eff[p.name] = (p.required && (p.options || []).length) ? [p.options[0]] : [];
     else eff[p.name] = "";
@@ -702,22 +716,69 @@ function targetControlHtml(i, current, card, field = "target") {
   return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}</span>`;
 }
 
-function valueControlHtml(i, p, val) {
+// The reference names offered by the dropdown: every registry ref except
+// mana_capacity (it has its own option in the value-type select).
+function refNames(current) {
+  const names = Object.keys(REFS).filter((r) => r !== "mana_capacity");
+  if (current && !names.includes(current)) names.push(current); // keep a legacy/unknown ref visible
+  return names;
+}
+
+function valueControlHtml(i, spec, val) {
+  const p = spec.name;
   let type = "number", num = 1, ref = "";
   if (val === "all") type = "all";
   else if (val && typeof val === "object" && "ref" in val) {
     if (val.ref === "mana_capacity") type = "capacity";
     else { type = "ref"; ref = val.ref; }
   } else num = val;
+  const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refNames(ref).map((r) =>
+    `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(REFS[r] || r)}</option>`).join("")}</select>`;
+  // Stat values (pump/wound/counters power & toughness) admit no "all" — the
+  // spec flags it (no_all) and the option is simply not offered.
+  const allOpt = spec.no_all ? "" :
+    `<option value="all" ${type === "all" ? "selected" : ""}>all</option>`;
   return `
     <select class="val-type" data-i="${i}" data-p="${p}">
       <option value="number" ${type === "number" ? "selected" : ""}>number</option>
-      <option value="all" ${type === "all" ? "selected" : ""}>all</option>
+      ${allOpt}
       <option value="capacity" ${type === "capacity" ? "selected" : ""}>mana capacity</option>
       <option value="ref" ${type === "ref" ? "selected" : ""}>reference</option>
     </select>
     ${type === "number" ? `<input class="val-input" type="number" data-i="${i}" data-p="${p}" value="${num}" />` : ""}
-    ${type === "ref" ? `<input class="val-input" type="text" data-i="${i}" data-p="${p}" value="${escapeAttr(ref)}" placeholder="e.g. destroyed_target.level" />` : ""}`;
+    ${type === "ref" ? refSel : ""}`;
+}
+
+// The trigger control: (none) / a lifecycle trigger / "on event…" which opens
+// who + event selects (and a spell-type filter for spell_cast).
+const TRIGGER_LABEL = { channel_start: "channel start (on cast)",
+                        upkeep: "upkeep (each turn)", capacity_increase: "capacity increase",
+                        channel_break: "channel break" };
+const EVENT_LABEL = { attack: "attacks", damage_taken: "is dealt damage",
+                      life_gain: "gains life", spell_cast: "casts a spell",
+                      card_draw: "draws a card" };
+const WHO_LABEL = { you: "you", target: "the target", ally: "any ally",
+                    enemy: "any enemy", any: "anyone" };
+const SPELL_TYPE_LABEL = { instant: "an instant", sorcery: "a sorcery",
+                           channeled: "a channeled spell" };
+
+function triggerControlHtml(i, p, val) {
+  const isEvt = val && typeof val === "object";
+  const base = `<select class="trg-base" data-i="${i}">
+      <option value="" ${val == null ? "selected" : ""}>(none)</option>
+      ${(p.options || []).map((o) => `<option value="${o}" ${val === o ? "selected" : ""}>${TRIGGER_LABEL[o] || o}</option>`).join("")}
+      <option value="__event__" ${isEvt ? "selected" : ""}>on event…</option>
+    </select>`;
+  if (!isEvt) return `<label class="inline">trigger ${base}</label>`;
+  const who = `<select class="trg-who" data-i="${i}">${(p.whos || []).map((w) =>
+    `<option value="${w}" ${val.who === w ? "selected" : ""}>${WHO_LABEL[w] || w}</option>`).join("")}</select>`;
+  const evt = `<select class="trg-event" data-i="${i}">${(p.events || []).map((ev) =>
+    `<option value="${ev}" ${val.event === ev ? "selected" : ""}>${EVENT_LABEL[ev] || ev}</option>`).join("")}</select>`;
+  const stype = val.event === "spell_cast"
+    ? `<select class="trg-spelltype" data-i="${i}">
+        <option value="" ${!val.spell_type ? "selected" : ""}>of any type</option>
+        ${(p.spell_types || []).map((t) => `<option value="${t}" ${val.spell_type === t ? "selected" : ""}>${SPELL_TYPE_LABEL[t] || t}</option>`).join("")}</select>` : "";
+  return `<label class="inline">trigger ${base} when ${who} ${evt} ${stype}</label>`;
 }
 
 function paramHtml(i, p, val) {
@@ -732,7 +793,9 @@ function paramHtml(i, p, val) {
       return `<label class="inline">${p.name} <select class="eff-param" data-i="${i}" data-p="${p.name}">${none}${(p.options || []).map((o) => `<option ${val === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`;
     }
     case "value":
-      return `<label class="inline">${p.name} ${valueControlHtml(i, p.name, val)}</label>`;
+      return `<label class="inline">${p.name} ${valueControlHtml(i, p, val)}</label>`;
+    case "trigger":
+      return triggerControlHtml(i, p, val);
     case "keyword_list": {
       const sel = new Set(val || []);
       return `<span class="kw-list"><span class="kw-label">${p.name}</span>${(p.options || []).map((o) =>
@@ -743,7 +806,8 @@ function paramHtml(i, p, val) {
       if (p.name === "modes") summary = `${(val || []).length} modes`;
       else if (p.name === "effects") summary = `${(val || []).length} effect(s)`;
       else if (p.name === "condition") summary = val
-        ? (val.kind === "cast_mode" ? `cast as ${val.mode}` : `target ${val.property}`) : "—";
+        ? (val.kind === "cast_mode" ? `cast as ${val.mode}`
+           : val.kind === "target_property" ? `target ${val.property}` : val.kind) : "—";
       else summary = "—";
       return `<span class="nested-note">${p.name}: ${escapeHtml(summary)} · edit in { } raw JSON</span>`;
     }
@@ -763,7 +827,10 @@ function flattenEffects(effects) {
   // leaf flattens to itself. Used at top level AND inside a modal mode.
   const pushEffect = (e) => {
     if (e.kind === "conditional") {
-      items.push({ kind: "conditional", condition: clone(e.condition) });
+      // Keep the conditional's own trigger (channeled "when … if …") on the marker.
+      const marker = { kind: "conditional", condition: clone(e.condition) };
+      if (e.trigger != null) marker.trigger = clone(e.trigger);
+      items.push(marker);
       (e.effects || []).forEach((inner) => items.push(clone(inner)));
     } else {
       items.push(clone(e));
@@ -771,14 +838,17 @@ function flattenEffects(effects) {
   };
   for (const e of effects || []) {
     if (e.kind === "modal") {
-      // The 'choose' count belongs to the whole modal; replicate it onto every
-      // mode-marker so the controls (shown on the first marker) round-trip. A mode
-      // may itself hold a conditional, so flatten each mode effect recursively.
-      for (const m of e.modes || []) {
-        items.push({ kind: "modal", label: m.label || "",
-                     choose: e.choose ?? 1, or_more: e.or_more ?? false });
+      // The 'choose' count (and the modal's trigger, for a triggered modal on a
+      // channeled card) belongs to the whole modal; the first marker carries them
+      // so the controls round-trip. A mode may itself hold a conditional, so
+      // flatten each mode effect recursively.
+      (e.modes || []).forEach((m, mi) => {
+        const marker = { kind: "modal", label: m.label || "",
+                         choose: e.choose ?? 1, or_more: e.or_more ?? false };
+        if (mi === 0 && e.trigger != null) marker.trigger = clone(e.trigger);
+        items.push(marker);
         (m.effects || []).forEach(pushEffect);
-      }
+      });
     } else {
       pushEffect(e);
     }
@@ -795,13 +865,15 @@ function rebuildEffects(items) {
       mode = { label: it.label || "", effects: [] };
       if (modal) { modal.modes.push(mode); }
       else {
-        // First marker of the group carries the modal's choose count.
+        // First marker of the group carries the modal's choose count + trigger.
         modal = { kind: "modal", modes: [mode],
                   choose: it.choose ?? 1, or_more: it.or_more ?? false };
+        if (it.trigger != null) modal.trigger = clone(it.trigger);
         out.push(modal);
       }
     } else if (it.kind === "conditional") {
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
+      if (it.trigger != null) cond.trigger = clone(it.trigger);
       // Nest the conditional inside the open modal mode (modal > conditional >
       // effect); only a conditional with no modal above it sits at top level.
       if (mode) mode.effects.push(cond);
@@ -825,18 +897,53 @@ function conditionControlHtml(i, cond) {
   const kindSel = `<select class="cond-kind" data-i="${i}">
       <option value="cast_mode" ${cond.kind === "cast_mode" ? "selected" : ""}>cast mode</option>
       <option value="target_property" ${cond.kind === "target_property" ? "selected" : ""}>target property</option>
+      <option value="caster_property" ${cond.kind === "caster_property" ? "selected" : ""}>caster property</option>
+      <option value="self_hp" ${cond.kind === "self_hp" ? "selected" : ""}>your HP</option>
+      <option value="enemy_count" ${cond.kind === "enemy_count" ? "selected" : ""}>enemies vs party</option>
+      <option value="spells_cast" ${cond.kind === "spells_cast" ? "selected" : ""}>spells cast this turn</option>
     </select>`;
   let rest = "";
   if (cond.kind === "cast_mode") {
     rest = `<select class="cond-mode" data-i="${i}">
         <option value="action" ${cond.mode === "action" ? "selected" : ""}>cast as an action</option>
         <option value="reaction" ${cond.mode === "reaction" ? "selected" : ""}>cast as a reaction</option></select>`;
+  } else if (cond.kind === "caster_property") {
+    const prop = cond.property || "row";
+    rest = `you <select class="cond-cprop" data-i="${i}">
+        <option value="row" ${prop === "row" ? "selected" : ""}>are in row</option>
+        <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>have keyword</option>
+        <option value="channeling" ${prop === "channeling" ? "selected" : ""}>are channeling</option></select>`;
+    if (prop === "row") {
+      rest += `<select class="cond-row" data-i="${i}">${ROWS.map((r) =>
+        `<option value="${r}" ${cond.row === r ? "selected" : ""}>${r}</option>`).join("")}</select>`;
+    } else if (prop === "has_keyword") {
+      const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
+      rest += `<select class="cond-keyword" data-i="${i}">${(kwSpec.options || []).map((o) =>
+        `<option value="${o}" ${cond.keyword === o ? "selected" : ""}>${escapeHtml((kwSpec.labels && kwSpec.labels[o]) || o)}</option>`).join("")}</select>`;
+    }
+  } else if (cond.kind === "self_hp") {
+    rest = `is <input type="number" class="cond-percent" data-i="${i}" min="0" max="100" value="${cond.percent ?? 50}" />% of max
+      <select class="cond-compare" data-i="${i}">
+        <option value="or_less" ${cond.compare !== "or_more" ? "selected" : ""}>or less</option>
+        <option value="or_more" ${cond.compare === "or_more" ? "selected" : ""}>or more</option></select>`;
+  } else if (cond.kind === "enemy_count") {
+    rest = `living enemies are <select class="cond-compare" data-i="${i}">
+        <option value="more" ${cond.compare === "more" || !cond.compare ? "selected" : ""}>more than</option>
+        <option value="equal" ${cond.compare === "equal" ? "selected" : ""}>equal to</option>
+        <option value="fewer" ${cond.compare === "fewer" ? "selected" : ""}>fewer than</option></select> the party`;
+  } else if (cond.kind === "spells_cast") {
+    rest = `you have cast <input type="number" class="cond-count" data-i="${i}" min="0" value="${cond.count ?? 2}" />
+      <select class="cond-compare" data-i="${i}">
+        <option value="or_more" ${cond.compare === "or_more" || !cond.compare ? "selected" : ""}>or more</option>
+        <option value="exactly" ${cond.compare === "exactly" ? "selected" : ""}>exactly</option>
+        <option value="or_less" ${cond.compare === "or_less" ? "selected" : ""}>or fewer</option></select> spells this turn`;
   } else {
     const prop = cond.property || "has_keyword";
     rest = `<select class="cond-prop" data-i="${i}">
         <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>has keyword</option>
         <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option>
-        <option value="level" ${prop === "level" ? "selected" : ""}>is level</option></select>`;
+        <option value="level" ${prop === "level" ? "selected" : ""}>is level</option>
+        <option value="row" ${prop === "row" ? "selected" : ""}>is in row</option></select>`;
     if (prop === "has_keyword") {
       const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
       const opts = kwSpec.options || [];
@@ -848,6 +955,9 @@ function conditionControlHtml(i, cond) {
           <option value="exactly" ${cond.compare === "exactly" || !cond.compare ? "selected" : ""}>exactly</option>
           <option value="or_more" ${cond.compare === "or_more" ? "selected" : ""}>or more</option>
           <option value="or_less" ${cond.compare === "or_less" ? "selected" : ""}>or less</option></select>`;
+    } else if (prop === "row") {
+      rest += `<select class="cond-row" data-i="${i}">${ROWS.map((r) =>
+        `<option value="${r}" ${cond.row === r ? "selected" : ""}>${r}</option>`).join("")}</select>`;
     } else {
       rest += `<select class="cond-side" data-i="${i}">${["ally", "enemy"].map((s) =>
         `<option value="${s}" ${cond.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
@@ -871,17 +981,27 @@ function effectRowHtml(e, i, card, depth = 0) {
     const chooseCtl = isFirstModal ? `
           <label class="inline">choose <input type="number" min="1" class="modal-choose" data-i="${i}" value="${e.choose ?? 1}" /></label>
           <label class="inline mini"><input type="checkbox" class="modal-ormore" data-i="${i}" ${e.or_more ? "checked" : ""}/> or more</label>` : "";
+    // On a channeled card the whole modal may ride a trigger ("when this channel
+    // ends: choose one — …"); the mode is then picked when the trigger fires.
+    const modalTrgSpec = (EFFECT_SPECS.modal?.params || []).find((p) => p.name === "trigger");
+    const modalTrg = isFirstModal && card.timing === "channeled" && modalTrgSpec
+      ? `<span class="param">${triggerControlHtml(i, modalTrgSpec, e.trigger ?? null)}</span>` : "";
     return `<div class="effect-row marker">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">
           <span class="marker-note">choose option — effects below (until the next block) are this option</span>
-          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}
+          <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}${modalTrg}
         </div></div>`;
   }
   if (e.kind === "conditional") {
+    // On a channeled card a conditional may carry its own trigger — "when
+    // <trigger> … if <condition> …" — so the trigger control rides the marker.
+    const trgSpec = (EFFECT_SPECS.conditional?.params || []).find((p) => p.name === "trigger");
+    const trg = card.timing === "channeled" && trgSpec
+      ? `<span class="param">${triggerControlHtml(i, trgSpec, e.trigger ?? null)}</span>` : "";
     return `<div class="effect-row marker${indent}">
         <div class="effect-head">${kindSel}${tools}</div>
-        <div class="effect-params">${conditionControlHtml(i, e.condition)}
+        <div class="effect-params">${trg}${conditionControlHtml(i, e.condition)}
           <span class="marker-note">applies to the effects below</span></div></div>`;
   }
 
@@ -942,6 +1062,19 @@ function openDetail(idx) {
       <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
       <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
       <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
+    </div>
+
+    <div class="block">
+      <div class="label">Mana cost — level mirrors it (generic + pips; X counts 0)</div>
+      <div class="cost-edit">
+        <label class="inline mini" title="{X} in the cost — the caster picks X at cast and pays that much extra mana">
+          <input type="checkbox" id="cost-x" ${card.cost.x ? "checked" : ""}/> X</label>
+        <label class="inline">generic <input type="number" id="cost-generic" min="0" style="width:56px"
+          value="${card.cost.generic || 0}" /></label>
+        ${COLORS.map((c) => `<label class="inline mini">${manaIcon(c)}
+          <input type="number" class="cost-pip" data-c="${c}" min="0" style="width:44px"
+            value="${(card.cost.colors && card.cost.colors[c]) || 0}" /></label>`).join(" ")}
+      </div>
     </div>
 
     <div class="block">
@@ -1011,6 +1144,19 @@ function wireDetail(idx) {
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
+
+  // Mana cost editing — any change re-derives level and re-checks the card.
+  const costChanged = () => { syncLevelToCost(card); recheckCard(idx, true); };
+  $("#cost-x").onchange = (e) => { card.cost.x = e.target.checked; costChanged(); };
+  $("#cost-generic").onchange = (e) => { card.cost.generic = Math.max(0, parseInt(e.target.value) || 0); costChanged(); };
+  document.querySelectorAll(".cost-pip").forEach((inp) => {
+    inp.onchange = () => {
+      const n = Math.max(0, parseInt(inp.value) || 0);
+      card.cost.colors = card.cost.colors || {};
+      if (n) card.cost.colors[inp.dataset.c] = n; else delete card.cost.colors[inp.dataset.c];
+      costChanged();
+    };
+  });
   $("#detail-validate").onclick = () => toggleValidated(idx);
   $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
   $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
@@ -1053,7 +1199,7 @@ function wireDetail(idx) {
       const i = +sel.dataset.i, p = sel.dataset.p;
       editorItems[i][p] = sel.value === "all" ? "all"
         : sel.value === "capacity" ? { ref: "mana_capacity" }
-        : sel.value === "ref" ? { ref: "" } : 1;
+        : sel.value === "ref" ? { ref: refNames()[0] || "destroyed_target.level" } : 1;
       commitEffects(idx, true);
     };
   });
@@ -1077,9 +1223,28 @@ function wireDetail(idx) {
   document.querySelectorAll(".modal-ormore").forEach((cb) => { cb.onchange = () => { editorItems[+cb.dataset.i].or_more = cb.checked; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-kind").forEach((sel) => {
     sel.onchange = () => {
-      editorItems[+sel.dataset.i].condition = sel.value === "cast_mode"
-        ? { kind: "cast_mode", mode: "reaction" }
-        : { kind: "target_property", property: "has_keyword", keyword: "flying" };
+      const byKind = {
+        cast_mode: { kind: "cast_mode", mode: "reaction" },
+        target_property: { kind: "target_property", property: "has_keyword", keyword: "flying" },
+        caster_property: { kind: "caster_property", property: "row", row: "front" },
+        self_hp: { kind: "self_hp", percent: 50, compare: "or_less" },
+        enemy_count: { kind: "enemy_count", compare: "more" },
+        spells_cast: { kind: "spells_cast", count: 2, compare: "or_more" },
+      };
+      editorItems[+sel.dataset.i].condition = byKind[sel.value] || byKind.cast_mode;
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".cond-percent").forEach((inp) => {
+    inp.onchange = () => {
+      editorItems[+inp.dataset.i].condition.percent =
+        Math.max(0, Math.min(100, parseInt(inp.value) || 0));
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".cond-count").forEach((inp) => {
+    inp.onchange = () => {
+      editorItems[+inp.dataset.i].condition.count = Math.max(0, parseInt(inp.value) || 0);
       commitEffects(idx, true);
     };
   });
@@ -1090,15 +1255,55 @@ function wireDetail(idx) {
         has_keyword: { kind: "target_property", property: "has_keyword", keyword: "flying" },
         side: { kind: "target_property", property: "side", side: "enemy" },
         level: { kind: "target_property", property: "level", level: 1, compare: "exactly" },
+        row: { kind: "target_property", property: "row", row: "front" },
       };
       editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.has_keyword;
       commitEffects(idx, true);
     };
   });
   document.querySelectorAll(".cond-keyword").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.keyword = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-row").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.row = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-cprop").forEach((sel) => {
+    sel.onchange = () => {
+      const byProp = {
+        row: { kind: "caster_property", property: "row", row: "front" },
+        has_keyword: { kind: "caster_property", property: "has_keyword", keyword: "flying" },
+        channeling: { kind: "caster_property", property: "channeling" },
+      };
+      editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.row;
+      commitEffects(idx, true);
+    };
+  });
   document.querySelectorAll(".cond-side").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.side = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-level").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].condition.level = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-compare").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.compare = sel.value; commitEffects(idx, true); }; });
+
+  // Trigger control (lifecycle literal or event trigger object).
+  document.querySelectorAll(".trg-base").forEach((sel) => {
+    sel.onchange = () => {
+      editorItems[+sel.dataset.i].trigger = sel.value === "" ? null
+        : sel.value === "__event__" ? { event: "attack", who: "you" } : sel.value;
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".trg-event").forEach((sel) => {
+    sel.onchange = () => {
+      const t = editorItems[+sel.dataset.i].trigger;
+      t.event = sel.value;
+      if (sel.value !== "spell_cast") delete t.spell_type;  // spell_cast-only filter
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".trg-who").forEach((sel) => {
+    sel.onchange = () => { editorItems[+sel.dataset.i].trigger.who = sel.value; commitEffects(idx, true); };
+  });
+  document.querySelectorAll(".trg-spelltype").forEach((sel) => {
+    sel.onchange = () => {
+      const t = editorItems[+sel.dataset.i].trigger;
+      if (sel.value === "") delete t.spell_type; else t.spell_type = sel.value;
+      commitEffects(idx, true);
+    };
+  });
 
   document.querySelectorAll(".eff-up").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, -1));
   document.querySelectorAll(".eff-down").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, 1));
@@ -1144,7 +1349,7 @@ function onTargetLink(idx, i, value, field = "target") {
   } else if (value === "__new_slot__") {
     const name = nextSlotName(card);
     const cur = e[field];
-    const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: false };
+    const seed = (cur && typeof cur === "object" && cur.mode === "chosen") ? normTarget(cur) : { mode: "chosen", side: "ally", exclude_self: false, targeted: true };
     card.targets[name] = seed;
     e[field] = "$" + name;
   } else {
@@ -1249,16 +1454,25 @@ async function refreshStatus() {
 }
 
 function renderStatus(s) {
-  const sizePct = Math.min(100, (s.size.count / s.size.limit) * 100);
-  const sizeOver = s.size.count > s.size.limit;
+  // 20-card deck: 1 mythic / 3 rare / 6 uncommon / 10 common as MINIMUMS; going
+  // over is fine only on commons. Violations warn — they never block anything.
+  const min = s.size.minimum;
+  const sizePct = Math.min(100, (s.size.count / min) * 100);
+  const under = s.size.count < min;
   let html = "";
-  html += `<div>Cards <strong>${s.size.count} / ${s.size.limit}</strong>
-    <div class="bar"><span class="${sizeOver ? "over" : ""}" style="width:${sizePct}%"></span></div></div>`;
+  html += `<div>Cards <strong>${s.size.count} / ${min}</strong>${under ? "" : " ✓"}
+    <div class="bar"><span class="${under ? "over" : ""}" style="width:${sizePct}%"></span></div></div>`;
+  const problems = [];
   html += `<div>Rarity: ` + ["mythic", "rare", "uncommon", "common"].map((r) => {
-    const { count, limit } = s.rarity[r];
-    const cls = count > limit ? "warn" : "";
-    return `<span class="${cls}">${r} ${count}/${limit}</span>`;
+    const { count, minimum, capped } = s.rarity[r];
+    const short = count < minimum, over = capped && count > minimum;
+    if (short) problems.push(`needs ${minimum - count} more ${r}`);
+    if (over) problems.push(`${count - minimum} ${r} over quota — extras must be common`);
+    return `<span class="${short || over ? "warn" : ""}">${r} ${count}/${minimum}${capped ? "" : "+"}</span>`;
   }).join(" · ") + `</div>`;
+  if (problems.length) {
+    html += `<div class="warn">Deck breakdown: ${problems.join("; ")}.</div>`;
+  }
   html += `<div class="${s.duplicates.length ? "warn" : "ok"}">Singleton: ${
     s.duplicates.length ? "dupes — " + s.duplicates.join(", ") : "ok"}</div>`;
   html += `<div class="${s.off_color.length ? "warn" : "ok"}">Off-colour: ${
@@ -1404,8 +1618,95 @@ async function doImport() {
   }
 }
 
+// --- Custom-card JSON import (adds to the deck, never replaces) ------------
+function openImportCustom() {
+  $("#import-custom-text").value = "";
+  $("#import-custom-status").textContent = "";
+  $("#import-custom-overlay").classList.remove("hidden");
+  $("#import-custom-text").focus();
+}
+function closeImportCustom() { $("#import-custom-overlay").classList.add("hidden"); }
+
+async function doImportCustom() {
+  const status = $("#import-custom-status");
+  let parsed;
+  try { parsed = JSON.parse($("#import-custom-text").value); }
+  catch (e) { status.textContent = `Invalid JSON: ${e.message}`; return; }
+  const cards = Array.isArray(parsed) ? parsed
+    : (parsed && Array.isArray(parsed.cards)) ? parsed.cards : null;
+  if (!cards || !cards.length) {
+    status.textContent = 'No cards found — expected an array of cards or {"cards": [...]}.';
+    return;
+  }
+  status.textContent = `Importing ${cards.length} card(s)…`;
+  $("#import-custom-go").disabled = true;
+  try {
+    const res = await api("POST", "/api/cards/import-custom", { cards });
+    res.cards.forEach(({ card, lints }) => state.cards.push({ ...card, _lints: lints }));
+    renderDeck();
+    scheduleValidate();
+    if (res.errors.length) {
+      // Keep the dialog open so the user can fix rejected entries in place.
+      const lines = res.errors.map((e) => `• ${e.name}: ${e.reason}`).join("\n");
+      status.textContent = `Imported ${res.cards.length} card(s); ${res.errors.length} rejected:\n${lines}`;
+      console.warn("Rejected on custom import:", res.errors);
+      if (res.cards.length) toast(`Imported ${res.cards.length} custom card(s) — ${res.errors.length} rejected.`);
+    } else {
+      closeImportCustom();
+      toast(`Imported ${res.cards.length} custom card(s).`);
+    }
+  } catch (e) {
+    status.textContent = `Import failed: ${e.message}`;
+  } finally {
+    $("#import-custom-go").disabled = false;
+  }
+}
+
+// Edit-a-game-character mode (opened from the game's Options → Characters →
+// Edit with ?edit=<character id>): the export button becomes "Update Game
+// Character" and writes the engine loadout over that character's file in the
+// repo, keeping its id even if renamed. null == normal standalone mode.
+let editTarget = null;
+
+async function updateGameCharacter() {
+  syncCharacterFromInputs();
+  try {
+    const res = await api("POST", "/api/loadout/update-game",
+                          { name: editTarget, loadout: state });
+    if (res.omitted.length) {
+      toast(`Updated ${res.updated}: ${res.exported_count} cards live; ` +
+            `${res.omitted.length} omitted (not validated).`);
+      console.warn("Omitted from game update:", res.omitted);
+    } else {
+      toast(`Updated ${res.updated} — ${res.exported_count} cards. ` +
+            `The game picks it up on the next New Game.`);
+    }
+  } catch (e) {
+    alert(`Update failed:\n${e.message}`);
+  }
+}
+
+async function enterEditMode(name) {
+  try {
+    const data = await api("GET", `/api/loadout/${encodeURIComponent(name)}`);
+    state = data;
+    if (!state.character.row) state.character.row = "front";
+    normalizeCharacter(state.character);
+    reconcileStartingMana();
+    editTarget = name;
+    const btn = $("#btn-export-engine");
+    btn.textContent = "Update Game Character";
+    btn.title = `Writes this loadout over the game character "${name}" (validated cards only)`;
+    renderAll();
+    toast(`Editing game character: ${state.character.name || name}`);
+  } catch (e) {
+    toast(`Could not load character "${name}": ${e.message}`);
+  }
+}
+
 // Export an engine-ready loadout: only structurally-valid, validated cards.
 async function exportEngineLoadout() {
+  if (editTarget) return updateGameCharacter();
   syncCharacterFromInputs();
   try {
     const res = await api("POST", "/api/loadout/export", { loadout: state });
@@ -1466,6 +1767,10 @@ function init() {
   $("#import-cancel").onclick = closeImport;
   $("#import-go").onclick = doImport;
   $("#import-overlay").onclick = (e) => { if (e.target.id === "import-overlay") closeImport(); };
+  $("#btn-import-custom").onclick = openImportCustom;
+  $("#import-custom-cancel").onclick = closeImportCustom;
+  $("#import-custom-go").onclick = doImportCustom;
+  $("#import-custom-overlay").onclick = (e) => { if (e.target.id === "import-custom-overlay") closeImportCustom(); };
   $("#portrait").onclick = (e) => { if (e.target.id !== "portrait-clear") $("#portrait-file").click(); };
   $("#portrait-clear").onclick = (e) => { e.stopPropagation(); state.character.portrait = ""; renderPortrait(); };
   $("#portrait-file").onchange = (e) => {
@@ -1486,3 +1791,10 @@ function init() {
 }
 
 init();
+
+// Opened from the game (Options → Characters → Edit)? Load that character and
+// flip the export button into "Update Game Character" mode.
+{
+  const editParam = new URLSearchParams(location.search).get("edit");
+  if (editParam) enterEditMode(editParam);
+}

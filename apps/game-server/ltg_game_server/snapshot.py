@@ -28,6 +28,7 @@ from ltg_combat.serialize import (
     serialize_actions,
 )
 from ltg_combat.state import Action, GameState
+from ltg_core.schema import KEYWORDS
 
 LOG_TAIL = 60  # how many recent log entries to ship (newest-first)
 
@@ -58,6 +59,20 @@ def priority_kind(view: GameState) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 def _power_block(cur: int, base: int, modifier: int) -> Dict[str, int]:
     return {"current": cur, "base": base, "modifier": modifier}
+
+
+def _keyword_list(obj) -> List[Dict[str, str]]:
+    """Active keyword statics with their registry display name + gloss, so the
+    client can render an icon and a tooltip without knowing any rules."""
+    out = []
+    for kw in getattr(obj, "keywords", {}):
+        info = KEYWORDS.get(kw, {})
+        out.append({
+            "id": kw,
+            "name": info.get("display", kw.replace("_", " ").title()),
+            "gloss": info.get("gloss", ""),
+        })
+    return out
 
 
 def _mana_block(char_dict: Dict[str, Any], raw_char, pending_capacity: bool) -> Dict[str, Any]:
@@ -97,6 +112,9 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "is_channeling": bool(char.channels),
         "channels_summary": cd["channels"],  # id/name/target/text per held channel
         "status_tags": cd["status_tags"],
+        "keywords": _keyword_list(char),
+        # +1/+1 counters received (their stat change is already inside power/hp).
+        "counters": getattr(char, "counters", 0),
         "mitigate_value": cd["mitigate_value"],
         "acted_mode": cd["acted_mode"],
         "turn_ended": cd["turn_ended"],
@@ -128,13 +146,18 @@ def _creature_snapshot(view: GameState, enemy) -> Dict[str, Any]:
         # Effective hp (hp + temp_mod) so a wound (e.g. Agony Warp −0/−3) shows.
         "hp": _power_block(enemy.effective_hp, ed["max_hp"], ed["temp_mod"]),
         "attack_mode": ed["attack_mode"],
-        "keywords": ed["keywords"],
+        "keywords": _keyword_list(enemy),
+        "counters": getattr(enemy, "counters", 0),
         "intent": ed["intent"],
-        # Boss support is out of scope in the engine (INTERFACE_NOTES §4.3/§4.4):
-        # these stay constant so the UI's dormant boss hooks never light up.
-        "is_boss": False,
-        "is_channeling": False,
-        "in_execute_window": False,
+        # Boss support (§F-9): the flag lights the UI's boss chrome; the execute
+        # window tells players the removal immunity has lifted (≤25% max HP).
+        "is_boss": bool(enemy.is_boss),
+        # Enemy channels (§8): the held effects, named so the player knows what
+        # they are turning off — break with one hit of ≥25% max HP or removal.
+        "is_channeling": bool(enemy.channels),
+        "channels": [{"name": ch.name} for ch in enemy.channels],
+        "break_threshold": -(-enemy.max_hp // 4),  # ceil(max_hp / 4)
+        "in_execute_window": bool(enemy.is_boss and enemy.in_execute_window),
     }
 
 
@@ -146,6 +169,8 @@ def _token_snapshot(view: GameState, token) -> Dict[str, Any]:
         "row": td["row"],
         "power": _power_block(token.current_power, token.power, token.power_bonus),
         "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
+        "keywords": _keyword_list(token),
+        "counters": getattr(token, "counters", 0),
         "is_channeling": False,
     }
 
@@ -202,6 +227,19 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
             # Agony Warp's two wounds) rather than "target 1 / target 2".
             entry["target_labels"] = cast_target_labels(view, act)
 
+    # A pending card pick's candidates, as FULL cards (cost/text/type), so the
+    # client can show the whole card instead of a name list. Hidden-information
+    # gated exactly like hands: only the chooser's client receives them.
+    pending_cards = None
+    pc = view.pending_choice
+    if (pc is not None and pc.kind in ("move", "scry")
+            and pc.chooser_id in controlled_ids):
+        pending_cards = {
+            "kind": pc.kind,
+            "chooser_id": pc.chooser_id,
+            "candidates": [card_dict(c) for c in pc.candidates],
+        }
+
     characters = [
         _character_snapshot(view, c, c.id in controlled_ids, holder_id, kind,
                             portraits.get(c.id, ""))
@@ -218,13 +256,32 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
             "source_id": r["source_id"], "source_name": r["source_name"],
             "source_side": r["source_side"], "target_id": r["target_id"],
             "target_name": r["target_name"], "reserved_pips": r["reserved_pips"],
-            "top": r["top"], "uid": r["raw"].get("uid"),
+            "card": r["card"], "top": r["top"], "uid": r["raw"].get("uid"),
         }
         for r in _stack_list(view)
     ]
+    # Resolve the card a log line references (data["card"] id) to the full card,
+    # scanning every party zone / held channel / stack item — so the client can
+    # show the whole card on hover. Names in the log are already public; this
+    # attaches the matching text at the same disclosure level.
+    card_index = {}
+    for c in view.party:
+        for zone in (c.hand, c.library, c.graveyard, c.exile):
+            for card in zone:
+                card_index[card.id] = card
+        for ch in c.channels:
+            card_index[ch.card.id] = ch.card
+    for item in view.stack:
+        if item.card is not None:
+            card_index[item.card.id] = item.card
+
+    def _log_card(e):
+        cid = e.data.get("card")
+        return card_dict(card_index[cid]) if cid in card_index else None
+
     visible = [e for e in stored.log if e.type not in HIDDEN_LOG_TYPES]
     log = [
-        {"type": e.type, "msg": e.msg, "data": e.data}
+        {"type": e.type, "msg": e.msg, "data": e.data, "card": _log_card(e)}
         for e in reversed(visible[-LOG_TAIL:])  # newest-first tail
     ]
 
@@ -238,6 +295,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "tokens": tokens,
         "stack": stack,
         "intents": _intents(view),
+        "pending_choice": pending_cards,
         "log": log,
         "legal_actions": legal_payload,   # for the controlled holder only
         "result": view.result,

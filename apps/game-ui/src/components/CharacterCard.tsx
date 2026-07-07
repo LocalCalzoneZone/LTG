@@ -2,6 +2,7 @@ import type { CharacterView } from "../lib/types";
 import { hpColor, modifierColor, modifierText, powerColor } from "../lib/format";
 import { CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
+import { KeywordBadges } from "./KeywordBadges";
 
 interface Props {
   char: CharacterView;
@@ -57,13 +58,16 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
         char.is_active_focusable || isTarget ? "cursor-pointer" : "cursor-default"
       }`}
     >
-      {/* Power — top-left */}
-      <div className="absolute left-1.5 top-1.5 flex flex-col items-start rounded bg-black/55 px-1.5 py-0.5 leading-none">
-        <span className={`${BIG} font-black ${powerColor(char.power)}`}>{char.power.current}</span>
-        <div className={`flex gap-1.5 ${SMALL}`}>
-          <span className={modifierColor(char.power.modifier)}>{modifierText(char.power.modifier)}</span>
-          <span className="text-gray-400">{char.power.base}</span>
+      {/* Power — top-left; keyword/counter badges stack beneath it */}
+      <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
+        <div className="flex flex-col items-start rounded bg-black/55 px-1.5 py-0.5 leading-none">
+          <span className={`${BIG} font-black ${powerColor(char.power)}`}>{char.power.current}</span>
+          <div className={`flex gap-1.5 ${SMALL}`}>
+            <span className={modifierColor(char.power.modifier)}>{modifierText(char.power.modifier)}</span>
+            <span className="text-gray-400">{char.power.base}</span>
+          </div>
         </div>
+        <KeywordBadges keywords={char.keywords} counters={char.counters} />
       </div>
 
       {/* Health — top-right */}

@@ -1,6 +1,13 @@
 // REST lobby client. Same-origin (the server serves the built client), so
 // relative URLs work in prod; in dev Vite proxies /api to the server.
-import type { CharacterOption, EncounterDetail, EncounterOption, SetupOptions } from "./types";
+import type {
+  CharacterOption,
+  EncounterDetail,
+  EncounterOption,
+  LlmSettings,
+  LlmSettingsPatch,
+  SetupOptions,
+} from "./types";
 
 export async function fetchSetupOptions(): Promise<SetupOptions> {
   const res = await fetch("/api/setup-options");
@@ -74,6 +81,44 @@ export async function createGame(character_ids: string[], encounter_id: string):
   }
   const data = await res.json();
   return data.session_id as string;
+}
+
+export async function fetchLlmSettings(): Promise<LlmSettings> {
+  const res = await fetch("/api/llm/settings");
+  if (!res.ok) throw new Error(`llm settings failed: ${res.status}`);
+  return res.json();
+}
+
+export async function saveLlmSettings(patch: LlmSettingsPatch): Promise<LlmSettings> {
+  const res = await fetch("/api/llm/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `save failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// Generate + persist a new encounter scoped to the picked party; returns its meta.
+export async function generateEncounter(
+  character_ids: string[],
+  difficulty: string,
+  note: string,
+): Promise<EncounterOption> {
+  const res = await fetch("/api/encounters/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ character_ids, difficulty, note }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `generate failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.encounter as EncounterOption;
 }
 
 export async function gameStatus(session_id: string): Promise<boolean> {

@@ -20,6 +20,12 @@
       "port": 8020
     },
     {
+      "name": "game-alt",
+      "runtimeExecutable": ".venv/bin/ltg-game",
+      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8021"],
+      "port": 8021
+    },
+    {
       "name": "game-ui",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/game-ui", "run", "dev"],

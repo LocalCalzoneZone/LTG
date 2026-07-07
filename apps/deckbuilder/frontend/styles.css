@@ -154,6 +154,8 @@ textarea { resize: vertical; }
 .results .meta { color: var(--muted); font-size: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .res-cost { display: inline-flex; align-items: center; gap: 1px; }
 .res-cost .mana-icon { width: 14px; height: 14px; }
+.cost-edit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cost-edit .mana-icon { width: 16px; height: 16px; }
 .mc-generic {
   display: inline-grid; place-items: center; min-width: 14px; height: 14px;
   padding: 0 2px; border-radius: 50%; background: var(--panel-2);

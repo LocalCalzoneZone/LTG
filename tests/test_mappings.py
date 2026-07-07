@@ -205,3 +205,29 @@ def test_deck_status_reports_warnings():
     assert "Counterspell" in status["duplicates"]
     assert "Giant Growth" in status["off_color"]  # G outside U/B identity
     assert status["starting_mana_outside_identity"] == ["G"]
+
+
+def test_deck_status_quotas_are_minimums_with_common_only_overflow():
+    """20-card deck: 1 mythic / 3 rare / 6 uncommon / 10 common as minimums;
+    only commons are uncapped (excess over 20 must be common). Advisory only —
+    deck_status reports the breakdown, it never raises."""
+
+    def _card(i, rarity):
+        return {"id": f"c{i}", "name": f"c{i}", "source_name": f"c{i}",
+                "rarity": rarity, "level": 1, "type": "Instant", "timing": "instant",
+                "cost": {"generic": 0, "colors": {}}, "effects": []}
+
+    cards = ([_card(0, "mythic")] + [_card(i, "rare") for i in range(1, 4)]
+             + [_card(i, "uncommon") for i in range(4, 10)]
+             + [_card(i, "common") for i in range(10, 22)])  # 12 commons — over 20 total
+    loadout = Loadout.model_validate({
+        "character": {"name": "T", "colors": ["U"], "starting_mana": ["U"]},
+        "cards": cards,
+    })
+    status = deck_status(loadout)
+    assert status["size"] == {"count": 22, "minimum": 20}
+    assert status["rarity"]["mythic"] == {"count": 1, "minimum": 1, "capped": True}
+    assert status["rarity"]["rare"] == {"count": 3, "minimum": 3, "capped": True}
+    assert status["rarity"]["uncommon"] == {"count": 6, "minimum": 6, "capped": True}
+    # Commons are the only uncapped rarity — 12 over a floor of 10 is fine.
+    assert status["rarity"]["common"] == {"count": 12, "minimum": 10, "capped": False}

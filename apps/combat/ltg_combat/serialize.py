@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 from ltg_core.schema import Card
+from ltg_core.translation import channel_break_clause
 from .state import Action, GameState
 
 _WUBRG = ["W", "U", "B", "R", "G"]
@@ -47,6 +48,8 @@ def to_jsonable(obj: Any) -> Any:
 # --------------------------------------------------------------------------- #
 def cost_pips(card: Card) -> str:
     pips = ""
+    if getattr(card.cost, "x", False):
+        pips += "{X}"  # an {X} cost — the cast chooses X (engine offers one per value)
     if card.cost.generic:
         pips += "{" + str(card.cost.generic) + "}"
     counts = {c.value: n for c, n in card.cost.colors.items()}
@@ -155,6 +158,9 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
             "target_id": ch.target_id,
             "target_name": _name_of(state, ch.target_id),
             "text": ch.card.translated_text or "",
+            # What ending this channel will fire ("" when it has no break trigger)
+            # — the Channels modal shows it as a warning note next to Drop.
+            "break_text": channel_break_clause(ch.card.effects, ch.card.targets),
         } for ch in char.channels],
         "hand": [card_dict(c) for c in char.hand],
         "library": [card_dict(c) for c in char.library],
@@ -229,16 +235,21 @@ def _name_of(state: GameState, cid: Optional[str]) -> Optional[str]:
 # Stack
 # --------------------------------------------------------------------------- #
 def action_mode(kind: str, attack_mode: Optional[str]) -> Optional[str]:
-    """The melee/ranged/spell tag shown beside an action (stack row or intent).
+    """The classification tag shown beside an action (stack row / banner / intent),
+    in the engine's own vocabulary: **spell | attack | ability** (GDD taxonomy).
 
-    Spells read "spell"; attacks (and enemy ability-attacks that carry a reach)
-    read their melee/ranged reach; a generic ability with no reach reads nothing."""
+    Melee/ranged qualifies ATTACKS ONLY — "melee attack" / "ranged attack". An
+    ability always reads "ability", even when its owner is a ranged creature: the
+    old behaviour let an enemy ability wear its owner's reach ("Life Leech (ranged)"),
+    which read as an attack and hid why combat-damage prevention didn't stop it.
+    The tag names the item's damage lane, so what answers it is legible at a glance."""
     if kind == "spell":
         return "spell"
-    if attack_mode in ("melee", "ranged"):
-        return attack_mode
     if kind == "attack":
-        return "melee"
+        reach = attack_mode if attack_mode in ("melee", "ranged") else "melee"
+        return f"{reach} attack"
+    if kind in ("ability", "activated", "triggered"):
+        return "ability"
     return None
 
 
@@ -255,6 +266,9 @@ def _stack_list(state: GameState) -> List[Dict[str, Any]]:
             "target_id": item.target_id,
             "target_name": _name_of(state, item.target_id),
             "reserved_pips": _pip_str(item.reserved),
+            # The full card behind the action (a cast / a card-carried trigger),
+            # so the UI can show it on hover; None for attacks & enemy components.
+            "card": card_dict(item.card) if item.card is not None else None,
             "top": i == 0,
             "raw": to_jsonable(item),
         })
@@ -365,6 +379,24 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
         return [{"label": prompt, "kind": "prompt"}] + [
             {"label": a.label, "index": i, "kind": "choose_scry"} for i, a in scry_choices]
 
+    # A trigger-time target pick: aim the triggered ability as it goes on the stack.
+    target_choices = [(i, a) for i, a in indexed if a.kind == "choose_target"]
+    if target_choices:
+        pc = state.pending_choice
+        prompt = (f"{pc.item.label} — choose its target" if pc is not None
+                  else "Choose a target")
+        return [{"label": prompt, "kind": "prompt"}] + [
+            {"label": a.label, "index": i, "kind": "choose_target"} for i, a in target_choices]
+
+    # A trigger-time mode pick: a triggered modal chooses its mode as it fires.
+    mode_choices = [(i, a) for i, a in indexed if a.kind == "choose_mode"]
+    if mode_choices:
+        pc = state.pending_choice
+        prompt = (f"{pc.item.label} — choose a mode" if pc is not None
+                  else "Choose a mode")
+        return [{"label": prompt, "kind": "prompt"}] + [
+            {"label": a.label, "index": i, "kind": "choose_mode"} for i, a in mode_choices]
+
     mana = [(i, a) for i, a in indexed if a.kind == "choose_mana"]
     attacks = [(i, a) for i, a in indexed if a.kind == "attack"]
     moves = [(i, a) for i, a in indexed if a.kind == "move"]
@@ -439,5 +471,6 @@ def serialize_actions(state: GameState, actions: List[Action]) -> List[Dict[str,
     """The flat legal list (index-addressable), for reference / debugging."""
     return [{
         "index": i, "kind": a.kind, "actor_id": a.actor_id, "card_id": a.card_id,
-        "target_id": a.target_id, "color": a.color, "mode": a.mode, "label": a.label,
+        "target_id": a.target_id, "color": a.color, "mode": a.mode, "x": a.x,
+        "choice": a.choice, "label": a.label,
     } for i, a in enumerate(actions)]

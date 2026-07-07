@@ -30,6 +30,7 @@ from .schema import (
     Draw,
     Duration,
     Effect,
+    EventTrigger,
     Exile,
     GrantKeyword,
     Heal,
@@ -77,8 +78,11 @@ def _counter_ability(m, ctx):
     return [Counter(filter="ability")]
 
 
-@register(r"counter target noncreature spell")
-def _counter_noncreature(m, ctx):
+@register(r"counter target (?:instant|noncreature) spell")
+def _counter_spell_only(m, ctx):
+    # Spell-only counters (Negate, Dispel): enemy components flagged
+    # `action_type: "spell"` (Fireball, Psionic Lance …) land on the stack as
+    # kind "spell" and are exactly what these answer — nothing physical.
     return [Counter(filter="spell")]
 
 
@@ -313,6 +317,20 @@ def _value(v) -> str:
     if isinstance(v, Ref):
         if v.ref == "mana_capacity":
             return "your mana capacity"
+        if v.ref == "x":
+            return "X"
+        if v.ref == "party_size":
+            return "the party size"
+        if v.ref == "caster_power":
+            return "your Power"
+        if v.ref == "caster_hp":
+            return "your current HP"
+        if v.ref == "target_power":
+            return "its Power"
+        if v.ref == "target_hp":
+            return "its current HP"
+        if v.ref == "casting_cost":
+            return "its casting cost"
         if v.ref.endswith(".level"):
             return "its Level"
         return v.ref
@@ -426,6 +444,27 @@ def _grant_duration(e) -> str:
 def _condition_phrase(cond) -> str:
     if cond.kind == "cast_mode":
         return "cast as an action" if cond.mode == "action" else "cast as a reaction"
+    if cond.kind == "caster_property":
+        if cond.property == "row":
+            row = cond.row.value if hasattr(cond.row, "value") else cond.row
+            return f"you are in the {row} row"
+        if cond.property == "has_keyword":
+            return f"you have {KEYWORDS.get(cond.keyword, {}).get('display', cond.keyword)}"
+        return "you are channeling"
+    if cond.kind == "self_hp":
+        rel = "or less" if getattr(cond, "compare", "or_less") == "or_less" else "or more"
+        return f"your HP is {cond.percent}% of your maximum {rel}"
+    if cond.kind == "enemy_count":
+        return {
+            "more": "the enemies outnumber your party",
+            "equal": "the enemies and your party are equal in number",
+            "fewer": "your party outnumbers the enemies",
+        }.get(getattr(cond, "compare", "more"), "the enemies outnumber your party")
+    if cond.kind == "spells_cast":
+        suffix = {"or_more": " or more", "or_less": " or fewer"}.get(
+            getattr(cond, "compare", "or_more"), "")
+        noun = "spell" if cond.count == 1 and not suffix else "spells"
+        return f"you have cast {_count_word(cond.count)}{suffix} {noun} this turn"
     if cond.property == "has_keyword":
         return f"the target has {KEYWORDS.get(cond.keyword, {}).get('display', cond.keyword)}"
     if cond.property == "side":
@@ -434,6 +473,9 @@ def _condition_phrase(cond) -> str:
     if cond.property == "level":
         suffix = {"or_more": " or more", "or_less": " or less"}.get(getattr(cond, "compare", "exactly"), "")
         return f"the target is level {cond.level}{suffix}"
+    if cond.property == "row":
+        row = cond.row.value if hasattr(cond.row, "value") else cond.row
+        return f"the target is in the {row} row"
     return "the condition holds"
 
 
@@ -542,6 +584,9 @@ def _target_condition_qualifier(cond) -> str:
     if cond.property == "side":
         s = cond.side.value if hasattr(cond.side, "value") else cond.side
         return {"ally": "that is an ally", "enemy": "that is an enemy"}.get(s, "that qualifies")
+    if cond.property == "row":
+        row = cond.row.value if hasattr(cond.row, "value") else cond.row
+        return f"in the {row} row"
     return "that qualifies"
 
 
@@ -574,27 +619,27 @@ def _render_conditional(e) -> str:
 # Power/toughness convention: power → "attack", toughness → "temp HP" (buff) / "HP" (debuff).
 def _render_pump(e) -> str:
     verb = "gain" if _plural(e.target) else "gains"
-    return f"{_subject(e.target).capitalize()} {verb} +{e.power} attack and +{e.toughness} temp HP{_duration_suffix(e)}."
+    return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)} attack and +{_value(e.toughness)} temp HP{_duration_suffix(e)}."
 
 
 def _render_wound(e) -> str:
     verb = "have" if _plural(e.target) else "has"
-    return f"{_subject(e.target).capitalize()} {verb} -{e.power} attack and -{e.toughness} HP{_duration_suffix(e)}."
+    return f"{_subject(e.target).capitalize()} {verb} -{_value(e.power)} attack and -{_value(e.toughness)} HP{_duration_suffix(e)}."
 
 
 def _render_counters(e) -> str:
     verb = "gain" if _plural(e.target) else "gains"
-    return f"{_subject(e.target).capitalize()} {verb} +{e.power}/+{e.toughness}{_duration_suffix(e) or ' for the encounter'}."
+    return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)}/+{_value(e.toughness)}{_duration_suffix(e) or ' for the encounter'}."
 
 
 RENDERERS = {
     "deal_damage": lambda e: (
         f"Deal 1 damage to {_tgt(e.target)} for each point of mana capacity."
-        if _is_capacity(e.amount) else f"Deal {e.amount} damage to {_tgt(e.target)}."
+        if _is_capacity(e.amount) else f"Deal {_value(e.amount)} damage to {_tgt(e.target)}."
     ),
     "heal": lambda e: (
         f"Restore 1 HP to {_tgt(e.target)} for each point of mana capacity."
-        if _is_capacity(e.amount) else f"Restore {e.amount} HP to {_tgt(e.target)}."
+        if _is_capacity(e.amount) else f"Restore {_value(e.amount)} HP to {_tgt(e.target)}."
     ),
     "lose_life": lambda e: _render_lose_life(e),
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
@@ -611,11 +656,11 @@ RENDERERS = {
     "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
-        else f"Draw {e.amount} card(s)."
+        else f"Draw {_value(e.amount)} card(s)."
     ),
     "scry": lambda e: (
         "Scry 1 for each point of mana capacity." if _is_capacity(e.amount)
-        else f"Scry {e.amount}."
+        else f"Scry {_value(e.amount)}."
     ),
     "move_card": _render_move_card,
     "create_token": lambda e: f"Create {_token_phrase(e)}.",
@@ -643,17 +688,17 @@ def _render_one(e) -> str:
 
 # Subjectless verb phrases for shared-target ("Choose X: they …") sentences.
 _CLAUSE = {
-    "draw": lambda e: f"draw {e.amount}",
-    "scry": lambda e: f"scry {e.amount}",
-    "heal": lambda e: f"heal {e.amount}",
-    "deal_damage": lambda e: f"take {e.amount} damage",
+    "draw": lambda e: f"draw {_value(e.amount)}",
+    "scry": lambda e: f"scry {_value(e.amount)}",
+    "heal": lambda e: f"heal {_value(e.amount)}",
+    "deal_damage": lambda e: f"take {_value(e.amount)} damage",
     "lose_life": lambda e: (
         f"lose HP equal to {_value(e.amount)}"
         if isinstance(e.amount, Ref)
         else f"lose {e.amount} HP"
     ),
-    "pump": lambda e: f"gain +{e.power}/+{e.toughness} this turn",
-    "wound": lambda e: f"suffer -{e.power}/-{e.toughness} this turn",
+    "pump": lambda e: f"gain +{_value(e.power)}/+{_value(e.toughness)} this turn",
+    "wound": lambda e: f"suffer -{_value(e.power)}/-{_value(e.toughness)} this turn",
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
     "bounce": lambda e: "are returned to hand",
@@ -667,7 +712,7 @@ _CLAUSE = {
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
     "protection": lambda e: f"gain protection ({e.scope})",
-    "counters": lambda e: f"gain +{e.power}/+{e.toughness} counters",
+    "counters": lambda e: f"gain +{_value(e.power)}/+{_value(e.toughness)} counters",
     "prevent": lambda e: (
         "can't attack" if e.parameter == "attack"
         else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
@@ -756,10 +801,10 @@ def _channeled_body(e, targets) -> str:
     k = e.kind
     if k in ("pump", "counters"):
         verb = "gain" if _plural(e.target, targets) else "gains"
-        return f"{_subject(e.target, targets, True)} {verb} +{e.power} attack and +{e.toughness} temp HP"
+        return f"{_subject(e.target, targets, True)} {verb} +{_value(e.power)} attack and +{_value(e.toughness)} temp HP"
     if k == "wound":
         verb = "have" if _plural(e.target, targets) else "has"
-        return f"{_subject(e.target, targets, True)} {verb} -{e.power} attack and -{e.toughness} HP"
+        return f"{_subject(e.target, targets, True)} {verb} -{_value(e.power)} attack and -{_value(e.toughness)} HP"
     if k == "grant_keyword":
         verb = "have" if _plural(e.target, targets) else "has"
         return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
@@ -797,14 +842,37 @@ def _upkeep_clause(e, targets) -> str:
             return f"lose {amt} HP"
         return f"{_subject(e.target, targets, True)} loses {amt} HP"
     if k == "draw":
-        return f"draw {e.amount}"
+        return f"draw {_value(e.amount)}"
     if k == "scry":
-        return f"scry {e.amount}"
+        return f"scry {_value(e.amount)}"
     if k == "heal":
-        return f"restore {e.amount} HP to {_subject(e.target, targets, True)}"
+        return f"restore {_value(e.amount)} HP to {_subject(e.target, targets, True)}"
     if k == "deal_damage":
-        return f"deal {e.amount} damage to {_subject(e.target, targets, True)}"
+        return f"deal {_value(e.amount)} damage to {_subject(e.target, targets, True)}"
     return _lc_first(_render_one(e).rstrip("."))
+
+
+def _event_lead(trig) -> str:
+    """The lead-in for an event trigger: 'Whenever <who> <does the event>'."""
+    who = {"you": "you", "target": "the target", "ally": "an ally",
+           "enemy": "an enemy", "any": "anyone"}.get(trig.who, trig.who)
+    you = trig.who == "you"  # second person conjugates differently
+    if trig.event == "attack":
+        return f"Whenever {who} attack{'' if you else 's'}"
+    if trig.event == "damage_taken":
+        return f"Whenever {who} {'are' if you else 'is'} dealt damage"
+    if trig.event == "life_gain":
+        return f"Whenever {who} gain{'' if you else 's'} life"
+    if trig.event == "spell_cast":
+        st = getattr(trig.spell_type, "value", trig.spell_type)
+        obj = {"instant": "an instant", "sorcery": "a sorcery",
+               "channeled": "a channeled spell"}.get(st, "a spell")
+        return f"Whenever {who} cast{'' if you else 's'} {obj}"
+    return f"Whenever {who} draw{'' if you else 's'} a card"
+
+
+def _event_key(trig) -> tuple:
+    return (trig.event, trig.who, getattr(trig.spell_type, "value", trig.spell_type))
 
 
 def _render_channeled(effects, targets) -> str:
@@ -815,10 +883,37 @@ def _render_channeled(effects, targets) -> str:
             parts.append("While channeled: " + _channeled_body(e, targets) + ".")
     # Each recurring trigger groups its effects under its own lead-in.
     for trigger, lead in (
+        ("channel_start", "When this channel begins: "),
         ("upkeep", "At the start of every turn while channeled: "),
         ("capacity_increase", "Whenever your mana capacity increases: "),
+        ("channel_break", "When this channel ends (dropped or broken): "),
     ):
         group = [e for e in effects if getattr(e, "trigger", None) == trigger]
         if group:
             parts.append(lead + _join_and([_upkeep_clause(e, targets) for e in group]) + ".")
+    # Event triggers group by their (event, who, spell type) signature.
+    seen: List[tuple] = []
+    for e in effects:
+        t = getattr(e, "trigger", None)
+        if not isinstance(t, EventTrigger) or _event_key(t) in seen:
+            continue
+        seen.append(_event_key(t))
+        group = [x for x in effects
+                 if isinstance(getattr(x, "trigger", None), EventTrigger)
+                 and _event_key(x.trigger) == _event_key(t)]
+        parts.append(_event_lead(t) + " while channeled: "
+                     + _join_and([_upkeep_clause(x, targets) for x in group]) + ".")
     return " ".join(parts)
+
+
+def channel_break_clause(effects, targets=None) -> str:
+    """The on-break triggered clause alone ("deal 3 damage to each enemy"), or ""
+    when the card has no channel_break effects. The combat UI uses this to annotate
+    a held channel with what ending it will do."""
+    targets = targets or {}
+    token = _RENDER_TARGETS.set(targets)
+    try:
+        group = [e for e in effects if getattr(e, "trigger", None) == "channel_break"]
+        return _join_and([_upkeep_clause(e, targets) for e in group])
+    finally:
+        _RENDER_TARGETS.reset(token)

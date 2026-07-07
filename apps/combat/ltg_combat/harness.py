@@ -67,11 +67,12 @@ def _events_of_type(events: List[Event], type_: str) -> List[Event]:
 
 def _locks(state: GameState) -> GameState:
     """Resolve every pending capacity-colour lock at the start of a turn (Green for
-    Soren, Blue for the casters — colour is irrelevant to these asserted values)."""
+    Soren, Blue for the casters — colour is irrelevant to these asserted values),
+    then pass out any upkeep-trigger windows (channel triggers use the stack)."""
     while True:
         choices = [a for a in legal_actions(state) if a.kind == "choose_mana"]
         if not choices:
-            return state
+            return _pass_window(state)
         state, _ = apply_action(state, choices[0])
 
 
