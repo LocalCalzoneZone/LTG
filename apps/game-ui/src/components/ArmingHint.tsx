@@ -1,4 +1,5 @@
 import { useGame } from "../lib/store";
+import { IconX } from "./Icons";
 
 /** A slim banner shown while a target selection is in progress — surfaces the
  *  per-site progress for independent multi-target casts and where to click for a
@@ -22,14 +23,18 @@ export function ArmingHint() {
     : "";
 
   return (
-    <div className="absolute -top-8 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full bg-yellow-500 px-4 py-1 text-sm font-semibold text-black shadow-lg">
+    <div className="absolute -top-9 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 border border-brass bg-gradient-to-b from-brass-hi to-brass px-4 py-1 text-sm font-normal text-ink-0 shadow-[0_8px_20px_rgba(0,0,0,0.5)]">
       <span>
         {armed.label}
         {step}
         {counterHint}
       </span>
-      <button onClick={cancelArm} className="rounded bg-black/20 px-2 py-0.5 text-xs hover:bg-black/40">
-        Esc ✕
+      <button
+        onClick={cancelArm}
+        title="Cancel (Esc)"
+        className="flex items-center bg-black/15 px-2 py-1 hover:bg-black/30"
+      >
+        <IconX size={11} />
       </button>
     </div>
   );

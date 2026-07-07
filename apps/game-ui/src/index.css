@@ -14,8 +14,9 @@ body,
 }
 
 body {
-  background: #0e1116;
-  color: #e6e9ef;
+  background: #07090c;
+  color: #e8e4d8;
+  font-weight: 300;
   overflow: hidden;
 }
 
@@ -25,47 +26,245 @@ body {
   height: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #2b3240;
+  background: #232838;
   border-radius: 4px;
 }
 .scroll-thin::-webkit-scrollbar-track {
   background: transparent;
 }
 
-@keyframes pulse-ring {
-  0% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(96, 165, 250, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
-  }
+/* Small-caps display label (Optima, tracked out). Font + transform need real
+   specificity (preflight resets text-transform on <button>), but the default
+   letter-spacing sits in :where() so per-element tracking-[...] utilities win. */
+.caps-label {
+  font-family: Optima, Candara, "Gill Sans", "Segoe UI", ui-sans-serif, sans-serif;
+  text-transform: uppercase;
 }
-.ring-active {
-  animation: pulse-ring 1.8s infinite;
+:where(.caps-label) {
+  letter-spacing: 0.25em;
 }
 
-/* Transient turn / phase banner: fade in, hold, fade out. */
-@keyframes phase-banner {
+/* Panel with brass corner ticks (top-left / bottom-right). */
+.panel-ticks {
+  position: relative;
+}
+.panel-ticks::before,
+.panel-ticks::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+}
+.panel-ticks::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid rgba(214, 197, 160, 0.3);
+  border-left: 1px solid rgba(214, 197, 160, 0.3);
+}
+.panel-ticks::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid rgba(214, 197, 160, 0.3);
+  border-right: 1px solid rgba(214, 197, 160, 0.3);
+}
+
+/* The battlefield's scene layer: a faint scene-tinted glow + vignette. Actual
+   scene art will slot behind this via a background-image on the same element. */
+.field-scene {
+  background:
+    radial-gradient(60% 55% at 62% 30%, rgba(46, 90, 102, 0.14), transparent 70%),
+    radial-gradient(45% 60% at 20% 60%, rgba(84, 72, 44, 0.09), transparent 70%),
+    radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.5) 100%),
+    #0b0e14;
+}
+
+/* "Awaiting you" — the priority holder's card breathes brass. */
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(233, 204, 130, 0.65),
+      0 0 14px 1px rgba(233, 204, 130, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(233, 204, 130, 0.95),
+      0 0 26px 5px rgba(233, 204, 130, 0.5);
+  }
+}
+.anim-breathe {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+/* Acting enemy (something of theirs on the stack) — crimson ember. */
+@keyframes ember {
+  0%,
+  100% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(194, 90, 80, 0.55),
+      0 0 12px 1px rgba(194, 90, 80, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(194, 90, 80, 0.9),
+      0 0 22px 4px rgba(194, 90, 80, 0.4);
+  }
+}
+.anim-ember {
+  animation: ember 2.2s ease-in-out infinite;
+}
+
+/* Legal target — pulsing corner brackets. Colour via --bracket-color
+   (brass by default; blood for the execute window). */
+@keyframes bracket-pulse {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.brackets {
+  --bracket-color: #ecdcae;
+  position: relative;
+}
+.brackets::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  animation: bracket-pulse 1.4s ease-in-out infinite;
+  background:
+    linear-gradient(var(--bracket-color), var(--bracket-color)) top left / 14px 1.5px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) top left / 1.5px 14px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) top right / 14px 1.5px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) top right / 1.5px 14px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) bottom left / 14px 1.5px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) bottom left / 1.5px 14px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) bottom right / 14px 1.5px,
+    linear-gradient(var(--bracket-color), var(--bracket-color)) bottom right / 1.5px 14px;
+  background-repeat: no-repeat;
+}
+
+/* Floating combat numerals (damage crimson / heal green). */
+@keyframes statpop {
   0% {
     opacity: 0;
-    transform: translate(-50%, -8px) scale(0.96);
+    transform: translate(-50%, 0) scale(0.8);
   }
   12% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translate(-50%, -8px) scale(1.15);
   }
-  80% {
+  30% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translate(-50%, -16px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -8px) scale(0.98);
+    transform: translate(-50%, -34px) scale(0.95);
   }
 }
-.phase-banner {
-  animation: phase-banner 2s ease forwards;
+.anim-statpop {
+  animation: statpop 1.6s ease-out forwards;
+}
+
+/* Next-to-resolve stack row glows. */
+@keyframes stackglow {
+  0%,
+  100% {
+    background: rgba(233, 204, 130, 0.05);
+  }
+  50% {
+    background: rgba(233, 204, 130, 0.12);
+  }
+}
+.anim-stackglow {
+  animation: stackglow 2s ease-in-out infinite;
+}
+
+/* Turn / phase title card: letter-spacing condenses while hairlines draw out,
+   holds, then fades. Matches the 2.4s timer in Modals.tsx. */
+@keyframes banner-sweep {
+  0% {
+    opacity: 0;
+    letter-spacing: 0.6em;
+    transform: translate(-50%, -8px);
+  }
+  14%,
+  76% {
+    opacity: 1;
+    letter-spacing: 0.34em;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    letter-spacing: 0.3em;
+    transform: translate(-50%, 4px);
+  }
+}
+.anim-banner {
+  animation: banner-sweep 2.4s ease-in-out forwards;
+}
+/* Persistent top-of-stack banner: sweeps in, then HOLDS until the effect
+   resolves or another takes the top (the element is keyed by stack uid). */
+@keyframes banner-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.anim-banner-in {
+  animation: banner-in 0.4s ease-out forwards;
+}
+
+@keyframes banner-line {
+  0% {
+    width: 0;
+    opacity: 0;
+  }
+  14%,
+  76% {
+    width: 110px;
+    opacity: 1;
+  }
+  100% {
+    width: 60px;
+    opacity: 0;
+  }
+}
+.anim-banner-line {
+  animation: banner-line 2.4s ease-in-out forwards;
+}
+
+/* Chevron-cut banner (Your Move tag, End Turn button). */
+.chamfer-x {
+  clip-path: polygon(
+    10px 0,
+    calc(100% - 10px) 0,
+    100% 50%,
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0 50%
+  );
+}
+.chamfer-x-sm {
+  clip-path: polygon(
+    6px 0,
+    calc(100% - 6px) 0,
+    100% 50%,
+    calc(100% - 6px) 100%,
+    6px 100%,
+    0 50%
+  );
 }

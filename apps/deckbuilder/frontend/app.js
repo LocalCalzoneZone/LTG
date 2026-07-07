@@ -535,9 +535,9 @@ function cardIssues(card) {
   const offColors = Object.keys(card.cost.colors || {}).filter((c) => !identity.has(c));
   if (offColors.length) issues.push({ cls: "bad", text: `⛔ off-colour (${offColors.join("")})` });
   const dupes = state.cards.filter((c) => c.source_name === card.source_name).length;
-  if (dupes > 1) issues.push({ cls: "warn", text: "⚠ duplicate" });
+  if (dupes > 1) issues.push({ cls: "warn", text: "duplicate" });
   if (card.needs_translation) issues.push({ cls: "flag", text: "⚑ needs translation" });
-  if ((card._lints || []).length) issues.push({ cls: "warn", text: `⚠ ${card._lints.length} lint${card._lints.length > 1 ? "s" : ""}` });
+  if ((card._lints || []).length) issues.push({ cls: "warn", text: `${card._lints.length} lint${card._lints.length > 1 ? "s" : ""}` });
   return issues;
 }
 
@@ -557,7 +557,7 @@ function renderDeck() {
       <td>${card.type}</td>
       <td>${card.rarity}</td>
       <td class="deck-status-cell">${status}</td>
-      <td><button class="remove-btn" data-idx="${idx}">✕</button></td>`;
+      <td><button class="remove-btn" data-idx="${idx}">×</button></td>`;
     tr.querySelector(".remove-btn").onclick = (e) => { e.stopPropagation(); state.cards.splice(idx, 1); renderDeck(); scheduleValidate(); };
     tr.onclick = () => openCard(idx);
     body.appendChild(tr);
@@ -700,7 +700,7 @@ function targetControlHtml(i, current, card, field = "target") {
     slots.forEach((s) => linkOpts.push(`<option value="$${s}" ${current === "$" + s ? "selected" : ""}>↪ ${slotLabel(s, card)}</option>`));
     linkOpts.push(`</optgroup>`);
   }
-  linkOpts.push(`<option value="__new_slot__">＋ New shared slot</option>`);
+  linkOpts.push(`<option value="__new_slot__">+ New shared slot</option>`);
   const link = `<select class="tgt-link" ${f}>${linkOpts.join("")}</select>`;
 
   if (isSlot) return `<span class="tgt-builder">${link}<span class="tgt-summary">↪ ${describeTargetJS(current)}</span></span>`;
@@ -972,7 +972,7 @@ function effectRowHtml(e, i, card, depth = 0) {
   const tools = `<span class="effect-tools">
       <button class="eff-up" data-i="${i}" title="Move up">↑</button>
       <button class="eff-down" data-i="${i}" title="Move down">↓</button>
-      <button class="eff-remove danger" data-i="${i}" title="Remove">✕</button></span>`;
+      <button class="eff-remove danger" data-i="${i}" title="Remove">×</button></span>`;
 
   if (e.kind === "modal") {
     // The "choose N" count applies to the whole modal — show it on the first
@@ -1089,9 +1089,9 @@ function openDetail(idx) {
       </div>
       <div id="effects-editor">${renderEffectRows(card)}</div>
       <div class="add-row">
-        <button id="add-effect" class="small">＋ Effect</button>
-        <button id="add-modal" class="small">＋ Modal option</button>
-        <button id="add-conditional" class="small">＋ Conditional</button>
+        <button id="add-effect" class="small">+ Effect</button>
+        <button id="add-modal" class="small">+ Modal option</button>
+        <button id="add-conditional" class="small">+ Conditional</button>
       </div>
       ${slots.length ? `<div class="slots">
         <div class="label">Shared target slots (chosen-only)</div>
@@ -1100,7 +1100,7 @@ function openDetail(idx) {
           <select class="slot-side" data-slot="${s}">${SIDES.map((t) => `<option value="${t}" ${d.side === t ? "selected" : ""}>${SIDE_LABEL[t] || t}</option>`).join("")}</select>
           <label class="inline mini"><input type="checkbox" class="slot-exclude" data-slot="${s}" ${d.exclude_self ? "checked" : ""}/> another</label>
           <label class="inline mini"><input type="checkbox" class="slot-targeted" data-slot="${s}" ${d.targeted ? "checked" : ""}/> targets</label>
-          <button class="slot-remove danger" data-slot="${s}" title="Remove slot">✕</button>
+          <button class="slot-remove danger" data-slot="${s}" title="Remove slot">×</button>
         </div>`; }).join("")}
       </div>` : ""}
       <div id="raw-json" class="hidden">
@@ -1120,7 +1120,7 @@ function openDetail(idx) {
 
     ${lints.length ? `<div class="block lints">
       <div class="label">Lints</div>
-      ${lints.map((l) => `<div class="lint">⚠ ${escapeHtml(l)}</div>`).join("")}
+      ${lints.map((l) => `<div class="lint">${escapeHtml(l)}</div>`).join("")}
     </div>` : ""}
 
     <div class="timing-note">Timing <b>${card.timing}</b> → <b>${derivedSpeed(card.timing)}</b> (derived)</div>

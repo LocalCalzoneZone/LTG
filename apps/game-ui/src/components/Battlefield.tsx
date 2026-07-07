@@ -25,9 +25,9 @@ export function Battlefield() {
   const isMovePicker = armed?.kind === "move";
 
   return (
-    <div className="flex h-full w-full gap-2 p-2">
+    <div className="field-scene flex h-full w-full gap-2 px-3 pb-1 pt-4">
       {/* Player area (~40%) */}
-      <div className="flex min-w-0 basis-2/5 gap-1">
+      <div className="flex min-w-0 basis-2/5 gap-1.5">
         {PLAYER_ROWS.map((row) => {
           const chars = snapshot.characters.filter((c) => c.row === row);
           const toks = snapshot.tokens.filter((t) => t.row === row);
@@ -36,8 +36,8 @@ export function Battlefield() {
             <div
               key={row}
               onClick={() => pickable && pickTargetId(row)}
-              className={`flex flex-1 flex-col items-center justify-center gap-2 rounded-lg ${
-                pickable ? "cursor-pointer bg-yellow-400/10 ring-2 ring-yellow-400" : ""
+              className={`relative flex flex-1 flex-col items-center justify-center gap-3 ${
+                pickable ? "brackets cursor-pointer bg-brass/5" : ""
               }`}
             >
               {chars.map((c) => (
@@ -50,28 +50,40 @@ export function Battlefield() {
                   isTarget={targetIds.has(c.id)}
                 />
               ))}
-              <div className="flex flex-wrap justify-center gap-1">
+              <div className="flex flex-wrap justify-center gap-1.5">
                 {toks.map((t) => (
                   <TokenCard key={t.id} token={t} isTarget={targetIds.has(t.id)} />
                 ))}
               </div>
+              <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
+                {row}
+              </span>
             </div>
           );
         })}
       </div>
 
-      {/* Centre divider */}
-      <div className="w-px shrink-0 self-stretch bg-white/10" />
+      {/* Centre divider — hairline with a brass diamond */}
+      <div className="relative flex w-3 flex-none items-center justify-center self-stretch">
+        <div className="absolute inset-y-[8%] left-1/2 w-px bg-gradient-to-b from-transparent via-line2 to-transparent" />
+        <div className="z-[1] h-[7px] w-[7px] rotate-45 border border-brass bg-ink-1" />
+      </div>
 
       {/* Creature area (~60%) */}
-      <div className="flex min-w-0 basis-3/5 gap-1">
+      <div className="flex min-w-0 basis-3/5 gap-1.5">
         {CREATURE_ROWS.map((row) => {
           const creatures = snapshot.creatures.filter((c) => c.row === row);
           return (
-            <div key={row} className="flex flex-1 flex-col items-center justify-center gap-2">
+            <div
+              key={row}
+              className="relative flex flex-1 flex-col items-center justify-center gap-3"
+            >
               {creatures.map((c) => (
                 <CreatureCard key={c.id} creature={c} isTarget={targetIds.has(c.id)} />
               ))}
+              <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
+                {row}
+              </span>
             </div>
           );
         })}

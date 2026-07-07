@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { saveEncounter } from "../lib/api";
+import { roman } from "../lib/format";
 import type { ComponentSpec, EncounterDetail, EnemySpec, Row } from "../lib/types";
 
 // Vocabulary the engine understands (scenario.py / engine.py / Design Update 04).
@@ -26,8 +27,8 @@ const TARGETING: Array<{ value: string; label: string }> = [
 type EditComp = ComponentSpec & { _verbsText: string; _condText: string };
 type EditEnemy = Omit<EnemySpec, "components"> & { components: EditComp[] };
 
-const field = "rounded bg-slate-900 px-2 py-1 text-sm ring-1 ring-white/10 focus:ring-blue-400 focus:outline-none";
-const label = "text-[11px] uppercase tracking-wide text-gray-400";
+const field = "border border-line bg-ink-0 px-2 py-1 text-sm font-light focus:border-brass/60 focus:outline-none";
+const label = "caps-label text-[9px] tracking-[0.18em] text-mist";
 
 const stage = (e: EnemySpec): EditEnemy => ({
   ...e,
@@ -153,19 +154,19 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
       </div>
 
       {/* Battlefield preview — enemies as they'd appear in game, by row */}
-      <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/5">
+      <div className="border border-line bg-black/25 p-3">
         <div className="mb-2 flex items-center justify-between">
           <span className={label}>Battlefield — click a creature to edit it</span>
           <button
             onClick={() => { setEnemies((es) => [...es, blankEnemy()]); setSel(enemies.length); }}
-            className="rounded bg-slate-600 px-2.5 py-1 text-xs font-semibold hover:bg-slate-500"
+            className="caps-label border border-line px-2.5 py-1 text-[9px] tracking-[0.14em] text-mist transition hover:border-line2 hover:text-parch"
           >
             + Add enemy
           </button>
         </div>
         <div className="grid grid-cols-3 gap-2">
           {ROWS.map((row) => (
-            <div key={row} className="min-h-[104px] rounded bg-slate-900/60 p-2">
+            <div key={row} className="min-h-[104px] border border-line bg-ink-0/60 p-2">
               <div className={`${label} mb-1 text-center`}>{row}</div>
               <div className="flex flex-wrap justify-center gap-2">
                 {byRow[row].map((i) => {
@@ -177,28 +178,28 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
                       onClick={() => setSel(i)}
                       title={e.description || e.flavor || e.name}
                       style={{ width: e.is_boss ? 92 : 72 }}
-                      className={`relative aspect-square shrink-0 cursor-pointer select-none rounded-lg bg-gradient-to-b from-rose-900 to-slate-900 shadow transition ${
-                        selected ? "ring-4 ring-yellow-400"
-                        : e.is_boss ? "ring-2 ring-amber-500" : "ring-1 ring-black/40"
+                      className={`relative aspect-square shrink-0 cursor-pointer select-none border bg-[radial-gradient(80%_70%_at_50%_32%,rgba(70,110,118,0.35),transparent_75%),linear-gradient(180deg,#1d2730_0%,#141a22_55%,#10131b_100%)] shadow transition ${
+                        selected ? "brackets border-brass-hi"
+                        : e.is_boss ? "border-blood" : "border-line2"
                       }`}
                     >
-                      <div className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-bold text-gray-200">
-                        L{e.level}
+                      <div className="font-display absolute left-1 top-1 text-[9px] tracking-[0.1em] text-mist">
+                        {roman(e.level)}
                       </div>
-                      <div className="absolute right-1 top-1 rounded bg-black/60 px-1 text-[10px] font-bold">
-                        {e.power ?? 0}<span className="text-gray-400">/</span>{e.hp}
+                      <div className="font-display absolute -right-px top-1 border border-r-0 border-line bg-ink-0/80 px-1 text-[10px] leading-tight">
+                        {e.power ?? 0}<span className="text-dimmed">/</span>{e.hp}
                       </div>
                       {e.is_boss && (
-                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-[9px] font-black tracking-widest text-amber-400">
+                        <div className="caps-label absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-[8px] tracking-[0.3em] text-blood">
                           BOSS
                         </div>
                       )}
                       {(e.components?.length ?? 0) > 0 && (
-                        <div className="absolute left-1 bottom-5 rounded bg-indigo-600/80 px-1 text-[8px] font-semibold text-white">
+                        <div className="caps-label absolute left-1 bottom-5 border border-aether/50 bg-ink-0/80 px-1 text-[7px] tracking-[0.1em] text-aether">
                           {e.components.length} abl
                         </div>
                       )}
-                      <div className="absolute inset-x-0 bottom-0 truncate rounded-b-lg bg-black/65 px-0.5 py-0.5 text-center text-[9px] font-semibold">
+                      <div className="caps-label absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-0.5 pb-0.5 pt-1 text-center text-[8px] tracking-[0.04em] text-parch">
                         {e.name || "?"}
                       </div>
                     </div>
@@ -213,13 +214,13 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
       {/* Selected creature editor */}
       {cur && (
         <div className="scroll-thin -mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1">
-          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/5">
+          <div className="border border-line bg-black/25 p-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-bold">{cur.name || "New Enemy"}</span>
+              <span className="caps-label text-[11px] tracking-[0.14em] text-parch">{cur.name || "New Enemy"}</span>
               {enemies.length > 1 && (
                 <button
                   onClick={() => { setEnemies((es) => es.filter((_, j) => j !== sel)); setSel(0); }}
-                  className="rounded bg-red-700/70 px-2.5 py-1 text-xs font-semibold hover:bg-red-600"
+                  className="caps-label border border-blood/60 bg-blood/15 px-2.5 py-1 text-[9px] tracking-[0.14em] text-blood transition hover:bg-blood hover:text-parch"
                 >
                   Remove enemy
                 </button>
@@ -326,23 +327,23 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
           </div>
 
           {/* Abilities (components): behaviour + heuristics */}
-          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/5">
+          <div className="border border-line bg-black/25 p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className={label}>Abilities & heuristics ({cur.components.length})</span>
               <button
                 onClick={() => patch(sel, { components: [...cur.components, blankComp()] })}
-                className="rounded bg-slate-600 px-2.5 py-1 text-xs font-semibold hover:bg-slate-500"
+                className="caps-label border border-line px-2.5 py-1 text-[9px] tracking-[0.14em] text-mist transition hover:border-line2 hover:text-parch"
               >
                 + Add ability
               </button>
             </div>
             {cur.components.length === 0 && (
-              <div className="text-xs text-gray-500">
+              <div className="text-xs font-light text-dimmed">
                 No abilities — this creature just attacks (its basic attack is derived from Power).
               </div>
             )}
             {cur.components.map((c, ci) => (
-              <div key={ci} className="mb-2 rounded bg-slate-900/60 p-2 ring-1 ring-white/5">
+              <div key={ci} className="mb-2 border border-line bg-ink-0/60 p-2">
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <label className="flex flex-col gap-1">
                     <span className={label}>Archetype</span>
@@ -421,7 +422,7 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
                   </label>
                   <button
                     onClick={() => patch(sel, { components: cur.components.filter((_, k) => k !== ci) })}
-                    className="ml-auto rounded bg-red-700/60 px-2 py-0.5 text-xs font-semibold hover:bg-red-600"
+                    className="caps-label ml-auto border border-blood/60 bg-blood/15 px-2 py-0.5 text-[9px] tracking-[0.14em] text-blood transition hover:bg-blood hover:text-parch"
                   >
                     remove
                   </button>
@@ -453,15 +454,15 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
         </div>
       )}
 
-      {err && <div className="rounded bg-red-900/50 px-3 py-2 text-sm text-red-200">{err}</div>}
+      {err && <div className="border border-blood/60 bg-blood/10 px-3 py-2 text-sm font-light text-[#f2ddd3]">{err}</div>}
 
       <div className="flex justify-end gap-2">
         <button onClick={onCancel}
-                className="rounded-lg bg-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-500">
+                className="caps-label border border-line px-4 py-2 text-[10px] tracking-[0.18em] text-mist transition hover:border-line2 hover:text-parch">
           Cancel
         </button>
         <button onClick={save} disabled={busy}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold hover:bg-blue-500 disabled:bg-slate-600">
+                className="caps-label border border-brass/60 bg-brass/10 px-4 py-2 text-[10px] tracking-[0.18em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50">
           {busy ? "Saving…" : initial ? "Update Encounter" : "Create Encounter"}
         </button>
       </div>

@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { createGame, fetchSetupOptions, generateEncounter } from "../lib/api";
 import type { SetupOptions } from "../lib/types";
 import { ManaIcon } from "./Pips";
+import { IconX } from "./Icons";
 
 // Sentinel encounter id for the "generate a new one" choice.
 const GENERATE = "__generate__";
 const DIFFICULTIES = ["easy", "standard", "hard"];
+
+const SECTION = "caps-label mb-2 text-[10px] tracking-[0.25em] text-brass";
 
 export function NewGameModal({ onClose, onStarted }: {
   onClose: (() => void) | null; // null == not dismissable (first launch)
@@ -53,26 +56,29 @@ export function NewGameModal({ onClose, onStarted }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="max-h-[85vh] w-[min(92vw,720px)] overflow-y-auto rounded-xl bg-slate-800 p-5 shadow-2xl ring-1 ring-white/10">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">New Game</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]">
+      <div className="panel-ticks max-h-[85vh] w-[min(92vw,720px)] overflow-y-auto border border-line2 bg-ink-2 p-5 shadow-2xl">
+        <div className="mb-4 flex items-center gap-3">
+          <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">New Game</h2>
+          <span className="h-px flex-1 bg-line" />
           {onClose && (
-            <button onClick={onClose} className="text-gray-400 hover:text-white">
-              ✕
+            <button onClick={onClose} className="text-mist hover:text-parch" title="Close">
+              <IconX size={14} />
             </button>
           )}
         </div>
 
-        {!opts && !err && <div className="text-gray-400">Loading options…</div>}
-        {err && <div className="mb-3 rounded bg-red-900/50 px-3 py-2 text-sm text-red-200">{err}</div>}
+        {!opts && !err && <div className="font-light text-mist">Loading options…</div>}
+        {err && (
+          <div className="mb-3 border border-blood/60 bg-blood/10 px-3 py-2 text-sm font-light text-[#f2ddd3]">
+            {err}
+          </div>
+        )}
 
         {opts && (
           <>
             <section className="mb-4">
-              <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">
-                Characters ({picked.length} selected)
-              </h3>
+              <h3 className={SECTION}>Characters · {picked.length} selected</h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {opts.characters.map((c) => {
                   const on = picked.includes(c.id);
@@ -80,8 +86,10 @@ export function NewGameModal({ onClose, onStarted }: {
                     <button
                       key={c.id}
                       onClick={() => toggle(c.id)}
-                      className={`overflow-hidden rounded-lg text-left ring-1 transition ${
-                        on ? "bg-blue-600/30 ring-blue-400" : "bg-slate-700/50 ring-white/10 hover:ring-white/30"
+                      className={`overflow-hidden border text-left transition ${
+                        on
+                          ? "border-brass bg-brass/10 shadow-[0_0_14px_rgba(233,204,130,0.15)]"
+                          : "border-line bg-white/[0.02] hover:border-line2"
                       }`}
                     >
                       {c.portrait && (
@@ -89,14 +97,13 @@ export function NewGameModal({ onClose, onStarted }: {
                       )}
                       <div className="p-2">
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold">{c.name}</span>
+                          <span className="caps-label text-[11px] tracking-[0.1em] text-parch">{c.name}</span>
                           <span className="flex gap-0.5">
                             {c.identity.map((col, i) => (
-                              <ManaIcon key={i} color={col} size={14} />
+                              <ManaIcon key={i} color={col} size={13} />
                             ))}
                           </span>
                         </div>
-                        <div className="text-xs text-gray-400">{c.archetype}</div>
                       </div>
                     </button>
                   );
@@ -105,40 +112,41 @@ export function NewGameModal({ onClose, onStarted }: {
             </section>
 
             <section className="mb-5">
-              <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">Encounter</h3>
+              <h3 className={SECTION}>Encounter</h3>
               <div className="flex flex-col gap-1">
                 {/* Generate a fresh encounter via the LLM, scoped to the picked party. */}
                 <label
-                  className={`flex cursor-pointer flex-col gap-2 rounded-lg p-2 ring-1 transition ${
+                  className={`flex cursor-pointer flex-col gap-2 border p-2 transition ${
                     encounter === GENERATE
-                      ? "bg-violet-600/30 ring-violet-400"
-                      : "bg-slate-700/50 ring-white/10"
+                      ? "border-aether/70 bg-aether/10"
+                      : "border-line bg-white/[0.02] hover:border-line2"
                   }`}
                 >
                   <div className="flex items-center gap-2">
                     <input
                       type="radio"
                       name="encounter"
+                      className="accent-[#b39ddb]"
                       checked={encounter === GENERATE}
                       onChange={() => setEncounter(GENERATE)}
                     />
-                    <span className="font-medium">✨ Generate new encounter</span>
-                    <span className="ml-auto text-xs text-gray-400">scaled to your party</span>
+                    <span className="font-normal text-parch">Generate new encounter</span>
+                    <span className="ml-auto text-xs font-light text-mist">scaled to your party</span>
                   </div>
                   {encounter === GENERATE && (
                     <div className="flex flex-col gap-2 pl-6" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs uppercase tracking-wide text-gray-400">Difficulty</span>
+                        <span className="caps-label text-[9px] tracking-[0.2em] text-mist">Difficulty</span>
                         <div className="flex gap-1">
                           {DIFFICULTIES.map((d) => (
                             <button
                               key={d}
                               type="button"
                               onClick={() => setDifficulty(d)}
-                              className={`rounded px-3 py-1 text-xs font-semibold capitalize transition ${
+                              className={`caps-label border px-3 py-1 text-[9px] tracking-[0.14em] transition ${
                                 difficulty === d
-                                  ? "bg-violet-600 text-white"
-                                  : "bg-slate-900 text-gray-300 hover:text-white"
+                                  ? "border-aether bg-aether/20 text-aether"
+                                  : "border-line text-mist hover:text-parch"
                               }`}
                             >
                               {d}
@@ -151,7 +159,7 @@ export function NewGameModal({ onClose, onStarted }: {
                         onChange={(e) => setNote(e.target.value)}
                         maxLength={140}
                         placeholder="Optional theme, e.g. “undead pirates besieging a lighthouse”"
-                        className="rounded bg-slate-900 px-2 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-violet-400"
+                        className="border border-line bg-ink-0 px-2 py-1.5 text-sm font-light focus:border-aether/70 focus:outline-none"
                       />
                     </div>
                   )}
@@ -160,31 +168,42 @@ export function NewGameModal({ onClose, onStarted }: {
                 {opts.encounters.map((e) => (
                   <label
                     key={e.id}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg p-2 ring-1 transition ${
-                      encounter === e.id ? "bg-blue-600/30 ring-blue-400" : "bg-slate-700/50 ring-white/10"
+                    className={`flex cursor-pointer items-center gap-2 border p-2 transition ${
+                      encounter === e.id
+                        ? "border-brass bg-brass/10"
+                        : "border-line bg-white/[0.02] hover:border-line2"
                     }`}
                   >
                     <input
                       type="radio"
                       name="encounter"
+                      className="accent-[#c9b37e]"
                       checked={encounter === e.id}
                       onChange={() => setEncounter(e.id)}
                     />
-                    <span className="font-medium">{e.name}</span>
-                    <span className="ml-auto text-xs text-gray-400">{e.enemy_names.join(", ")}</span>
+                    <span className="font-normal text-parch">{e.name}</span>
+                    <span className="ml-auto truncate text-xs font-light text-mist">
+                      {e.enemy_names.join(", ")}
+                    </span>
                   </label>
                 ))}
               </div>
             </section>
 
             {busy && status && (
-              <div className="mb-3 rounded bg-violet-900/40 px-3 py-2 text-sm text-violet-200">{status}</div>
+              <div className="mb-3 border border-aether/50 bg-aether/10 px-3 py-2 text-sm font-light text-aether">
+                {status}
+              </div>
             )}
 
             <button
               disabled={busy || picked.length === 0 || !encounter}
               onClick={start}
-              className="w-full rounded-lg bg-blue-600 py-2.5 font-bold hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-600"
+              className={`chamfer-x caps-label w-full py-2.5 text-[11px] tracking-[0.3em] transition ${
+                busy || picked.length === 0 || !encounter
+                  ? "cursor-not-allowed bg-white/[0.03] text-dimmed"
+                  : "bg-gradient-to-b from-brass-hi to-brass text-ink-0 hover:from-brass-hi hover:to-brass-hi"
+              }`}
             >
               {busy ? "Working…" : encounter === GENERATE ? "Generate & Start" : "Start Game"}
             </button>
