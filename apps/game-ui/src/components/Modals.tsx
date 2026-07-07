@@ -9,7 +9,7 @@ function Backdrop({ children, onClose, wide = false }: {
 }) {
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-[2px]"
       onClick={onClose}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -17,10 +17,8 @@ function Backdrop({ children, onClose, wide = false }: {
       }}
     >
       <div
-        className={`max-h-[80vh] overflow-y-auto rounded-xl p-4 shadow-2xl ring-1 ring-white/10 ${
-          wide
-            ? "w-fit min-w-[320px] max-w-[min(94vw,1080px)] bg-slate-950"
-            : "w-[min(90vw,560px)] bg-slate-800"
+        className={`panel-ticks max-h-[80vh] overflow-y-auto border border-line2 bg-ink-2 p-4 shadow-2xl ${
+          wide ? "w-fit min-w-[320px] max-w-[min(94vw,1080px)]" : "w-[min(90vw,560px)]"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -30,6 +28,19 @@ function Backdrop({ children, onClose, wide = false }: {
   );
 }
 
+function ModalTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="caps-label mb-3 flex items-center gap-3 text-[12px] tracking-[0.25em] text-brass">
+      {children}
+      <span className="h-px flex-1 bg-line" />
+    </h2>
+  );
+}
+
+const CHOICE_BTN =
+  "border border-line bg-white/[0.02] px-3 py-2 text-left text-sm font-light text-parch transition " +
+  "hover:border-brass/70 hover:bg-brass/10";
+
 /** §4.8 "Choose one" modal for a modal card. */
 export function ChooseModeModal() {
   const choice = useGame((s) => s.chooseModeFor);
@@ -38,19 +49,15 @@ export function ChooseModeModal() {
   if (!choice?.modes) return null;
   return (
     <Backdrop onClose={cancel}>
-      <h2 className="mb-3 text-lg font-bold">Choose a mode</h2>
+      <ModalTitle>Choose a mode</ModalTitle>
       <div className="flex flex-col gap-2">
         {choice.modes.map((m) => (
-          <button
-            key={m.key}
-            onClick={() => pickMode(m)}
-            className="rounded-lg bg-slate-700 px-3 py-2 text-left text-sm hover:bg-blue-600"
-          >
+          <button key={m.key} onClick={() => pickMode(m)} className={CHOICE_BTN}>
             {m.label}
           </button>
         ))}
       </div>
-      <button onClick={cancel} className="mt-3 text-xs text-gray-400 hover:text-white">
+      <button onClick={cancel} className="caps-label mt-3 text-[9px] tracking-[0.2em] text-dimmed hover:text-parch">
         Cancel (Esc)
       </button>
     </Backdrop>
@@ -95,18 +102,18 @@ export function ZoneModal() {
     body = (
       <div className="flex flex-col gap-2">
         {char.channels_summary.length === 0 ? (
-          <div className="text-sm italic text-gray-500">no active channels</div>
+          <div className="text-sm font-light italic text-dimmed">no active channels</div>
         ) : (
           char.channels_summary.map((ch) => {
             const dropIdx = dropByCard[ch.card_id];
             return (
-              <div key={ch.card_id} className="flex items-start gap-2 rounded bg-white/5 p-2 text-sm">
+              <div key={ch.card_id} className="flex items-start gap-2 border border-aether/30 bg-aether/5 p-2 text-sm">
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold">{ch.card_name}</div>
-                  {ch.target_name && <div className="text-xs text-gray-400">on {ch.target_name}</div>}
-                  <div className="text-xs text-gray-300">{ch.text}</div>
+                  <div className="font-normal text-parch">{ch.card_name}</div>
+                  {ch.target_name && <div className="text-xs text-mist">on {ch.target_name}</div>}
+                  <div className="text-xs font-light text-mist">{ch.text}</div>
                   {ch.break_text && (
-                    <div className="mt-0.5 text-xs text-amber-300">
+                    <div className="mt-0.5 text-xs font-light text-brass">
                       When this channel ends: {ch.break_text}.
                     </div>
                   )}
@@ -118,7 +125,7 @@ export function ZoneModal() {
                       onClose();
                     }}
                     title={`Drop ${ch.card_name}`}
-                    className="shrink-0 self-center rounded bg-red-700 px-2.5 py-1 text-xs font-semibold hover:bg-red-600"
+                    className="caps-label shrink-0 self-center border border-blood/60 bg-blood/15 px-2.5 py-1 text-[9px] tracking-[0.14em] text-blood transition hover:bg-blood hover:text-parch"
                   >
                     Drop
                   </button>
@@ -133,7 +140,7 @@ export function ZoneModal() {
               submit(dropAllIdx);
               onClose();
             }}
-            className="rounded-lg bg-red-700 px-3 py-2 text-sm font-semibold hover:bg-red-600"
+            className="caps-label border border-blood/60 bg-blood/15 px-3 py-2 text-[10px] tracking-[0.16em] text-blood transition hover:bg-blood hover:text-parch"
           >
             Drop all channels
           </button>
@@ -144,9 +151,9 @@ export function ZoneModal() {
 
   return (
     <Backdrop onClose={onClose}>
-      <h2 className="mb-3 text-lg font-bold">{title}</h2>
+      <ModalTitle>{title}</ModalTitle>
       {body}
-      <button onClick={onClose} className="mt-3 text-xs text-gray-400 hover:text-white">
+      <button onClick={onClose} className="caps-label mt-3 text-[9px] tracking-[0.2em] text-dimmed hover:text-parch">
         Close (Esc)
       </button>
     </Backdrop>
@@ -154,13 +161,13 @@ export function ZoneModal() {
 }
 
 function CardList({ cards }: { cards: { id: string; name: string; type: string; cost: string }[] }) {
-  if (!cards.length) return <div className="text-sm italic text-gray-500">empty</div>;
+  if (!cards.length) return <div className="text-sm font-light italic text-dimmed">empty</div>;
   return (
     <div className="grid grid-cols-2 gap-1">
       {cards.map((c, i) => (
-        <div key={`${c.id}-${i}`} className="rounded bg-white/5 px-2 py-1 text-sm">
-          <span className="font-medium">{c.name}</span>
-          <span className="ml-1 text-xs text-gray-400">{c.type}</span>
+        <div key={`${c.id}-${i}`} className="border border-line bg-white/[0.02] px-2 py-1 text-sm">
+          <span className="font-normal text-parch">{c.name}</span>
+          <span className="ml-1 text-xs font-light text-dimmed">{c.type}</span>
         </div>
       ))}
     </div>
@@ -196,9 +203,9 @@ export function CardPickPrompt() {
     const isScry = pending.kind === "scry";
     return (
       <Backdrop wide onClose={() => {}}>
-        <h2 className="mb-3 text-lg font-bold">
+        <ModalTitle>
           {isScry ? "Scry — place each card on top or bottom" : "Choose a card"}
-        </h2>
+        </ModalTitle>
         <div className="scroll-thin flex overflow-x-auto pb-2">
           <div className="mx-auto flex items-stretch gap-3">
           {pending.candidates.map((card, i) => {
@@ -217,7 +224,7 @@ export function CardPickPrompt() {
                 {single ? (
                   <button
                     onClick={() => submit(single.index)}
-                    className="rounded bg-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-blue-600"
+                    className={`${CHOICE_BTN} py-1.5 text-center text-xs`}
                   >
                     {single.label}
                   </button>
@@ -226,12 +233,12 @@ export function CardPickPrompt() {
                     <button
                       key={a.index}
                       onClick={() => submit(a.index)}
-                      className="rounded bg-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-blue-600"
+                      className={`${CHOICE_BTN} py-1.5 text-center text-xs`}
                     >
                       {a.target_id === "top"
-                        ? `▲ Top${(a.label.match(/\(draw #\d+\)/) ?? [""])[0] && ` ${(a.label.match(/\(draw #\d+\)/) ?? [""])[0]}`}`
+                        ? `Top${(a.label.match(/\(draw #\d+\)/) ?? [""])[0] && ` ${(a.label.match(/\(draw #\d+\)/) ?? [""])[0]}`}`
                         : a.target_id === "bottom"
-                          ? "▼ Bottom"
+                          ? "Bottom"
                           : a.label}
                     </button>
                   ))
@@ -247,14 +254,10 @@ export function CardPickPrompt() {
 
   return (
     <Backdrop onClose={() => {}}>
-      <h2 className="mb-3 text-lg font-bold">Make a choice</h2>
+      <ModalTitle>Make a choice</ModalTitle>
       <div className="flex flex-col gap-2">
         {picks.map((p) => (
-          <button
-            key={p.index}
-            onClick={() => submit(p.index)}
-            className="rounded-lg bg-slate-700 px-3 py-2 text-left text-sm hover:bg-blue-600"
-          >
+          <button key={p.index} onClick={() => submit(p.index)} className={CHOICE_BTN}>
             {p.label}
           </button>
         ))}
@@ -275,24 +278,33 @@ export function GameOverOverlay({
   if (!result) return null;
   const win = result === "victory";
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50">
-      <div className="rounded-2xl bg-slate-800 px-10 py-8 text-center shadow-2xl ring-1 ring-white/10">
-        <div className={`text-4xl font-black ${win ? "text-emerald-400" : "text-red-500"}`}>
-          {win ? "Victory" : "Defeat"}
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
+      <div className="panel-ticks border border-line2 bg-ink-2/95 px-12 py-9 text-center shadow-2xl">
+        <div className="flex items-center justify-center gap-5">
+          <span className={`h-px w-16 bg-gradient-to-r from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
+          {/* pl offsets the trailing letter-spacing after the last glyph, so the
+              word sits optically centred between the hairlines */}
+          <div
+            className={`caps-label pl-[0.3em] text-4xl tracking-[0.3em] ${win ? "text-vigor" : "text-blood"}`}
+            style={{ textShadow: win ? "0 0 30px rgba(132,199,147,.4)" : "0 0 30px rgba(194,90,80,.4)" }}
+          >
+            {win ? "Victory" : "Defeat"}
+          </div>
+          <span className={`h-px w-16 bg-gradient-to-l from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
         </div>
-        <div className="mt-2 text-sm text-gray-400">
+        <div className="mt-3 text-sm font-light text-mist">
           Tweak your party, encounters, or generation settings, then start again.
         </div>
-        <div className="mt-5 flex items-center justify-center gap-3">
+        <div className="mt-6 flex items-center justify-center gap-3">
           <button
             onClick={onOptions}
-            className="rounded-lg bg-slate-600 px-5 py-2 font-semibold hover:bg-slate-500"
+            className="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-line2 hover:text-parch"
           >
             Options
           </button>
           <button
             onClick={onNewGame}
-            className="rounded-lg bg-blue-600 px-5 py-2 font-semibold hover:bg-blue-500"
+            className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0"
           >
             New Game
           </button>
@@ -307,89 +319,99 @@ export function Toast() {
   const error = useGame((s) => s.error);
   if (!error) return null;
   return (
-    <div className="fixed bottom-44 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold shadow-lg">
+    <div className="fixed bottom-44 left-1/2 z-50 -translate-x-1/2 border border-blood bg-ink-2/95 px-4 py-2 text-sm font-light text-[#f2ddd3] shadow-[0_8px_24px_rgba(0,0,0,0.6),0_0_16px_rgba(194,90,80,0.25)]">
       {error}
     </div>
   );
 }
 
-// A banner is either a new-turn/phase note (plain title + optional sub) or a new
-// stack item, which renders in the same style as the Stack/Intents list rows.
-type Banner =
-  | { id: number; kind: "plain"; title: string; sub?: string }
-  | { id: number; kind: "stack"; row: StackRow };
+type PlainBanner = { id: number; title: string; sub?: string };
 
-/** Transient banner announcing a new turn / phase, or a new effect entering the
- *  stack. Watches the snapshot and flashes a centred pill on each change, then
- *  fades out. A stack push takes precedence over the (redundant) "reaction
- *  window" phase change it triggers. */
+// Phases we never announce: reaction windows are already carried by the (more
+// specific) stack banner, and enemy intents are not broadcast to players.
+const SILENT_PHASES = new Set(["reaction window", "enemy intents"]);
+
+/** Two banners share the centre-top slot, stack first:
+ *  — While anything is on the stack, a PERSISTENT banner mirrors the top item
+ *    (what you'd be responding to). It sweeps in when the top changes (keyed by
+ *    uid) and holds until the effect resolves or another replaces it.
+ *  — Otherwise, turn / phase changes flash a transient title card
+ *    (letter-spacing condenses while hairlines draw outward, then fades). */
 export function PhaseBanner() {
   const turn = useGame((s) => s.snapshot?.turn ?? null);
   const phase = useGame((s) => s.snapshot?.phase_label ?? null);
-  const stack = useGame((s) => s.snapshot?.stack ?? null);
-  const [banner, setBanner] = useState<Banner | null>(null);
-  const prev = useRef<{ turn: number | null; phase: string | null; maxUid: number } | null>(null);
+  const top: StackRow | null = useGame((s) => s.snapshot?.stack?.[0] ?? null);
+  const [plain, setPlain] = useState<PlainBanner | null>(null);
+  const prev = useRef<{ turn: number | null; phase: string | null } | null>(null);
   const seq = useRef(0);
 
   useEffect(() => {
     if (turn == null || phase == null) return;
     const before = prev.current;
-    const top = stack && stack.length ? stack[0] : null;
-    const topUid = top ? top.uid : null;
-    const maxUid = Math.max(before?.maxUid ?? -1, topUid ?? -1);
-    prev.current = { turn, phase, maxUid };
+    prev.current = { turn, phase };
     if (!before) return; // don't announce the very first snapshot (game just loaded)
     const id = seq.current + 1;
-    if (top && topUid != null && topUid > before.maxUid) {
-      // A new effect just entered the stack — announce it (not the "reaction
-      // window" phase label the same push produces).
+    if (turn !== before.turn && !SILENT_PHASES.has(phase)) {
       seq.current = id;
-      setBanner({ id, kind: "stack", row: top });
-    } else if (turn !== before.turn) {
+      setPlain({ id, title: phase, sub: `Turn ${turn}` });
+    } else if (phase !== before.phase && !SILENT_PHASES.has(phase)) {
       seq.current = id;
-      setBanner({ id, kind: "plain", title: `Turn ${turn}`, sub: phase }); // e.g. "enemy intents"
-    } else if (phase !== before.phase && phase !== "reaction window") {
-      seq.current = id;
-      setBanner({ id, kind: "plain", title: phase });
+      setPlain({ id, title: phase });
     }
-  }, [turn, phase, stack]);
+  }, [turn, phase]);
 
-  // Auto-dismiss after the animation (matches the 2s .phase-banner keyframe).
+  // Auto-dismiss the transient banner (matches the 2.4s banner-sweep keyframe).
   useEffect(() => {
-    if (!banner) return;
+    if (!plain) return;
     const t = window.setTimeout(
-      () => setBanner((b) => (b && b.id === banner.id ? null : b)),
-      2000,
+      () => setPlain((b) => (b && b.id === plain.id ? null : b)),
+      2400,
     );
     return () => window.clearTimeout(t);
-  }, [banner]);
+  }, [plain]);
 
-  if (!banner) return null;
+  // Persistent top-of-stack banner — same phrasing as a Stack row.
+  if (top) {
+    return (
+      <div
+        key={top.uid}
+        className="anim-banner-in pointer-events-none fixed left-1/2 top-[72px] z-50 flex items-center gap-4"
+      >
+        <span className="h-px w-[110px] bg-gradient-to-r from-transparent to-brass" />
+        <div className="whitespace-nowrap border border-line bg-ink-0/80 px-5 py-1.5 font-display text-base font-normal leading-tight text-parch shadow-[0_6px_18px_rgba(0,0,0,0.5)]" style={{ letterSpacing: "0.06em" }}>
+          <span className={top.source_side === "enemy" ? "text-blood" : "text-tide"}>
+            {top.source_name}
+          </span>
+          <span className="text-mist"> · {top.label}</span>
+          {top.mode && <span className={actionModeColor(top.mode)}> ({top.mode})</span>}
+          {top.target_name && <span className="text-mist"> → {top.target_name}</span>}
+        </div>
+        <span className="h-px w-[110px] bg-gradient-to-l from-transparent to-brass" />
+      </div>
+    );
+  }
+
+  if (!plain) return null;
   return (
     <div
-      key={banner.id}
-      className="phase-banner pointer-events-none fixed left-1/2 top-20 z-50 flex flex-col items-center"
+      key={plain.id}
+      className="anim-banner pointer-events-none fixed left-1/2 top-[72px] z-50 flex items-center gap-4"
     >
-      <div className="rounded-full bg-slate-900/90 px-6 py-2 text-center shadow-xl ring-1 ring-white/15">
-        {banner.kind === "stack" ? (
-          // Same phrasing as a Stack row: coloured source · label (mode) → target.
-          <div className="text-base font-medium leading-tight text-white">
-            <span className={`font-bold ${banner.row.source_side === "enemy" ? "text-rose-300" : "text-emerald-200"}`}>
-              {banner.row.source_name}
-            </span>
-            <span className="text-gray-300"> · {banner.row.label}</span>
-            {banner.row.mode && <span className={actionModeColor(banner.row.mode)}> ({banner.row.mode})</span>}
-            {banner.row.target_name && <span className="text-gray-300"> → {banner.row.target_name}</span>}
-          </div>
-        ) : (
-          <>
-            <div className="text-lg font-bold capitalize tracking-wide text-white">{banner.title}</div>
-            {banner.sub && (
-              <div className="text-xs font-semibold capitalize text-blue-300">{banner.sub}</div>
-            )}
-          </>
+      <span className="anim-banner-line h-px bg-gradient-to-r from-transparent to-brass" />
+      <div className="text-center">
+        {/* no explicit tracking here — the sweep keyframe animates the
+            container's letter-spacing and the title inherits it */}
+        <div
+          className="whitespace-nowrap font-display text-xl uppercase text-brass-hi"
+          style={{ textShadow: "0 0 24px rgba(233,204,130,.45)" }}
+        >
+          {plain.title}
+        </div>
+        {plain.sub && (
+          <div className="caps-label mt-1 text-[9px] tracking-[0.3em] text-mist">{plain.sub}</div>
         )}
       </div>
+      <span className="anim-banner-line h-px bg-gradient-to-l from-transparent to-brass" />
     </div>
   );
 }

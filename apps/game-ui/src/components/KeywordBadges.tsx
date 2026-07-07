@@ -1,41 +1,40 @@
 import type { KeywordInfo } from "../lib/types";
-
-// One glyph per registry keyword (core/ltg_core/schema.py KEYWORDS). Unknown or
-// future keywords fall back to their first letter, so nothing renders blank.
-const KEYWORD_GLYPHS: Record<string, string> = {
-  flying: "🕊",
-  reach: "↗",
-  first_strike: "⚡",
-  double_strike: "⚔",
-  vigilance: "👁",
-  haste: "💨",
-  trample: "⇶",
-  deathtouch: "☠",
-  lifelink: "❤",
-  hexproof: "⊘",
-  indestructible: "🪨",
-  protection: "🛡",
-};
+import { KEYWORD_ICONS } from "./Icons";
 
 const BADGE =
-  "flex h-[clamp(14px,2.2vh,22px)] w-[clamp(14px,2.2vh,22px)] items-center justify-center " +
-  "rounded-full text-[clamp(8px,1.3vh,13px)] leading-none shadow ring-1 ring-white/25";
+  "flex h-[clamp(14px,2.2vh,20px)] w-[clamp(14px,2.2vh,20px)] items-center justify-center " +
+  "border bg-ink-0/75 leading-none";
 
-/** Vertical stack of circular keyword icons plus a (+X) counters badge.
- * Presentation only: names and glosses arrive pre-labelled from the server. */
+/** Vertical stack of engraved keyword sigils plus a (+X) counters chip.
+ * Presentation only: names and glosses arrive pre-labelled from the server.
+ * Unknown or future keywords fall back to a small-caps initial, so nothing
+ * renders blank. */
 export function KeywordBadges({ keywords, counters }: { keywords: KeywordInfo[]; counters: number }) {
   if (keywords.length === 0 && counters <= 0) return null;
   return (
     <div className="flex flex-col items-center gap-0.5">
-      {keywords.map((kw) => (
-        <span key={kw.id} title={kw.gloss ? `${kw.name}: ${kw.gloss}` : kw.name} className={`${BADGE} bg-indigo-600/90 text-white`}>
-          {KEYWORD_GLYPHS[kw.id] ?? kw.name.charAt(0).toUpperCase()}
-        </span>
-      ))}
+      {keywords.map((kw) => {
+        const Icon = KEYWORD_ICONS[kw.id];
+        return (
+          <span
+            key={kw.id}
+            title={kw.gloss ? `${kw.name}: ${kw.gloss}` : kw.name}
+            className={`${BADGE} border-line2 text-brass`}
+          >
+            {Icon ? (
+              <Icon className="h-[70%] w-[70%]" />
+            ) : (
+              <span className="caps-label text-[clamp(7px,1.1vh,10px)] tracking-normal">
+                {kw.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </span>
+        );
+      })}
       {counters > 0 && (
         <span
           title={`+${counters}/+${counters} counters: permanently +${counters} Power and +${counters} HP (already included in the stats shown)`}
-          className={`${BADGE} bg-emerald-600/90 font-bold text-white`}
+          className={`${BADGE} border-vigor/50 font-display text-[clamp(7px,1.1vh,10px)] text-vigor`}
         >
           +{counters}
         </span>

@@ -1,11 +1,12 @@
 import { useGame } from "../lib/store";
 import type { Choice, Choices } from "../lib/choices";
+import { IconMend, IconMove, IconShield, IconSword } from "./Icons";
 
-const CORE: { key: keyof Choices; icon: string; label: string }[] = [
-  { key: "attack", icon: "⚔", label: "Attack" },
-  { key: "defend", icon: "🛡", label: "Defend" },
-  { key: "mitigate", icon: "🩹", label: "Mitigate" },
-  { key: "move", icon: "➜", label: "Move" },
+const CORE: { key: keyof Choices; Icon: typeof IconSword; label: string }[] = [
+  { key: "attack", Icon: IconSword, label: "Attack" },
+  { key: "defend", Icon: IconShield, label: "Defend" },
+  { key: "mitigate", Icon: IconMend, label: "Mitigate" },
+  { key: "move", Icon: IconMove, label: "Move" },
 ];
 
 export function ActionBar({ choices, reaction }: { choices: Choices | null; reaction: boolean }) {
@@ -18,7 +19,7 @@ export function ActionBar({ choices, reaction }: { choices: Choices | null; reac
   const passActor = choices?.pass?.candidates[0]?.actor_id;
   const passAllActive = passAllFor != null && passAllFor === passActor;
 
-  const coreBtn = ({ key, icon, label }: { key: keyof Choices; icon: string; label: string }) => {
+  const coreBtn = ({ key, Icon, label }: (typeof CORE)[number]) => {
     const choice = choices?.[key] as Choice | undefined;
     const enabled = !!choice;
     const active = armed?.kind === choice?.kind && armed?.cardId == null;
@@ -28,67 +29,72 @@ export function ActionBar({ choices, reaction }: { choices: Choices | null; reac
         disabled={!enabled}
         onClick={() => choice && select(choice)}
         title={label}
-        className={`flex flex-col items-center justify-center gap-0.5 rounded-lg text-xs font-semibold transition ${
+        className={`caps-label flex flex-col items-center justify-center gap-1 border text-[11px] tracking-[0.14em] transition ${
           enabled
             ? active
-              ? "bg-yellow-500 text-black shadow"
-              : "bg-slate-700 hover:bg-slate-600"
-            : "cursor-not-allowed bg-slate-800/40 text-gray-600"
+              ? "border-brass bg-gradient-to-b from-brass-hi to-brass text-ink-0 shadow-[0_0_14px_rgba(233,204,130,0.3)]"
+              : "border-line bg-white/[0.02] text-parch hover:border-brass hover:bg-brass/10 hover:shadow-[0_0_14px_rgba(233,204,130,0.12)]"
+            : "cursor-not-allowed border-line/50 text-dimmed/60 opacity-60"
         }`}
       >
-        <span className="text-xl leading-none">{icon}</span>
+        <Icon size={19} className={enabled ? (active ? "text-ink-0" : "text-brass") : "text-dimmed/60"} />
         {label}
       </button>
     );
   };
 
   return (
-    <div className="flex h-full flex-col gap-2">
+    <div className="flex h-full flex-col gap-1.5">
       {reaction && (
-        <div className="rounded bg-amber-500/20 py-0.5 text-center text-[10px] font-bold uppercase tracking-wide text-amber-300">
-          reaction
+        <div className="caps-label border border-brass/40 bg-brass/10 py-0.5 text-center text-[10px] tracking-[0.3em] text-brass-hi">
+          Reaction Window
         </div>
       )}
       {/* 2×2 core actions — fill the available height */}
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
         {CORE.map(coreBtn)}
       </div>
-      {/* Pass / Pass All — Pass All keeps passing until the stack fully resolves. */}
-      <div className="grid grid-cols-2 gap-2">
-        <TextBtn choice={choices?.pass} label="Pass" />
+      {/* Pass / Pass All — Pass All keeps passing until the stack fully resolves.
+          When passing is an option it's usually THE decision, so both light brass. */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          disabled={!choices?.pass}
+          onClick={() => choices?.pass && select(choices.pass)}
+          className={`caps-label border py-1.5 text-[11px] tracking-[0.16em] transition ${
+            choices?.pass
+              ? "border-brass/60 bg-brass/10 text-brass hover:bg-brass hover:text-ink-0"
+              : "cursor-not-allowed border-line/50 text-dimmed/60"
+          }`}
+        >
+          Pass
+        </button>
         <button
           disabled={!choices?.pass}
           onClick={startPassAll}
           title="Pass every reaction window until the stack fully resolves"
-          className={`rounded-lg py-1.5 text-sm font-semibold transition ${
+          className={`caps-label border py-1.5 text-[11px] tracking-[0.16em] transition ${
             !choices?.pass
-              ? "cursor-not-allowed bg-slate-800/40 text-gray-600"
+              ? "cursor-not-allowed border-line/50 text-dimmed/60"
               : passAllActive
-                ? "bg-yellow-500 text-black shadow"
-                : "bg-slate-700 hover:bg-slate-600"
+                ? "border-brass bg-gradient-to-b from-brass-hi to-brass text-ink-0"
+                : "border-brass/60 bg-brass/10 text-brass hover:bg-brass hover:text-ink-0"
           }`}
         >
           Pass All
         </button>
       </div>
       {/* End Turn — prominent, always the bottom-most control */}
-      <TextBtn choice={choices?.endTurn} label="End Turn" />
+      <button
+        disabled={!choices?.endTurn}
+        onClick={() => choices?.endTurn && select(choices.endTurn)}
+        className={`chamfer-x caps-label py-2 text-[12px] tracking-[0.3em] transition ${
+          choices?.endTurn
+            ? "bg-gradient-to-b from-brass/15 to-brass/5 text-brass ring-1 ring-inset ring-brass/40 hover:from-brass-hi hover:to-brass hover:text-ink-0"
+            : "cursor-not-allowed bg-white/[0.02] text-dimmed/60"
+        }`}
+      >
+        End Turn
+      </button>
     </div>
-  );
-}
-
-function TextBtn({ choice, label }: { choice?: Choice; label: string }) {
-  const select = useGame((s) => s.selectChoice);
-  const enabled = !!choice;
-  return (
-    <button
-      disabled={!enabled}
-      onClick={() => choice && select(choice)}
-      className={`rounded-lg py-1.5 text-sm font-semibold transition ${
-        enabled ? "bg-slate-700 hover:bg-slate-600" : "cursor-not-allowed bg-slate-800/40 text-gray-600"
-      }`}
-    >
-      {label}
-    </button>
   );
 }

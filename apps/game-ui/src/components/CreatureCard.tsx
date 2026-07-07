@@ -1,12 +1,16 @@
 import type { CreatureView, TokenView } from "../lib/types";
-import { hpColor, powerColor } from "../lib/format";
+import { hpColor, powerColor, roman } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
 import { KeywordBadges } from "./KeywordBadges";
+import { IconSkull } from "./Icons";
+import { StatPop } from "./StatPop";
 
-const STAT = "text-[clamp(11px,1.8vh,20px)]";
-const META = "text-[clamp(9px,1.3vh,14px)]";
-const NAME = "text-[clamp(9px,1.4vh,15px)]";
+const STAT = "text-[clamp(11px,1.7vh,18px)]";
+const META = "text-[clamp(8px,1.2vh,13px)]";
+const NAME = "text-[clamp(9px,1.4vh,13px)]";
+// Long names on a standard-width card drop one notch instead of truncating.
+const NAME_LONG = "text-[clamp(8px,1.15vh,11px)]";
 
 export function CreatureCard({ creature, isTarget }: { creature: CreatureView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
@@ -16,53 +20,79 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
 
   // Boss hooks are dormant (engine has no boss support — INTERFACE_NOTES §4.3).
   // Creatures share the player-card width (aspect-square, so shorter than a 9:16 PC).
-  // A boss gets no ring of its own — the larger card is its signifier. One ring at a
-  // time, highest-stakes first, so conflicting Tailwind ring classes never stack.
+  // One frame state at a time, highest-stakes first: target brackets > execute
+  // window (blood brackets) > acting ember > plain hairline.
   const size = creature.is_boss ? BOSS_CARD_WIDTH : CARD_WIDTH;
-  const border = isTarget
-    ? "ring-4 ring-yellow-400"
+  const frame = isTarget
+    ? "brackets cursor-pointer border-brass-hi"
     : creature.in_execute_window
-      ? "ring-4 ring-red-500 ring-active"
+      ? "brackets anim-ember border-blood"
       : acting
-        ? "ring-2 ring-red-500"
-        : "ring-1 ring-black/40";
+        ? "anim-ember border-blood"
+        : "border-line2";
   const dimUntargeted = armed && !isTarget ? "opacity-40" : "";
 
   return (
     <div
       onClick={() => isTarget && pickTargetId(creature.id)}
       title={creature.name}
-      style={{ width: size }}
-      className={`relative aspect-square shrink-0 select-none rounded-lg bg-gradient-to-b from-rose-900 to-slate-900 shadow-lg transition ${border} ${dimUntargeted} ${
+      style={{
+        width: size,
+        ...(creature.in_execute_window && !isTarget
+          ? ({ "--bracket-color": "#c25a50" } as React.CSSProperties)
+          : {}),
+      }}
+      className={`relative aspect-square shrink-0 select-none border bg-ink-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)] transition ${frame} ${dimUntargeted} ${
         isTarget ? "cursor-pointer" : "cursor-default"
       } ${creature.is_boss ? "z-10" : ""}`}
     >
-      {/* Level — top-left; keyword/counter badges stack beneath it */}
-      <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
-        <div className={`rounded bg-black/60 px-1.5 ${META} font-bold text-gray-200`}>
-          L{creature.level}
-        </div>
+      {/* reserved art slot — engraved sigil until creature art exists */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_32%,rgba(70,110,118,0.35),transparent_75%),linear-gradient(180deg,#1d2730_0%,#141a22_55%,#10131b_100%)]" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[#7d99a4] opacity-40">
+        <IconSkull className="h-1/2 w-1/2" />
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+
+      {/* level — top-left gem, same chrome as the power/HP plaque */}
+      <div className={`absolute -left-px top-1.5 border border-l-0 border-line bg-ink-0/80 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-parch`}>
+        {roman(creature.level)}
+      </div>
+      <div className="absolute left-1.5 top-[22%]">
         <KeywordBadges keywords={creature.keywords} counters={creature.counters} />
       </div>
-      {/* Power / HP — top-right */}
-      <div className={`absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 ${STAT} font-bold leading-none`}>
-        <span className={powerColor(creature.power)}>{creature.power.current}</span>
-        <span className="text-gray-400"> / </span>
-        <span className={hpColor(creature.hp)}>{creature.hp.current}</span>
-      </div>
+
+      {/* channelling strip — named so the player knows what breaking does */}
       {creature.is_channeling && (
         <div
           title={`Channeling: ${(creature.channels ?? []).map((c) => c.name).join(" · ")}\nBreak it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
-          className={`absolute inset-x-1 bottom-7 truncate rounded bg-purple-600/85 px-1 py-0.5 ${META} font-semibold text-white`}
+          className={`caps-label absolute inset-x-1 bottom-[26%] truncate border border-aether/50 bg-ink-0/80 px-1 py-0.5 text-center text-[clamp(7px,1vh,9px)] tracking-[0.12em] text-aether`}
         >
-          ✦ {(creature.channels ?? [])[0]?.name ?? "Channeling"}
+          {(creature.channels ?? [])[0]?.name ?? "Channeling"}
           {(creature.channels?.length ?? 0) > 1 && ` +${creature.channels.length - 1}`}
         </div>
       )}
-      {/* Name — bottom-center */}
-      <div className={`absolute inset-x-0 bottom-0 truncate rounded-b-lg bg-black/65 px-1 py-1 text-center ${NAME} font-semibold`}>
-        {creature.name}
+
+      {/* stats — bottom-right gem */}
+      <div className={`absolute -right-px bottom-[15%] border border-r-0 border-line bg-ink-0/80 px-1.5 py-0.5 font-display ${STAT} leading-none`}>
+        <span className={powerColor(creature.power)}>{creature.power.current}</span>
+        <span className="px-0.5 text-dimmed">/</span>
+        <span className={hpColor(creature.hp)}>{creature.hp.current}</span>
       </div>
+
+      {/* nameplate */}
+      <div className="absolute inset-x-0 bottom-0 px-0.5 pb-1 pt-0.5 text-center">
+        <div
+          className={`caps-label truncate ${
+            !creature.is_boss && creature.name.length > 15 ? NAME_LONG : NAME
+          } tracking-normal ${
+            creature.is_boss ? "text-[#e7cfc4]" : "text-parch"
+          }`}
+        >
+          {creature.name}
+        </div>
+      </div>
+
+      <StatPop hp={creature.hp.current} />
     </div>
   );
 }
@@ -76,22 +106,24 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
       onClick={() => isTarget && pickTargetId(token.id)}
       title={`${token.name} (ally)`}
       style={{ width: TOKEN_CARD_WIDTH }}
-      className={`relative aspect-square shrink-0 select-none rounded-md bg-gradient-to-b from-emerald-800 to-slate-900 shadow ${
-        isTarget ? "ring-4 ring-yellow-400 cursor-pointer" : "ring-1 ring-emerald-500/50"
+      className={`relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
+        isTarget ? "brackets cursor-pointer border-brass-hi" : "border-tide/40"
       } ${dimUntargeted}`}
     >
-      <div className={`absolute right-0.5 top-0.5 rounded bg-black/60 px-1 ${META} font-bold leading-none`}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_35%,rgba(130,180,201,0.25),transparent_75%),linear-gradient(180deg,#16202a,#10141c)]" />
+      <div className={`absolute -right-px top-1 border border-r-0 border-line bg-ink-0/80 px-1 font-display ${META} leading-tight`}>
         <span className={powerColor(token.power)}>{token.power.current}</span>
-        <span className="text-gray-400">/</span>
+        <span className="text-dimmed">/</span>
         <span className={hpColor(token.hp)}>{token.hp.current}</span>
       </div>
       {/* Keyword/counter badges — top-left (matches the character/creature cards) */}
       <div className="absolute left-0.5 top-0.5">
         <KeywordBadges keywords={token.keywords} counters={token.counters} />
       </div>
-      <div className={`absolute inset-x-0 bottom-0 truncate rounded-b-md bg-black/65 px-0.5 text-center ${META}`}>
+      <div className={`caps-label absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-0.5 pb-0.5 pt-1 text-center text-[clamp(7px,1vh,9px)] tracking-[0.06em] text-parch`}>
         {token.name}
       </div>
+      <StatPop hp={token.hp.current} />
     </div>
   );
 }

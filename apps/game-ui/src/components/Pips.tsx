@@ -3,7 +3,7 @@ import { parsePips } from "../lib/format";
 export function Pips({ cost, size = 16 }: { cost: string; size?: number }) {
   const pips = parsePips(cost);
   if (!pips.length || (pips.length === 1 && pips[0].value === "0")) {
-    return <span className="text-xs text-gray-400">0</span>;
+    return <span className="text-xs text-dimmed">0</span>;
   }
   return (
     <span className="inline-flex items-center gap-0.5">
@@ -11,8 +11,8 @@ export function Pips({ cost, size = 16 }: { cost: string; size?: number }) {
         p.kind === "generic" ? (
           <span
             key={i}
-            className="inline-flex items-center justify-center rounded-full bg-gray-500 font-bold text-gray-900"
-            style={{ width: size, height: size, fontSize: size * 0.7 }}
+            className="inline-flex items-center justify-center rounded-full bg-[#3c414d] font-display text-[#dfe3ea] ring-1 ring-black/40"
+            style={{ width: size, height: size, fontSize: size * 0.68 }}
           >
             {p.value}
           </span>
