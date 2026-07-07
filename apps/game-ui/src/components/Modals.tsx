@@ -17,8 +17,10 @@ function Backdrop({ children, onClose, wide = false }: {
       }}
     >
       <div
-        className={`max-h-[80vh] overflow-y-auto rounded-xl bg-slate-800 p-4 shadow-2xl ring-1 ring-white/10 ${
-          wide ? "w-[min(94vw,1080px)]" : "w-[min(90vw,560px)]"
+        className={`max-h-[80vh] overflow-y-auto rounded-xl p-4 shadow-2xl ring-1 ring-white/10 ${
+          wide
+            ? "w-fit min-w-[320px] max-w-[min(94vw,1080px)] bg-slate-950"
+            : "w-[min(90vw,560px)] bg-slate-800"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -197,16 +199,17 @@ export function CardPickPrompt() {
         <h2 className="mb-3 text-lg font-bold">
           {isScry ? "Scry — place each card on top or bottom" : "Choose a card"}
         </h2>
-        <div className="scroll-thin flex items-stretch gap-3 overflow-x-auto pb-2">
+        <div className="scroll-thin flex overflow-x-auto pb-2">
+          <div className="mx-auto flex items-stretch gap-3">
           {pending.candidates.map((card, i) => {
             const acts = byChoice[i] ?? [];
             const single = acts.length === 1 ? acts[0] : null;
             return (
               <div key={`${card.id}-${i}`} className="flex w-44 shrink-0 flex-col gap-1.5">
-                <div className="h-64">
+                <div className={`h-64 ${single ? "" : "pointer-events-none"}`}>
                   <HandCard
                     card={card}
-                    playable={single != null}
+                    playable
                     active={false}
                     onClick={() => single && submit(single.index)}
                   />
@@ -236,6 +239,7 @@ export function CardPickPrompt() {
               </div>
             );
           })}
+          </div>
         </div>
       </Backdrop>
     );

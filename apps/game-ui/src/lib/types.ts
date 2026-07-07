@@ -161,6 +161,9 @@ export interface LogEntry {
   type: string;
   msg: string;
   data: Record<string, unknown>;
+  // The full card this line references (cast / draw / channel events), for the
+  // hover tooltip; null when the line names no known card.
+  card?: CardView | null;
 }
 
 export interface LegalAction {

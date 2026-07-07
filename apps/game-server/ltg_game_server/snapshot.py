@@ -260,9 +260,28 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         }
         for r in _stack_list(view)
     ]
+    # Resolve the card a log line references (data["card"] id) to the full card,
+    # scanning every party zone / held channel / stack item — so the client can
+    # show the whole card on hover. Names in the log are already public; this
+    # attaches the matching text at the same disclosure level.
+    card_index = {}
+    for c in view.party:
+        for zone in (c.hand, c.library, c.graveyard, c.exile):
+            for card in zone:
+                card_index[card.id] = card
+        for ch in c.channels:
+            card_index[ch.card.id] = ch.card
+    for item in view.stack:
+        if item.card is not None:
+            card_index[item.card.id] = item.card
+
+    def _log_card(e):
+        cid = e.data.get("card")
+        return card_dict(card_index[cid]) if cid in card_index else None
+
     visible = [e for e in stored.log if e.type not in HIDDEN_LOG_TYPES]
     log = [
-        {"type": e.type, "msg": e.msg, "data": e.data}
+        {"type": e.type, "msg": e.msg, "data": e.data, "card": _log_card(e)}
         for e in reversed(visible[-LOG_TAIL:])  # newest-first tail
     ]
 

@@ -1070,3 +1070,92 @@ def test_upkeep_trigger_chosen_target_is_picked_at_each_firing():
     st, _ = apply_action(st, pick(st, kind="choose_target", target_id="hero"))
     st = settle_window(st)
     assert hero(st).power_bonus == 1         # the upkeep blessing landed on the pick
+
+
+def test_stack_rows_carry_the_full_card_for_hover():
+    # The UI shows the whole card on hover of a stack row — both a cast and a
+    # card-carried trigger (break) must ship `card`; a basic attack ships None.
+    from ltg_combat.serialize import _stack_list
+    state = make_state([_seal()])
+    mid, _ = apply_action(state, pick(state, kind="cast", card_id="seal"))
+    row = _stack_list(mid)[0]
+    assert row["card"] is not None and row["card"]["name"] == "Seal"
+    state = settle_window(mid)
+    for ch in hero(state).channels:
+        ch.started_turn = state.turn - 1
+    mid, _ = apply_action(state, pick(state, kind="drop_channels"))
+    row = _stack_list(mid)[0]
+    assert "break trigger" in row["label"]
+    assert row["card"] is not None and row["card"]["name"] == "Seal"
+
+
+def test_attack_trigger_stacks_above_the_swing_and_resolves_first():
+    # MTG ordering: an on-attack trigger goes on the stack at DECLARATION, above
+    # the swing — window, trigger resolves, window, THEN the attack's damage.
+    angels = C("angels2", "channeled", [
+        {"kind": "counters", "power": 1, "toughness": 1, "target": "$T1",
+         "trigger": {"event": "attack", "who": "ally"}},
+    ], colors={"W": 1}, targets={"T1": {"mode": "chosen", "side": "ally", "targeted": False}})
+    state = make_state([angels], intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="angels2")
+    state = _advance_to_turn(state, 2)
+
+    atk = next(a for a in legal_actions(state) if a.kind == "attack")
+    st, _ = apply_action(state, atk)
+    # Pushed immediately at declaration, ABOVE the attack (top resolves first)…
+    assert [i.kind for i in st.stack] == ["attack", "triggered"]
+    # …owing its target pick before any reaction window opens.
+    assert st.pending_choice is not None and st.pending_choice.kind == "target"
+    st, _ = apply_action(st, pick(st, kind="choose_target", target_id="hero"))
+
+    hp_before = orc(st).hp
+    st, _ = apply_action(st, pick(st, kind="pass"))   # window 1 → trigger resolves
+    assert hero(st).counters == 1                     # trigger effect landed…
+    assert orc(st).hp == hp_before                    # …before any attack damage
+    assert [i.kind for i in st.stack] == ["attack"]   # the swing still waits
+    st, _ = apply_action(st, pick(st, kind="pass"))   # window 2 → the attack lands
+    # …and the damage reads Power at RESOLUTION: base 3 + the counter = 4.
+    assert orc(st).hp == hp_before - 4
+
+
+def test_pickless_attack_trigger_still_uses_the_stack():
+    # MTG: EVERY trigger goes on the stack — even one with no choices to make —
+    # so it is respondable, and resolves before the swing underneath it.
+    hymn = C("hymn", "channeled", [
+        {"kind": "heal", "amount": 1, "target": {"mode": "self"},
+         "trigger": {"event": "attack", "who": "you"}},
+    ], colors={"W": 1})
+    state = make_state([hymn], intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="hymn")
+    state = _advance_to_turn(state, 2)
+    hero(state).hp = 10                               # room for the heal to land
+
+    atk = next(a for a in legal_actions(state) if a.kind == "attack")
+    st, _ = apply_action(state, atk)
+    assert [i.kind for i in st.stack] == ["attack", "triggered"]
+    assert st.pending_choice is None                  # nothing to pick — but it stacks
+    hp = hero(st).hp
+    st, _ = apply_action(st, pick(st, kind="pass"))   # window → trigger resolves
+    assert hero(st).hp == hp + 1
+    assert [i.kind for i in st.stack] == ["attack"]   # the swing still waits
+
+
+def test_upkeep_tick_goes_on_the_stack():
+    blossom = C("blossom", "channeled", [
+        {"kind": "lose_life", "amount": 1, "target": {"mode": "self"},
+         "trigger": "upkeep"},
+    ], colors={"B": 1})
+    state = make_state([blossom], intent_amount=1)
+    state, _ = do(state, kind="cast", card_id="blossom")
+
+    st, _ = apply_action(state, pick(state, kind="end_turn"))
+    guard = 0                                # ride to turn 2's upkeep firing
+    while guard < 30 and not (st.turn == 2 and st.stack
+                              and st.stack[-1].kind == "triggered"):
+        guard += 1
+        acts = legal_actions(st)
+        st, _ = apply_action(st, next((x for x in acts if x.kind == "pass"), acts[0]))
+    assert st.turn == 2 and st.stack[-1].kind == "triggered"  # tick is respondable
+    hp = hero(st).hp
+    st, _ = apply_action(st, pick(st, kind="pass"))
+    assert hero(st).hp == hp - 1                              # then it resolves

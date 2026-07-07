@@ -287,30 +287,27 @@ def _fire_capacity_increase(st: GameState, char: CharacterState) -> None:
 
 
 def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
-    """Resolve a channel's just-fired triggered effects (event / upkeep /
-    capacity_increase). Fully-bound firings resolve inline (the upkeep-tick
-    model). A firing that still owes a chosen-target pick (a `$slot`/chosen
-    target no cast-time pick bound) instead goes ON THE STACK as a triggered
-    ability: the holder picks the target as it is pushed (MTG-style), a reaction
-    window opens on it, and it resolves like any stack action."""
+    """Push a channel's just-fired triggered effects (event / upkeep /
+    capacity_increase) onto the stack as ONE triggered ability — MTG-style,
+    every trigger uses the stack: a reaction window opens on it (a "triggered"/
+    "ability" counter answers it) and it resolves like any stack action. The
+    holder picks a triggered modal's mode and any owed chosen target as it is
+    pushed (_raise_next_trigger_pick); a trigger fired mid-resolution waits on
+    the stack until the current resolution finishes, exactly like MTG."""
     card = getattr(ch, "card", None)
     name = getattr(card, "name", None) or getattr(ch, "name", "channel")
-    item = StackItem(kind="triggered", source_id=holder.id, source_side=side,
-                     label=f"{name} — trigger", effects=list(fired),
-                     target_id=ch.target_id, card=card, x=getattr(ch, "x", 0))
-    if side == "party" and _trigger_pick_effect(item) is not None:
-        _push(st, item)
-        item.needs_target = True
-        st.priority = None  # fresh window once the pick is made
-        st.passes = 0
-        _log(st, "channel_trigger",
-             f"{name}'s trigger goes on the stack.", source=holder.id, label=name)
-        _raise_next_trigger_pick(st)
-        return
-    ctx = (_channel_ctx(st, holder, ch) if card is not None
-           else {"party_size": len(st.party), "caster_obj": holder})
-    for eff in fired:
-        _resolve_effect(st, item, eff, ctx)
+    item = _push(st, StackItem(kind="triggered", source_id=holder.id, source_side=side,
+                               label=f"{name} — trigger", effects=list(fired),
+                               target_id=ch.target_id, card=card,
+                               x=getattr(ch, "x", 0)))
+    if side == "party":
+        item.needs_mode = any(getattr(e, "kind", None) == "modal" for e in fired)
+        item.needs_target = _trigger_pick_effect(item) is not None
+    st.priority = None  # fresh window — re-seeded by _advance
+    st.passes = 0
+    _log(st, "channel_trigger",
+         f"{name}'s trigger goes on the stack.", source=holder.id, label=name)
+    _raise_next_trigger_pick(st)
 
 
 def _event_who_matches(who: str, holder, holder_side: str,
@@ -428,12 +425,10 @@ def _fire_recurring(st: GameState) -> None:
                 _fire_channel_effects(st, holder, "party", ch, fired)
     for e in _ordered(st.living_enemies()):
         for ch in list(e.channels):
-            item = StackItem(kind="ability", source_id=e.id, source_side="enemy",
-                             label=ch.name, effects=[], target_id=ch.target_id)
-            for effect in ch.effects:
-                if getattr(effect, "trigger", None) == "upkeep":
-                    _resolve_effect(st, item, effect,
-                                    {"party_size": len(st.party), "caster_obj": e})
+            fired = [eff for eff in ch.effects
+                     if getattr(eff, "trigger", None) == "upkeep"]
+            if fired:
+                _fire_channel_effects(st, e, "enemy", ch, fired)
 
 
 def _declare_intents(st: GameState) -> None:
@@ -867,6 +862,8 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     st.passes = 0
     _log(st, "intent_execute", f"{enemy.name} executes {intent.name}.",
          enemy=enemy.id, label=intent.name)
+    if intent.action_type == "attack":
+        _fire_event(st, "attack", enemy)  # attack triggers fire at declaration
 
 
 def _execute_ally(st: GameState, token: TokenState) -> None:
@@ -881,14 +878,18 @@ def _execute_ally(st: GameState, token: TokenState) -> None:
     token.intent = None
     if target is None:
         return
+    # `attack_power` makes the damage re-read the token's CURRENT Power at
+    # resolution (R-7) — the amount here is only the declared/telegraphed figure.
     effects = [DealDamage(amount=token.current_power, target=t_chosen("enemy", targeted=True))]
     _push(st, StackItem(kind="attack", source_id=token.id, source_side="party",
                         label=f"{token.name}'s attack", effects=effects,
-                        target_id=target.id, attack_mode=token.attack_mode))
+                        target_id=target.id, attack_mode=token.attack_mode,
+                        attack_power=token.power))
     st.priority = None
     st.passes = 0
     _log(st, "ally_attack", f"{token.name} attacks {target.name} (Power {token.current_power}).",
          token=token.id, target=target.id, power=token.current_power)
+    _fire_event(st, "attack", token)  # attack triggers fire at declaration
 
 
 def _end_step(st: GameState) -> None:
@@ -1229,6 +1230,10 @@ def _do_attack(st: GameState, action: Action) -> None:
          f"{actor.name} attacks {tgt.name} ({actor.attack_mode} Power {actor.current_power}).",
          character=actor.id, target=action.target_id, power=actor.current_power,
          mode=actor.attack_mode)
+    # On-attack channel triggers fire at DECLARATION (MTG: attack triggers go on
+    # the stack above the swing and resolve before its damage). A stacked trigger
+    # (chosen target) lands on top; an inline one resolves before the window opens.
+    _fire_event(st, "attack", actor)
 
 
 def _do_cast(st: GameState, action: Action) -> None:
@@ -1394,10 +1399,6 @@ def _resolve_top(st: GameState) -> StackItem:
     if item.starts_channel:
         _start_enemy_channel(st, item)
         return item
-    # On-attack channel triggers fire as the swing resolves (any side: a player's
-    # or token's basic attack, an enemy attack intent) — before its damage lands.
-    if item.kind == "attack":
-        _fire_event(st, "attack", st.combatant(item.source_id))
     ctx = _new_ctx(st, item)
     _resolve_effect_list(st, item, item.effects, ctx)
     return item
@@ -2282,10 +2283,16 @@ def _r_deal_damage(st, item, effect, target, ctx):
         if item.attack_power is not None and source_obj is None:
             _log(st, "fizzle", f"{item.label} fizzles — its attacker is gone.", kind="attack")
             return
-        # A basic attack's damage is its source's CURRENT Power, evaluated now (R-7):
-        # a wound/anthem landing after the swing was declared changes what lands.
+        # A basic attack's damage is its source's CURRENT Power, evaluated in full
+        # at RESOLUTION (R-7): pumps/wounds AND +1/+1 counters landing after the
+        # swing was declared all change what lands. Enemy attack amounts come from
+        # their intent TEMPLATE (not a power stat), so only the live bonus layer is
+        # re-read on top of the declared base for them.
         if item.attack_power is not None:
-            amount = max(0, item.attack_power + source_obj.power_bonus)
+            if isinstance(source_obj, EnemyState):
+                amount = max(0, item.attack_power + source_obj.power_bonus)
+            else:
+                amount = max(0, source_obj.current_power)
         # Mitigate answers attack-type hits only (Update 02 §M-A.1)
         target, amount = _apply_mitigation(st, item, target, amount)
     overkill = _deal_damage(st, target, amount, source=item.label,
