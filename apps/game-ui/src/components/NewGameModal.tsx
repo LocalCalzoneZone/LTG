@@ -182,6 +182,11 @@ export function NewGameModal({ onClose, onStarted }: {
                       onChange={() => setEncounter(e.id)}
                     />
                     <span className="font-normal text-parch">{e.name}</span>
+                    {e.scales && e.scales.length > 0 && (
+                      <span className="caps-label shrink-0 text-[10px] tracking-[0.1em] text-brass">
+                        scales {Math.min(...e.scales)}–{Math.max(...e.scales)}
+                      </span>
+                    )}
                     <span className="ml-auto truncate text-xs font-light text-mist">
                       {e.enemy_names.join(", ")}
                     </span>

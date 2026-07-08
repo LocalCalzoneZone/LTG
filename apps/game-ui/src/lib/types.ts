@@ -237,6 +237,8 @@ export interface EncounterOption {
   name: string;
   enemy_names: string[];
   enemy_count: number;
+  // Party sizes with a dedicated layout (e.g. [1,2,3,4]); [] == fixed roster.
+  scales: number[];
   deletable: boolean;
   editable: boolean;
 }
@@ -299,6 +301,9 @@ export interface EncounterDetail {
   scene?: string;
   enemies: EnemySpec[];
   tokens: Record<string, unknown>;
+  // Per-party-size rosters: {"1": [enemy ids...], ..., "4": [...]} (repeats clone).
+  // The editor round-trips them, pruning ids that no longer exist.
+  layouts?: Record<string, string[]>;
 }
 export interface SetupOptions {
   characters: CharacterOption[];

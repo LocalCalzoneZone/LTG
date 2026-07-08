@@ -107,11 +107,14 @@ Upgrade prices: +1 HP = 1 pt · +1 Power = 3 pts · adding a ranged attack = 2 p
 archetype (typical effect) — base cost:
 - Punish (telegraphed retaliation, deal_damage on a trigger) — 3
 - Fortify (heal / pump self or ally) — 3
+- Ward (prevent/protection shield on self or an ally — a bodyguard's shield) — 3
 - Evasive (repositioning; pairs with flying/hexproof) — 2
 - Burst (extra damage above the basic attack) — 4
 - Debilitate (wound / stun / taunt / prevent) — 4
 - Escalate (recurring self-pump / +1/+1 counters) — 4
 - Drain (deal_damage + heal self, coupled) — 5
+- Counter (REACTIVE ONLY: cancel the hero action on the stack — a counterspell
+  on trigger on_spell_cast, or a parry on trigger on_attack) — 3
 - Swarm (create_token) — 6
 Cost modifiers (multiply, round up): cooldown 1 = ×1.5 · cooldown 2–3 = ×1.0 ·
 once_per_encounter = ×0.5 · reactive timing = +2 flat after multipliers.
@@ -123,20 +126,35 @@ lose_life (unpreventable) = ceil(L/2) · stun / taunt = no magnitude (binary) ·
 create_token = a Husk at level ceil(L/2), max 2 alive per creator.
 
 ## Targeting, conditions, triggers (the full vocabulary — use all of it)
-target_rule: "valuation" (the smart default — snipes the killable/casting hero) ·
+target_rule: "valuation" (the smart default — snipes the killable/casting hero;
+a stun/taunt rule automatically spreads: it skips heroes already locked down) ·
 "self" · "trigger_source" (reactive: whoever caused the trigger) ·
-"lowest_hp_ally" (support: heal/buff the most wounded FELLOW ENEMY) ·
+"lowest_hp_ally" (support: heal/buff the most wounded FELLOW ENEMY; a pure heal
+skips allies at full HP, so the healer never wastes a turn) ·
+"wounded_ally" (strict support: ONLY fires when an ally is actually hurt) ·
+"highest_threat" (assassin's read: the hardest-hitting hero — cut the sword arm) ·
 "channeling_player" (sniper: the hero holding a channeled spell — break it).
 
 condition (optional gate on any component):
 {"kind": "self_hp_pct", "op": "<", "value": 50}   — bloodied behaviour
 {"kind": "turn", "op": ">=", "value": 3}          — an escalation timer
 {"kind": "ally_count", "op": "<", "value": 2}     — desperation when nearly alone
+{"kind": "hero_count", "op": ">=", "value": 3}    — anti-party cleave unlocks vs big parties
+{"kind": "hero_channeling", "op": ">=", "value": 1} — arm the ritual-breaker only
+  when a hero is actually channeling
+{"kind": "self_channeling", "op": ">=", "value": 1} — defend-the-ritual behaviour
+  while this enemy holds its own channel
 
 trigger (reactive components): "on_hit" (this enemy took damage) · "on_ally_hit" ·
-"on_ally_death" · "on_targeted" · "on_spell_cast" (punish casting) ·
+"on_ally_death" · "on_targeted" · "on_spell_cast" (punish or COUNTER casting) ·
+"on_attack" (a hero's attack is on the stack — parry/shield/riposte before it lands) ·
 "on_incoming_lethal" (an emergency save — heal/prevent to survive the killing blow) ·
-"on_ally_below_50" (an ally just fell under 50% — any percent works, e.g. _30).
+"on_ally_below_50" (an ally just fell under 50% — any percent works, e.g. _30) ·
+"on_self_below_40" (THIS enemy just fell under 40% — a minion-grade enrage moment;
+any percent; give it once_per_encounter so it stays a moment) ·
+"on_hero_downed" (a hero was just incapacitated — the pack surges) ·
+"on_hero_healed" (a hero regained HP — punish the medic; target_rule
+"trigger_source" hits whoever cast the heal).
 
 `"once_per_encounter": true` on a component = a single dramatic use (×0.5 cost).
 
@@ -155,6 +173,11 @@ threat with a clear answer. Give one to a ritualist/warlock-type enemy (or a
 boss phase) and give the channeler real HP so breaking it costs the party a
 real hit. A channel can be a "spell" (action_type) — counterable by Negate.
 Price a channelled component at its archetype ×1.5 (ongoing value).
+At standard difficulty and above, include at least ONE channeler in the
+encounter — an aura (party-wide wound / warband anthem) or a ritual tick
+(recurring damage / token spawn). Pair it with a guard whose condition
+{"kind":"self_channeling"...} lives on the CHANNELER (it protects itself) or
+whose Ward targets it — the party must choose between the ritual and the wall.
 
 ## Spell vs ability (thematic classification — set it on every component)
 Enemies have no cards, but their actions still classify on the action taxonomy,
@@ -168,6 +191,9 @@ should carry spell-classed components — it makes counterspell decks matter.
 ## Keywords (min level / cost)
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · deathtouch (3/4) ·
 protection (4/3) · hexproof (4/4) · indestructible (6/6).
+Hexproof wards off targeted SPELLS and ABILITIES only — basic attacks still land
+on a hexproof creature (both directions), so a hexproof enemy is spell-slippery,
+not unhittable.
 NEVER put first strike, vigilance, or haste on an enemy (those are player-only).
 
 ## Budget → Level (this is how you scope difficulty)
@@ -191,12 +217,45 @@ is fine; overspending is impossible. Complexity self-prices into level.
   * An AVENGER (reactive on_ally_death, permanent counters on self): punishes
     naive kill order — pairs beautifully with expendable Swarm tokens.
   * A CONTROL piece (Debilitate: stun a hero, or taunt to drag their attacks):
-    attacks the party's action economy — the sharpest knife in the drawer.
+    attacks the party's action economy — the sharpest knife in the drawer. The
+    engine spreads control automatically (a stun rule skips already-stunned
+    heroes), so two control pieces don't waste each other.
+  * A COUNTERSPELL SENTINEL (reactive Counter, trigger on_spell_cast, verb
+    {"kind":"counter","filter":"spell"}, cooldown 2–3): the enemy side's answer to
+    the stack. Suddenly the party must bait it or play around it. A duellist
+    variant counters ATTACKS instead (trigger on_attack, filter "attack"). Use at
+    most ONE counter-piece per encounter, always with a cooldown — it frustrates
+    when spammed, thrills when scarce.
+  * A WARD BODYGUARD (Ward: prevent/protection onto the channeler or the boss,
+    target_rule a fixed ally id or "self"): layers the kill-priority puzzle.
+  * A RITUALIST (a channel component): the centerpiece decision — see channels.
+  * A BLOODIED TURN (reactive on_self_below_40, once_per_encounter: counters,
+    a heal, or a desperate AoE): every elite minion deserves one dramatic moment.
+  * An EXECUTIONER (reactive on_hero_downed: the pack surges — counters on self or
+    a free hit): downing a hero must feel dangerous for the OTHERS too.
+  * A MEDIC-PUNISHER (reactive on_hero_healed, target_rule trigger_source): makes
+    the party's sustain a decision instead of a free loop.
   * A TIMER (condition turn >= N unlocking a bigger ability): punishes turtling.
-- Respect the Encounter Level budget you are given below: the sum of all enemies'
-  levels should land near that target. The party must be OUTNUMBERED — field at
-  least the required minimum count given below (never fewer). Make the extra bodies
+- Respect the per-party-size Level budgets you are given below: for each layout,
+  the sum of its enemies' levels (a boss counts double) should land near that
+  size's target. The party must be OUTNUMBERED at every size — each layout must
+  field at least the required minimum count (never fewer). Make the extra bodies
   count: vary them across rows and roles rather than cloning one statline.
+
+# Party-size layouts (REQUIRED — the encounter must scale 1–4 heroes)
+Design ONE thematic enemy pool in `"enemies"`, then assign a roster per party
+size in a top-level `"layouts"` object: keys "1"–"4", each a list of enemy ids
+drawn from the pool. The engine fields the layout matching the party that starts
+the game. Rules:
+- An id may REPEAT in a layout — the engine clones it ("wolf", "wolf 2"), so big
+  parties face more bodies of the same design. Duplicates count toward the
+  minimum and the budget (a repeated level-2 wolf costs 2 each time).
+- The boss (if any) appears in EVERY layout — it is the encounter's centerpiece.
+  Solo layouts around a boss should thin the minions, never drop the boss.
+- Scale by both COUNT and ROLE: a solo hero faces the core puzzle in miniature
+  (2–3 bodies, one decision-generator); a full party of 4 faces the whole war
+  band (8+ bodies, support + control + clock all live).
+- Every enemy in the pool should appear in at least one layout.
 
 # Bosses (only when the parameters below ask for one)
 One enemy may carry `"is_boss": true` — never more than one. A boss:
@@ -206,10 +265,18 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
   "execute window") — so give it real HP; the party must whittle it down.
 - ENRAGES at 25% HP: give it one component with `"archetype": "Enrage"` — it costs
   no budget and auto-fires ONCE, going on the stack when the boss first drops below
-  25%. Make it dramatic (permanent counters, a big heal, an AoE).
+  25%. Enraging is a HARD TURN: the engine also shakes off any stun/taunt on the
+  boss and resets its ability cooldowns, so the post-enrage kit opens at full
+  aggression. Write the Enrage itself as a MULTI-VERB eruption — stack 2–3 verbs:
+  permanent +X/+X counters AND an AoE hit AND/OR a token wave / a big self-heal /
+  a granted keyword (e.g. trample). One small pump is a wasted climax.
 - may phase-gate other components with `"phase": "pre_enrage"` or `"post_enrage"`
   so the fight transforms when it turns: e.g. a single-target breath before, a
-  party-wide firestorm after.
+  party-wide firestorm after. Give the post-enrage kit a clearly scarier shape —
+  the fight's final act should FEEL different, not just bigger numbers.
+- Elite minions can carry their own mini-enrage: a reactive component on
+  `"trigger": "on_self_below_50"` (any percent) with once_per_encounter — the
+  fight stays dynamic even away from the boss.
 - Every proactive component needs a `telegraph` (the intent text players see) and a
   `priority` (lower = considered first; 10–19 emergencies, 20–49 tactical, basic
   attack is implicitly 90). Give ability components a `cooldown` (2 is typical).
@@ -269,15 +336,24 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "stun",  "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero loses a turn
             {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me
             {"kind": "prevent", "parameter": "combat_damage", "uses": "next", "target": {"mode": "self"}},  // a shield
+            {"kind": "protection", "target": {"mode": "self"}},   // negates the next spell/attack entirely (Ward)
+            {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; NO target field
             {"kind": "grant_keyword", "keywords": ["flying"], "duration": "encounter", "target": {"mode": "chosen", "side": "ally", "targeted": true}},
             {"kind": "create_token", "token_id": "<id in tokens>", "count": <int>, "hp": <int>, "power": <int>},
             {"kind": "wound", "power": 1, "toughness": 1, "duration": "while_channeled", "target": {"mode": "all", "side": "ally"}},   // CHANNEL aura: holds until broken
+            {"kind": "pump", "power": 1, "toughness": 1, "duration": "while_channeled", "target": {"mode": "all", "side": "enemy"}},   // CHANNEL anthem: pumps the warband while held
             {"kind": "deal_damage", "amount": 2, "trigger": "upkeep", "target": {"mode": "chosen", "side": "ally", "targeted": true}}  // CHANNEL tick: fires every turn
           ]
         }
       ]
     }
   ],
+  "layouts": {                          // REQUIRED: the roster per party size (ids from "enemies"; repeats clone)
+    "1": ["enemy_a", "enemy_b"],
+    "2": ["enemy_a", "enemy_a", "enemy_b", "enemy_c"],
+    "3": ["enemy_a", "enemy_a", "enemy_b", "enemy_b", "enemy_c", "enemy_d"],
+    "4": ["enemy_a", "enemy_a", "enemy_a", "enemy_b", "enemy_b", "enemy_c", "enemy_c", "enemy_d"]
+  },
   "tokens": {                           // token definitions ONLY if a Swarm spawns them
     "huskling": {"name": "Huskling", "hp": 2, "power": 1, "row": "front", "attack_mode": "melee"}
   }
@@ -288,13 +364,15 @@ means "the combatant this component's target_rule picked" — a hero for damage/
 taunt (valuation / trigger_source / channeling_player), a fellow enemy for a support
 heal/buff (lowest_hp_ally). A self-effect uses `{"mode": "self"}`; an AoE on the party
 uses `{"mode": "all", "side": "ally"}`. Copy these shapes verbatim — do not invent new
-target shapes. NEVER use these verbs (player-only; they do nothing or break the fight):
-destroy, exile, bounce, counter, strip_intent, fight, revive, draw, scry, move_card,
-ramp, add_mana. Never grant enemies first_strike / vigilance / haste.
+target shapes. The `counter` verb is REACTIVE-ONLY (a Counter component answering
+on_spell_cast / on_attack) and takes no target field — the engine aims it at the
+action that tripped the trigger. NEVER use these verbs (player-only; they do nothing
+or break the fight): destroy, exile, bounce, strip_intent, fight, revive, draw, scry,
+move_card, ramp, add_mana. Never grant enemies first_strike / vigilance / haste.
 
-# Two worked examples that build correctly (study these, then design your own)
+# Three worked examples that build correctly (study these, then design your own)
 
-EXAMPLE A — a B/R vampire coven (total enemy Levels 7):
+EXAMPLE A — a B/R vampire coven (pool of 3 designs, scaled 1–4 by layouts):
 {"name":"Crimson Coven — Drain & Reactions","scene":"A desecrated hillside chapel at midnight: pews toppled, red votive candles guttering in pools of wax, and a shattered rose window casting broken moonlight across a blood-slick altar.","enemies":[
  {"id":"grave_thrall","name":"Grave Thrall","flavor":"A wall that shambles forward.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":1,"row":"front","attack_mode":"melee"},
  {"id":"bloodbat","name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":2,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],
@@ -306,29 +384,53 @@ EXAMPLE A — a B/R vampire coven (total enemy Levels 7):
      {"kind":"heal","amount":3,"target":{"mode":"self"}}]},
    {"id":"curse","archetype":"Debilitate","timing":"reactive","trigger":"on_spell_cast","cooldown":2,"priority":20,"target_rule":"trigger_source","action_type":"spell","telegraph":"Withering Curse — wound the caster -1/-1","verbs":[
      {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}
-],"tokens":{}}
+],"layouts":{
+ "1":["grave_thrall","bloodbat"],
+ "2":["grave_thrall","grave_thrall","bloodbat","bloodbat"],
+ "3":["grave_thrall","grave_thrall","grave_thrall","bloodbat","bloodbat","vampire_adept"],
+ "4":["grave_thrall","grave_thrall","grave_thrall","grave_thrall","bloodbat","bloodbat","vampire_adept","vampire_adept"]
+},"tokens":{}}
 
-EXAMPLE B — condition-gated healing, a reaction, and a token swarm (total enemy Levels 12):
-{"name":"Ironhide's Warband — Fortify, Swarm & Punish","scene":"A palisaded war-camp gouged into a muddy hillside: banner poles of lashed bone, cookfires burned low, and churned earth littered with cracked shields.","enemies":[
- {"id":"ironhide","name":"Ironhide Warleader","flavor":"Swings while healthy; heals when hurt; punishes melee.","description":"A boar-headed brute two heads taller than a man, plated in riveted scrap-iron, bronze-capped tusks, hefting a chained maul.","hp":10,"power":3,"level":5,"row":"front","attack_mode":"melee","keywords":["trample"],
+EXAMPLE B — a ritual CHANNEL, a counterspell sentinel, a bloodied moment, smart healing, and a token swarm:
+{"name":"Ironhide's Warband — Rite of the Boar","scene":"A palisaded war-camp gouged into a muddy hillside: banner poles of lashed bone, cookfires burned low, and churned earth littered with cracked shields.","enemies":[
+ {"id":"ironhide","name":"Ironhide Warleader","flavor":"Swings while healthy; erupts when bloodied; punishes melee.","description":"A boar-headed brute two heads taller than a man, plated in riveted scrap-iron, bronze-capped tusks, hefting a chained maul.","hp":10,"power":3,"level":5,"row":"front","attack_mode":"melee","keywords":["trample"],
   "components":[
-   {"id":"fortify","archetype":"Fortify","timing":"proactive","priority":10,"cooldown":2,"target_rule":"self","condition":{"kind":"self_hp_pct","op":"<","value":50},"telegraph":"Second Wind — heal 7","verbs":[
-     {"kind":"heal","amount":7,"target":{"mode":"self"}}]},
+   {"id":"bloodied_roar","archetype":"Escalate","timing":"reactive","trigger":"on_self_below_50","once_per_encounter":true,"priority":12,"target_rule":"self","telegraph":"BLOODIED ROAR — +2/+1, permanently","verbs":[
+     {"kind":"counters","power":2,"toughness":1,"target":{"mode":"self"}}]},
    {"id":"punish","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Retaliate — deal 2 to the attacker","verbs":[
      {"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
+ {"id":"bonechanter","name":"Bonechanter of the Sty","flavor":"Holds a rite that bleeds the party every turn — break it or drown.","description":"A hunched shaman draped in boar hides and knotted fetishes, rattling a staff of fused vertebrae that weeps a red haze.","hp":8,"power":1,"level":5,"row":"rear","attack_mode":"ranged",
+  "components":[
+   {"id":"blood_rite","archetype":"Drain","timing":"proactive","channel":true,"action_type":"spell","cooldown":3,"priority":20,"target_rule":"valuation","telegraph":"Blood Rite — a held ritual: 2 damage every turn and the party fights at -1/-0","verbs":[
+     {"kind":"deal_damage","amount":2,"trigger":"upkeep","target":{"mode":"chosen","side":"ally","targeted":true}},
+     {"kind":"wound","power":1,"toughness":0,"duration":"while_channeled","target":{"mode":"all","side":"ally"}}]},
+   {"id":"mend","archetype":"Fortify","timing":"proactive","priority":30,"cooldown":2,"target_rule":"wounded_ally","telegraph":"Knit Hide — heal the most wounded ally 5","verbs":[
+     {"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
  {"id":"broodmother","name":"Hive Broodmother","flavor":"Spawns Husklings, at most two alive.","description":"A swollen, chitin-backed matriarch the size of an ox-cart, egg-sacs glistening along her flanks, dozens of larval eyes blinking in the dark.","hp":4,"power":2,"level":3,"row":"rear","attack_mode":"melee",
   "components":[{"id":"swarm","archetype":"Swarm","timing":"proactive","priority":20,"cooldown":2,"target_rule":"self","telegraph":"Spawn Husklings (x2)","verbs":[
      {"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]}]},
- {"id":"mistveil_hexer","name":"Mistveil Hexer","flavor":"Chips your board every turn; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":4,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
+ {"id":"mistveil_hexer","name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":4,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
   "components":[
+   {"id":"hush","archetype":"Counter","timing":"reactive","trigger":"on_spell_cast","cooldown":3,"priority":15,"action_type":"spell","target_rule":"trigger_source","telegraph":"Hushing Mist — counter the spell","verbs":[
+     {"kind":"counter","filter":"spell"}]},
    {"id":"hex","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":1,"target_rule":"valuation","telegraph":"Withering Hex — wound -1/-1","verbs":[
      {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]},
    {"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Miststep"}]}
-],"tokens":{"huskling":{"name":"Huskling","hp":2,"power":1,"row":"front","attack_mode":"melee"}}}
+],"layouts":{
+ "1":["ironhide","broodmother"],
+ "2":["ironhide","bonechanter","broodmother","mistveil_hexer"],
+ "3":["ironhide","bonechanter","broodmother","broodmother","mistveil_hexer","mistveil_hexer"],
+ "4":["ironhide","ironhide","bonechanter","bonechanter","broodmother","broodmother","mistveil_hexer","mistveil_hexer"]
+},"tokens":{"huskling":{"name":"Huskling","hp":2,"power":1,"row":"front","attack_mode":"melee"}}}
 
 EXAMPLE C — a BOSS encounter: phase gates, enrage, a healer, an escalate clock, and
 action-economy control (total weight: boss 6×2=12 + 3 + 2 + 3 = 20):
-{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2 Power, permanently","verbs":[{"kind":"counters","power":2,"toughness":0,"target":{"mode":"self"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — a clock the party must answer.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":2,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":1,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — taunt the attacker","verbs":[{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"tokens":{}}
+{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — a clock the party must answer.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":2,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":1,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — taunt the attacker","verbs":[{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
+ "1":["ashen_tyrant","cinderpriest"],
+ "2":["ashen_tyrant","cinderpriest","emberling","ashfang_zealot"],
+ "3":["ashen_tyrant","cinderpriest","emberling","emberling","ashfang_zealot","ashfang_zealot"],
+ "4":["ashen_tyrant","cinderpriest","cinderpriest","emberling","emberling","ashfang_zealot","ashfang_zealot","ashfang_zealot"]
+},"tokens":{}}
 
 Design a brand-new encounter (do not copy the examples' theme). Return ONLY the JSON."""
 
@@ -427,29 +529,38 @@ def _budget(size: int, avg_level: float, difficulty: str) -> int:
 
 def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     """The per-request parameters appended after the editable instructions: the
-    concrete party, difficulty, and target budget the model must scope to."""
-    budget = _budget(party["size"], party["avg_level"], difficulty)
-    min_enemies = _min_enemies(party["size"])
+    concrete party, difficulty, and the per-party-size budgets the layouts must
+    scope to (the encounter is generated once, playable by any party of 1–4)."""
     roster = "; ".join(
         f'{m["name"]} (level {m["level"]}'
         + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
         for m in party["members"]
     )
+    size_lines = []
+    for size in range(1, 5):
+        budget = _budget(size, party["avg_level"], difficulty)
+        size_lines.append(
+            f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies (2× the '
+            f"party, duplicates count), total enemy Levels about {budget} "
+            "(a boss counts double).")
     lines = [
         "# THIS ENCOUNTER'S PARAMETERS",
-        f'- Party: {party["size"]} hero(es) — {roster}.',
+        f'- Designing party (they picked this fight): {party["size"]} hero(es) — {roster}.',
         f'- Average party level: {party["avg_level"]:.1f}.',
         f"- Difficulty: {difficulty}.",
-        f"- REQUIRED: at least {min_enemies} enemies (2× the party). The party must be "
-        "outnumbered — never field fewer. More is fine if it fits the budget.",
-        f"- TARGET total enemy Levels (sum of all enemies' levels): about {budget}. "
-        f"Spread this across your {min_enemies}+ enemies. Aim close to it — do not "
-        "come in far under (that is what makes a fight too easy). A boss counts as "
-        "double its level toward this total.",
-        ("- This is a HARD fight: include a boss (is_boss: true, with an Enrage "
-         "component and phase-gated abilities), surrounded by minions."
+        "- REQUIRED: a `layouts` object with keys \"1\", \"2\", \"3\" and \"4\". The party "
+        "must be outnumbered at EVERY size — per-size minimums and Level targets "
+        "(sum of the layout's enemies' levels; aim close, never far under):",
+        *size_lines,
+        ("- This is a HARD fight: include a boss (is_boss: true, with a dramatic "
+         "multi-verb Enrage component and phase-gated abilities), surrounded by real "
+         "minions — and the boss appears in every layout."
          if difficulty == "hard" else
          "- No boss at this difficulty unless the player's request below asks for one."),
+        ("- Include at least one CHANNELER (a channel component) somewhere in the "
+         "pool." if difficulty != "easy" else
+         "- Keep the designs lean at this difficulty — one decision-generator is "
+         "plenty; skip counterspells."),
     ]
     note = (note or "").strip()
     if note:
@@ -496,8 +607,33 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         # JSON for the upcoming image-generation and narration systems.
         "scene": str(raw.get("scene") or "").strip(),
         "enemies": enemies,
+        "layouts": raw.get("layouts") if isinstance(raw.get("layouts"), dict) else {},
         "tokens": raw.get("tokens") if isinstance(raw.get("tokens"), dict) else {},
     }
+
+
+def _check_layouts(encounter: Dict[str, Any]) -> None:
+    """Party-size scaling gate: layouts for sizes 1–4 must exist and outnumber the
+    party at every size (2× — duplicates count). Id validity and boss coverage are
+    checked by content.save_encounter's deeper validation; this catches the shape
+    problems early with a repair-friendly message."""
+    layouts = encounter.get("layouts") or {}
+    missing = [str(s) for s in range(1, 5) if str(s) not in layouts]
+    if missing:
+        raise ValueError(
+            'missing "layouts" for party size(s): ' + ", ".join(missing)
+            + ' — add a top-level "layouts" object with keys "1"–"4", each a list '
+            "of enemy ids from your enemies pool (repeats allowed).")
+    for size in range(1, 5):
+        roster = layouts.get(str(size))
+        if not isinstance(roster, list):
+            raise ValueError(f'layouts["{size}"] must be a list of enemy ids')
+        need = _min_enemies(size)
+        if len(roster) < need:
+            raise ValueError(
+                f'layouts["{size}"] fields only {len(roster)} enemies — a party of '
+                f"{size} must be outnumbered with at least {need} (repeat ids to "
+                "clone more bodies).")
 
 
 def _chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
@@ -552,7 +688,6 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
         difficulty = "standard"
 
     party = _party_summary(character_ids)
-    min_enemies = _min_enemies(party["size"])
     system = settings["instructions"]
     user = _request_block(party, difficulty, note)
     messages: List[Dict[str, str]] = [
@@ -566,11 +701,7 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
         try:
             encounter = _normalize(_extract_json(reply))
             _scale_hp(encounter, difficulty)  # beef enemies so they aren't one-shot
-            n = len(encounter["enemies"])
-            if n < min_enemies:
-                raise ValueError(
-                    f"only {n} enemies — this party of {party['size']} must be "
-                    f"outnumbered with at least {min_enemies}. Add more enemies.")
+            _check_layouts(encounter)         # scaling layouts for parties of 1–4
             # Art/narration data is required: the scene and every enemy's look.
             problems = []
             if not encounter["scene"]:

@@ -58,14 +58,8 @@ def test_voluntary_drop_ends_all_channels_and_releases_mana():
     assert len(mira.channels) == 2
     pool_before = sorted(mira.pool)
 
-    # A channel can only be VOLUNTARILY dropped from the next turn on. Same-turn, no drop
-    # is offered; mark these as started last turn to reach the droppable state (the mana
-    # math here is turn-independent, so we skip playing out the enemy step).
-    assert not any(a.kind == "drop_channels" for a in legal_actions(state))  # not this turn
-    for ch in mira.channels:
-        ch.started_turn = state.turn - 1
-
-    # Drop must be offered now (Mira holds channels): one per channel plus a
+    # Voluntary drops are instant-speed and unrestricted (Update 06): offered the
+    # moment the channels are held — even on the cast turn. One per channel plus a
     # "drop all". Use the drop-all (no card_id) to end them at once.
     drop = [a for a in legal_actions(state) if a.kind == "drop_channels"]
     assert len(drop) == 3                              # 2 per-channel + drop all

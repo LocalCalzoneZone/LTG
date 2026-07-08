@@ -20,6 +20,7 @@ from ltg_combat.scenario import (
     SCENARIO_C,
     _slug,
     compose_spec,
+    scale_encounter,
     state_from_dict,
 )
 from ltg_combat.state import GameState
@@ -207,6 +208,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
             "scene": scen.get("scene", ""),
             "enemies": copy.deepcopy(scen["enemies"]),
             "tokens": copy.deepcopy(scen.get("tokens", {})),
+            "layouts": copy.deepcopy(scen.get("layouts", {})),
             "source": "builtin",
             "path": None,
         }
@@ -222,6 +224,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
             "scene": str(raw.get("scene") or ""),
             "enemies": copy.deepcopy(raw["enemies"]),
             "tokens": copy.deepcopy(raw.get("tokens", {})),
+            "layouts": copy.deepcopy(raw.get("layouts", {})) if isinstance(raw.get("layouts"), dict) else {},
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
             "path": path,
         }
@@ -229,11 +232,15 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
 
 
 def _encounter_meta(eid: str, scen: Dict[str, Any]) -> Dict[str, Any]:
+    layouts = scen.get("layouts") or {}
     return {
         "id": eid,
         "name": scen["name"],
         "enemy_names": [e.get("name", "?") for e in scen["enemies"]],
         "enemy_count": len(scen["enemies"]),
+        # Party sizes this encounter carries dedicated layouts for ([] == fixed
+        # roster) — the picker can badge "scales 1–4".
+        "scales": sorted(int(k) for k in layouts.keys() if str(k).isdigit()),
         # Everything is removable and editable: a user file is deleted/overwritten,
         # a built-in or example is hidden / shadowed by an override file.
         "deletable": True,
@@ -255,6 +262,7 @@ def encounter_for(encounter_id: str) -> Optional[Dict[str, Any]]:
         "name": scen["name"],
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
+        "layouts": copy.deepcopy(scen.get("layouts", {})),
     }
 
 
@@ -271,6 +279,7 @@ def encounter_detail(encounter_id: str) -> Optional[Dict[str, Any]]:
         "scene": scen.get("scene", ""),
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
+        "layouts": copy.deepcopy(scen.get("layouts", {})),
     }
 
 
@@ -318,18 +327,57 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
         "enemies": copy.deepcopy(enemies),
         "tokens": copy.deepcopy(raw.get("tokens", {})) if isinstance(raw.get("tokens"), dict) else {},
     }
+    layouts = _validate_layouts(raw.get("layouts"), enemies)
+    if layouts:
+        cleaned["layouts"] = layouts
     # Authoritative gate: build a throwaway state (a stub 1-character party) so the
     # engine validates every enemy — intents, rows, keywords — exactly as at play.
+    # With layouts, every per-size roster must build too (clones included).
     stub_party = [{
         "id": "_probe", "name": "_probe", "hp": 1, "power": 1,
         "attack_mode": "melee", "level": 1, "hand_size": 0,
         "identity": ["C"], "library": [],
     }]
-    try:
-        state_from_dict({**cleaned, "party": stub_party})
-    except Exception as exc:  # engine/pydantic validation
-        raise ValueError(f"engine rejected the encounter: {exc}") from exc
+    probe_specs = [cleaned]
+    probe_specs.extend(scale_encounter(cleaned, int(size)) for size in layouts.keys())
+    for spec in probe_specs:
+        try:
+            state_from_dict({**spec, "party": stub_party})
+        except Exception as exc:  # engine/pydantic validation
+            raise ValueError(f"engine rejected the encounter: {exc}") from exc
     return cleaned
+
+
+def _validate_layouts(layouts: Any, enemies: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Check per-party-size layouts (optional). Each key is a party size ("1".."4"),
+    each value a list of enemy ids from the roster (repeats allowed — they clone).
+    Returns the cleaned {size: [ids]} dict ({} when absent). Raises ValueError on
+    unknown ids, empty rosters, or a missing boss (the centerpiece plays at every
+    party size)."""
+    if layouts is None:
+        return {}
+    if not isinstance(layouts, dict):
+        raise ValueError("layouts must be an object of party size -> enemy id list")
+    known = {str(e.get("id", _slug(str(e.get("name", ""))))) for e in enemies
+             if isinstance(e, dict)}
+    boss_ids = {str(e.get("id")) for e in enemies
+                if isinstance(e, dict) and e.get("is_boss")}
+    out: Dict[str, List[str]] = {}
+    for size, roster in layouts.items():
+        if not str(size).isdigit() or not 1 <= int(size) <= 8:
+            raise ValueError(f"layouts: '{size}' is not a party size (use \"1\"..\"4\")")
+        if not isinstance(roster, list) or not roster:
+            raise ValueError(f"layouts[{size}]: must be a non-empty list of enemy ids")
+        ids = [str(i) for i in roster]
+        unknown = sorted(set(ids) - known)
+        if unknown:
+            raise ValueError(f"layouts[{size}]: unknown enemy id(s): {', '.join(unknown)}")
+        missing_boss = sorted(boss_ids - set(ids))
+        if missing_boss:
+            raise ValueError(f"layouts[{size}]: the boss ({missing_boss[0]}) must "
+                             "appear at every party size")
+        out[str(int(size))] = ids
+    return out
 
 
 def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> Dict[str, Any]:
@@ -387,6 +435,9 @@ def build_state(character_ids: List[str], encounter_id: str,
     scenario = encounter_for(encounter_id)
     if scenario is None:
         raise ValueError(f"unknown encounter: {encounter_id}")
+    # Party-size scaling: an encounter with per-size layouts fields the roster
+    # designed for THIS party's size (clamped to the nearest defined layout).
+    scenario = scale_encounter(scenario, len(character_ids))
     spec = compose_spec(loadouts, scenario)
     state = state_from_dict(spec, seed=seed)
     # spec["party"] keeps loadouts' order (compose_spec only dedupes ids in place),

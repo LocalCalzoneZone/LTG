@@ -13,6 +13,7 @@ scenario JSON in the same shape.
 
 from __future__ import annotations
 
+import copy
 import json
 import random
 import re
@@ -286,6 +287,51 @@ def load_scenario(path, seed: Optional[int] = None) -> GameState:
     """Load a scenario JSON (same shape as `SCENARIO_A`) into a setup state."""
     raw = json.loads(Path(path).read_text())
     return state_from_dict(raw, seed=seed)
+
+
+# --------------------------------------------------------------------------- #
+# Party-size scaling: per-size layouts baked into an encounter
+# --------------------------------------------------------------------------- #
+def scale_encounter(scenario: Dict[str, Any], party_size: int) -> Dict[str, Any]:
+    """Resolve an encounter's per-party-size layout into a concrete enemy list.
+
+    An encounter may carry ``"layouts": {"1": [enemy_id, ...], ..., "4": [...]}``
+    — one roster per party size, each a list of ids from the encounter's
+    ``enemies`` (the full pool). An id may repeat: duplicates are cloned with a
+    numeric suffix (``wolf``, ``wolf_2``) so a bigger party faces more bodies of
+    the same design. Sizes are clamped to the nearest defined layout (a party of
+    5 uses the "4" layout). No ``layouts`` key == the encounter is fixed; it is
+    returned unchanged. This is pure input resolution — the engine still
+    validates and runs whatever comes out.
+    """
+    layouts = scenario.get("layouts")
+    if not isinstance(layouts, dict) or not layouts:
+        return scenario
+    sizes = sorted(int(k) for k in layouts.keys() if str(k).isdigit())
+    if not sizes:
+        return scenario
+    pick = max((s for s in sizes if s <= max(1, party_size)), default=sizes[0])
+    chosen = layouts.get(str(pick), [])
+    by_id = {e.get("id", _slug(e.get("name", ""))): e for e in scenario.get("enemies", [])}
+    out_enemies: List[Dict[str, Any]] = []
+    used: set = set()
+    for eid in chosen:
+        base = by_id.get(str(eid))
+        if base is None:
+            continue  # validated upstream; a stale id degrades to a smaller roster
+        entry = copy.deepcopy(base)
+        base_id = entry.get("id", str(eid))
+        if base_id in used:  # clone: unique id + a numbered display name
+            n = 2
+            while f"{base_id}_{n}" in used or f"{base_id}_{n}" in by_id:
+                n += 1
+            entry["id"] = f"{base_id}_{n}"
+            entry["name"] = f"{entry.get('name', eid)} {n}"
+        used.add(entry["id"] if "id" in entry else base_id)
+        out_enemies.append(entry)
+    scaled = dict(scenario)
+    scaled["enemies"] = out_enemies
+    return scaled
 
 
 def scenario_name(spec: Dict[str, Any] = None) -> str:

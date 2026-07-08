@@ -26,6 +26,15 @@ def _encounter(name="Scene Test Zzz", scene=_SCENE, desc=True):
                         _enemy("archivist"),
                         _enemy("pale_eel"),
                         _enemy("tomekeeper")],
+            # Generation requires per-party-size layouts (2x bodies per size).
+            "layouts": {
+                "1": ["wader", "archivist"],
+                "2": ["wader", "archivist", "pale_eel", "tomekeeper"],
+                "3": ["wader", "wader", "archivist", "pale_eel", "pale_eel",
+                      "tomekeeper"],
+                "4": ["wader", "wader", "archivist", "archivist", "pale_eel",
+                      "pale_eel", "tomekeeper", "tomekeeper"],
+            },
             "tokens": {}}
 
 

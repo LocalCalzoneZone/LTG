@@ -114,19 +114,33 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
     setBusy(true);
     setErr(null);
     try {
+      const outEnemies = enemies.map((e) => {
+        const { components, ...rest } = e;
+        const out: EnemySpec = { ...rest, ranged_intent: e.ranged_intent || undefined };
+        if (components.length) {
+          out.components = components.map((c, ci) => unstageComp(c, e.name, ci));
+        }
+        if (!out.is_boss) delete out.is_boss;
+        return out;
+      });
+      // Round-trip party-size layouts (no dedicated UI yet): prune ids the edit
+      // removed; a size left empty falls back to the full roster so scaling
+      // survives the edit instead of failing validation.
+      const ids = new Set(outEnemies.map((e) => e.id).filter(Boolean));
+      let layouts: Record<string, string[]> | undefined;
+      if (initial?.layouts && Object.keys(initial.layouts).length) {
+        layouts = {};
+        for (const [size, roster] of Object.entries(initial.layouts)) {
+          const kept = roster.filter((id) => ids.has(id));
+          layouts[size] = kept.length ? kept : outEnemies.map((e) => e.id!).filter(Boolean);
+        }
+      }
       const payload = {
         name: name.trim() || "Encounter",
         scene,
-        enemies: enemies.map((e) => {
-          const { components, ...rest } = e;
-          const out: EnemySpec = { ...rest, ranged_intent: e.ranged_intent || undefined };
-          if (components.length) {
-            out.components = components.map((c, ci) => unstageComp(c, e.name, ci));
-          }
-          if (!out.is_boss) delete out.is_boss;
-          return out;
-        }),
+        enemies: outEnemies,
         tokens: initial?.tokens ?? {},
+        ...(layouts ? { layouts } : {}),
       };
       await saveEncounter(payload, initial?.id);
       onSaved();

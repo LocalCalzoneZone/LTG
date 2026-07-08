@@ -236,21 +236,26 @@ def test_channeled_exile_suspends_then_returns_on_break():
     assert hero(after).channels == []
 
 
-def test_channel_cannot_be_voluntarily_dropped_the_turn_it_starts():
-    # Cancelling a channel the same turn would be a discounted one-turn cast of its
-    # continuous effect — too cheap. A voluntary drop is only offered from the NEXT turn.
+def test_channel_droppable_any_time_the_holder_has_priority():
+    # Voluntary drops are instant-speed and unrestricted (Update 06): offered the
+    # moment the channel is held — even the cast turn — and inside reaction
+    # windows, releasing the reserved mana for a different spell on the spot.
     anthem = C("anthem", "channeled", [{"kind": "pump", "power": 1, "toughness": 1,
         "target": {"mode": "self"}}], colors={"G": 1})
     state = make_state([anthem], hero_hp=20, intent_amount=2)  # 2 dmg < break threshold
     state, _ = do(state, kind="cast", card_id="anthem")        # channel it this turn
     assert len(hero(state).channels) == 1
-    assert not any(a.kind == "drop_channels" for a in legal_actions(state))  # no same-turn drop
+    assert any(a.kind == "drop_channels" for a in legal_actions(state))  # same-turn drop OK
 
-    state = _advance_to_turn(state, 2)                         # the channel survives into turn 2
-    assert len(hero(state).channels) == 1
-    assert any(a.kind == "drop_channels" for a in legal_actions(state))     # now it's droppable
-    state, _ = do(state, kind="drop_channels")
+    # End the turn: the Orc's swing opens a REACTION window — the drop is offered
+    # there too (instant speed), and taking it frees the reserved mana at once.
+    state, _ = apply_action(state, pick(state, kind="end_turn"))
+    assert state.stack and state.stack[-1].source_id == "orc"
+    assert any(a.kind == "drop_channels" for a in legal_actions(state))
+    pool_before = list(hero(state).pool)
+    state, _ = apply_action(state, pick(state, kind="drop_channels"))
     assert hero(state).channels == []
+    assert sorted(hero(state).pool) == sorted(pool_before + ["G"])  # mana freed NOW
 
 
 def _seal():
@@ -715,8 +720,9 @@ def test_indestructible_floors_damage_at_one_hp():
     assert hero(after).hp == 1 and hero(after).alive  # can't be reduced below 1 by damage
 
 
-def test_hexproof_character_cannot_be_targeted_by_enemy_intent():
-    # Two allies: the fragile one is hexproof, so the enemy must aim at the other.
+def test_hexproof_does_not_deflect_enemy_basic_attacks():
+    # Hexproof wards off targeted SPELLS/ABILITIES, not the sword (Update 06): the
+    # enemy's basic attack still aims at the hexproof ally when it is the natural pick.
     party = [
         {"id": "glass", "name": "Glass", "archetype": "Tactician", "hp": 5, "power": 1,
          "hand_size": 1, "identity": ["W", "U", "B", "R", "G"],
@@ -728,18 +734,17 @@ def test_hexproof_character_cannot_be_targeted_by_enemy_intent():
     after, _ = do(state, kind="cast", card_id="grant_hexproof")  # Glass becomes hexproof
     after = _advance_to_turn(after, 2)  # intents re-declared on turn 2
     glass_targeted = any(e.intent and e.intent.target_id == "glass" for e in after.enemies)
-    assert not glass_targeted  # the enemy can't target the hexproof ally
+    assert glass_targeted  # the basic attack ignores hexproof
 
 
-def test_hexproof_gained_after_declaration_fizzles_the_enemy_swing():
-    # Everything re-checks at RESOLUTION: an attack already telegraphed at the hero
-    # fizzles if the hero becomes an illegal target (hexproof) before it lands — the
-    # target's legality is re-evaluated when the swing resolves, not when declared.
+def test_hexproof_gained_after_declaration_does_not_stop_the_swing():
+    # Hexproof is no shield against a basic attack (Update 06): the telegraphed
+    # swing lands on the now-hexproof hero exactly as declared.
     state = make_state([_grant_self("hexproof")], hero_hp=20, intent_amount=6)
     assert settle(state).enemy("orc").intent.target_id == "hero"   # declared at the hero
     after, _ = do(state, kind="cast", card_id="grant_hexproof")     # hero becomes hexproof
     after = _resolve_enemy_step(after)                              # orc's swing resolves
-    assert hero(after).hp == 20   # the 6-damage swing fizzled on the now-hexproof hero
+    assert hero(after).hp == 14   # the 6-damage swing landed through hexproof
 
 
 def test_first_strike_offers_a_held_attack_as_a_reaction_and_kills_first():
@@ -800,15 +805,27 @@ def test_bouncing_a_source_removes_its_stacked_swing():
     assert not any(s.source_id == "orc1" for s in state.stack)     # its swing was purged
 
 
-def test_enemy_swing_fizzles_as_it_enters_the_stack_when_target_illegal():
-    # Legality is re-checked as the intent ENTERS the stack: a target that gained
-    # Hexproof after the swing was telegraphed makes it fizzle on the way in — it never
-    # reaches the stack (and so never opens a reaction window).
-    state = make_state([_grant_self("hexproof")], hero_hp=20, intent_amount=6)
-    after, _ = do(state, kind="cast", card_id="grant_hexproof")   # hero becomes hexproof
-    after, _ = apply_action(after, pick(after, kind="end_turn"))  # enemy step tries to execute
-    assert not any(s.source_id == "orc" for s in after.stack)     # the swing never entered
-    assert hero(after).hp == 20
+def test_enemy_targeted_ability_still_fizzles_on_hexproof():
+    # Update 06 splits hexproof: the sword lands, the hex does not. An enemy's
+    # targeted ABILITY (a component intent, not the basic attack) declared at the
+    # hero still fizzles at resolution once the hero turns hexproof.
+    enemies = [{
+        "id": "orc", "name": "Orc", "hp": 10, "level": 3, "power": 0,
+        "attack_mode": "melee",
+        "components": [{
+            "id": "venom", "archetype": "Burst", "timing": "proactive",
+            "priority": 20, "cooldown": 1, "target_rule": "valuation",
+            "telegraph": "Venom Spit — deal 4",
+            "verbs": [{"kind": "deal_damage", "amount": 4,
+                       "target": {"mode": "chosen", "side": "ally", "targeted": True}}],
+        }],
+    }]
+    state = make_state([_grant_self("hexproof")], hero_hp=20, enemies=enemies)
+    assert settle(state).enemy("orc").intent.name == "Venom Spit — deal 4"
+    after, _ = do(state, kind="cast", card_id="grant_hexproof")   # hero turns hexproof
+    after = _resolve_enemy_step(after)                            # the spit resolves
+    assert hero(after).hp == 20                                   # warded: the ability fizzled
+    assert any(e.type == "fizzle" for e in after.log)
 
 
 def _enemy_row(eid, hp, row):

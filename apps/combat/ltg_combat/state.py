@@ -75,9 +75,10 @@ class Channel:
     holder_id: str
     reserved: List[str] = field(default_factory=list)
     target_id: Optional[str] = None
-    # The turn this channel was started. A channel can only be VOLUNTARILY dropped on a
-    # LATER turn (started_turn < current turn) — cancelling it the same turn would be a
-    # discounted one-turn cast of its continuous effect (GDD §8).
+    # The turn this channel was started (display/log bookkeeping). Voluntary drops
+    # are instant-speed and unrestricted — legal whenever the holder has priority,
+    # even the cast turn (Update 06 playtest ruling; supersedes GDD §8's same-turn
+    # hold rule).
     started_turn: int = 0
     # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
     # value references on the channel's triggered effects.
