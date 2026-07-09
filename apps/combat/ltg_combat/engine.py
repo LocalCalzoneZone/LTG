@@ -134,7 +134,16 @@ def _advance(st: GameState) -> None:
         # tracker resets here — this is the single canonical window-open point.
         if st.stack:
             if st.priority is None:
-                st.priority = _ordered(st.living_party())[0].id  # canonical order (R-6)
+                # Seed the window: priority starts with the CASTER of the action
+                # now on top (a player about to answer their own pending spell hits
+                # Pass first), then moves through the party in turn order. An
+                # enemy-sourced top starts at the top of the fixed turn order.
+                # (Player pushes seed the caster directly — _open_window; this
+                # path covers enemy pushes and mid-window re-seeds after a nested
+                # item resolved.)
+                src = st.character(st.stack[-1].source_id)
+                st.priority = src.id if src is not None and src.alive \
+                    else _party_ordered(st)[0].id
                 st.passes = 0
                 st.reacted_window = []
             return
@@ -191,10 +200,20 @@ def _advance(st: GameState) -> None:
             st.phase = "upkeep"
 
 
+def _party_ordered(st: GameState) -> List[CharacterState]:
+    """The living party in TURN ORDER — the fixed initiative rolled at encounter
+    setup (state.party_order), NOT the row-based R-6 order: repositioning never
+    reshuffles whose turn comes next. States built without the field (legacy
+    saves / hand-rolled tests) fall back to the authored party order."""
+    order = st.party_order or [c.id for c in st.party]
+    idx = {cid: i for i, cid in enumerate(order)}
+    return sorted(st.living_party(), key=lambda c: idx.get(c.id, len(idx)))
+
+
 def _next_player(st: GameState) -> Optional[CharacterState]:
-    """The next living character (canonical order R-6) that hasn't ended its turn.
+    """The next living character (turn order) that hasn't ended its turn.
     Incapacitated PCs are skipped (alive == effective_hp > 0)."""
-    for c in _ordered(st.living_party()):
+    for c in _party_ordered(st):
         if not c.turn_ended:
             return c
     return None
@@ -225,6 +244,11 @@ def _begin_turn(st: GameState) -> None:
     st.acted_enemies = []
     st.acted_tokens = []
     st.reacted_window = []  # no window open at turn start
+    if st.turn == 1 and len(st.party) > 1:
+        # Announce the initiative rolled at setup (fixed for the whole encounter).
+        names = " → ".join(c.name for c in _party_ordered(st))
+        _log(st, "turn_order", f"Turn order: {names}.",
+             order=[c.id for c in _party_ordered(st)])
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
@@ -248,8 +272,8 @@ def _next_capacity_choice(st: GameState) -> Optional[CharacterState]:
     (only from turn 2 onward; no increase on turn 1)."""
     if st.turn < 2:
         return None
-    for c in st.party:
-        if c.alive and not c.capacity_chosen:
+    for c in _party_ordered(st):
+        if not c.capacity_chosen:
             return c
     return None
 
@@ -354,7 +378,10 @@ def _fire_event(st: GameState, event: str, actor,
     hit) so they always terminate instead of recursing forever."""
     if actor is None or st.event_depth >= 8:
         return
-    party_watch = [(h, ch) for h in st.living_party() for ch in list(h.channels)]
+    # Watch ALL party members' channels, not just living ones: a just-downed
+    # holder still holds theirs (the break is pending), so a "when you fall"
+    # death trigger gets its death rattle. Long-downed characters hold none.
+    party_watch = [(h, ch) for h in st.party for ch in list(h.channels)]
     enemy_watch = [(e, ch) for e in st.living_enemies() for ch in list(e.channels)]
     if not party_watch and not enemy_watch:
         return
@@ -1454,15 +1481,19 @@ def _push(st: GameState, item: StackItem) -> StackItem:
 
 
 def _open_window(st: GameState, actor_id: str, reactive: bool) -> None:
-    """After a player adds to the stack, seed the reaction window. A proactive
-    add restarts priority at party order; a reactive add hands off to the next
-    player (round-robin) so the active player isn't asked twice in a row."""
+    """After a player adds to the stack, seed the reaction window: the CASTER
+    speaks first (they may respond to their own action — they hit Pass first),
+    then priority moves through the rest of the party in turn order. A proactive
+    add opens a FRESH window, so the per-window reaction tracker resets here;
+    a reactive add is a response inside the existing window."""
     st.passes = 0
-    st.priority = _next_priority_after(st, actor_id) if reactive else None
+    if not reactive:
+        st.reacted_window = []
+    st.priority = actor_id if st.character(actor_id) is not None else None
 
 
 def _next_priority_after(st: GameState, actor_id: str) -> str:
-    ids = [c.id for c in _ordered(st.living_party())]  # canonical priority order (R-6)
+    ids = [c.id for c in _party_ordered(st)]  # the fixed turn order
     if actor_id in ids:
         return ids[(ids.index(actor_id) + 1) % len(ids)]
     return ids[0]
@@ -3173,6 +3204,10 @@ def _after_damage(st: GameState, target) -> None:
         _log(st, "incapacitated", f"{target.name} is incapacitated.", character=target.id)
         _note_break(st, target, "incapacitated")
         _purge_stack_from(st, target.id, "incapacitated")  # its pending spells/attacks drop
+        # On-death channel triggers hear an incapacitation too. The downed
+        # holder's own channels break right after (pending_break) — so a
+        # "when you fall" trigger fires once, as a death rattle.
+        _fire_event(st, "death", target)
 
 
 def _purge_stack_from(st: GameState, source_id: str, reason: str) -> None:
@@ -3205,6 +3240,9 @@ def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
              enemy=enemy.id)
     _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
     _purge_stack_from(st, enemy.id, "destroyed")
+    # On-death channel triggers fire after the enemy has fully left the board
+    # (its own channels are already broken, so it never hears its own death).
+    _fire_event(st, "death", enemy)
 
 
 def _remove_token(st: GameState, token: TokenState) -> None:
@@ -3214,6 +3252,7 @@ def _remove_token(st: GameState, token: TokenState) -> None:
         st.acted_tokens.remove(token.id)
     _log(st, "token_died", f"{token.name} is destroyed.", token=token.id)
     _purge_stack_from(st, token.id, "destroyed")
+    _fire_event(st, "death", token)  # an ally token falling counts as a death
 
 
 def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None:

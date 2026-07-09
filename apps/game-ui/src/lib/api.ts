@@ -121,6 +121,47 @@ export async function generateEncounter(
   return data.encounter as EncounterOption;
 }
 
+// Generate (or regenerate) art for an encounter's scene backdrop or one enemy.
+// `enemyId` is the POOL enemy id (a clone's `base_id`). `text` optionally
+// overrides the saved description as the prompt subject (the editor passes its
+// live textarea so what you see is what gets painted). Slow — the image model
+// takes several seconds.
+export async function generateArt(
+  encounterId: string,
+  kind: "scene" | "enemy",
+  enemyId?: string,
+  text?: string,
+): Promise<{ url: string }> {
+  const res = await fetch(`/api/encounters/${encodeURIComponent(encounterId)}/art`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, enemy_id: enemyId ?? null, text: text || null }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `art generation failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// Remove generated art (the file and the encounter's reference to it).
+export async function removeArt(
+  encounterId: string,
+  kind: "scene" | "enemy",
+  enemyId?: string,
+): Promise<void> {
+  const params = new URLSearchParams({ kind });
+  if (enemyId) params.set("enemy_id", enemyId);
+  const res = await fetch(
+    `/api/encounters/${encodeURIComponent(encounterId)}/art?${params}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `art removal failed: ${res.status}`);
+  }
+}
+
 export async function gameStatus(session_id: string): Promise<boolean> {
   const res = await fetch(`/api/games/${session_id}`);
   return res.ok;

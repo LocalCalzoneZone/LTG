@@ -531,6 +531,12 @@ class PendingChoice:
 class GameState:
     party: List[CharacterState]
     enemies: List[EnemyState]
+    # Fixed party TURN ORDER (character ids): randomized once at encounter setup
+    # (when the scenario is built with a seed) and constant for the whole fight —
+    # repositioning never reshuffles it. Drives whose main phase comes next and
+    # the pass-around order in reaction windows. Empty == the authored party order
+    # (legacy states / tests built without the field).
+    party_order: List[str] = field(default_factory=list)
     tokens: List[TokenState] = field(default_factory=list)
     token_defs: Dict[str, Any] = field(default_factory=dict)  # token_id -> stats
     token_seq: int = 0                # for unique created-token ids

@@ -1,5 +1,6 @@
 import type { Row } from "../lib/types";
 import { armedTargetIdSet, useGame } from "../lib/store";
+import { ArtControls } from "./ArtControls";
 import { CharacterCard } from "./CharacterCard";
 import { CreatureCard, TokenCard } from "./CreatureCard";
 
@@ -25,7 +26,32 @@ export function Battlefield() {
   const isMovePicker = armed?.kind === "move";
 
   return (
-    <div className="field-scene flex h-full w-full gap-2 px-3 pb-1 pt-4">
+    <div className="field-scene relative isolate flex h-full w-full gap-2 px-3 pb-1 pt-4">
+      {/* Generated scene backdrop, behind the cards; a scrim keeps them legible.
+          (-z ordering needs the container's own stacking context — `isolate`.) */}
+      {snapshot.scene_image && (
+        <>
+          <img
+            src={snapshot.scene_image}
+            alt=""
+            className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
+          />
+          <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(120%_90%_at_50%_45%,rgba(6,8,12,0.28)_0%,rgba(6,8,12,0.62)_78%,rgba(6,8,12,0.82)_100%)]" />
+        </>
+      )}
+
+      {/* Scene art controls — paint / repaint / remove the backdrop */}
+      {snapshot.encounter_id && (
+        <div className="absolute right-2 top-1.5 z-10 opacity-60 transition hover:opacity-100">
+          <ArtControls
+            encounterId={snapshot.encounter_id}
+            kind="scene"
+            hasImage={!!snapshot.scene_image}
+            subject="the battlefield backdrop"
+          />
+        </div>
+      )}
+
       {/* Player area (~40%) */}
       <div className="flex min-w-0 basis-2/5 gap-1.5">
         {PLAYER_ROWS.map((row) => {

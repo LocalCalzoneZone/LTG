@@ -13,6 +13,7 @@ server re-validates it against the live ``legal_actions`` — the client builds 
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Set
 
 from ltg_combat.engine import cast_target_labels, legal_actions, settle
@@ -135,11 +136,32 @@ def _character_snapshot(view: GameState, char, controlled: bool,
     return snap
 
 
-def _creature_snapshot(view: GameState, enemy) -> Dict[str, Any]:
+def _art_base_id(entity_id: str, art: Dict[str, Any]) -> str:
+    """The pool/token-def id behind a live combatant, for art lookup.
+
+    Setup-time enemies (layout clones included) are in the session's ``base_of``
+    map. Anything spawned MID-GAME is a token — the engine names spawns
+    ``<token_def_id>_<seq>`` — so an unmapped id resolves by stripping the
+    numeric suffix back to its definition's key."""
+    mapped = art.get("base_of", {}).get(entity_id)
+    return mapped if mapped else re.sub(r"_\d+$", "", entity_id)
+
+
+def _creature_snapshot(view: GameState, enemy,
+                       art: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     ed = _enemy_dict(view, enemy)
+    # Generated art is keyed by POOL enemy id ("wolf"); a layout clone ("wolf_2")
+    # or a mid-game token spawn ("huskling_3") resolves back to its base design,
+    # so duplicates share one image.
+    art = art or {}
+    base_id = _art_base_id(enemy.id, art)
     return {
         "id": ed["id"],
         "name": ed["name"],
+        # For art generation/removal calls the client makes about this creature.
+        "base_id": base_id,
+        # Generated portrait URL ("" until one exists — the card shows its sigil).
+        "image": art.get("enemies", {}).get(base_id, ""),
         "row": ed["row"],
         "level": ed["level"],
         "power": _power_block(enemy.current_power, enemy.power, enemy.power_bonus),
@@ -161,11 +183,16 @@ def _creature_snapshot(view: GameState, enemy) -> Dict[str, Any]:
     }
 
 
-def _token_snapshot(view: GameState, token) -> Dict[str, Any]:
+def _token_snapshot(view: GameState, token,
+                    art: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     td = _token_dict(view, token)
+    art = art or {}
+    base_id = _art_base_id(token.id, art)
     return {
         "id": td["id"],
         "name": td["name"],
+        "base_id": base_id,
+        "image": art.get("enemies", {}).get(base_id, ""),
         "row": td["row"],
         "power": _power_block(token.current_power, token.power, token.power_bonus),
         "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
@@ -200,15 +227,21 @@ def _intents(view: GameState) -> List[Dict[str, Any]]:
 # Full snapshot
 # --------------------------------------------------------------------------- #
 def build_snapshot(stored: GameState, controlled_ids: Set[str],
-                   portraits: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                   portraits: Optional[Dict[str, str]] = None,
+                   art: Optional[Dict[str, Any]] = None,
+                   encounter_id: str = "") -> Dict[str, Any]:
     """A full state snapshot filtered for a client that controls `controlled_ids`.
 
     `stored` is the authoritative (un-settled) state; we render `settle(stored)` and
     compute `legal_actions(stored)` exactly as the cockpit does — the engine runs the
     automatic prelude so the client sees the state a decision is about. `portraits`
-    maps character id -> art (the engine drops it), merged into each character.
+    maps character id -> art (the engine drops it), merged into each character;
+    `art` carries the encounter's generated images (scene backdrop + per-pool-enemy
+    portraits, see session.py) and `encounter_id` lets the client aim art
+    generation calls at the right encounter.
     """
     portraits = portraits or {}
+    art = art or {}
     view = settle(stored)
     actions: List[Action] = legal_actions(stored)
     holder_id = actions[0].actor_id if actions else view.priority
@@ -245,8 +278,8 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
                             portraits.get(c.id, ""))
         for c in view.party
     ]
-    creatures = [_creature_snapshot(view, e) for e in view.living_enemies()]
-    tokens = [_token_snapshot(view, t) for t in view.living_tokens()]
+    creatures = [_creature_snapshot(view, e, art) for e in view.living_enemies()]
+    tokens = [_token_snapshot(view, t, art) for t in view.living_tokens()]
 
     # top-first; client renders bottom = resolves last. Slim off the raw dump and
     # surface `uid` so a counter's `#<uid>` target maps to a clickable stack row.
@@ -289,6 +322,10 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "turn": view.turn,
         "phase": view.phase,
         "phase_label": phase_label(view),
+        # Art plumbing: the generated battle backdrop ("" until one exists) and
+        # the encounter to aim in-game generate/remove calls at.
+        "scene_image": art.get("scene", ""),
+        "encounter_id": encounter_id,
         "priority": {"holder_character_id": holder_id, "kind": kind},
         "characters": characters,
         "creatures": creatures,

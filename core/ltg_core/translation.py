@@ -868,6 +868,12 @@ def _event_lead(trig) -> str:
         obj = {"instant": "an instant", "sorcery": "a sorcery",
                "channeled": "a channeled spell"}.get(st, "a spell")
         return f"Whenever {who} cast{'' if you else 's'} {obj}"
+    if trig.event == "death":
+        if trig.who == "you":
+            return "When you are incapacitated"
+        if trig.who == "enemy":
+            return "Whenever an enemy dies"
+        return f"Whenever {who} dies or is incapacitated"
     return f"Whenever {who} draw{'' if you else 's'} a card"
 
 

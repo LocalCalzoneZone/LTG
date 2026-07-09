@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -206,6 +207,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
         reg[eid] = {
             "name": scen["name"],
             "scene": scen.get("scene", ""),
+            "scene_image": "",
             "enemies": copy.deepcopy(scen["enemies"]),
             "tokens": copy.deepcopy(scen.get("tokens", {})),
             "layouts": copy.deepcopy(scen.get("layouts", {})),
@@ -222,6 +224,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
         reg[eid] = {
             "name": raw.get("name", eid),
             "scene": str(raw.get("scene") or ""),
+            "scene_image": str(raw.get("scene_image") or ""),
             "enemies": copy.deepcopy(raw["enemies"]),
             "tokens": copy.deepcopy(raw.get("tokens", {})),
             "layouts": copy.deepcopy(raw.get("layouts", {})) if isinstance(raw.get("layouts"), dict) else {},
@@ -260,6 +263,7 @@ def encounter_for(encounter_id: str) -> Optional[Dict[str, Any]]:
         return None
     return {
         "name": scen["name"],
+        "scene_image": scen.get("scene_image", ""),
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
         "layouts": copy.deepcopy(scen.get("layouts", {})),
@@ -277,6 +281,7 @@ def encounter_detail(encounter_id: str) -> Optional[Dict[str, Any]]:
         "id": encounter_id,
         "name": scen["name"],
         "scene": scen.get("scene", ""),
+        "scene_image": scen.get("scene_image", ""),
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
         "layouts": copy.deepcopy(scen.get("layouts", {})),
@@ -324,6 +329,9 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
         # Rides the file for the image-generation / narration systems — as do the
         # per-enemy "description" fields, which travel inside the enemy dicts.
         "scene": str(raw.get("scene") or ""),
+        # Generated art references (art.py): the backdrop URL here, per-enemy
+        # "image" URLs inside the enemy dicts (the deepcopy carries them).
+        "scene_image": str(raw.get("scene_image") or ""),
         "enemies": copy.deepcopy(enemies),
         "tokens": copy.deepcopy(raw.get("tokens", {})) if isinstance(raw.get("tokens"), dict) else {},
     }
@@ -415,14 +423,50 @@ def delete_encounter(encounter_id: str) -> None:
 # --------------------------------------------------------------------------- #
 # Game build (mirrors the cockpit's Session.start — engine setup path only)
 # --------------------------------------------------------------------------- #
+def _pool_id(enemy: Dict[str, Any]) -> str:
+    return str(enemy.get("id") or _slug(str(enemy.get("name", ""))))
+
+
+def encounter_art(encounter_id: str) -> Dict[str, Any]:
+    """The encounter's current art references, keyed by POOL enemy id:
+    ``{"scene": url, "enemies": {pool_id: url}}`` ("" / absent when none).
+    Token definitions (a Swarm's spawns) are creatures too — their art rides the
+    same map, keyed by the token def's key (a live spawn ``huskling_3`` resolves
+    back to ``huskling`` in the snapshot)."""
+    scen = _encounter_registry().get(encounter_id)
+    if scen is None:
+        return {"scene": "", "enemies": {}}
+    enemies = {_pool_id(e): str(e["image"]) for e in scen["enemies"]
+               if isinstance(e, dict) and e.get("image")}
+    for tid, tok in (scen.get("tokens") or {}).items():
+        if isinstance(tok, dict) and tok.get("image"):
+            enemies[str(tid)] = str(tok["image"])
+    return {"scene": scen.get("scene_image", ""), "enemies": enemies}
+
+
+def _base_of(scaled_enemies: List[Dict[str, Any]], pool_ids: "set[str]") -> Dict[str, str]:
+    """live enemy id -> pool enemy id. A layout clone gets ``<base>_<n>``
+    (scale_encounter guarantees clone ids never collide with pool ids), so a live
+    id not in the pool maps back by stripping the numeric suffix."""
+    out: Dict[str, str] = {}
+    for e in scaled_enemies:
+        live = _pool_id(e)
+        base = live if live in pool_ids else re.sub(r"_\d+$", "", live)
+        out[live] = base if base in pool_ids else live
+    return out
+
+
 def build_state(character_ids: List[str], encounter_id: str,
-                seed: Optional[int] = None) -> "tuple[GameState, Dict[str, str]]":
+                seed: Optional[int] = None
+                ) -> "tuple[GameState, Dict[str, str], Dict[str, Any]]":
     """Compose party loadouts + an enemies-only encounter into a fresh setup state.
 
-    Returns ``(state, portraits)`` where ``portraits`` maps each (deduped) party
-    character id to its loadout portrait (data URL / image URL, "" if none). The
-    engine state drops the portrait, so the server carries it alongside for the
-    snapshot. Raises ValueError with a human message on unknown ids / empty party.
+    Returns ``(state, portraits, art)``: ``portraits`` maps each (deduped) party
+    character id to its loadout portrait, and ``art`` carries the encounter's
+    generated images (``{"scene": url, "enemies": {pool_id: url}, "base_of":
+    {live_id: pool_id}}``) — the engine state drops both, so the server carries
+    them alongside for the snapshot. Raises ValueError with a human message on
+    unknown ids / empty party.
     """
     if not character_ids:
         raise ValueError("choose at least one character")
@@ -435,6 +479,7 @@ def build_state(character_ids: List[str], encounter_id: str,
     scenario = encounter_for(encounter_id)
     if scenario is None:
         raise ValueError(f"unknown encounter: {encounter_id}")
+    pool_ids = {_pool_id(e) for e in scenario["enemies"] if isinstance(e, dict)}
     # Party-size scaling: an encounter with per-size layouts fields the roster
     # designed for THIS party's size (clamped to the nearest defined layout).
     scenario = scale_encounter(scenario, len(character_ids))
@@ -446,4 +491,7 @@ def build_state(character_ids: List[str], encounter_id: str,
         entry["id"]: raw.get("character", {}).get("portrait", "")
         for entry, raw in zip(spec["party"], loadouts)
     }
-    return state, portraits
+    art = encounter_art(encounter_id)
+    art["base_of"] = _base_of(
+        [e for e in scenario["enemies"] if isinstance(e, dict)], pool_ids)
+    return state, portraits, art

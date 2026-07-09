@@ -269,7 +269,14 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             keywords=_keyword_dict(e.get("keywords")),
         ))
 
+    # Party TURN ORDER: randomized once at setup when a seed is given (initiative
+    # roll), else the authored order. Fixed for the whole encounter — repositioning
+    # never reshuffles it (the engine reads state.party_order, not rows).
+    party_order = [c.id for c in party]
+    if rng is not None:
+        rng.shuffle(party_order)
     return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",
+                     party_order=party_order,
                      token_defs=dict(spec.get("tokens", {})), rng_seed=seed)
 
 

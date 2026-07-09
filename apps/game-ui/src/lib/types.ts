@@ -99,6 +99,11 @@ export interface IntentView {
 export interface CreatureView {
   id: string;
   name: string;
+  // The POOL enemy id behind this creature (a layout clone "wolf_2" -> "wolf");
+  // art generate/remove calls are keyed by it, and clones share the base's art.
+  base_id: string;
+  // Generated portrait URL, "" until one exists (the card shows its sigil).
+  image: string;
   row: Row;
   level: number;
   power: StatBlock;
@@ -120,6 +125,11 @@ export interface CreatureView {
 export interface TokenView {
   id: string;
   name: string;
+  // The token DEFINITION key behind this spawn ("huskling_3" -> "huskling");
+  // art calls are keyed by it, and all spawns of one definition share the art.
+  base_id: string;
+  // Generated portrait URL, "" until one exists.
+  image: string;
   row: Row;
   power: StatBlock;
   hp: StatBlock;
@@ -200,6 +210,10 @@ export interface GameSnapshot {
   turn: number;
   phase: string;
   phase_label: string;
+  // Generated battle backdrop URL ("" until one exists) and the encounter this
+  // game was built from — in-game art generate/remove calls aim at it.
+  scene_image: string;
+  encounter_id: string;
   priority: Priority;
   characters: CharacterView[];
   creatures: CreatureView[];
@@ -286,6 +300,7 @@ export interface EnemySpec {
   keywords?: string[];
   flavor?: string;
   description?: string; // physical appearance (art/narration)
+  image?: string; // generated portrait URL (art.py), rides the encounter JSON
   // Legacy enemies carry a flat `intent`; framework enemies carry `components`
   // (their basic attack is synthesized from `power` by the engine).
   intent?: EnemyIntentSpec;
@@ -299,6 +314,8 @@ export interface EncounterDetail {
   // for the image-generation / narration systems; the editor round-trips it.
   // (Per-enemy physical `description`s travel inside the enemy dicts.)
   scene?: string;
+  // Generated battle-backdrop URL (art.py); per-enemy images ride the enemy dicts.
+  scene_image?: string;
   enemies: EnemySpec[];
   tokens: Record<string, unknown>;
   // Per-party-size rosters: {"1": [enemy ids...], ..., "4": [...]} (repeats clone).
@@ -318,14 +335,25 @@ export interface LlmModel {
 export interface LlmSettings {
   model: string;
   instructions: string;
+  art_style: string; // the aesthetic wrapper for image generation
+  art_backend: string; // "openrouter" | "comfyui"
+  art_backends: LlmModel[]; // {id,label} options for the backend picker
+  art_model: string; // the fixed OpenRouter image-model slug (display only)
+  comfyui_url: string; // e.g. http://192.168.1.50:8188
+  comfyui_workflow: string; // API-format workflow JSON with %prompt% placeholder
   models: LlmModel[];
   has_key: boolean; // the raw key is never sent to the client
   difficulties: string[]; // e.g. ["easy","standard","hard"]
 }
 // Partial update; omit `api_key` (or send "") to leave the stored key untouched.
-// `instructions: null` resets the prompt to the server's built-in default.
+// `instructions: null` / `art_style: null` reset that prompt to the server's
+// built-in default.
 export interface LlmSettingsPatch {
   api_key?: string;
   model?: string;
   instructions?: string | null;
+  art_style?: string | null;
+  art_backend?: string;
+  comfyui_url?: string;
+  comfyui_workflow?: string;
 }

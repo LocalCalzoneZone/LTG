@@ -62,7 +62,10 @@ def _settle(state):
 def _cast(state, card_id, target_id=None):
     for _ in range(200):
         acts = legal_actions(state)
-        cast = next((a for a in acts if a.kind == "cast" and a.card_id == card_id), None)
+        casts = [a for a in acts if a.kind == "cast" and a.card_id == card_id]
+        # Prefer the enumerated cast that already aims at the requested target.
+        cast = (next((a for a in casts if target_id and a.target_id == target_id), None)
+                or (casts[0] if casts else None))
         if cast is not None:
             if cast.target_id is None and target_id:
                 cast.target_id = target_id
@@ -218,3 +221,97 @@ def test_who_you_does_not_fire_for_enemy_events():
     st = _cast(st, "selfish")
     st = _cast(st, "bolt", target_id="ogre")  # damages the ENEMY, not you
     assert st.character("p").hp == 10  # must not fire
+
+
+# --- the "death" event: enemies dying, players incapacitated ------------------- #
+def _duel_state(cards, holder_hp=20, enemy_damage=0):
+    """TWO enemies and TWO party members, so a death on either side never ends
+    the encounter while the trigger is still on the stack."""
+    return state_from_dict({
+        "party": [
+            {"id": "p", "name": "P", "hp": holder_hp, "power": 2,
+             "hand_size": len(cards), "identity": ["U"], "row": "front",
+             "attack_mode": "melee", "library": cards},
+            {"id": "q", "name": "Q", "hp": 25, "power": 2, "hand_size": 0,
+             "identity": ["U"], "row": "rear", "attack_mode": "ranged", "library": []},
+        ],
+        "enemies": [
+            {"id": "ogre", "name": "Ogre", "hp": 30, "level": 1,
+             "intent": {"name": "Bash", "amount": enemy_damage, "action_type": "attack",
+                        "intent_type": "attack", "targeting": "lowest_hp_party",
+                        "mode": "melee"}},
+            {"id": "runt", "name": "Runt", "hp": 2, "level": 1,
+             "intent": {"name": "Poke", "amount": 0, "action_type": "attack",
+                        "intent_type": "attack", "targeting": "lowest_hp_party",
+                        "mode": "melee"}},
+        ],
+    })
+
+
+def test_on_enemy_death_fires():
+    # "Whenever an enemy dies, heal 1." — bolt the runt down and watch it fire.
+    st = _duel_state([_channel("reaper", {"event": "death", "who": "enemy"}),
+                      _bolt("b1"), _bolt("b2")])
+    st.character("p").hp = 10
+    st = _cast(st, "reaper")
+    st = _cast(st, "b1", target_id="runt")   # runt to 1 — no death yet
+    assert st.character("p").hp == 10
+    st = _cast(st, "b2", target_id="runt")   # runt dies → trigger on the stack
+    st = _settle(st)
+    assert st.enemy("runt") is None
+    assert st.character("p").hp == 11        # the on-death trigger fired once
+
+
+def test_on_you_incapacitated_death_rattle():
+    # "When you are incapacitated, deal 2 damage to an enemy" — the holder falls
+    # (their channels break AFTER the pending-break), and the trigger still fires.
+    st = _duel_state([_channel("last_word", {"event": "death", "who": "you"},
+                               effect={"kind": "deal_damage", "amount": 2,
+                                       "target": {"mode": "chosen", "side": "enemy",
+                                                  "targeted": True}})],
+                     holder_hp=6, enemy_damage=7)  # one Bash downs the holder
+    st = _cast(st, "last_word")
+    for _ in range(400):
+        if (not st.character("p").alive and not st.stack
+                and st.pending_choice is None) or st.turn >= 4:
+            break
+        acts = legal_actions(st)
+        if not acts:
+            break
+        a = (next((x for x in acts if x.kind == "pass"), None)
+             or next((x for x in acts if x.kind == "end_turn"), None) or acts[0])
+        st = apply_action(st, a)[0]
+    assert not st.character("p").alive
+    # The rattle landed on one of the enemies (the pick defaults to a legal enemy).
+    total_enemy_hp = sum(e.hp for e in st.enemies)
+    assert total_enemy_hp == 30  # 30 + 2 − 2 rattle damage
+
+
+def test_ally_death_does_not_fire_enemy_watcher():
+    # who="enemy" must NOT hear a player-side fall.
+    st = _state([_channel("reaper", {"event": "death", "who": "enemy"})],
+                hp=6, enemy_damage=7)
+    st.character("p").hp = 6
+    st = _cast(st, "reaper")
+    hp_log = st.character("p").hp
+    for _ in range(300):
+        if not st.character("p").alive or st.turn >= 3:
+            break
+        acts = legal_actions(st)
+        if not acts:
+            break
+        a = (next((x for x in acts if x.kind == "pass"), None)
+             or next((x for x in acts if x.kind == "end_turn"), None) or acts[0])
+        st = apply_action(st, a)[0]
+    # The holder fell; no heal fired (their fall is not an enemy death) — and
+    # the encounter records no heal event from the channel.
+    assert not any(e.type == "heal" and e.data.get("reason") != "lifelink"
+                   for e in st.log if e.type == "heal")
+
+
+def test_death_event_renders():
+    for who, expect in [("you", "When you are incapacitated"),
+                        ("enemy", "Whenever an enemy dies"),
+                        ("ally", "Whenever an ally dies or is incapacitated")]:
+        card = Card.model_validate(_channel("c", {"event": "death", "who": who}))
+        assert expect in render_effects(card.effects, channeled=True)

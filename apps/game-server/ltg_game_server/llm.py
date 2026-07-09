@@ -1,6 +1,7 @@
 """LLM encounter generation — OpenRouter client, prompt, and generate/validate loop.
 
-This is the only place the server talks to an external model. It is *content
+Text generation lives here; image generation lives in art.py (which reuses this
+module's key/settings storage and OpenRouter endpoint). It is *content
 sourcing* (like content.py): it produces an encounter dict the engine can build,
 then hands it to ``content.save_encounter`` for the exact same validation + persist
 path an authored encounter takes. It computes no rules.
@@ -35,6 +36,31 @@ MODELS: List[Dict[str, str]] = [
     {"id": "google/gemini-3.5-flash", "label": "Gemini 3.5 Flash (Google)"},
     {"id": "anthropic/claude-opus-4.8", "label": "Claude Opus 4.8 (Anthropic)"},
 ]
+
+# Image generation backends (Options → LLM → Art Generation). "openrouter" calls
+# the cloud image model below with the stored API key; "comfyui" queues the
+# user's own workflow on a local ComfyUI server (see art.py for the protocol and
+# the %prompt% / %width% / %height% placeholder contract).
+ART_BACKENDS: List[Dict[str, str]] = [
+    {"id": "openrouter", "label": "OpenRouter (cloud)"},
+    {"id": "comfyui", "label": "ComfyUI (local workstation)"},
+]
+# The OpenRouter image model. One fixed slug (edit here if it drifts); the
+# text-generation model stays independently selectable above.
+ART_MODEL = "google/gemini-3.1-flash-lite-image"
+
+# The editable aesthetic wrapper for image generation (Options → LLM → Art
+# Generation). It lives here with the rest of the settings machinery so the
+# "" == follow-the-default persistence trick (see save_settings) covers it too;
+# art.py composes it with per-image task framing + the encounter's own prose.
+DEFAULT_ART_STYLE = """A monumental dynamic illustration fusing heroic realism with
+high-end manhwa splash art. Hyper-realistic anatomy and meticulously rendered
+material textures meet a polished, porcelain-like finish. Powerful, iconic poses
+are rendered with dramatic foreshortening. Heroic directional lighting with strong
+rim light and volumetric bloom carves glowing, ethereal silhouettes against dark,
+atmospheric backdrops. Detailed, layered background; deep moody shadows against
+vibrant saturated accents; epic scale, high-fidelity radiant finish. No text, no
+lettering, no watermarks, no borders, no UI elements."""
 
 # Encounter Level budget = 2 × party_size × avg_level × multiplier (Update 04 §F-6,
 # magnitudes bumped from playtest — the base fight ran too easy even at the old ×1.5
@@ -436,7 +462,9 @@ Design a brand-new encounter (do not copy the examples' theme). Return ONLY the 
 
 
 def _default_settings() -> Dict[str, Any]:
-    return {"api_key": "", "model": MODELS[0]["id"], "instructions": DEFAULT_INSTRUCTIONS}
+    return {"api_key": "", "model": MODELS[0]["id"],
+            "instructions": DEFAULT_INSTRUCTIONS, "art_style": DEFAULT_ART_STYLE,
+            "art_backend": "openrouter", "comfyui_url": "", "comfyui_workflow": ""}
 
 
 def load_settings() -> Dict[str, Any]:
@@ -445,7 +473,8 @@ def load_settings() -> Dict[str, Any]:
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         if isinstance(data, dict):
-            for k in ("api_key", "model", "instructions"):
+            for k in ("api_key", "model", "instructions", "art_style",
+                      "art_backend", "comfyui_url", "comfyui_workflow"):
                 if isinstance(data.get(k), str) and data[k] != "":
                     out[k] = data[k]
     except (OSError, json.JSONDecodeError):
@@ -459,6 +488,12 @@ def public_settings() -> Dict[str, Any]:
     return {
         "model": s["model"],
         "instructions": s["instructions"],
+        "art_style": s["art_style"],
+        "art_backend": s["art_backend"],
+        "art_backends": ART_BACKENDS,
+        "art_model": ART_MODEL,
+        "comfyui_url": s["comfyui_url"],
+        "comfyui_workflow": s["comfyui_workflow"],
         "models": MODELS,
         "has_key": bool(s["api_key"]),
         "difficulties": list(DIFFICULTY.keys()),
@@ -486,6 +521,22 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
             cur["instructions"] = DEFAULT_INSTRUCTIONS   # explicit reset
         elif isinstance(ins, str) and ins.strip():
             cur["instructions"] = ins
+    if "art_style" in patch:
+        style = patch["art_style"]
+        if style is None:
+            cur["art_style"] = DEFAULT_ART_STYLE         # explicit reset
+        elif isinstance(style, str) and style.strip():
+            cur["art_style"] = style
+    if "art_backend" in patch and isinstance(patch["art_backend"], str) and patch["art_backend"]:
+        if patch["art_backend"] not in {b["id"] for b in ART_BACKENDS}:
+            raise ValueError(f"unknown art backend: {patch['art_backend']}")
+        cur["art_backend"] = patch["art_backend"]
+    # ComfyUI address + workflow: a present string (even "") sets it verbatim so
+    # the UI can clear either field; None clears too.
+    for k in ("comfyui_url", "comfyui_workflow"):
+        if k in patch:
+            v = patch[k]
+            cur[k] = v.strip() if isinstance(v, str) else ""
     if "api_key" in patch:
         key = patch["api_key"]
         if key is None:
@@ -496,6 +547,8 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     on_disk = dict(cur)
     if on_disk["instructions"] == DEFAULT_INSTRUCTIONS:
         on_disk["instructions"] = ""       # "" == follow the (upgradeable) default
+    if on_disk["art_style"] == DEFAULT_ART_STYLE:
+        on_disk["art_style"] = ""
     SETTINGS_PATH.write_text(json.dumps(on_disk, indent=2))
     return public_settings()
 
