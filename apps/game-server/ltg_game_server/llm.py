@@ -73,16 +73,18 @@ def _min_enemies(size: int) -> int:
     return 2 * max(1, size)
 
 # Every generated enemy's HP is multiplied by this (per difficulty) AFTER the model
-# produces it — the chassis baselines (Husk 2, Bruiser 4, Caster-frame 2) are so low
-# that one removal + a chip effect clears them. Scaling HP in code (not via the
-# prompt) guarantees the beef regardless of what the model returns or how the user
-# has edited the instructions. Tune here if fights still end too fast.
-ENEMY_HP_MULT: Dict[str, float] = {"easy": 1.5, "standard": 2.0, "hard": 2.5}
+# produces it — the chassis baselines (Husk 2, Bruiser 4, Caster-frame 2) are low
+# enough that one removal + a chip effect clears them. Scaling HP in code (not via
+# the prompt) guarantees the floor regardless of what the model returns or how the
+# user has edited the instructions. Kept deliberately shallow: difficulty should
+# come from the encounter Level budget (DIFFICULTY) and from being outnumbered
+# (_min_enemies), not from HP bloat, which only makes a fight longer.
+ENEMY_HP_MULT: Dict[str, float] = {"easy": 1.0, "standard": 1.2, "hard": 1.5}
 
 
 def _scale_hp(encounter: Dict[str, Any], difficulty: str) -> None:
     """Multiply enemy (and spawned-token) HP in place by the difficulty's factor."""
-    mult = ENEMY_HP_MULT.get(difficulty, 2.0)
+    mult = ENEMY_HP_MULT.get(difficulty, 1.2)
 
     def bump(v: Any) -> Any:
         try:
@@ -753,7 +755,7 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
         reply = _chat(settings["api_key"], settings["model"], messages)
         try:
             encounter = _normalize(_extract_json(reply))
-            _scale_hp(encounter, difficulty)  # beef enemies so they aren't one-shot
+            _scale_hp(encounter, difficulty)  # floor enemy HP so they aren't one-shot
             _check_layouts(encounter)         # scaling layouts for parties of 1–4
             # Art/narration data is required: the scene and every enemy's look.
             problems = []
