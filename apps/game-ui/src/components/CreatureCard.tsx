@@ -2,6 +2,7 @@ import type { CreatureView, TokenView } from "../lib/types";
 import { hpColor, powerColor, roman } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
+import { ArtControls } from "./ArtControls";
 import { KeywordBadges } from "./KeywordBadges";
 import { IconSkull } from "./Icons";
 import { StatPop } from "./StatPop";
@@ -15,6 +16,7 @@ const NAME_LONG = "text-[clamp(8px,1.15vh,11px)]";
 export function CreatureCard({ creature, isTarget }: { creature: CreatureView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  const encounterId = useGame((s) => s.snapshot?.encounter_id ?? "");
   // This enemy has an action (attack / spell / ability) pending on the stack.
   const acting = useGame((s) => (s.snapshot?.stack ?? []).some((r) => r.source_id === creature.id));
 
@@ -42,16 +44,39 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
           ? ({ "--bracket-color": "#c25a50" } as React.CSSProperties)
           : {}),
       }}
-      className={`relative aspect-square shrink-0 select-none border bg-ink-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)] transition ${frame} ${dimUntargeted} ${
+      className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)] transition ${frame} ${dimUntargeted} ${
         isTarget ? "cursor-pointer" : "cursor-default"
       } ${creature.is_boss ? "z-10" : ""}`}
     >
-      {/* reserved art slot — engraved sigil until creature art exists */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_32%,rgba(70,110,118,0.35),transparent_75%),linear-gradient(180deg,#1d2730_0%,#141a22_55%,#10131b_100%)]" />
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[#7d99a4] opacity-40">
-        <IconSkull className="h-1/2 w-1/2" />
-      </div>
+      {/* art slot — generated portrait when it exists, engraved sigil until then */}
+      {creature.image ? (
+        <img
+          src={creature.image}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_32%,rgba(70,110,118,0.35),transparent_75%),linear-gradient(180deg,#1d2730_0%,#141a22_55%,#10131b_100%)]" />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[#7d99a4] opacity-40">
+            <IconSkull className="h-1/2 w-1/2" />
+          </div>
+        </>
+      )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+
+      {/* art controls — appear on hover, aimed at the pool design (clones share) */}
+      {encounterId && (
+        <div className="absolute right-1 top-1 z-10 opacity-0 transition group-hover:opacity-100">
+          <ArtControls
+            encounterId={encounterId}
+            kind="enemy"
+            enemyId={creature.base_id}
+            hasImage={!!creature.image}
+            subject={creature.name}
+          />
+        </div>
+      )}
 
       {/* level — top-left gem, same chrome as the power/HP plaque */}
       <div className={`absolute -left-px top-1.5 border border-l-0 border-line bg-ink-0/80 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-parch`}>
@@ -100,17 +125,39 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
 export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  const encounterId = useGame((s) => s.snapshot?.encounter_id ?? "");
   const dimUntargeted = armed && !isTarget ? "opacity-40" : "";
   return (
     <div
       onClick={() => isTarget && pickTargetId(token.id)}
       title={`${token.name} (ally)`}
       style={{ width: TOKEN_CARD_WIDTH }}
-      className={`relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
+      className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
         isTarget ? "brackets cursor-pointer border-brass-hi" : "border-tide/40"
       } ${dimUntargeted}`}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_35%,rgba(130,180,201,0.25),transparent_75%),linear-gradient(180deg,#16202a,#10141c)]" />
+      {token.image ? (
+        <img
+          src={token.image}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_35%,rgba(130,180,201,0.25),transparent_75%),linear-gradient(180deg,#16202a,#10141c)]" />
+      )}
+
+      {/* art controls — all spawns of this token definition share the image */}
+      {encounterId && (
+        <div className="absolute right-0.5 top-0.5 z-10 opacity-0 transition group-hover:opacity-100">
+          <ArtControls
+            encounterId={encounterId}
+            kind="enemy"
+            enemyId={token.base_id}
+            hasImage={!!token.image}
+            subject={token.name}
+          />
+        </div>
+      )}
       <div className={`absolute -right-px top-1 border border-r-0 border-line bg-ink-0/80 px-1 font-display ${META} leading-tight`}>
         <span className={powerColor(token.power)}>{token.power.current}</span>
         <span className="text-dimmed">/</span>

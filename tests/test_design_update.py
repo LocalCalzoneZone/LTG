@@ -85,15 +85,18 @@ def test_enemy_melee_targets_only_a_reachable_party_member():
 
 
 # --------------------------------------------------------------------------- #
-# R-6 — deterministic ordering (row > level > name)
+# R-6 (amended, Update 06) — party TURN ORDER is a fixed initiative rolled at
+# setup (seeded shuffle; authored order when unseeded), never the row order.
 # --------------------------------------------------------------------------- #
-def test_action_order_is_row_then_level_then_name():
+def test_party_turn_order_is_fixed_initiative_not_rows():
     st = _state([_hero(name="Zed", row="front", level=1),
                  _hero(name="Ann", row="front", level=1),
                  _hero(name="Bob", row="mid", level=1)],
                 [_enemy("orc", "Orc", 5)])
-    # Front row first, then alphabetical: Ann acts before Zed; Bob (mid) last.
-    assert legal_actions(st)[0].actor_id == "ann"
+    # Unseeded: the authored order stands — Zed opens despite Ann's alphabetical
+    # edge and Bob's row; rows never decide whose turn comes first.
+    assert legal_actions(st)[0].actor_id == "zed"
+    assert st.party_order == ["zed", "ann", "bob"]
 
 
 # --------------------------------------------------------------------------- #

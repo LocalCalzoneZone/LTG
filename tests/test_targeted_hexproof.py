@@ -120,3 +120,15 @@ def test_friendly_targeting_of_hexproof_ally_is_legal():
     tids = {a.target_id for a in legal_actions(st)
             if a.kind == "cast" and a.card_id == "mend"}
     assert "p" in tids                            # own hexproof never blocks you
+
+
+def test_basic_attack_offers_and_lands_on_hexproof_enemy():
+    # Hexproof wards spells/abilities that target — NOT the sword (Update 06):
+    # the basic attack both offers the hexproof enemy and lands on it.
+    st = _state([])
+    tids = {a.target_id for a in legal_actions(st) if a.kind == "attack"}
+    assert "hexer" in tids
+    act = next(a for a in legal_actions(st)
+               if a.kind == "attack" and a.target_id == "hexer")
+    st = _resolve_stack(apply_action(st, act)[0])
+    assert st.enemy("hexer").hp == 10 - 2         # the swing landed through hexproof

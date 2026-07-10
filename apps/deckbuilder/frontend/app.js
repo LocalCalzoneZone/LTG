@@ -756,7 +756,7 @@ const TRIGGER_LABEL = { channel_start: "channel start (on cast)",
                         channel_break: "channel break" };
 const EVENT_LABEL = { attack: "attacks", damage_taken: "is dealt damage",
                       life_gain: "gains life", spell_cast: "casts a spell",
-                      card_draw: "draws a card" };
+                      card_draw: "draws a card", death: "dies / is incapacitated" };
 const WHO_LABEL = { you: "you", target: "the target", ally: "any ally",
                     enemy: "any enemy", any: "anyone" };
 const SPELL_TYPE_LABEL = { instant: "an instant", sorcery: "a sorcery",

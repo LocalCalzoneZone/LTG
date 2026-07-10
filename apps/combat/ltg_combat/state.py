@@ -75,9 +75,10 @@ class Channel:
     holder_id: str
     reserved: List[str] = field(default_factory=list)
     target_id: Optional[str] = None
-    # The turn this channel was started. A channel can only be VOLUNTARILY dropped on a
-    # LATER turn (started_turn < current turn) — cancelling it the same turn would be a
-    # discounted one-turn cast of its continuous effect (GDD §8).
+    # The turn this channel was started (display/log bookkeeping). Voluntary drops
+    # are instant-speed and unrestricted — legal whenever the holder has priority,
+    # even the cast turn (Update 06 playtest ruling; supersedes GDD §8's same-turn
+    # hold rule).
     started_turn: int = 0
     # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
     # value references on the channel's triggered effects.
@@ -530,6 +531,12 @@ class PendingChoice:
 class GameState:
     party: List[CharacterState]
     enemies: List[EnemyState]
+    # Fixed party TURN ORDER (character ids): randomized once at encounter setup
+    # (when the scenario is built with a seed) and constant for the whole fight —
+    # repositioning never reshuffles it. Drives whose main phase comes next and
+    # the pass-around order in reaction windows. Empty == the authored party order
+    # (legacy states / tests built without the field).
+    party_order: List[str] = field(default_factory=list)
     tokens: List[TokenState] = field(default_factory=list)
     token_defs: Dict[str, Any] = field(default_factory=dict)  # token_id -> stats
     token_seq: int = 0                # for unique created-token ids

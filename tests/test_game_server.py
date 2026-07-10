@@ -38,7 +38,7 @@ def _isolate_hidden_roster():
 
 
 def _two_char_session():
-    state, portraits = content.build_state(["loadout_soren", "loadout_ys"], "builtin_a", seed=7)
+    state, portraits, _art = content.build_state(["loadout_soren", "loadout_ys"], "builtin_a", seed=7)
     return SessionManager().create(state, portraits=portraits)
 
 
@@ -103,10 +103,13 @@ def test_legal_actions_only_for_the_controlled_priority_holder():
     s = _two_char_session()
     s.clients["A"] = None
     s.clients["B"] = None
-    s.claim("A", ["ys"])   # A controls ys (NOT the turn-1 holder soren)
-    s.claim("B", ["soren"])
+    # Turn order is randomized at setup (seeded), so read who actually opens.
+    holder = s.snapshot_for("")["priority"]["holder_character_id"]
+    other = "ys" if holder == "soren" else "soren"
+    s.claim("A", [other])    # A controls the NON-holder
+    s.claim("B", [holder])
 
-    # Soren is the opening priority holder; only B (who controls soren) gets actions.
+    # Only B (who controls the opening holder) gets actions.
     assert s.snapshot_for("A")["legal_actions"] == []
     assert len(s.snapshot_for("B")["legal_actions"]) > 0
 
@@ -115,13 +118,15 @@ def test_seat_gating_rejects_action_for_uncontrolled_character():
     s = _two_char_session()
     s.clients["A"] = None
     s.clients["B"] = None
-    s.claim("A", ["ys"])
-    s.claim("B", ["soren"])
+    holder = s.snapshot_for("")["priority"]["holder_character_id"]
+    other = "ys" if holder == "soren" else "soren"
+    s.claim("A", [other])
+    s.claim("B", [holder])
 
-    # Index 0 is soren's action (the holder). A does not control soren -> rejected.
+    # Index 0 is the holder's action. A does not control the holder -> rejected.
     with pytest.raises(ValueError, match="do not control"):
         s.apply_index("A", 0)
-    # B controls soren -> the same index applies cleanly.
+    # B controls the holder -> the same index applies cleanly.
     s.apply_index("B", 0)
 
 
@@ -152,7 +157,7 @@ def test_import_loadout_roundtrip_and_portrait_flows_to_game():
         assert any(c["id"] == meta["id"] for c in content.list_characters())
         assert meta["portrait"].startswith("data:image")
         # And the portrait flows through into a built game's session map.
-        _state, portraits = content.build_state([meta["id"]], "builtin_a", seed=1)
+        _state, portraits, _art = content.build_state([meta["id"]], "builtin_a", seed=1)
         assert list(portraits.values())[0].startswith("data:image")
     finally:
         path.unlink(missing_ok=True)
@@ -258,7 +263,7 @@ def test_save_encounter_rejects_malformed_input():
 
 
 def test_encounter_keywords_reach_the_engine():
-    state, _ = content.build_state(["loadout_soren"], "encounter_skyfangs", seed=1)
+    state, _, _art = content.build_state(["loadout_soren"], "encounter_skyfangs", seed=1)
     by_name = {e.name: e for e in state.enemies}
     assert "flying" in by_name["Wyvern"].keywords
     assert {"flying", "lifelink"} <= set(by_name["Dread Seraph"].keywords)

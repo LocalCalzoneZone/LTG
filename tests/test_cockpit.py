@@ -93,7 +93,8 @@ def test_load_validate_start_and_play(client):
     # Start: the engine bootstraps the opening (upkeep + intents); a decision waits.
     state = client.post("/api/start", json={"overrides": {}}).json()
     assert state["loaded"] and state["turn"] == 1
-    assert state["acting_id"] == "soren"
+    # Turn order is randomized per start (seeded initiative): either hero may open.
+    assert state["acting_id"] in ("soren", "ys")
     assert state["menu"], "the engine should offer legal actions"
     # Intents are visible on the enemy panels.
     assert any(e["intent"] for e in state["enemies"])

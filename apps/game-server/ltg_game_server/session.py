@@ -28,12 +28,20 @@ def _short_id(n: int = 8) -> str:
 
 class Session:
     def __init__(self, session_id: str, state: GameState, name: str = "",
-                 portraits: Optional[Dict[str, str]] = None) -> None:
+                 portraits: Optional[Dict[str, str]] = None,
+                 encounter_id: str = "",
+                 art: Optional[Dict[str, Any]] = None) -> None:
         self.id = session_id
         self.name = name
         self.state = state  # authoritative (un-settled) engine state
         # character_id -> portrait (data URL / image URL); the engine drops it.
         self.portraits: Dict[str, str] = portraits or {}
+        # Which encounter this game was built from, and its generated art
+        # ({"scene": url, "enemies": {pool_id: url}, "base_of": {live_id: pool_id}})
+        # — the engine drops both; art can be regenerated mid-game (see app.py's
+        # art endpoints, which call set_art + re-broadcast).
+        self.encounter_id = encounter_id
+        self.art: Dict[str, Any] = art or {"scene": "", "enemies": {}, "base_of": {}}
         # character_id -> client_id (None == unclaimed)
         self.seats: Dict[str, Optional[str]] = {c.id: None for c in state.party}
         # client_id -> websocket-like send target (set by the app layer)
@@ -105,9 +113,16 @@ class Session:
         new_state, _events = apply_action(self.state, action)
         self.state = new_state
 
+    def set_art(self, art: Dict[str, Any]) -> None:
+        """Swap in fresh art references (scene + pool-enemy urls), keeping this
+        session's live-id -> pool-id map (the roster never changes mid-game)."""
+        self.art = {**art, "base_of": self.art.get("base_of", {})}
+
     # -- snapshots ----------------------------------------------------------- #
     def snapshot_for(self, client_id: str) -> Dict[str, Any]:
-        return build_snapshot(self.state, self.controlled_by(client_id), self.portraits)
+        return build_snapshot(self.state, self.controlled_by(client_id),
+                              self.portraits, art=self.art,
+                              encounter_id=self.encounter_id)
 
 
 class SessionManager:
@@ -115,11 +130,14 @@ class SessionManager:
         self._sessions: Dict[str, Session] = {}
 
     def create(self, state: GameState, name: str = "",
-               portraits: Optional[Dict[str, str]] = None) -> Session:
+               portraits: Optional[Dict[str, str]] = None,
+               encounter_id: str = "",
+               art: Optional[Dict[str, Any]] = None) -> Session:
         session_id = _short_id()
         while session_id in self._sessions:
             session_id = _short_id()
-        session = Session(session_id, state, name=name, portraits=portraits)
+        session = Session(session_id, state, name=name, portraits=portraits,
+                          encounter_id=encounter_id, art=art)
         self._sessions[session_id] = session
         return session
 
@@ -128,3 +146,6 @@ class SessionManager:
 
     def exists(self, session_id: str) -> bool:
         return session_id in self._sessions
+
+    def all(self) -> List[Session]:
+        return list(self._sessions.values())

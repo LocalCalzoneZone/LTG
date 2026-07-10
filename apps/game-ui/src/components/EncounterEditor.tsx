@@ -2,6 +2,11 @@ import { useMemo, useState } from "react";
 import { saveEncounter } from "../lib/api";
 import { roman } from "../lib/format";
 import type { ComponentSpec, EncounterDetail, EnemySpec, Row } from "../lib/types";
+import { ArtControls } from "./ArtControls";
+
+// Mirrors the server's _slug (ltg_combat.scenario): how an enemy without an
+// explicit id resolves for art calls.
+const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
 // Vocabulary the engine understands (scenario.py / engine.py / Design Update 04).
 const ROWS: Row[] = ["front", "mid", "rear"];
@@ -89,9 +94,14 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [scene, setScene] = useState(initial?.scene ?? "");
+  const [sceneImage, setSceneImage] = useState(initial?.scene_image ?? "");
   const [enemies, setEnemies] = useState<EditEnemy[]>(
     initial ? initial.enemies.map(stage) : [blankEnemy()],
   );
+  // Art generation needs a saved encounter (the image + reference persist to its
+  // file server-side); a brand-new encounter must be created first.
+  const artDisabled = !initial?.id;
+  const artDisabledTitle = "Save the encounter first, then paint";
   const [sel, setSel] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -114,19 +124,34 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
     setBusy(true);
     setErr(null);
     try {
+      const outEnemies = enemies.map((e) => {
+        const { components, ...rest } = e;
+        const out: EnemySpec = { ...rest, ranged_intent: e.ranged_intent || undefined };
+        if (components.length) {
+          out.components = components.map((c, ci) => unstageComp(c, e.name, ci));
+        }
+        if (!out.is_boss) delete out.is_boss;
+        return out;
+      });
+      // Round-trip party-size layouts (no dedicated UI yet): prune ids the edit
+      // removed; a size left empty falls back to the full roster so scaling
+      // survives the edit instead of failing validation.
+      const ids = new Set(outEnemies.map((e) => e.id).filter(Boolean));
+      let layouts: Record<string, string[]> | undefined;
+      if (initial?.layouts && Object.keys(initial.layouts).length) {
+        layouts = {};
+        for (const [size, roster] of Object.entries(initial.layouts)) {
+          const kept = roster.filter((id) => ids.has(id));
+          layouts[size] = kept.length ? kept : outEnemies.map((e) => e.id!).filter(Boolean);
+        }
+      }
       const payload = {
         name: name.trim() || "Encounter",
         scene,
-        enemies: enemies.map((e) => {
-          const { components, ...rest } = e;
-          const out: EnemySpec = { ...rest, ranged_intent: e.ranged_intent || undefined };
-          if (components.length) {
-            out.components = components.map((c, ci) => unstageComp(c, e.name, ci));
-          }
-          if (!out.is_boss) delete out.is_boss;
-          return out;
-        }),
+        scene_image: sceneImage,
+        enemies: outEnemies,
         tokens: initial?.tokens ?? {},
+        ...(layouts ? { layouts } : {}),
       };
       await saveEncounter(payload, initial?.id);
       onSaved();
@@ -146,10 +171,28 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
                  placeholder="e.g. Bandit Ambush" />
         </label>
         <label className="flex min-w-[280px] flex-[2] flex-col gap-1">
-          <span className={label}>Scene (battle backdrop — feeds art & narration)</span>
-          <textarea className={`${field} min-h-[42px]`} rows={2} value={scene}
-                    onChange={(e) => setScene(e.target.value)}
-                    placeholder="2–3 sentences: location, light, one striking detail…" />
+          <span className="flex items-center justify-between">
+            <span className={label}>Scene (battle backdrop — feeds art & narration)</span>
+            <ArtControls
+              encounterId={initial?.id ?? ""}
+              kind="scene"
+              text={scene}
+              hasImage={!!sceneImage}
+              subject="the battlefield backdrop"
+              onChanged={setSceneImage}
+              disabled={artDisabled}
+              disabledTitle={artDisabledTitle}
+            />
+          </span>
+          <div className="flex gap-2">
+            {sceneImage && (
+              <img src={sceneImage} alt="" title="Battlefield backdrop"
+                   className="h-[58px] w-[103px] shrink-0 border border-line object-cover" />
+            )}
+            <textarea className={`${field} min-h-[42px] flex-1`} rows={2} value={scene}
+                      onChange={(e) => setScene(e.target.value)}
+                      placeholder="2–3 sentences: location, light, one striking detail…" />
+          </div>
         </label>
       </div>
 
@@ -183,6 +226,10 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
                         : e.is_boss ? "border-blood" : "border-line2"
                       }`}
                     >
+                      {e.image && (
+                        <img src={e.image} alt=""
+                             className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
+                      )}
                       <div className="font-display absolute left-1 top-1 text-[9px] tracking-[0.1em] text-mist">
                         {roman(e.level)}
                       </div>
@@ -312,10 +359,29 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
             {/* Description (art/narration) + flavor */}
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
-                <span className={label}>Physical description (art/narration)</span>
-                <textarea className={`${field} min-h-[54px]`} rows={2} value={cur.description ?? ""}
-                          onChange={(e) => patch(sel, { description: e.target.value })}
-                          placeholder="1–2 sentences: size, anatomy, colors, gear…" />
+                <span className="flex items-center justify-between">
+                  <span className={label}>Physical description (art/narration)</span>
+                  <ArtControls
+                    encounterId={initial?.id ?? ""}
+                    kind="enemy"
+                    enemyId={cur.id || slug(cur.name)}
+                    text={cur.description ?? ""}
+                    hasImage={!!cur.image}
+                    subject={cur.name || "this enemy"}
+                    onChanged={(url) => patch(sel, { image: url || undefined })}
+                    disabled={artDisabled}
+                    disabledTitle={artDisabledTitle}
+                  />
+                </span>
+                <div className="flex gap-2">
+                  {cur.image && (
+                    <img src={cur.image} alt="" title={cur.name}
+                         className="h-[58px] w-[58px] shrink-0 border border-line object-cover" />
+                  )}
+                  <textarea className={`${field} min-h-[54px] flex-1`} rows={2} value={cur.description ?? ""}
+                            onChange={(e) => patch(sel, { description: e.target.value })}
+                            placeholder="1–2 sentences: size, anatomy, colors, gear…" />
+                </div>
               </label>
               <label className="flex flex-col gap-1">
                 <span className={label}>Flavor (mechanical hint)</span>

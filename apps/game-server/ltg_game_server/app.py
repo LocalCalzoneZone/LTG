@@ -6,6 +6,7 @@ this layer computes no rules. See INTERFACE_NOTES.md for the state contract.
 
 from __future__ import annotations
 
+import asyncio
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -16,7 +17,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import content, llm
+from . import art, content, llm
 from .session import SessionManager
 
 APP_ROOT = Path(__file__).resolve().parent.parent          # apps/game-server
@@ -52,14 +53,15 @@ def setup_options() -> Dict[str, Any]:
 @app.post("/api/games")
 def create_game(body: CreateGameBody) -> Dict[str, Any]:
     try:
-        state, portraits = content.build_state(
+        state, portraits, game_art = content.build_state(
             body.character_ids, body.encounter_id, seed=random.randrange(2**31)
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     encounter = content.encounter_for(body.encounter_id)
     session = MANAGER.create(state, name=encounter["name"] if encounter else "",
-                             portraits=portraits)
+                             portraits=portraits,
+                             encounter_id=body.encounter_id, art=game_art)
     return {"session_id": session.id}
 
 
@@ -128,10 +130,16 @@ def delete_encounter(encounter_id: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 class LlmSettingsBody(BaseModel):
     # All optional: send only what changed. `api_key` absent/"" leaves the stored
-    # key untouched; `api_key: null` clears it (see llm.save_settings).
+    # key untouched; `api_key: null` clears it (see llm.save_settings). A field
+    # missing here is silently STRIPPED from the body before llm.save_settings
+    # ever sees it — keep this model in sync with the settings keys.
     api_key: Optional[str] = None
     model: Optional[str] = None
     instructions: Optional[str] = None
+    art_style: Optional[str] = None
+    art_backend: Optional[str] = None
+    comfyui_url: Optional[str] = None
+    comfyui_workflow: Optional[str] = None
 
 
 class GenerateEncounterBody(BaseModel):
@@ -165,6 +173,56 @@ def generate_encounter(body: GenerateEncounterBody) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     return {"encounter": meta}
+
+
+# --------------------------------------------------------------------------- #
+# REST: art generation (scene backdrops + enemy portraits)
+# --------------------------------------------------------------------------- #
+class GenerateArtBody(BaseModel):
+    kind: str                        # "scene" | "enemy"
+    enemy_id: Optional[str] = None   # POOL enemy id (a clone's base_id), enemy art only
+    text: Optional[str] = None       # optional prompt-subject override (editor's
+                                     # live textarea); never written back
+
+
+async def _refresh_sessions_art(encounter_id: str) -> None:
+    """Push the encounter's current art into every live game built from it, so
+    all seated players see a mid-game generation/removal immediately."""
+    fresh = content.encounter_art(encounter_id)
+    for session in MANAGER.all():
+        if session.encounter_id == encounter_id:
+            session.set_art(fresh)
+            await _broadcast(session)
+
+
+@app.post("/api/encounters/{encounter_id}/art")
+async def generate_encounter_art(encounter_id: str, body: GenerateArtBody) -> Dict[str, Any]:
+    """Generate (or regenerate) the scene backdrop / one enemy's portrait.
+
+    Persists the image + the updated encounter JSON (so replays include the art)
+    and refreshes any running session on this encounter. Returns ``{"url": ...}``.
+    The generation call blocks on the image model, so it runs in a worker thread —
+    the event loop (and everyone's websockets) stay live.
+    """
+    try:
+        result = await asyncio.to_thread(
+            art.generate, encounter_id, body.kind, body.enemy_id, body.text or "")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    await _refresh_sessions_art(encounter_id)
+    return result
+
+
+@app.delete("/api/encounters/{encounter_id}/art")
+async def delete_encounter_art(encounter_id: str, kind: str,
+                               enemy_id: Optional[str] = None) -> Dict[str, Any]:
+    """Remove the scene's / one enemy's generated art (file + JSON reference)."""
+    try:
+        result = art.remove(encounter_id, kind, enemy_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    await _refresh_sessions_art(encounter_id)
+    return result
 
 
 @app.get("/api/games/{session_id}")
@@ -272,8 +330,13 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Static client (mounted last so /api/* and /ws/* win)
+# Static art (generated images; the dir is created up front so the mount holds
+# before the first generation) + static client (mounted last so /api/* wins)
 # --------------------------------------------------------------------------- #
+art.ART_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/art", StaticFiles(directory=str(art.ART_DIR)), name="art")
+
+
 _PLACEHOLDER = """<!doctype html><html><head><meta charset="utf-8">
 <title>LTG-Game</title></head><body style="font-family:system-ui;padding:2rem">
 <h1>LTG-Game</h1>

@@ -106,10 +106,12 @@ interface StoreState {
   chooseModeFor: Choice | null; // a modal card awaiting a mode pick
   manaSelect: ManaSelect | null; // an ambiguous cast awaiting a mana pick
   zoneModal: ZoneModal;
-  // The character id auto-passing every reaction window it holds priority in until
-  // the stack fully resolves (null = off). Scoped to one character — other party
-  // members still decide for themselves.
-  passAllFor: string | null;
+  // Characters auto-passing until the stack fully resolves. Pass All is a
+  // PER-CHARACTER commitment — "this character has nothing more to add for the
+  // rest of this stack" — so it only ever passes for the character that armed
+  // it; the player's OTHER characters keep their reaction windows and may still
+  // respond (or arm their own Pass All). Cleared when the stack empties.
+  passAllFor: string[];
   error: string | null;
   gameOver: string | null;
 
@@ -162,7 +164,7 @@ export const useGame = create<StoreState>((set, get) => ({
   chooseModeFor: null,
   manaSelect: null,
   zoneModal: null,
-  passAllFor: null,
+  passAllFor: [],
   error: null,
   gameOver: null,
 
@@ -197,19 +199,20 @@ export const useGame = create<StoreState>((set, get) => ({
         // A fresh authoritative state ends any optimistic arming (§4.6).
         set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null });
         get()._recomputeFocus();
-        // Pass All: auto-pass for the initiating character only, each time it holds
-        // priority, until the stack fully resolves — then reset. Other characters'
-        // priority windows are left for the player to decide.
-        const forId = get().passAllFor;
-        if (forId != null) {
+        // Pass All: whenever a window opens for a character that armed it, pass
+        // automatically — until the stack fully resolves, then reset. Windows
+        // for characters that did NOT arm it stay interactive.
+        const autoPassers = get().passAllFor;
+        if (autoPassers.length) {
           if (snap.stack.length === 0) {
-            set({ passAllFor: null }); // stack resolved — done
+            set({ passAllFor: [] }); // stack resolved — the commitment ends
           } else {
             const pass = snap.legal_actions.find(
-              (a) => a.kind === "pass" && a.actor_id === forId,
+              (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
             );
             if (pass) get().submitIndex(pass.index);
-            // else: another character holds priority (or a forced choice) — wait.
+            // else: a non-committed character (or another client) holds
+            // priority, or a forced choice is open — wait for the player.
           }
         }
         break;
@@ -222,7 +225,7 @@ export const useGame = create<StoreState>((set, get) => ({
         break;
       case "error":
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: null });
+        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [] });
         break;
     }
   },
@@ -384,7 +387,13 @@ export const useGame = create<StoreState>((set, get) => ({
     const snap = get().snapshot;
     const pass = snap?.legal_actions.find((a) => a.kind === "pass");
     if (!pass) return;
-    set({ passAllFor: pass.actor_id, armed: null, chooseModeFor: null });
+    const armed = get().passAllFor;
+    if (armed.includes(pass.actor_id)) {
+      // Already committed — clicking again cancels this character's auto-pass.
+      set({ passAllFor: armed.filter((id) => id !== pass.actor_id) });
+      return;
+    }
+    set({ passAllFor: [...armed, pass.actor_id], armed: null, chooseModeFor: null });
     get().submitIndex(pass.index);
   },
 

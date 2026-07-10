@@ -109,6 +109,23 @@ export const IconEdit = make(
   </>,
 );
 
+// Art generation: an easel-framed landscape (generate) and a redraw cycle.
+export const IconCanvas = make(
+  <>
+    <rect x="4" y="5" width="16" height="12" rx="0.5" />
+    <circle cx="9" cy="9.2" r="1.4" />
+    <path d="M4.5 15.5l4-4 3 3 3.5-3.5 4.5 4.5" />
+    <path d="M8 21l1.5-4M16 21l-1.5-4" />
+  </>,
+);
+
+export const IconRedraw = make(
+  <>
+    <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+    <path d="M19.8 3.5v3.6h-3.6" />
+  </>,
+);
+
 export const IconSkull = make(
   <>
     <path d="M12 3.5c-4.7 0-8 3.3-8 7.6 0 2.6 1.3 4.6 3.2 5.9V20h2.3v-2h1.6v2h1.8v-2h1.6v2h2.3v-3c1.9-1.3 3.2-3.3 3.2-5.9 0-4.3-3.3-7.6-8-7.6z" />

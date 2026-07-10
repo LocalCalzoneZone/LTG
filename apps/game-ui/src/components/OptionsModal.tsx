@@ -304,7 +304,10 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
                 <div className="min-w-0 flex-1">
                   <div className="caps-label truncate text-[11px] tracking-[0.1em] text-parch">{e.name}</div>
                   <div className="truncate text-xs font-light text-mist">
-                    {e.enemy_count} {e.enemy_count === 1 ? "enemy" : "enemies"} · {e.enemy_names.join(", ")}
+                    {e.enemy_count} {e.enemy_count === 1 ? "enemy" : "enemies"}
+                    {e.scales && e.scales.length > 0 &&
+                      ` · scales ${Math.min(...e.scales)}–${Math.max(...e.scales)} heroes`}
+                    {" · "}{e.enemy_names.join(", ")}
                   </div>
                 </div>
                 {encConfirmId === e.id ? (

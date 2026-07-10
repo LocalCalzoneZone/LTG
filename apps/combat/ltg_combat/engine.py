@@ -134,7 +134,16 @@ def _advance(st: GameState) -> None:
         # tracker resets here — this is the single canonical window-open point.
         if st.stack:
             if st.priority is None:
-                st.priority = _ordered(st.living_party())[0].id  # canonical order (R-6)
+                # Seed the window: priority starts with the CASTER of the action
+                # now on top (a player about to answer their own pending spell hits
+                # Pass first), then moves through the party in turn order. An
+                # enemy-sourced top starts at the top of the fixed turn order.
+                # (Player pushes seed the caster directly — _open_window; this
+                # path covers enemy pushes and mid-window re-seeds after a nested
+                # item resolved.)
+                src = st.character(st.stack[-1].source_id)
+                st.priority = src.id if src is not None and src.alive \
+                    else _party_ordered(st)[0].id
                 st.passes = 0
                 st.reacted_window = []
             return
@@ -191,10 +200,20 @@ def _advance(st: GameState) -> None:
             st.phase = "upkeep"
 
 
+def _party_ordered(st: GameState) -> List[CharacterState]:
+    """The living party in TURN ORDER — the fixed initiative rolled at encounter
+    setup (state.party_order), NOT the row-based R-6 order: repositioning never
+    reshuffles whose turn comes next. States built without the field (legacy
+    saves / hand-rolled tests) fall back to the authored party order."""
+    order = st.party_order or [c.id for c in st.party]
+    idx = {cid: i for i, cid in enumerate(order)}
+    return sorted(st.living_party(), key=lambda c: idx.get(c.id, len(idx)))
+
+
 def _next_player(st: GameState) -> Optional[CharacterState]:
-    """The next living character (canonical order R-6) that hasn't ended its turn.
+    """The next living character (turn order) that hasn't ended its turn.
     Incapacitated PCs are skipped (alive == effective_hp > 0)."""
-    for c in _ordered(st.living_party()):
+    for c in _party_ordered(st):
         if not c.turn_ended:
             return c
     return None
@@ -225,6 +244,11 @@ def _begin_turn(st: GameState) -> None:
     st.acted_enemies = []
     st.acted_tokens = []
     st.reacted_window = []  # no window open at turn start
+    if st.turn == 1 and len(st.party) > 1:
+        # Announce the initiative rolled at setup (fixed for the whole encounter).
+        names = " → ".join(c.name for c in _party_ordered(st))
+        _log(st, "turn_order", f"Turn order: {names}.",
+             order=[c.id for c in _party_ordered(st)])
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
@@ -248,8 +272,8 @@ def _next_capacity_choice(st: GameState) -> Optional[CharacterState]:
     (only from turn 2 onward; no increase on turn 1)."""
     if st.turn < 2:
         return None
-    for c in st.party:
-        if c.alive and not c.capacity_chosen:
+    for c in _party_ordered(st):
+        if not c.capacity_chosen:
             return c
     return None
 
@@ -354,7 +378,10 @@ def _fire_event(st: GameState, event: str, actor,
     hit) so they always terminate instead of recursing forever."""
     if actor is None or st.event_depth >= 8:
         return
-    party_watch = [(h, ch) for h in st.living_party() for ch in list(h.channels)]
+    # Watch ALL party members' channels, not just living ones: a just-downed
+    # holder still holds theirs (the break is pending), so a "when you fall"
+    # death trigger gets its death rattle. Long-downed characters hold none.
+    party_watch = [(h, ch) for h in st.party for ch in list(h.channels)]
     enemy_watch = [(e, ch) for e in st.living_enemies() for ch in list(e.channels)]
     if not party_watch and not enemy_watch:
         return
@@ -563,6 +590,16 @@ def _condition_met(st: GameState, e: EnemyState, cond: dict) -> bool:
         lhs = st.turn
     elif kind == "ally_count":
         lhs = len([o for o in st.living_enemies() if o.id != e.id])
+    elif kind == "hero_count":
+        # Living (up) heroes — desperation/cleave gates that read the party's size.
+        lhs = len(st.living_party())
+    elif kind == "hero_channeling":
+        # Heroes currently holding a channel — arm the ritual-breaker only when
+        # there is a ritual to break.
+        lhs = len([c for c in st.living_party() if c.channels])
+    elif kind == "self_channeling":
+        # This enemy's own held channels — e.g. defend-the-ritual behaviour.
+        lhs = len(e.channels)
     else:
         return False
     return _cmp(lhs, op, val)
@@ -596,9 +633,30 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
     if rule == "self":
         return e
     if rule == "lowest_hp_ally":
-        return _lowest_hp([o for o in st.living_enemies() if o.id != e.id])
+        cands = [o for o in st.living_enemies() if o.id != e.id]
+        # A support rule whose verbs only heal skips allies at full HP — the healer
+        # falls through to its next rule (usually the attack) instead of wasting the
+        # mend. Buff/keyword support still lands on healthy allies.
+        if cands and all(getattr(v, "kind", None) == "heal" for v in comp.verbs) and comp.verbs:
+            cands = [o for o in cands if o.effective_hp < o.max_hp]
+        return _lowest_hp(cands)
+    if rule == "wounded_ally":
+        # Strictly-wounded support: the most-hurt fellow enemy, or nobody (skip the
+        # rule) when the warband is untouched.
+        return _lowest_hp([o for o in st.living_enemies()
+                           if o.id != e.id and o.effective_hp < o.max_hp])
     if rule == "channeling_player":
         return _lowest_hp([c for c in st.living_party() if c.channels])
+    if rule == "highest_threat":
+        # The assassin's read: the hardest-hitting reachable hero (ties: casters
+        # and ranged before melee, then the most wounded).
+        cands = [c for c in _reachable_targets(e, st.living_party())
+                 if not _has_kw(c, "hexproof")]
+        cands = _filter_control_targets(comp, cands)
+        if not cands:
+            return None
+        return sorted(cands, key=lambda c: (-c.current_power, _role_rank(c),
+                                            c.effective_hp, _row_rank(c.row), c.name))[0]
     if rule == "valuation":
         return _valuation_target(st, e, comp)
     return st.combatant(rule)  # a fixed combatant id
@@ -632,6 +690,20 @@ def _swarm_at_cap(st: GameState, e: EnemyState, comp: Component) -> bool:
     return len([o for o in st.living_enemies() if o.created_by == e.id]) >= 2
 
 
+def _filter_control_targets(comp: Component, cands: List) -> List:
+    """Don't waste control (§F-7.2 refinement): a stun rule skips heroes already
+    stunned and a taunt rule skips heroes already taunted, so the debilitator
+    spreads its locks across the party instead of stacking one victim. Emptying
+    the list makes the rule skip (first-match-wins moves on) — the enemy does
+    something useful instead."""
+    kinds = {getattr(v, "kind", None) for v in comp.verbs}
+    if "stun" in kinds:
+        cands = [c for c in cands if getattr(c, "stunned", 0) <= 0]
+    if "taunt" in kinds:
+        cands = [c for c in cands if getattr(c, "taunted_to", None) is None]
+    return cands
+
+
 def _valuation_target(st: GameState, e: EnemyState, comp: Component):
     """The target-valuation brain (§F-7.2). Candidates are the reachable, non-hexproof
     players; then ranked, first-match-wins:
@@ -645,6 +717,7 @@ def _valuation_target(st: GameState, e: EnemyState, comp: Component):
     wounded frontliner with no per-enemy scripting."""
     dmg = _component_damage(comp)
     cands = [c for c in _reachable_targets(e, st.living_party()) if not _has_kw(c, "hexproof")]
+    cands = _filter_control_targets(comp, cands)
     return _rank_valuation(cands, dmg)
 
 
@@ -737,18 +810,18 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
       * a fixed character id (e.g. §C's Maul → "mira"): aim there if reachable.
       * "lowest_hp_party" (default): the classic lowest-HP reachable target.
 
-    Reach is computed per mode without mutating the enemy; hexproof targets are
-    excluded (an enemy's targeted attack can't land on them — GDD §6/§7)."""
+    Reach is computed per mode without mutating the enemy. Hexproof does NOT
+    shelter a hero from basic attacks — it wards targeted spells/abilities only
+    (Update 06), so the pools here are purely reach-based."""
     party = st.living_party()
     tmpl = e.intent_template
     primary_mode = tmpl.get("mode", "melee")
-    primary = [c for c in _reachable_targets(e, party, mode=primary_mode)
-               if not _has_kw(c, "hexproof")]
+    primary = list(_reachable_targets(e, party, mode=primary_mode))
     primary_amount, primary_name = _attack_amount(e, tmpl), tmpl["name"]
     # The weaker ranged attack is a fallback only a melee-primary enemy can have.
     has_fallback = bool(e.ranged_template) and primary_mode == "melee"
-    fallback = ([c for c in _reachable_targets(e, party, mode="ranged")
-                 if not _has_kw(c, "hexproof")] if has_fallback else [])
+    fallback = (list(_reachable_targets(e, party, mode="ranged"))
+                if has_fallback else [])
     fb_amount = _attack_amount(e, e.ranged_template) if has_fallback else 0
     fb_name = e.ranged_template.get("name", primary_name) if has_fallback else primary_name
     none = (None, None, 0, None)
@@ -768,7 +841,7 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
     # mode still falls back to ranged when the primary attack can't reach the target.
     if e.taunted_by is not None:
         forced = st.character(e.taunted_by)
-        if forced is not None and forced.alive and not _has_kw(forced, "hexproof"):
+        if forced is not None and forced.alive:
             if forced in primary or not has_fallback:
                 return forced, primary_mode, primary_amount, primary_name
             return forced, "ranged", fb_amount, fb_name
@@ -785,7 +858,7 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
 
     if rule not in ("lowest_hp_party", "front_lowest_hp"):  # a fixed character id
         cand = st.character(rule)
-        if cand is not None and cand.alive and not _has_kw(cand, "hexproof"):
+        if cand is not None and cand.alive:
             chosen = aim(cand)
             if chosen[0] is not None:
                 return chosen
@@ -834,12 +907,12 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     if intent.target_id is None:
         enemy.intent = None
         return
-    # Re-check target legality as the intent ENTERS the stack: a target that left play,
-    # was incapacitated, or gained Hexproof since this was telegraphed makes the swing
-    # fizzle now rather than reach the stack (it is also re-checked at resolution, R-12).
+    # Re-check target legality as the intent ENTERS the stack: a target that left play
+    # or was incapacitated since this was telegraphed makes the swing fizzle now rather
+    # than reach the stack (it is also re-checked at resolution, R-12). Hexproof does
+    # NOT fizzle an attack — it wards spells/abilities, not the sword (Update 06).
     target = st.combatant(intent.target_id)
-    if (target is None or not _legal_target(target)
-            or (intent.action_type == "attack" and _has_kw(target, "hexproof"))):
+    if target is None or not _legal_target(target):
         _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no legal target.",
              enemy=enemy.id, label=intent.name)
         enemy.intent = None
@@ -1074,7 +1147,11 @@ def _post_trigger_ctx(st: GameState, item: Optional[StackItem], events: List[Eve
     the resolved item's source), read from the events the resolution emitted."""
     hits = [ev.data.get("target") for ev in events if ev.type == "damage"]
     deaths = [ev.data.get("enemy") for ev in events if ev.type == "enemy_died"]
+    downs = [ev.data.get("character") for ev in events if ev.type == "incapacitated"]
+    heals = [ev.data.get("target") for ev in events
+             if ev.type in ("heal", "wound_mend")]
     return {"phase": "post", "stack_top": None, "hits": hits, "deaths": deaths,
+            "downs": downs, "heals": heals,
             "attacker": item.source_id if item is not None else None}
 
 
@@ -1115,6 +1192,10 @@ def _trigger_matches(st: GameState, e: EnemyState, comp: Component, ctx: dict) -
     if ctx["phase"] == "pre":
         if trig == "on_spell_cast":
             return top is not None and top.source_side == "party" and top.kind == "spell"
+        if trig == "on_attack":
+            # A hero's attack sits on the stack — a duellist's window: parry it
+            # (counter, filter "attack"), shield the victim, or riposte first.
+            return top is not None and top.source_side == "party" and top.kind == "attack"
         if trig == "on_targeted":
             return top is not None and top.source_side == "party" and top.target_id == e.id
         if trig == "on_incoming_lethal":
@@ -1133,6 +1214,23 @@ def _trigger_matches(st: GameState, e: EnemyState, comp: Component, ctx: dict) -
         # 25% threshold (the crossing set `enraged` in _after_damage). Once-per-
         # encounter bookkeeping (forced at load) keeps this a single firing.
         return e.is_boss and e.enraged
+    if trig == "on_hero_downed":
+        # A hero was incapacitated by this resolution — the pack surges.
+        return bool(ctx.get("downs"))
+    if trig == "on_hero_healed":
+        # A hero regained HP (or closed a wound) this resolution — punish the medic.
+        return any(st.character(h) is not None for h in ctx.get("heals", []))
+    if isinstance(trig, str) and trig.startswith("on_self_below_"):
+        # `on_self_below_40`: this enemy was hit this resolution and now sits below
+        # the named percentage of max HP — a minion-grade "bloodied" moment (the
+        # generalised enrage). Reads the hit list so it fires on the crossing
+        # resolution; give it once_per_encounter (or a cooldown) to keep it a moment.
+        try:
+            pct = int(trig.rsplit("_", 1)[1])
+        except ValueError:
+            return False
+        return (e.id in hits and e.alive
+                and e.effective_hp * 100 < pct * e.max_hp)
     if isinstance(trig, str) and trig.startswith("on_ally_below_"):
         # `on_ally_below_50` (§F-3.2): an ally was hit this resolution and now sits
         # below the named percentage of its max HP. Reads the hit list (not the whole
@@ -1175,14 +1273,31 @@ def _reaction_target(st: GameState, e: EnemyState, comp: Component, ctx: dict):
     return _component_target(st, e, comp)
 
 
+def _reaction_counters_stack(comp: Component) -> bool:
+    """A reaction whose verbs include `counter` answers the STACK TOP itself (an
+    enemy counterspell, §F-3.2): its target is the action under answer, not a
+    combatant."""
+    return any(getattr(v, "kind", None) == "counter" for v in comp.verbs)
+
+
 def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> None:
     """Push an enemy reaction onto the stack and reopen the party's window. Consumes
     the per-window slot and starts the component's cooldown."""
-    target = _reaction_target(st, e, comp, ctx)
+    if _reaction_counters_stack(comp):
+        # An enemy counterspell aims at the stack action that tripped the trigger
+        # (pre-resolution only — there is nothing to counter post-resolution). The
+        # "#uid" form is the same handle a player's counter uses, and the counter
+        # itself sits on the stack first: the party can counter the counter.
+        top = ctx.get("stack_top")
+        if top is None:
+            return
+        target, tid = None, f"#{top.uid}"
+    else:
+        target = _reaction_target(st, e, comp, ctx)
+        tid = target.id if target is not None else None
     _start_cooldown(st, e, comp.id)
     st.reacted_window.append(e.id)
     label = comp.telegraph or comp.archetype or "Reaction"
-    tid = target.id if target is not None else None
     # A reaction is a TRIGGERED ability in the GDD taxonomy (Retaliate) — so a
     # "triggered"/"ability" counter answers it while "spell" doesn't — unless
     # the component is spell-classed (an arcane riposte counters as a spell).
@@ -1366,15 +1481,19 @@ def _push(st: GameState, item: StackItem) -> StackItem:
 
 
 def _open_window(st: GameState, actor_id: str, reactive: bool) -> None:
-    """After a player adds to the stack, seed the reaction window. A proactive
-    add restarts priority at party order; a reactive add hands off to the next
-    player (round-robin) so the active player isn't asked twice in a row."""
+    """After a player adds to the stack, seed the reaction window: the CASTER
+    speaks first (they may respond to their own action — they hit Pass first),
+    then priority moves through the rest of the party in turn order. A proactive
+    add opens a FRESH window, so the per-window reaction tracker resets here;
+    a reactive add is a response inside the existing window."""
     st.passes = 0
-    st.priority = _next_priority_after(st, actor_id) if reactive else None
+    if not reactive:
+        st.reacted_window = []
+    st.priority = actor_id if st.character(actor_id) is not None else None
 
 
 def _next_priority_after(st: GameState, actor_id: str) -> str:
-    ids = [c.id for c in _ordered(st.living_party())]  # canonical priority order (R-6)
+    ids = [c.id for c in _party_ordered(st)]  # the fixed turn order
     if actor_id in ids:
         return ids[(ids.index(actor_id) + 1) % len(ids)]
     return ids[0]
@@ -1669,7 +1788,9 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
             return
         if sign > 0:
             holder = st.character(holder_id) if holder_id is not None else None
-            if holder is not None and holder.alive and not _has_kw(holder, "hexproof"):
+            # A hexproof holder still lures: taunt redirects ATTACKS, and attacks
+            # land on hexproof (it wards spells/abilities only — Update 06).
+            if holder is not None and holder.alive:
                 target.taunted_by = holder_id
                 if target.intent is not None:
                     target.intent.target_id = holder_id
@@ -2077,8 +2198,11 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
             continue
         # Hexproof: a TARGETED effect can't land on a hexproof HOSTILE — an enemy's
         # on a character, or a player's on an enemy creature (friendly targeting is
-        # fine; untargeted-chosen effects beat hexproof) — GDD §6/§7.
-        if (_is_targeted(effect) and target is not None and _has_kw(target, "hexproof")
+        # fine; untargeted-chosen effects beat hexproof) — GDD §6/§7. BASIC ATTACKS
+        # are exempt: hexproof wards off spells and abilities that target, not the
+        # sword — an attack action always lands (playtest ruling, Update 06).
+        if (item.kind != "attack"
+                and _is_targeted(effect) and target is not None and _has_kw(target, "hexproof")
                 and ((item.source_side == "enemy" and not isinstance(target, EnemyState))
                      or (item.source_side != "enemy" and isinstance(target, EnemyState)))):
             _log(st, "fizzle", f"{item.label} fizzles — {target.name} has Hexproof.",
@@ -2658,15 +2782,19 @@ def _r_fight(st, item, effect, target, ctx):
 
 
 def _r_counter(st, item, effect, target, ctx):
-    # Cancel the enemy action this counter named, if it's still on the stack and
-    # matches the filter (a filter node matches its descendants — GDD §5.4).
+    # Cancel the hostile action this counter named, if it's still on the stack and
+    # matches the filter (a filter node matches its descendants — GDD §5.4). Works
+    # from either side: a player counters an enemy action, an enemy counterspell
+    # (a reactive component with a counter verb) counters a player's cast. You can
+    # never counter your own side's action.
     # The counter's own site binding wins (a multi-mode combo may aim its counter
     # at one thing and its other mode elsewhere); a single-target cast falls back
     # to the item's primary target as before.
     tid = _site_target(item, ctx, effect, getattr(effect, "target", None))
     uid = _parse_uid(tid)
     victim = next((s for s in st.stack if s.uid == uid), None) if uid is not None else None
-    if victim is None or victim.source_side != "enemy" or not _filter_matches(effect.filter, victim):
+    if (victim is None or victim.source_side == item.source_side
+            or not _filter_matches(effect.filter, victim)):
         _log(st, "counter_fizzle", f"{item.label} has nothing to counter.", kind="counter")
         return
     st.stack.remove(victim)
@@ -2746,8 +2874,10 @@ def _r_taunt(st, item, effect, target, ctx):
     # Force the targeted enemy to aim at the caster this turn — both its already
     # declared intent and the next one it declares.
     if isinstance(target, EnemyState):
+        # A hexproof caster can still taunt: the forced action is an ATTACK, and
+        # attacks land on hexproof (it wards spells/abilities only — Update 06).
         who = st.character(item.source_id)
-        if who is not None and not _has_kw(who, "hexproof"):
+        if who is not None:
             target.taunted_by = item.source_id
             if target.intent is not None:
                 target.intent.target_id = item.source_id
@@ -3050,8 +3180,18 @@ def _after_damage(st: GameState, target) -> None:
     if (isinstance(target, EnemyState) and target.is_boss and not target.enraged
             and target.alive and target.in_execute_window):
         target.enraged = True
+        # Enraging is a hard reset, not just a flag (§F-9 upgraded): the boss shakes
+        # off control (stun/taunt drop — fury doesn't sit out a turn) and its ability
+        # cooldowns clear (the post-enrage kit opens at full aggression). once_per_
+        # encounter firings stay spent — the drama doesn't repeat.
+        shaken = target.stunned > 0 or target.taunted_by is not None
+        target.stunned = 0
+        target.taunted_by = None
+        target.cooldowns = {k: v for k, v in target.cooldowns.items() if v >= 10 ** 9}
         _log(st, "enrage", f"{target.name} ENRAGES ({target.effective_hp}/"
-             f"{target.max_hp} HP) — the execute window is open.", enemy=target.id)
+             f"{target.max_hp} HP) — the execute window is open"
+             + (", control effects are shaken off" if shaken else "")
+             + ", and its abilities reset.", enemy=target.id)
     # Lethality is on effective_hp (R-7): hp + temp_mod. A pump buffer can keep a
     # creature alive at hp 0; a wound can kill at hp > 0.
     if target.effective_hp > 0:
@@ -3064,6 +3204,10 @@ def _after_damage(st: GameState, target) -> None:
         _log(st, "incapacitated", f"{target.name} is incapacitated.", character=target.id)
         _note_break(st, target, "incapacitated")
         _purge_stack_from(st, target.id, "incapacitated")  # its pending spells/attacks drop
+        # On-death channel triggers hear an incapacitation too. The downed
+        # holder's own channels break right after (pending_break) — so a
+        # "when you fall" trigger fires once, as a death rattle.
+        _fire_event(st, "death", target)
 
 
 def _purge_stack_from(st: GameState, source_id: str, reason: str) -> None:
@@ -3096,6 +3240,9 @@ def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
              enemy=enemy.id)
     _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
     _purge_stack_from(st, enemy.id, "destroyed")
+    # On-death channel triggers fire after the enemy has fully left the board
+    # (its own channels are already broken, so it never hears its own death).
+    _fire_event(st, "death", enemy)
 
 
 def _remove_token(st: GameState, token: TokenState) -> None:
@@ -3105,6 +3252,7 @@ def _remove_token(st: GameState, token: TokenState) -> None:
         st.acted_tokens.remove(token.id)
     _log(st, "token_died", f"{token.name} is destroyed.", token=token.id)
     _purge_stack_from(st, token.id, "destroyed")
+    _fire_event(st, "death", token)  # an ally token falling counts as a death
 
 
 def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None:
@@ -3370,10 +3518,14 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
 
 
 def _voluntarily_droppable(st: GameState, actor: CharacterState) -> List[Channel]:
-    """The holder's channels that may be VOLUNTARILY dropped right now: only those
-    started on an EARLIER turn. A same-turn channel can't be cancelled — otherwise
-    channel-then-drop would be a discounted one-turn cast of its effect (GDD §8)."""
-    return [ch for ch in actor.channels if ch.started_turn < st.turn]
+    """The holder's channels that may be VOLUNTARILY dropped right now: ALL of them.
+    Dropping is instant-speed and free — legal whenever the holder has priority
+    (main phase or any reaction window), releasing the reserved mana straight back
+    to the pool so it can pay for a different spell in the same window. This
+    supersedes the GDD §8 same-turn hold rule (playtest ruling, Update 06): the
+    channel's ongoing effect stops the moment it drops, so an early drop forfeits
+    value rather than banking it."""
+    return list(actor.channels)
 
 
 def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:

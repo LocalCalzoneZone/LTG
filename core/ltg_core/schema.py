@@ -214,16 +214,22 @@ TriggerType = Literal["channel_start", "upkeep", "capacity_increase", "channel_b
 # events count — relative to the channel's HOLDER: "you" = the holder,
 # "target" = the channel's chosen target, "ally" = anyone on the holder's side
 # (including the holder), "enemy" = anyone opposing, "any" = anyone at all.
-TRIGGER_EVENTS = ["attack", "damage_taken", "life_gain", "spell_cast", "card_draw"]
+# "death" covers both forms of falling: an enemy/token dying and a player
+# character being incapacitated (a holder's own channels break on their
+# incapacitation, but the trigger fires first — a death rattle).
+TRIGGER_EVENTS = ["attack", "damage_taken", "life_gain", "spell_cast", "card_draw",
+                  "death"]
 TRIGGER_WHO = ["you", "target", "ally", "enemy", "any"]
 
 
 class EventTrigger(BaseModel):
     """A channeled effect that fires on a combat event: someone attacks, is
-    dealt damage, gains life, casts a spell (optionally of one card type), or
-    draws a card. `who` scopes whose events count, relative to the holder."""
+    dealt damage, gains life, casts a spell (optionally of one card type),
+    draws a card, or dies / is incapacitated. `who` scopes whose events count,
+    relative to the holder."""
 
-    event: Literal["attack", "damage_taken", "life_gain", "spell_cast", "card_draw"]
+    event: Literal["attack", "damage_taken", "life_gain", "spell_cast", "card_draw",
+                   "death"]
     who: Literal["you", "target", "ally", "enemy", "any"] = "you"
     # spell_cast only: fire only for this card type (instant/sorcery/channeled).
     spell_type: Optional[Timing] = None

@@ -14,10 +14,10 @@ export function ActionBar({ choices, reaction }: { choices: Choices | null; reac
   const armed = useGame((s) => s.armed);
   const startPassAll = useGame((s) => s.startPassAll);
   const passAllFor = useGame((s) => s.passAllFor);
-  // Active only when THIS character (the one holding priority for `pass`) is the one
-  // auto-passing — not when a different party member armed Pass All.
+  // Pass All is a per-character commitment: lit only when THIS character (the
+  // one the pass action belongs to) is auto-passing. Clicking again cancels.
   const passActor = choices?.pass?.candidates[0]?.actor_id;
-  const passAllActive = passAllFor != null && passAllFor === passActor;
+  const passAllActive = passActor != null && passAllFor.includes(passActor);
 
   const coreBtn = ({ key, Icon, label }: (typeof CORE)[number]) => {
     const choice = choices?.[key] as Choice | undefined;
@@ -71,7 +71,9 @@ export function ActionBar({ choices, reaction }: { choices: Choices | null; reac
         <button
           disabled={!choices?.pass}
           onClick={startPassAll}
-          title="Pass every reaction window until the stack fully resolves"
+          title={passAllActive
+            ? "Auto-passing until the stack resolves — click to cancel"
+            : "This character passes every window until the stack fully resolves"}
           className={`caps-label border py-1.5 text-[11px] tracking-[0.16em] transition ${
             !choices?.pass
               ? "cursor-not-allowed border-line/50 text-dimmed/60"
