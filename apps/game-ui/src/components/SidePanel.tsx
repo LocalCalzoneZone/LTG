@@ -128,6 +128,15 @@ export function SidePanel() {
         <div className="mt-1 pl-4 text-[10px] font-light text-dimmed">top resolves first</div>
       </Panel>
 
+      {/* Intents (D8-1.5) — one veiled line per living enemy for this round */}
+      <Panel title="Intents">
+        {snapshot.intents.length === 0 ? (
+          <Empty>no declared intents</Empty>
+        ) : (
+          snapshot.intents.map((it) => <IntentLine key={it.enemy_id} intent={it} />)
+        )}
+      </Panel>
+
       {/* Chronicle (fills the rest) */}
       <Panel title="Chronicle" className="min-h-0 flex-1">
         <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
@@ -145,6 +154,52 @@ export function SidePanel() {
           style={{ top: hoverCard.top, right: hoverCard.right }}
         >
           <HandCard card={hoverCard.card} playable active={false} onClick={() => {}} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The veiled category → a small tag colour: hostile reads blood, magic reads
+// spell-blue, gathering reads brass (the fuse), the rest stay mist.
+function categoryTint(category: string): string {
+  if (category === "threat" || category === "party assault" || category === "row assault")
+    return "text-blood/90 border-blood/50";
+  if (category === "spellcraft") return "text-spell border-spell/50";
+  if (category === "gathering") return "text-brass border-brass/50";
+  if (category === "summon" || category === "support") return "text-aether border-aether/50";
+  return "text-mist border-line2";
+}
+
+function IntentLine({ intent }: { intent: import("../lib/types").IntentView }) {
+  const hoverIntent = useGame((s) => s.hoverIntent);
+  const setHoverIntent = useGame((s) => s.setHoverIntent);
+  const struck = intent.status === "executed" || intent.status === "stripped"
+    || intent.status === "fizzled";
+  const hovered = hoverIntent?.enemyId === intent.enemy_id;
+  return (
+    <div
+      onMouseEnter={() => setHoverIntent({ enemyId: intent.enemy_id, targetId: intent.target_id })}
+      onMouseLeave={() => setHoverIntent(null)}
+      className={`px-1 py-0.5 text-[12px] font-light leading-snug transition ${
+        hovered ? "bg-brass/10" : ""
+      }`}
+    >
+      <span className={`${struck ? "line-through opacity-50" : ""} ${
+        intent.status === "stunned" ? "italic text-dimmed" : "text-mist"
+      }`}>
+        {intent.line}
+      </span>
+      {intent.status !== "stunned" && intent.category !== "none" && (
+        <span
+          className={`caps-label ml-1.5 border px-1 text-[9px] tracking-[0.12em] opacity-90 ${categoryTint(intent.category)}`}
+        >
+          {intent.category}
+        </span>
+      )}
+      {intent.status === "stripped" && intent.reveal && (
+        <div className="pl-3 text-[11px] italic text-brass/90">
+          unravelled — it would have been {intent.reveal}
         </div>
       )}
     </div>

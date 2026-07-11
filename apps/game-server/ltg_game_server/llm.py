@@ -134,18 +134,32 @@ Upgrade prices: +1 HP = 1 pt · +1 Power = 3 pts · adding a ranged attack = 2 p
 ## Components (abilities — each has a cost; more/complex = higher level)
 archetype (typical effect) — base cost:
 - Punish (telegraphed retaliation, deal_damage on a trigger) — 3
-- Fortify (heal / pump self or ally) — 3
+- Fortify (heal / pump / REGEN self or ally) — 3
 - Ward (prevent/protection shield on self or an ally — a bodyguard's shield) — 3
 - Evasive (repositioning; pairs with flying/hexproof) — 2
 - Burst (extra damage above the basic attack) — 4
-- Debilitate (wound / stun / taunt / prevent) — 4
-- Escalate (recurring self-pump / +1/+1 counters) — 4
+- Debilitate (wound / stun / taunt / prevent / POISON) — 4
+- Escalate (recurring self-pump / +1/+1 counters / CHARGE gathering) — 4
 - Drain (deal_damage + heal self, coupled) — 5
 - Counter (REACTIVE ONLY: cancel the hero action on the stack — a counterspell
   on trigger on_spell_cast, or a parry on trigger on_attack) — 3
 - Swarm (create_token) — 6
 Cost modifiers (multiply, round up): cooldown 1 = ×1.5 · cooldown 2–3 = ×1.0 ·
 once_per_encounter = ×0.5 · reactive timing = +2 flat after multipliers.
+
+## Typed counters: poison, regen, and charge (Design Update 08)
+- POISON `{"kind": "poison", "amount": 1, "target": {chosen hero}}` — the victim
+  gains 1 counter per amount NOW and again at each Upkeep (each counter is a
+  permanent −0/−1) until ANY healing on them cures it. Magnitude: amount 1 per
+  tick at any level (an optional `"turns": N` bounds it). Poison is NOT damage —
+  it ignores shields and never breaks a channel. It is the anti-turtle,
+  anti-channeler pressure: one poisoner per encounter reads as a clock the
+  enemy healer forces the party's healer to answer.
+- REGEN `{"kind": "regen", "amount": 1, "target": {self or ally}}` (Fortify) —
+  the mirror: +0/+1 per tick until the creature is dealt damage that CONNECTS.
+  A regen'd elite must be *hit* to be whittled, making chip damage a real
+  assignment. Regen ticks count as healing (they cure poison).
+- CHARGE — the WINDUP pattern (see its own section below).
 
 ## Verb magnitudes scale with the enemy's Level L
 deal_damage (Burst/Punish) = L+1 · Drain (damage & heal each) = ceil(L/2)+1 ·
@@ -182,9 +196,31 @@ trigger (reactive components): "on_hit" (this enemy took damage) · "on_ally_hit
 any percent; give it once_per_encounter so it stays a moment) ·
 "on_hero_downed" (a hero was just incapacitated — the pack surges) ·
 "on_hero_healed" (a hero regained HP — punish the medic; target_rule
-"trigger_source" hits whoever cast the heal).
+"trigger_source" hits whoever cast the heal) ·
+"on_charge_full" (with "charge_threshold": Y — fires the moment this enemy's
+charge reaches Y; see the windup section).
 
 `"once_per_encounter": true` on a component = a single dramatic use (×0.5 cost).
+
+## The windup (charge — Design Update 08 §D8-2.4)
+The most dramatic pattern you have besides a channel: a GATHERER visibly fills a
+charge gauge over several turns, and a HIDDEN ability detonates when it fills.
+The party watches the pips rise without knowing what they feed — eat it, counter
+it on the stack, or stop it from ever filling (kill, stun, strip the gather).
+Build it as TWO components on one enemy:
+- The gather: proactive, priced as Escalate (4), verbs
+  `[{"kind": "charge", "amount": 1}]`, target_rule "self" (charge is enemy-only
+  and always self). Its intent reads as "gathering" to the players.
+- The detonation: `"timing": "reactive"`, `"trigger": "on_charge_full"`,
+  `"charge_threshold": <Y>` — it fires onto the stack the moment charge reaches
+  Y and the charge resets. Priced at its archetype base + the reactive +2, no
+  further modifier — but its verb magnitudes may spend up to 2× the level
+  schedule (the multi-turn delay, the visible gauge, and the disruptability are
+  the price). The threshold MUST require at least two gather resolutions
+  (Y ≥ 2 × the gather's amount) — a one-turn "windup" is just a Burst; price it
+  as one.
+Use at most ONE gatherer per encounter, and pair it naturally with a Ward
+bodyguard — the party must choose between the wall and the fuse.
 
 ## Channelled components (ongoing effects the party must break)
 `"channel": true` on a proactive component makes it a CHANNEL: resolving it
@@ -217,8 +253,13 @@ Spore Fog / venom / a war-cry = "ability" (omit the field). Casters and mystics
 should carry spell-classed components — it makes counterspell decks matter.
 
 ## Keywords (min level / cost)
-reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · deathtouch (3/4) ·
-protection (4/3) · hexproof (4/4) · indestructible (6/6).
+reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
+deathtouch (3/4) · protection (4/3) · hexproof (4/4) · indestructible (6/6).
+Infect: any damage the creature deals that CONNECTS also poisons the victim
+(one unbounded poison effect per connecting hit, first counter at the next
+Upkeep). An infected biter turns every landed hit into a healer assignment —
+pair it with pressure that punishes healing (on_hero_healed) for a genuinely
+nasty knot, and use AT MOST ONE infect creature per encounter.
 Hexproof wards off targeted SPELLS and ABILITIES only — basic attacks still land
 on a hexproof creature (both directions), so a hexproof enemy is spell-slippery,
 not unhittable.
@@ -264,6 +305,10 @@ is fine; overspending is impossible. Complexity self-prices into level.
   * A MEDIC-PUNISHER (reactive on_hero_healed, target_rule trigger_source): makes
     the party's sustain a decision instead of a free loop.
   * A TIMER (condition turn >= N unlocking a bigger ability): punishes turtling.
+  * A POISONER (Debilitate with a poison verb): the anti-turtle clock — the
+    party must spend healing to cure it or race it. At most one per encounter.
+  * A GATHERER (the charge windup — see its section): a visible fuse under a
+    veiled kit; the drama is the gauge filling while the party guesses.
 - Respect the per-party-size Level budgets you are given below: for each layout,
   the sum of its enemies' levels (a boss counts double) should land near that
   size's target. The party must be OUTNUMBERED at every size — each layout must
@@ -305,9 +350,14 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
 - Elite minions can carry their own mini-enrage: a reactive component on
   `"trigger": "on_self_below_50"` (any percent) with once_per_encounter — the
   fight stays dynamic even away from the boss.
-- Every proactive component needs a `telegraph` (the intent text players see) and a
-  `priority` (lower = considered first; 10–19 emergencies, 20–49 tactical, basic
-  attack is implicitly 90). Give ability components a `cooldown` (2 is typical).
+- Every proactive component needs a `telegraph` and a `priority` (lower =
+  considered first; 10–19 emergencies, 20–49 tactical, basic attack is
+  implicitly 90). Give ability components a `cooldown` (2 is typical).
+  NOTE (Design Update 08 §D8-1): the telegraph is NO LONGER shown while the
+  intent is declared — players see only a generic category ("threatens…",
+  "begins casting a spell…", "gathers its power…"). The telegraph is the
+  action's ON-STACK NAME when it executes, and the reveal text when a hero
+  strips the intent. Write it well anyway: it is what the players learn.
 
 # Scene & visual descriptions (REQUIRED — they feed art + narration)
 - Top-level `"scene"`: 2–3 sentences describing the SETTING where this fight
@@ -343,6 +393,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
                        "Burst" | "Escalate" | "Swarm" | "Enrage",
           "timing": "proactive" | "reactive",
           "trigger": "<from the trigger vocabulary above>",  // reactive only
+          "charge_threshold": <int>,    // on_charge_full only: fires at this charge
           "condition": {"kind": "self_hp_pct", "op": "<", "value": 50},   // optional gate
           "cooldown": <int>,            // turns between uses, e.g. 2
           "once_per_encounter": true,   // optional; a single dramatic use
@@ -366,6 +417,9 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "prevent", "parameter": "combat_damage", "uses": "next", "target": {"mode": "self"}},  // a shield
             {"kind": "protection", "target": {"mode": "self"}},   // negates the next spell/attack entirely (Ward)
             {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; NO target field
+            {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: −0/−1 per Upkeep until healed
+            {"kind": "regen",  "amount": 1, "target": {"mode": "self"}},   // Fortify: +0/+1 per Upkeep until damaged
+            {"kind": "charge", "amount": 1},                      // gather (windup); enemy-only, always self, NO target field
             {"kind": "grant_keyword", "keywords": ["flying"], "duration": "encounter", "target": {"mode": "chosen", "side": "ally", "targeted": true}},
             {"kind": "create_token", "token_id": "<id in tokens>", "count": <int>, "hp": <int>, "power": <int>},
             {"kind": "wound", "power": 1, "toughness": 1, "duration": "while_channeled", "target": {"mode": "all", "side": "ally"}},   // CHANNEL aura: holds until broken

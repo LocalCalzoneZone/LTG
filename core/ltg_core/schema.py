@@ -296,6 +296,7 @@ KEYWORDS = {
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
+    "infect": {"display": "Infect", "gloss": "its damage that connects also poisons the victim — a −0/−1 per Upkeep until cured by any healing (D8-2.5)", "grantable": True, "params": []},
     "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
     "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
     "protection": {"display": "Protection", "gloss": "prevents the next spell or attack", "grantable": True, "params": ["from"]},
@@ -371,6 +372,42 @@ class LoseLife(EffectBase):
     kind: Literal["lose_life"] = "lose_life"
     amount: Value
     target: TargetOrSlot
+
+
+class Poison(EffectBase):
+    """A poison effect (Design Update 08 §D8-2.1): places `amount` poison counters
+    (each a persistent −0/−1) on resolution and again at the start of each Upkeep,
+    until it concludes — the creature dies, receives any healing (an antidote is an
+    antidote), or the optional `turns` bound expires. Not damage: it cannot be
+    prevented or mitigated and never breaks a channel."""
+
+    kind: Literal["poison"] = "poison"
+    amount: Value = 1
+    turns: Optional[int] = None  # absent = until concluded by rule
+    target: TargetOrSlot
+
+
+class Regen(EffectBase):
+    """The mirror of poison (§D8-2.2): places `amount` regen counters (each a
+    persistent +0/+1) on resolution and at each Upkeep until it concludes — the
+    creature is dealt damage that connects, or the `turns` bound expires. A regen
+    tick counts as healing (it cures poison). Poison and regen counters on the
+    same creature annihilate 1:1 as a state-based action."""
+
+    kind: Literal["regen"] = "regen"
+    amount: Value = 1
+    turns: Optional[int] = None
+    target: TargetOrSlot
+
+
+class Charge(EffectBase):
+    """The windup verb (§D8-2.4): the source places `amount` charge counters on
+    ITSELF — a visible gauge that detonates a hidden `on_charge_full` component at
+    its threshold. Enemy-only: validation rejects it in a loadout (like `draw` on
+    an enemy); the player analogue is the ultimate gauge (§D8-3.3)."""
+
+    kind: Literal["charge"] = "charge"
+    amount: int = 1
 
 
 class Destroy(EffectBase):
@@ -616,6 +653,9 @@ LEAF_EFFECT_CLASSES = [
     DealDamage,
     Heal,
     LoseLife,
+    Poison,
+    Regen,
+    Charge,
     Destroy,
     Exile,
     Bounce,
@@ -992,6 +1032,10 @@ class Card(BaseModel):
                     raise ValueError(
                         f"{effect.kind} cannot target an enemy (enemies have no library)"
                     )
+            if effect.kind == "charge":
+                # Charge is the enemy windup verb (D8-2.4); the player analogue is
+                # the ultimate gauge. Rejected in a loadout like `draw` on an enemy.
+                raise ValueError("charge is enemy-only and cannot appear on a card")
             # Channeled-only persistence: while_channeled / upkeep are illegal on
             # one-shot cards, and an effect can't be both continuous and recurring.
             is_channeled = self.timing == Timing.channeled
@@ -1054,8 +1098,9 @@ CREATION_KEYWORD_COST = {
     "reach": 5, "trample": 10, "first_strike": 15, "lifelink": 15,
     "haste": 15, "vigilance": 20, "flying": 25,
 }
-# Hard-stop at creation (§P-3): may exist on enemies / via gear later, never bought.
-BANNED_CREATION_KEYWORDS = {"protection", "hexproof", "indestructible", "deathtouch"}
+# Hard-stop at creation (§P-3, D8-2.5): may exist on enemies / via gear later,
+# never bought — infect reaches a hero only by being granted.
+BANNED_CREATION_KEYWORDS = {"protection", "hexproof", "indestructible", "deathtouch", "infect"}
 
 
 class Archetype(str, Enum):
@@ -1113,6 +1158,20 @@ def preset_character(archetype: Archetype, name: str, colors, starting_mana,
     )
 
 
+class FlavorEntry(BaseModel):
+    """Optional display flavour for one evergreen ability (D8-3.4): a custom name
+    and a one-line text. Purely presentational — the mechanics are untouched."""
+
+    name: str = ""
+    text: str = ""
+
+
+class AbilityFlavor(BaseModel):
+    attack: Optional[FlavorEntry] = None
+    defend: Optional[FlavorEntry] = None
+    mitigate: Optional[FlavorEntry] = None
+
+
 class Character(BaseModel):
     name: str
     description: str = ""
@@ -1132,6 +1191,14 @@ class Character(BaseModel):
     attack_mode: AttackMode = AttackMode.melee  # the one owned mode (§P-1)
     keyword: Optional[str] = None             # at most one buyable keyword (§P-3)
     row: Row = Row.front
+
+    # --- heroic actions (Design Update 08 §D8-3): authored on the character sheet
+    # with the full card schema — NOT library cards (never drawn, outside the
+    # 20-card deck, rarity quotas and the singleton rule; exempt from deck lints).
+    # Neither is priced by the 70-point budget for now (§D8-3.5).
+    skill: Optional[Card] = None       # once per encounter; timing forced to instant
+    ultimate: Optional[Card] = None    # once per encounter; sorcery; zero mana cost
+    ability_flavor: AbilityFlavor = Field(default_factory=AbilityFlavor)
 
     # Display-only label: the preset this build was loaded from, or None for a
     # custom build. The engine derives nothing from it.
@@ -1233,6 +1300,27 @@ class Character(BaseModel):
                 f"build spends {self.points_spent} points, over the "
                 f"{CREATION_BUDGET}-point creation budget (§P-1)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _heroics_valid(self) -> "Character":
+        """D8-3.5: the Skill's timing is FORCED to instant and the Ultimate's to
+        sorcery (channeled is illegal for both — coerced away rather than
+        round-tripped); the Ultimate may never carry a mana cost (the gauge is
+        the cost)."""
+        if self.skill is not None and self.skill.timing != Timing.instant:
+            # Rebuild so Card's own validators re-run against the forced timing
+            # (a channeled-only effect then raises instead of slipping through).
+            self.skill = Card.model_validate(
+                {**self.skill.model_dump(mode="json"), "timing": "instant"})
+        if self.ultimate is not None:
+            if self.ultimate.timing != Timing.sorcery:
+                self.ultimate = Card.model_validate(
+                    {**self.ultimate.model_dump(mode="json"), "timing": "sorcery"})
+            cost = self.ultimate.cost
+            if cost.generic or cost.x or any(cost.colors.values()):
+                raise ValueError(
+                    "an ultimate never costs mana — the gauge is the cost (§D8-3.2)")
         return self
 
     @property

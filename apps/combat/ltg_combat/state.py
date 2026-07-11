@@ -25,6 +25,24 @@ from ltg_core.schema import Card, Effect
 # Prevention shields (R-11 `prevent [parameter]`)
 # --------------------------------------------------------------------------- #
 @dataclass
+class Affliction:
+    """One active poison or regen EFFECT riding a creature (Design Update 08 §D8-2).
+
+    The effect is the ticking process; the counters it has placed live on the
+    creature's `poison_counters` / `regen_counters` tallies (stats already folded
+    in as each counter lands). `turns_left` is the optional authored bound (None =
+    until concluded by rule); `pending` marks an infect-applied poison whose FIRST
+    counter lands at the next Upkeep rather than on application (§D8-2.5).
+    `source_id` is the combatant that applied it — regen ticks credit the applier's
+    ultimate gauge (§D8-3.3)."""
+
+    amount: int = 1
+    turns_left: Optional[int] = None
+    pending: bool = False
+    source_id: Optional[str] = None
+
+
+@dataclass
 class PreventTag:
     """A `prevent [parameter]` shield riding on one combatant.
 
@@ -139,6 +157,26 @@ class CharacterState:
     # `power`/`max_hp` when granted (_r_counters); this tally exists so the UI
     # can show counters as a distinct, permanent thing.
     counters: int = 0
+    # Typed counters (D8-2): active poison/regen effects (the ticking processes)
+    # and the counters they have placed (stats folded in as each lands; the
+    # tallies exist for display and 1:1 annihilation).
+    poison_effects: List[Affliction] = field(default_factory=list)
+    regen_effects: List[Affliction] = field(default_factory=list)
+    poison_counters: int = 0
+    regen_counters: int = 0
+
+    # Heroic actions (D8-3): the authored once-per-encounter Skill/Ultimate (core
+    # Card models with forced timing), their used flags, the public 0–100 ultimate
+    # gauge, and optional display flavour for the evergreen abilities.
+    skill: Optional[Card] = None
+    ultimate: Optional[Card] = None
+    skill_used: bool = False
+    ultimate_used: bool = False
+    ultimate_gauge: int = 0
+    ability_flavor: Dict[str, Any] = field(default_factory=dict)
+    # +25-on-ally-downed bookkeeping: set when this character's downing has been
+    # credited to the rest of the party, cleared when they stand back up.
+    down_credited: bool = False
 
     # Per-round / per-turn flags (reset at upkeep).
     used_attack: bool = False
@@ -202,6 +240,10 @@ class TokenState:
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
     counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
+    poison_effects: List[Affliction] = field(default_factory=list)  # typed counters (D8-2)
+    regen_effects: List[Affliction] = field(default_factory=list)
+    poison_counters: int = 0
+    regen_counters: int = 0
 
     @property
     def effective_hp(self) -> int:
@@ -280,6 +322,9 @@ class Component:
     archetype: str = ""                  # Burst | Evasive | Drain | ... (authoring/label)
     timing: str = "proactive"            # "proactive" | "reactive" (§F-3)
     trigger: Optional[str] = None        # reactive only — from the §F-3.2 vocabulary
+    # D8-2.4: an `on_charge_full` reactive fires the moment the enemy's charge
+    # reaches this threshold (going on the stack; charge resets as it is pushed).
+    charge_threshold: Optional[int] = None
     condition: Optional[Dict[str, Any]] = None  # optional eligibility gate
     cooldown: int = 0                    # whole turns between uses (§F-3.1)
     once_per_encounter: bool = False
@@ -366,6 +411,20 @@ class EnemyState:
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)
     counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
+    poison_effects: List[Affliction] = field(default_factory=list)  # typed counters (D8-2)
+    regen_effects: List[Affliction] = field(default_factory=list)
+    poison_counters: int = 0
+    regen_counters: int = 0
+    # Charge (D8-2.4): the visible windup gauge the `charge` verb fills. The count
+    # is public; what it feeds (the on_charge_full component) is hidden until it fires.
+    charge: int = 0
+
+    # Veiled-intents bookkeeping (D8-1.5): this round's declared intent, kept after
+    # it leaves `intent` so the intents window can strike the line and — for a
+    # strip — show the reveal. Status: none|declared|stripped|stunned|executed|fizzled.
+    round_intent: Optional["Intent"] = None
+    round_intent_status: str = "none"
+    round_intent_reveal: str = ""
 
     @property
     def effective_hp(self) -> int:
@@ -468,6 +527,10 @@ class Action:
     # X chosen for an {X}-cost cast. Part of the action's identity: the engine
     # offers one cast per affordable X value.
     x: Optional[int] = None
+    # Marked by the game server's smart auto-pass (D8-4): a synthetic pass/end
+    # submitted because the holder had no meaningful option. Presentation only —
+    # not part of the action's identity; the log annotates it "(auto)".
+    auto: bool = False
     label: str = ""
 
     def key(self) -> tuple:

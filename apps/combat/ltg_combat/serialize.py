@@ -77,6 +77,105 @@ def _pip_str(colors: List[str]) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Veiled intents (Design Update 08 §D8-1): the category is DERIVED
+# deterministically from the declared intent — verbs, action_type, target
+# descriptor — never authored. The engine emits category + target; the template
+# line below is presentation (freely rewordable without touching the engine).
+# --------------------------------------------------------------------------- #
+_HOSTILE_KINDS = {"deal_damage", "lose_life", "destroy", "exile", "bounce", "stun",
+                  "taunt", "wound", "poison", "fight", "strip_intent",
+                  "remove_keyword", "counter"}
+
+
+def intent_category(intent) -> str:
+    """One of the closed set: threat / spellcraft / row assault / party assault /
+    gathering / support / summon / manoeuvre (§D8-1.2). Multi-verb intents
+    classify by their first hostile verb; a `charge` verb anywhere classifies as
+    gathering (the windup dominates the fiction)."""
+    if intent is None:
+        return "threat"
+    if getattr(intent, "kind", "action") == "move":
+        return "manoeuvre"
+    kinds = [getattr(e, "kind", None) for e in intent.effects]
+    if "charge" in kinds:
+        return "gathering"
+    if intent.action_type == "spell":
+        return "spellcraft"
+    if "create_token" in kinds:
+        return "summon"
+    first_hostile = next((e for e in intent.effects
+                          if getattr(e, "kind", None) in _HOSTILE_KINDS), None)
+    if first_hostile is not None:
+        desc = getattr(first_hostile, "target", None)
+        mode = getattr(desc, "mode", None)
+        mode = getattr(mode, "value", mode)
+        side = getattr(desc, "side", None)
+        side = getattr(side, "value", side)
+        if mode == "all" and side in ("ally", "any"):
+            return "party assault"  # hostile mode:all on the hero side
+        return "threat"
+    if intent.effects:
+        return "support"
+    return "threat"
+
+
+def veiled_intent(state: GameState, enemy) -> Optional[Dict[str, Any]]:
+    """The §D8-1.1 pre-stack information contract for one enemy: exactly a
+    category and a locked target — never names, verbs, magnitudes, or whether it
+    is a channel. `status`/`reveal` drive the intents window (§D8-1.5): a
+    stripped line is struck and annotated with what it would have been."""
+    intent = enemy.round_intent if enemy.round_intent is not None else enemy.intent
+    status = getattr(enemy, "round_intent_status", "declared" if intent else "none")
+    if intent is None and status not in ("stunned",):
+        return None
+    category = intent_category(intent) if intent is not None else "none"
+    target_id = intent.target_id if intent is not None else None
+    target_name = _name_of(state, target_id)
+    line = _veiled_line(enemy, category, target_id, target_name, status)
+    return {
+        "enemy_id": enemy.id,
+        "creature_id": enemy.id,          # legacy key the client already reads
+        "creature_name": enemy.name,
+        "category": category,
+        "target_id": target_id,
+        "target_name": target_name,
+        "line": line,
+        "status": status,                 # declared|stripped|stunned|executed|fizzled
+        "reveal": getattr(enemy, "round_intent_reveal", ""),
+    }
+
+
+def _veiled_line(enemy, category: str, target_id, target_name,
+                 status: str) -> str:
+    """The generic template line (§D8-1.2). Presentation only."""
+    name = enemy.name
+    if status == "stunned":
+        return f"{name} reels — it has no intent."
+    tname = target_name or "your party"
+    if category == "threat":
+        return f"{name} threatens {tname}."
+    if category == "spellcraft":
+        if target_id is not None:
+            return f"{name} begins casting a spell at {tname}."
+        return f"{name} begins casting a spell."
+    if category == "party assault":
+        return f"{name} prepares an assault on your whole party."
+    if category == "row assault":
+        return f"{name} prepares an assault on a row of your party."
+    if category == "gathering":
+        return f"{name} gathers its power."
+    if category == "support":
+        if target_id is None or target_id == enemy.id:
+            return f"{name} steels itself."
+        return f"{name} turns its attention to {tname}."
+    if category == "summon":
+        return f"{name} calls for reinforcements."
+    if category == "manoeuvre":
+        return f"{name} shifts its footing."
+    return f"{name} bides its time."
+
+
+# --------------------------------------------------------------------------- #
 # Combatants
 # --------------------------------------------------------------------------- #
 def _mana_by_color(char) -> List[Dict[str, Any]]:
@@ -109,6 +208,16 @@ def _status_tags(char) -> List[str]:
         tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
     if getattr(char, "protection", 0):
         tags.append(f"protection ×{char.protection}")
+    if getattr(char, "poison_counters", 0):
+        tags.append(f"poison ×{char.poison_counters}")
+    if getattr(char, "regen_counters", 0):
+        tags.append(f"regen ×{char.regen_counters}")
+    if getattr(char, "poison_effects", None):
+        tags.append("poisoned")
+    if getattr(char, "regen_effects", None):
+        tags.append("regenerating")
+    if getattr(char, "charge", 0):
+        tags.append(f"charge ×{char.charge}")
     for kw in getattr(char, "keywords", {}):
         tags.append(f"⚜ {kw}")
     if getattr(char, "acted_mode", None) and char.alive and not char.turn_ended:
@@ -164,16 +273,45 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         } for ch in char.channels],
         "hand": [card_dict(c) for c in char.hand],
         "library": [card_dict(c) for c in char.library],
-        "evergreen": {
-            "offensive": {"name": "Basic Attack",
-                          "text": f"Deal {char.attack_mode} damage equal to Power ({char.current_power})."},
-            "defensive_action": {"name": "Defend",
-                                 "text": "Gain temporary HP — a buffer that fades at end of turn."},
-            "defensive_reaction": {"name": "Mitigate",
-                                   "text": f"Reduce each hit of an incoming attack by ceil(Power/2) = "
-                                           f"{_mitigate_value(char)}; or intercept for an adjacent ally."},
-        },
+        "evergreen": _evergreen_block(char),
+        # Heroic actions (D8-3): the once-per-encounter Skill/Ultimate and the
+        # public 0–100 ultimate gauge.
+        "skill": _heroic_block(char.skill, char.skill_used),
+        "ultimate": _heroic_block(char.ultimate, char.ultimate_used),
+        "ultimate_gauge": getattr(char, "ultimate_gauge", 0),
+        "poison_counters": getattr(char, "poison_counters", 0),
+        "regen_counters": getattr(char, "regen_counters", 0),
+        "poisoned": bool(getattr(char, "poison_effects", None)),
+        "regenerating": bool(getattr(char, "regen_effects", None)),
         "raw": to_jsonable(char),
+    }
+
+
+def _heroic_block(card: Optional[Card], used: bool) -> Optional[Dict[str, Any]]:
+    """A Skill/Ultimate as the client sees it: the card face + its spent flag."""
+    if card is None:
+        return None
+    return {**card_dict(card), "used": used}
+
+
+def _evergreen_block(char) -> Dict[str, Any]:
+    """The three evergreen abilities, wearing their optional authored flavour
+    (D8-3.4): the custom display name and one-line text are presentation only."""
+    flavor = getattr(char, "ability_flavor", {}) or {}
+
+    def entry(key: str, default_name: str, text: str) -> Dict[str, str]:
+        f = flavor.get(key) or {}
+        return {"name": f.get("name") or default_name, "text": text,
+                "flavor": f.get("text") or ""}
+
+    return {
+        "offensive": entry("attack", "Basic Attack",
+                           f"Deal {char.attack_mode} damage equal to Power ({char.current_power})."),
+        "defensive_action": entry("defend", "Defend",
+                                  "Gain temporary HP — a buffer that fades at end of turn."),
+        "defensive_reaction": entry("mitigate", "Mitigate",
+                                    f"Reduce each hit of an incoming attack by ceil(Power/2) = "
+                                    f"{_mitigate_value(char)}; or intercept for an adjacent ally."),
     }
 
 
@@ -207,8 +345,23 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "power_bonus": enemy.power_bonus,
         "keywords": list(enemy.keywords.keys()),
         "intent": intent,
+        "poison_counters": getattr(enemy, "poison_counters", 0),
+        "regen_counters": getattr(enemy, "regen_counters", 0),
+        "poisoned": bool(getattr(enemy, "poison_effects", None)),
+        "regenerating": bool(getattr(enemy, "regen_effects", None)),
+        # The charge gauge (D8-2.4): count and threshold pips are public; the
+        # triggered component's content is not (the cockpit's raw dump has it).
+        "charge": getattr(enemy, "charge", 0),
+        "charge_threshold": _enemy_charge_threshold(enemy),
         "raw": to_jsonable(enemy),
     }
+
+
+def _enemy_charge_threshold(enemy) -> Optional[int]:
+    thresholds = [c.charge_threshold for c in getattr(enemy, "components", [])
+                  if getattr(c, "trigger", None) == "on_charge_full"
+                  and getattr(c, "charge_threshold", None)]
+    return min(thresholds) if thresholds else None
 
 
 def _token_dict(state: GameState, token) -> Dict[str, Any]:
@@ -220,6 +373,8 @@ def _token_dict(state: GameState, token) -> Dict[str, Any]:
         "power": token.power,
         "row": token.row,
         "alive": token.alive,
+        "poison_counters": getattr(token, "poison_counters", 0),
+        "regen_counters": getattr(token, "regen_counters", 0),
         "raw": to_jsonable(token),
     }
 
@@ -403,7 +558,8 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
     mitigates = [(i, a) for i, a in indexed if a.kind == "mitigate"]
     casts = [(i, a) for i, a in indexed if a.kind == "cast"]
     others = [(i, a) for i, a in indexed
-              if a.kind in ("defend", "pass", "end_turn", "drop_channels")]
+              if a.kind in ("defend", "pass", "end_turn", "drop_channels",
+                            "use_skill", "use_ultimate")]
 
     entries: List[Dict[str, Any]] = []
     for i, a in mana:

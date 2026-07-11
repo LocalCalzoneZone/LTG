@@ -1,5 +1,5 @@
 import { useGame, focusedChoices } from "../lib/store";
-import { ActionBar } from "./ActionBar";
+import { ActionBar, UltimateColumn } from "./ActionBar";
 import { ArmingHint } from "./ArmingHint";
 import { Hand } from "./Hand";
 import { ManaPayPopup, ManaWidget } from "./ManaWidget";
@@ -59,8 +59,11 @@ export function BottomBar({ height }: { height?: number | null }) {
 
       <ManaWidget char={char} manaChoices={choices?.mana ?? []} />
 
+      {/* The Ultimate (D8-3.2): icon + vertical gauge between mana and actions. */}
+      <UltimateColumn choices={choices} char={char} />
+
       <div className="flex w-[225px] shrink-0 flex-col">
-        <ActionBar choices={choices} reaction={reaction} />
+        <ActionBar choices={choices} reaction={reaction} char={char} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">

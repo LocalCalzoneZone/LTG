@@ -44,6 +44,9 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
         id=spec["id"], archetype=spec.get("archetype", ""),
         timing="reactive" if is_enrage else spec.get("timing", "proactive"),
         trigger="on_enrage" if is_enrage else spec.get("trigger"),
+        # D8-2.4: the windup detonation's threshold (on_charge_full components).
+        charge_threshold=(int(spec["charge_threshold"])
+                          if spec.get("charge_threshold") is not None else None),
         condition=spec.get("condition"), cooldown=int(spec.get("cooldown", 0)),
         once_per_encounter=True if is_enrage else bool(spec.get("once_per_encounter", False)),
         priority=int(spec.get("priority", 90)),
@@ -242,6 +245,11 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
             # Keywords bought at creation (§P-3) — permanent for the encounter.
             keywords=_keyword_dict(p.get("keywords")),
+            # Heroic actions (D8-3): the authored Skill/Ultimate as real cards
+            # (schema-validated), plus the evergreen display flavour.
+            skill=(Card.model_validate(p["skill"]) if p.get("skill") else None),
+            ultimate=(Card.model_validate(p["ultimate"]) if p.get("ultimate") else None),
+            ability_flavor=dict(p.get("ability_flavor") or {}),
         ))
 
     enemies: List[EnemyState] = []
@@ -383,6 +391,12 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
         "keywords": list(block["keywords"]),  # the one bought keyword (§P-3), if any
         "parry_reduce": 2,
         "library": [c.model_dump(mode="json") for c in lo.cards],
+        # Heroic actions + evergreen flavour (D8-3): character-sheet content, not
+        # library cards — never drawn, outside the 20-card deck.
+        "skill": (char.skill.model_dump(mode="json") if char.skill else None),
+        "ultimate": (char.ultimate.model_dump(mode="json") if char.ultimate else None),
+        "ability_flavor": (char.ability_flavor.model_dump(mode="json")
+                           if getattr(char, "ability_flavor", None) else {}),
     }
 
 

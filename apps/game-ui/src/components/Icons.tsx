@@ -55,6 +55,20 @@ export const IconMove = make(
   </>,
 );
 
+// Heroic actions (D8-3): the Skill's instant-speed flash…
+export const IconSkill = make(
+  <path d="M13.2 3 6.2 13.4h4.6L9.6 21l8.2-11.2h-4.9z" />,
+);
+
+// …and the Ultimate's radiant burst (the limit break).
+export const IconUltimate = make(
+  <>
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M12 3v2.6M12 18.4V21M3 12h2.6M18.4 12H21" />
+    <path d="M5.8 5.8l1.9 1.9M16.3 16.3l1.9 1.9M18.2 5.8l-1.9 1.9M7.7 16.3l-1.9 1.9" />
+  </>,
+);
+
 export const IconLibrary = make(
   <>
     <rect x="7.5" y="3.5" width="11" height="15" rx="1" />

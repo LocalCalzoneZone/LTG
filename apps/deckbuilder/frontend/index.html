@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LTG — Deck Builder</title>
-  <link rel="stylesheet" href="/styles.css?v=6" />
+  <link rel="stylesheet" href="/styles.css?v=10" />
 </head>
 <body>
   <header class="topbar">
@@ -70,19 +70,33 @@
     <!-- RIGHT: tools -->
     <section class="col-right">
       <div class="right-top">
-        <section class="panel" id="search-panel">
-          <h2>Add cards</h2>
-          <div class="search-row">
-            <input id="search-input" type="text" placeholder="Search MTG card name…" />
-            <button id="btn-search">Search</button>
+        <section class="panel" id="heroics-panel">
+          <h2>Heroic actions</h2>
+          <div class="field">
+            <span>Skill &amp; Ultimate — once per encounter (D8-3)</span>
+            <div id="heroic-pick" class="buy-list"></div>
           </div>
-          <ul id="search-results" class="results"></ul>
+          <div class="field">
+            <span>Ability flavour — evergreen display names</span>
+            <div id="flavor-pick" class="archetype-row"></div>
+          </div>
         </section>
 
-        <section class="panel" id="status-panel">
-          <h2>Deck status</h2>
-          <div id="status-body" class="status">No cards yet.</div>
-        </section>
+        <div class="right-stack">
+          <section class="panel" id="status-panel">
+            <h2>Deck status</h2>
+            <div id="status-body" class="status">No cards yet.</div>
+          </section>
+
+          <section class="panel" id="search-panel">
+            <h2>Add cards</h2>
+            <div class="search-row">
+              <input id="search-input" type="text" placeholder="Search MTG card name…" />
+              <button id="btn-search">Search</button>
+            </div>
+            <ul id="search-results" class="results"></ul>
+          </section>
+        </div>
       </div>
 
       <section class="panel" id="deck-panel">
@@ -146,8 +160,12 @@
     </div>
   </div>
 
+  <div id="flavor-overlay" class="overlay hidden">
+    <div class="detail-card" id="flavor-card"></div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/app.js?v=6"></script>
+  <script src="/app.js?v=10"></script>
 </body>
 </html>

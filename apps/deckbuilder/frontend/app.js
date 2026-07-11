@@ -27,12 +27,25 @@ const blankLoadout = () => ({
     level: 1, colors: ["U"], starting_mana: ["U"],
     hp: 8, starting_cards: 1, power_bought: 0,
     attack_mode: "melee", keyword: null, row: "front", preset: null,
+    // Heroic actions (Design Update 08 §D8-3): character-sheet cards, not deck
+    // cards — once-per-encounter Skill (instant) and Ultimate (sorcery, no cost).
+    skill: null, ultimate: null,
+    // Optional display flavour for the evergreen abilities (§D8-3.4).
+    ability_flavor: {},
   },
   cards: [],
 });
 
 let state = blankLoadout();
 let validateTimer = null;
+
+// The card the detail editor is aimed at: a deck index (number) or a heroic
+// slot ("skill" | "ultimate") on the character sheet (D8-3). One accessor so
+// the whole editor works on either without knowing which.
+const HEROIC_SLOTS = ["skill", "ultimate"];
+function cardAt(idx) {
+  return HEROIC_SLOTS.includes(idx) ? state.character[idx] : state.cards[idx];
+}
 
 const $ = (sel) => document.querySelector(sel);
 const api = async (method, path, body) => {
@@ -305,6 +318,144 @@ function renderCharacter() {
     });
     manaPick.appendChild(row);
   }
+
+  renderHeroics();
+  renderFlavor();
+}
+
+// --------------------------------------------------------------------------
+// Heroic actions (Design Update 08 §D8-3): Skill + Ultimate, authored with the
+// same card editor a library card gets. They live on the character sheet — not
+// in the deck, exempt from deck lints, and outside the 70-point budget.
+// --------------------------------------------------------------------------
+function newHeroicCard(slot) {
+  const isSkill = slot === "skill";
+  return {
+    id: `${slot}_${Date.now().toString(36)}`,
+    name: isSkill ? "New Skill" : "New Ultimate",
+    source_name: isSkill ? "Skill" : "Ultimate",
+    rarity: "common", level: 1,
+    type: isSkill ? "Skill" : "Ultimate",
+    // Timing is forced by the schema: instant for a Skill, sorcery for an
+    // Ultimate (which also may never carry a mana cost).
+    timing: isSkill ? "instant" : "sorcery",
+    cost: { generic: 0, colors: {}, x: false },
+    original_text: "", translated_text: "", flavor_text: "",
+    effects: [], targets: {},
+    needs_translation: false, text_override: false, validated: false,
+  };
+}
+
+const HEROIC_META = {
+  skill: { label: "Skill", hint: "instant speed · once per encounter · may cost mana" },
+  ultimate: { label: "Ultimate", hint: "an action · once per encounter · full gauge, no mana cost" },
+};
+
+function renderHeroics() {
+  const box = $("#heroic-pick");
+  if (!box) return;
+  box.innerHTML = "";
+  HEROIC_SLOTS.forEach((slot) => {
+    const card = state.character[slot];
+    const row = document.createElement("div");
+    row.className = "buy-row";
+    const lab = document.createElement("span");
+    lab.className = "buy-label";
+    lab.title = HEROIC_META[slot].hint;
+    lab.textContent = HEROIC_META[slot].label;
+    const ctrl = document.createElement("div");
+    ctrl.className = "buy-ctrl";
+    if (card) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "small";
+      edit.textContent = card.name;
+      edit.title = `Edit ${HEROIC_META[slot].label.toLowerCase()} — ${HEROIC_META[slot].hint}`;
+      edit.onclick = () => openCard(slot);
+      ctrl.appendChild(edit);
+    } else {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "small";
+      add.textContent = "+ Add";
+      add.title = HEROIC_META[slot].hint;
+      add.onclick = () => {
+        state.character[slot] = newHeroicCard(slot);
+        renderHeroics();
+        openCard(slot);
+        scheduleValidate();
+      };
+      ctrl.appendChild(add);
+    }
+    row.append(lab, ctrl);
+    box.appendChild(row);
+  });
+}
+
+// Evergreen flavour (§D8-3.4): optional display name + one-line text for basic
+// attack / Defend / Mitigate. Purely presentational; mechanics untouched.
+const FLAVOR_KEYS = [
+  ["attack", "Attack"],
+  ["defend", "Defend"],
+  ["mitigate", "Mitigate"],
+];
+
+function renderFlavor() {
+  const box = $("#flavor-pick");
+  if (!box) return;
+  box.innerHTML = "";
+  const flavor = state.character.ability_flavor || (state.character.ability_flavor = {});
+  FLAVOR_KEYS.forEach(([key, label]) => {
+    const entry = flavor[key];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    // Lit (like an active preset) once this ability wears authored flavour.
+    btn.className = "archetype-btn" + (entry ? " on" : "");
+    btn.textContent = entry?.name || label;
+    btn.title = entry
+      ? `${label}: ${entry.name || "(default name)"}${entry.text ? ` — ${entry.text}` : ""}`
+      : `${label} — add a custom display name and one-line flavour`;
+    btn.onclick = () => openFlavorModal(key, label);
+    box.appendChild(btn);
+  });
+}
+
+// The flavour modal (D8-3.4): a name + one-line text for one evergreen ability.
+function openFlavorModal(key, label) {
+  const flavor = state.character.ability_flavor || (state.character.ability_flavor = {});
+  const entry = flavor[key] || {};
+  const el = $("#flavor-card");
+  el.innerHTML = `
+    <h3>${escapeHtml(label)} — ability flavour</h3>
+    <div class="sub">Optional display name and one-line text (D8-3.4). Purely
+      presentational — the log and action buttons use them; the mechanics are untouched.</div>
+    <div class="block">
+      <div class="label">Custom name (optional)</div>
+      <input id="flavor-name" type="text" placeholder="e.g. Dawnbreaker Stance"
+        value="${escapeAttr(entry.name || "")}" />
+      <div class="label" style="margin-top:8px">One-line flavour (optional)</div>
+      <textarea id="flavor-text" rows="2"
+        placeholder="e.g. Soren plants the tower shield.">${escapeHtml(entry.text || "")}</textarea>
+    </div>
+    <div class="detail-actions">
+      <button class="danger" id="flavor-clear">Clear</button>
+      <button id="flavor-cancel">Cancel</button>
+      <button class="primary" id="flavor-save">Save</button>
+    </div>`;
+  const close = () => $("#flavor-overlay").classList.add("hidden");
+  $("#flavor-save").onclick = () => {
+    const n = $("#flavor-name").value.trim(), t = $("#flavor-text").value.trim();
+    if (n || t) flavor[key] = { name: n, text: t };
+    else delete flavor[key];
+    close(); renderFlavor(); scheduleValidate();
+  };
+  $("#flavor-clear").onclick = () => {
+    delete flavor[key];
+    close(); renderFlavor(); scheduleValidate();
+  };
+  $("#flavor-cancel").onclick = close;
+  $("#flavor-overlay").classList.remove("hidden");
+  $("#flavor-name").focus();
 }
 
 function stepHp(delta) {
@@ -620,6 +771,9 @@ function normalizeCharacter(ch) {
   if (!ch.attack_mode) ch.attack_mode = "melee";
   if (ch.keyword === undefined) ch.keyword = null;
   if (ch.preset === undefined) ch.preset = null;
+  if (ch.skill === undefined) ch.skill = null;          // heroic actions (D8-3)
+  if (ch.ultimate === undefined) ch.ultimate = null;
+  if (!ch.ability_flavor || typeof ch.ability_flavor !== "object") ch.ability_flavor = {};
   delete ch.archetype;  // retired field
   if (!ch.starting_mana || !ch.starting_mana.length) ch.starting_mana = [ch.colors?.[0] || "U"];
   return ch;
@@ -887,7 +1041,7 @@ function rebuildEffects(items) {
 }
 
 function commitEffects(idx, rerender) {
-  state.cards[idx].effects = rebuildEffects(editorItems);
+  cardAt(idx).effects = rebuildEffects(editorItems);
   recheckCard(idx, rerender);
 }
 
@@ -1042,30 +1196,31 @@ let currentIdx = null;
 
 // Open a card: flatten its (nested) effects into the flat editor rows, then render.
 function openCard(idx) {
-  editorItems = flattenEffects(state.cards[idx].effects);
+  editorItems = flattenEffects(cardAt(idx).effects);
   openDetail(idx);
 }
 
 function openDetail(idx) {
   currentIdx = idx;
-  const card = state.cards[idx];
+  const card = cardAt(idx);
+  const heroic = HEROIC_SLOTS.includes(idx);  // a character-sheet card (D8-3)
   const lints = card._lints || [];
   const slots = Object.keys(card.targets);
   const el = $("#detail-card");
 
-  el.innerHTML = `
-    <h3>${escapeHtml(card.name)}</h3>
-    <div class="sub">${card.source_name} · ${card.type} · ${card.rarity} · Level ${card.level}</div>
+  const sub = heroic
+    ? (idx === "skill"
+        ? "Skill — instant speed · once per encounter · may cost mana (D8-3.1)"
+        : "Ultimate — an action · once per encounter · needs a full gauge · never costs mana (D8-3.2)")
+    : `${card.source_name} · ${card.type} · ${card.rarity} · Level ${card.level}`;
 
-    <div class="block">
-      <div class="label">Flavour name — editable</div>
-      <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
-      <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
-      <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
-    </div>
-
-    <div class="block">
-      <div class="label">Mana cost — level mirrors it (generic + pips; X counts 0)</div>
+  const costBlock = idx === "ultimate"
+    ? `<div class="block">
+        <div class="label">Mana cost</div>
+        <div class="readonly-text">None, ever — the ultimate gauge is the cost.</div>
+      </div>`
+    : `<div class="block">
+      <div class="label">Mana cost — ${heroic ? "paid normally from the pool (author's choice)" : "level mirrors it (generic + pips; X counts 0)"}</div>
       <div class="cost-edit">
         <label class="inline mini" title="{X} in the cost — the caster picks X at cast and pays that much extra mana">
           <input type="checkbox" id="cost-x" ${card.cost.x ? "checked" : ""}/> X</label>
@@ -1075,12 +1230,25 @@ function openDetail(idx) {
           <input type="number" class="cost-pip" data-c="${c}" min="0" style="width:44px"
             value="${(card.cost.colors && card.cost.colors[c]) || 0}" /></label>`).join(" ")}
       </div>
-    </div>
+    </div>`;
+
+  el.innerHTML = `
+    <h3>${escapeHtml(card.name)}</h3>
+    <div class="sub">${sub}</div>
 
     <div class="block">
+      <div class="label">Flavour name — editable</div>
+      <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
+      <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
+      <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
+    </div>
+
+    ${costBlock}
+
+    ${heroic ? "" : `<div class="block">
       <div class="label">Original MTG text (read-only)</div>
       <div class="readonly-text">${escapeHtml(card.original_text) || "—"}</div>
-    </div>
+    </div>`}
 
     <div class="block">
       <div class="label-row">
@@ -1131,7 +1299,7 @@ function openDetail(idx) {
     </div>
 
     <div class="detail-actions">
-      <button class="danger" id="detail-remove">Remove from deck</button>
+      <button class="danger" id="detail-remove">${heroic ? `Remove ${idx}` : "Remove from deck"}</button>
       <button id="detail-close">Done</button>
     </div>`;
 
@@ -1140,26 +1308,33 @@ function openDetail(idx) {
 }
 
 function wireDetail(idx) {
-  const card = state.cards[idx];
+  const card = cardAt(idx);
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
 
   // Mana cost editing — any change re-derives level and re-checks the card.
+  // (The block is absent for an ultimate: it never costs mana — D8-3.2.)
   const costChanged = () => { syncLevelToCost(card); recheckCard(idx, true); };
-  $("#cost-x").onchange = (e) => { card.cost.x = e.target.checked; costChanged(); };
-  $("#cost-generic").onchange = (e) => { card.cost.generic = Math.max(0, parseInt(e.target.value) || 0); costChanged(); };
-  document.querySelectorAll(".cost-pip").forEach((inp) => {
-    inp.onchange = () => {
-      const n = Math.max(0, parseInt(inp.value) || 0);
-      card.cost.colors = card.cost.colors || {};
-      if (n) card.cost.colors[inp.dataset.c] = n; else delete card.cost.colors[inp.dataset.c];
-      costChanged();
-    };
-  });
+  if ($("#cost-x")) {
+    $("#cost-x").onchange = (e) => { card.cost.x = e.target.checked; costChanged(); };
+    $("#cost-generic").onchange = (e) => { card.cost.generic = Math.max(0, parseInt(e.target.value) || 0); costChanged(); };
+    document.querySelectorAll(".cost-pip").forEach((inp) => {
+      inp.onchange = () => {
+        const n = Math.max(0, parseInt(inp.value) || 0);
+        card.cost.colors = card.cost.colors || {};
+        if (n) card.cost.colors[inp.dataset.c] = n; else delete card.cost.colors[inp.dataset.c];
+        costChanged();
+      };
+    });
+  }
   $("#detail-validate").onclick = () => toggleValidated(idx);
-  $("#detail-remove").onclick = () => { state.cards.splice(idx, 1); closeDetail(); renderDeck(); scheduleValidate(); };
-  $("#detail-close").onclick = () => { closeDetail(); renderDeck(); scheduleValidate(); };
+  $("#detail-remove").onclick = () => {
+    if (HEROIC_SLOTS.includes(idx)) state.character[idx] = null;  // clear the heroic slot
+    else state.cards.splice(idx, 1);
+    closeDetail(); renderCharacter(); renderDeck(); scheduleValidate();
+  };
+  $("#detail-close").onclick = () => { closeDetail(); renderCharacter(); renderDeck(); scheduleValidate(); };
 
   $("#add-effect").onclick = () => { editorItems.push(newItem("deal_damage")); commitEffects(idx, true); };
   $("#add-modal").onclick = () => { editorItems.push(newItem("modal")); commitEffects(idx, true); };
@@ -1339,7 +1514,7 @@ function wireDetail(idx) {
 
 // The link dropdown: build inline, link to an existing slot, or make a new one.
 function onTargetLink(idx, i, value, field = "target") {
-  const card = state.cards[idx];
+  const card = cardAt(idx);
   const e = editorItems[i];
   if (value === "__direct__") {
     // unlink: materialize the current descriptor (copy the slot's, or default)
@@ -1366,7 +1541,7 @@ function moveItem(idx, i, dir) {
 }
 
 function applyRawJson(idx) {
-  const card = state.cards[idx];
+  const card = cardAt(idx);
   const errEl = $("#raw-error");
   try {
     const parsed = JSON.parse($("#raw-json-text").value);
@@ -1383,7 +1558,7 @@ function applyRawJson(idx) {
 
 // Re-validate a card after an edit: un-ratify, re-derive text, refresh lints.
 async function recheckCard(idx, rerender) {
-  const card = state.cards[idx];
+  const card = cardAt(idx);
   card.validated = false;
   try {
     const res = await api("POST", "/api/cards/validate", { card });
@@ -1407,7 +1582,7 @@ async function recheckCard(idx, rerender) {
   if (rerender) openDetail(idx);
   else {
     // light update: refresh derived text only (params edited in place)
-    const c = state.cards[idx];
+    const c = cardAt(idx);
     const ta = $("#detail-translated");
     if (ta && !c.text_override) ta.value = c.translated_text;
   }
@@ -1415,7 +1590,7 @@ async function recheckCard(idx, rerender) {
 
 // Ratify / un-ratify the card's effects.
 function toggleValidated(idx) {
-  const card = state.cards[idx];
+  const card = cardAt(idx);
   if (card.validated) {
     card.validated = false;
   } else {

@@ -59,6 +59,24 @@ export interface ChannelSummary {
   break_text: string;
 }
 
+// A Skill/Ultimate as the client sees it (D8-3). For a seat you don't control
+// only `used` arrives; the card fields are present for your own characters.
+export interface HeroicView extends Partial<CardView> {
+  used: boolean;
+}
+
+export interface EvergreenEntry {
+  name: string; // flavour name when authored, else the default
+  text: string; // the mechanical line
+  flavor: string; // the authored one-line flavour text ("" when none)
+}
+
+export interface EvergreenBlock {
+  offensive: EvergreenEntry;
+  defensive_action: EvergreenEntry;
+  defensive_reaction: EvergreenEntry;
+}
+
 export interface CharacterView {
   id: string;
   name: string;
@@ -74,6 +92,18 @@ export interface CharacterView {
   keywords: KeywordInfo[];
   // +1/+1 counters received; their stat change is already inside power/hp.
   counters: number;
+  // Typed counters (D8-2) — public information.
+  poison_counters: number;
+  regen_counters: number;
+  poisoned: boolean;
+  regenerating: boolean;
+  // Heroic actions (D8-3): the public 0–100 gauge; the full card faces ship only
+  // to the controlling client (others see just the used flag).
+  ultimate_gauge: number;
+  skill: HeroicView | null;
+  ultimate: HeroicView | null;
+  // The evergreen abilities wearing their authored flavour names (D8-3.4).
+  evergreen: EvergreenBlock;
   mitigate_value: number;
   acted_mode: string | null;
   turn_ended: boolean;
@@ -89,11 +119,30 @@ export interface CharacterView {
   library: CardView[] | null;
 }
 
+// A VEILED intent (Design Update 08 §D8-1): the pre-stack contract is a generic
+// category plus the locked target — never names, verbs, or magnitudes. The real
+// action appears in full on the stack when it executes.
+export type IntentCategory =
+  | "threat"
+  | "spellcraft"
+  | "row assault"
+  | "party assault"
+  | "gathering"
+  | "support"
+  | "summon"
+  | "manoeuvre"
+  | "none";
+
 export interface IntentView {
-  name: string;
-  amount: number | null;
+  enemy_id: string;
+  creature_id: string; // same as enemy_id (legacy key)
+  creature_name: string;
+  category: IntentCategory;
   target_id: string | null;
   target_name: string | null;
+  line: string; // the template line ("The Spore Husk threatens Soren.")
+  status: "declared" | "stripped" | "stunned" | "executed" | "fizzled" | "none";
+  reveal: string; // what a stripped intent turned out to be ("" otherwise)
 }
 
 export interface CreatureView {
@@ -112,6 +161,15 @@ export interface CreatureView {
   keywords: KeywordInfo[];
   // +1/+1 counters received; their stat change is already inside power/hp.
   counters: number;
+  // Typed counters (D8-2) — public on both sides; stat changes already folded in.
+  poison_counters: number;
+  regen_counters: number;
+  poisoned: boolean; // an active (ticking) poison effect
+  regenerating: boolean;
+  // The charge gauge (D8-2.4): the count/threshold are public; what the charge
+  // FEEDS is hidden until it fires. threshold null = no windup on this enemy.
+  charge: number;
+  charge_threshold: number | null;
   intent: IntentView | null;
   is_boss: boolean;
   is_channeling: boolean;
@@ -135,6 +193,8 @@ export interface TokenView {
   hp: StatBlock;
   keywords: KeywordInfo[];
   counters: number;
+  poison_counters: number;
+  regen_counters: number;
   is_channeling: boolean;
 }
 
@@ -155,16 +215,6 @@ export interface StackRow {
   card: CardView | null;
   top: boolean;
   uid: number;
-}
-
-export interface IntentRow {
-  creature_id: string;
-  creature_name: string;
-  intent_text: string;
-  // Same vocabulary as StackRow.mode: "melee attack" | "ranged attack" | "spell" | "ability".
-  mode: string | null;
-  target_id: string | null;
-  target_name: string | null;
 }
 
 export interface LogEntry {
@@ -219,7 +269,8 @@ export interface GameSnapshot {
   creatures: CreatureView[];
   tokens: TokenView[];
   stack: StackRow[];
-  intents: IntentRow[];
+  // The veiled intents window (D8-1.5): one line per living enemy this round.
+  intents: IntentView[];
   // A pending card pick's candidates as full cards (only sent to the chooser's
   // client — hidden information, gated like hands). Null when no pick is open.
   pending_choice: { kind: string; chooser_id: string; candidates: CardView[] } | null;

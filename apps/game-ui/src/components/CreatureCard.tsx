@@ -19,6 +19,11 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
   const encounterId = useGame((s) => s.snapshot?.encounter_id ?? "");
   // This enemy has an action (attack / spell / ability) pending on the stack.
   const acting = useGame((s) => (s.snapshot?.stack ?? []).some((r) => r.source_id === creature.id));
+  // Intents-window hover wiring (D8-1.5): the line and the card highlight together.
+  const hoverIntent = useGame((s) => s.hoverIntent);
+  const setHoverIntent = useGame((s) => s.setHoverIntent);
+  const intentLit = hoverIntent != null
+    && (hoverIntent.enemyId === creature.id || hoverIntent.targetId === creature.id);
 
   // Boss hooks are dormant (engine has no boss support — INTERFACE_NOTES §4.3).
   // Creatures share the player-card width (aspect-square, so shorter than a 9:16 PC).
@@ -37,7 +42,10 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
   return (
     <div
       onClick={() => isTarget && pickTargetId(creature.id)}
-      title={creature.name}
+      onMouseEnter={() => creature.intent && setHoverIntent({
+        enemyId: creature.id, targetId: creature.intent.target_id })}
+      onMouseLeave={() => setHoverIntent(null)}
+      title={creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}
       style={{
         width: size,
         ...(creature.in_execute_window && !isTarget
@@ -45,8 +53,8 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
           : {}),
       }}
       className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)] transition ${frame} ${dimUntargeted} ${
-        isTarget ? "cursor-pointer" : "cursor-default"
-      } ${creature.is_boss ? "z-10" : ""}`}
+        intentLit ? "shadow-[0_0_0_1px_rgba(233,204,130,0.5)]" : ""
+      } ${isTarget ? "cursor-pointer" : "cursor-default"} ${creature.is_boss ? "z-10" : ""}`}
     >
       {/* art slot — generated portrait when it exists, engraved sigil until then */}
       {creature.image ? (
@@ -83,8 +91,26 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         {roman(creature.level)}
       </div>
       <div className="absolute left-1.5 top-[22%]">
-        <KeywordBadges keywords={creature.keywords} counters={creature.counters} />
+        <KeywordBadges keywords={creature.keywords} counters={creature.counters}
+          poison={creature.poison_counters} regen={creature.regen_counters} />
       </div>
+
+      {/* charge gauge (D8-2.4) — the public windup pips: what they feed is veiled */}
+      {(creature.charge > 0 || creature.charge_threshold != null) && (
+        <div
+          title={`Charge ${creature.charge}${creature.charge_threshold ? ` / ${creature.charge_threshold}` : ""} — it is gathering power; what detonates is hidden until it fires.`}
+          className="absolute inset-x-1 bottom-[36%] flex items-center justify-center gap-1 border border-brass/40 bg-ink-0/80 px-1 py-0.5"
+        >
+          {Array.from({ length: Math.max(creature.charge_threshold ?? 0, creature.charge) }).map((_, i) => (
+            <span
+              key={i}
+              className={`h-[6px] w-[6px] rotate-45 ${
+                i < creature.charge ? "anim-ember bg-brass" : "border border-brass/40 bg-transparent"
+              }`}
+            />
+          ))}
+        </div>
+      )}
 
       {/* channelling strip — named so the player knows what breaking does */}
       {creature.is_channeling && (
@@ -165,7 +191,8 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
       </div>
       {/* Keyword/counter badges — top-left (matches the character/creature cards) */}
       <div className="absolute left-0.5 top-0.5">
-        <KeywordBadges keywords={token.keywords} counters={token.counters} />
+        <KeywordBadges keywords={token.keywords} counters={token.counters}
+          poison={token.poison_counters} regen={token.regen_counters} />
       </div>
       <div className={`caps-label absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-0.5 pb-0.5 pt-1 text-center text-[clamp(7px,1vh,9px)] tracking-[0.06em] text-parch`}>
         {token.name}
