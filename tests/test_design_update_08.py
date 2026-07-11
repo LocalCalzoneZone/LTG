@@ -122,22 +122,26 @@ def test_poison_kills_on_effective_hp():
     assert any(ev.type == "enemy_died" for ev in st.log)
 
 
-def test_any_healing_cures_all_poison_but_counters_remain():
+def test_any_healing_cures_poison_and_sheds_the_counters():
     mend = _card("mend", "Mend", "instant", {"colors": {"U": 1}},
                  [{"kind": "heal", "amount": 2, "target": SELF}])
     poisoner = Component(id="spit", archetype="Debilitate", priority=10, cooldown=9,
                          verbs=[Poison(amount=1, target=t_chosen("ally", targeted=True))],
                          target_rule="valuation", telegraph="Venom Spit")
-    st = _state([_char("p", hand=1, library=[mend])], [_enemy("e")],
+    st = _state([_char("p", hp=20, hand=1, library=[mend])], [_enemy("e")],
                 tweak=lambda s: s.enemy("e").components.append(poisoner))
     st = _drive_turn(st)                        # enemy poisons; turn-2 upkeep ticks
     p = st.character("p")
     assert p.poison_effects and p.poison_counters == 2  # 1 on landing + 1 tick
+    assert p.max_hp == 18                        # −0/−2 folded into max
     st = _do(st, "cast", card_id="mend")
     st = _do(st, "pass")
     p = st.character("p")
-    assert p.poison_effects == []               # an antidote is an antidote
-    assert p.poison_counters == 2               # the accumulated counters persist
+    # Playtest ruling: healing cures the ticking AND sheds the counters, reversing
+    # each one's −0/−1 (max HP restored, then the heal fills on top).
+    assert p.poison_effects == []
+    assert p.poison_counters == 0
+    assert p.max_hp == 20                        # the −0/−2 is fully reversed
 
 
 def test_bounded_poison_concludes_after_its_turns():

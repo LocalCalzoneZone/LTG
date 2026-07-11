@@ -3227,22 +3227,40 @@ def _place_regen_counters(st: GameState, target, n: int,
          f"{target.name} gains {n} regen counter(s) (+0/+{n}; "
          f"HP {target.hp}/{target.max_hp}).",
          target=_tid(target), amount=n, hp=target.hp, max_hp=target.max_hp)
-    _cure_poison(st, target, reason="regeneration")
+    _cure_poison(st, target, reason="regeneration", shed_counters=False)
     if source_id is not None:
         _gain_gauge(st, st.character(source_id), n)  # +1 per HP restored as source
     _fire_event(st, "life_gain", target)
 
 
-def _cure_poison(st: GameState, target, reason: str = "healing") -> None:
-    """Any received healing ends ALL poison effects on a creature — an antidote is
-    an antidote (§D8-2.1). The accumulated counters remain."""
-    effects = getattr(target, "poison_effects", None)
-    if effects:
-        target.poison_effects = []
-        _log(st, "poison_cured",
-             f"{target.name}'s poison is cured ({reason}) — "
-             f"{len(effects)} effect(s) end.",
-             target=_tid(target), reason=reason, ended=len(effects))
+def _cure_poison(st: GameState, target, reason: str = "healing",
+                 shed_counters: bool = True) -> None:
+    """Any received healing cures poison — an antidote is an antidote (§D8-2.1).
+
+    Playtest ruling (overrides the doc's "the counters persist"): a cure from
+    actual HEALING also SHEDS the accumulated poison counters, reversing each
+    one's −0/−1 (+1 max HP and +1 current HP, current clamped to the restored
+    max) — the exact inverse of how they landed. A healed creature is rid of the
+    venom entirely, counters and all.
+
+    A regen tick passes `shed_counters=False`: regen's counter interaction is the
+    separate 1:1 annihilation rule (§D8-2.2), so its "cure" only stops the
+    ticking — it must not also shed the poison counters on top."""
+    effects = getattr(target, "poison_effects", None) or []
+    counters = getattr(target, "poison_counters", 0) if shed_counters else 0
+    if not effects and counters <= 0:
+        return
+    target.poison_effects = []
+    if counters > 0:
+        target.max_hp += counters
+        target.hp = min(target.max_hp, target.hp + counters)
+        target.poison_counters = 0
+    _log(st, "poison_cured",
+         f"{target.name}'s poison is cured ({reason}) — "
+         f"{len(effects)} effect(s) end"
+         + (f", {counters} counter(s) shed (HP {target.hp}/{target.max_hp})" if counters else "")
+         + ".",
+         target=_tid(target), reason=reason, ended=len(effects), counters=counters)
 
 
 def _break_regen(st: GameState, target) -> None:

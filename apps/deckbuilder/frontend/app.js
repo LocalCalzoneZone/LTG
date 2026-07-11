@@ -44,7 +44,7 @@ let validateTimer = null;
 // the whole editor works on either without knowing which.
 const HEROIC_SLOTS = ["skill", "ultimate"];
 function cardAt(idx) {
-  return HEROIC_SLOTS.includes(idx) ? state.character[idx] : cardAt(idx);
+  return HEROIC_SLOTS.includes(idx) ? state.character[idx] : state.cards[idx];
 }
 
 const $ = (sel) => document.querySelector(sel);
