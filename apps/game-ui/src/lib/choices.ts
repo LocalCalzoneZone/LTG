@@ -72,6 +72,20 @@ function nameFromLabel(label: string): string {
   return label.split(" on ")[0].trim(); // strip the per-target suffix
 }
 
+/** The mode-specific portion of a cast/heroic label, for a "Choose a mode"
+ *  sub-choice. Splitting naively on " on " (like `nameFromLabel`) breaks when
+ *  the CARD NAME itself contains "on" (e.g. "Lay on Hands") — every mode's
+ *  label gets truncated to the same prefix, so the modal shows identical
+ *  entries. The server always inserts " — " before the mode's bullet text
+ *  whenever a card has more than one mode (see `_mode_specs`'s "Option N"
+ *  fallback, which is never empty), so splitting there is unambiguous: the
+ *  card name can't contain an em dash, only the mode text follows it. */
+function modeLabelFromFull(label: string): string {
+  const dash = label.indexOf(" — ");
+  if (dash < 0) return nameFromLabel(label); // no mode marker — fall back
+  return label.slice(dash + 3).split(" on ")[0].trim();
+}
+
 export interface Choices {
   attack?: Choice;
   defend?: Choice;
@@ -79,6 +93,9 @@ export interface Choices {
   mitigate?: Choice;
   pass?: Choice;
   endTurn?: Choice;
+  // Heroic actions (D8-3): the once-per-encounter Skill / Ultimate, when legal.
+  skill?: Choice;
+  ultimate?: Choice;
   casts: Record<string, Choice>; // cardId -> Choice (may carry modes[])
   mana: { color: string; index: number; label: string }[];
   // A mandatory pick (move_card / scry / trigger target): rendered as a prompt modal.
@@ -105,6 +122,26 @@ export function buildChoices(legal: LegalAction[]): Choices {
   if (pass.length) out.pass = mk("pass", "pass", pass, "Pass");
   const end = pick("end_turn");
   if (end.length) out.endTurn = mk("end_turn", "end_turn", end, "End Turn");
+
+  // Skill / Ultimate (D8-3): grouped like a cast — a modal heroic action offers
+  // one sub-choice per mode.
+  const heroic = (kind: string, key: "skill" | "ultimate", label: string) => {
+    const group = pick(kind);
+    if (!group.length) return;
+    const modes = [...new Set(group.map((a) => a.mode))].filter((m) => m != null) as number[];
+    if (modes.length > 1) {
+      const modeChoices = modes.map((m) => {
+        const g = group.filter((a) => a.mode === m);
+        return { key: `${kind}:${m}`, kind, mode: m,
+                 label: modeLabelFromFull(g[0].label), candidates: g } as Choice;
+      });
+      out[key] = { key: kind, kind, label, candidates: group, modes: modeChoices };
+    } else {
+      out[key] = mk(kind, kind, group, label);
+    }
+  };
+  heroic("use_skill", "skill", "Skill");
+  heroic("use_ultimate", "ultimate", "Ultimate");
   // Voluntary drop is offered per-channel via the Channels zone modal (reads the
   // raw drop_channels legal actions directly), so no ActionBar choice is built.
 
@@ -118,7 +155,7 @@ export function buildChoices(legal: LegalAction[]): Choices {
       const modeChoices = modes.map((m) => {
         const g = group.filter((a) => a.mode === m);
         return { key: `cast:${cid}:${m}`, kind: "cast", cardId: cid, mode: m,
-                 label: nameFromLabel(g[0].label), candidates: g } as Choice;
+                 label: modeLabelFromFull(g[0].label), candidates: g } as Choice;
       });
       out.casts[cid] = { key: `cast:${cid}`, kind: "cast", cardId: cid,
                          label: "Choose a mode", candidates: group, modes: modeChoices };

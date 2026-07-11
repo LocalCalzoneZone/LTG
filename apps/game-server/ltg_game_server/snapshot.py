@@ -16,17 +16,16 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from ltg_combat.engine import cast_target_labels, legal_actions, settle
+from ltg_combat.engine import _ordered, cast_target_labels, legal_actions, settle
 from ltg_combat.serialize import (
     _character_dict,
     _enemy_dict,
-    _name_of,
     _stack_list,
     _token_dict,
-    action_mode,
     card_dict,
     phase_label,
     serialize_actions,
+    veiled_intent,
 )
 from ltg_combat.state import Action, GameState
 from ltg_core.schema import KEYWORDS
@@ -116,6 +115,19 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "keywords": _keyword_list(char),
         # +1/+1 counters received (their stat change is already inside power/hp).
         "counters": getattr(char, "counters", 0),
+        # Typed counters (D8-2) — public information on both sides.
+        "poison_counters": cd["poison_counters"],
+        "regen_counters": cd["regen_counters"],
+        "poisoned": cd["poisoned"],
+        "regenerating": cd["regenerating"],
+        # Heroic actions (D8-3): the gauge and used-flags are public; the
+        # Skill/Ultimate card faces ship only to the controlling client (below).
+        "ultimate_gauge": cd["ultimate_gauge"],
+        "skill": cd["skill"] if controlled else (
+            {"used": cd["skill"]["used"]} if cd["skill"] else None),
+        "ultimate": cd["ultimate"] if controlled else (
+            {"used": cd["ultimate"]["used"]} if cd["ultimate"] else None),
+        "evergreen": cd["evergreen"],  # flavour-named Basic Attack/Defend/Mitigate (D8-3.4)
         "mitigate_value": cd["mitigate_value"],
         "acted_mode": cd["acted_mode"],
         "turn_ended": cd["turn_ended"],
@@ -170,7 +182,17 @@ def _creature_snapshot(view: GameState, enemy,
         "attack_mode": ed["attack_mode"],
         "keywords": _keyword_list(enemy),
         "counters": getattr(enemy, "counters", 0),
-        "intent": ed["intent"],
+        # Typed counters + the public charge gauge (D8-2): counts are public on
+        # both sides; what the charge FEEDS stays hidden until it fires.
+        "poison_counters": ed["poison_counters"],
+        "regen_counters": ed["regen_counters"],
+        "poisoned": ed["poisoned"],
+        "regenerating": ed["regenerating"],
+        "charge": ed["charge"],
+        "charge_threshold": ed["charge_threshold"],
+        # VEILED intent (D8-1): category + locked target only — the full text,
+        # amounts and keywords stay server-side until the action hits the stack.
+        "intent": veiled_intent(view, enemy),
         # Boss support (§F-9): the flag lights the UI's boss chrome; the execute
         # window tells players the removal immunity has lifted (≤25% max HP).
         "is_boss": bool(enemy.is_boss),
@@ -198,28 +220,23 @@ def _token_snapshot(view: GameState, token,
         "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
         "keywords": _keyword_list(token),
         "counters": getattr(token, "counters", 0),
+        "poison_counters": getattr(token, "poison_counters", 0),
+        "regen_counters": getattr(token, "regen_counters", 0),
         "is_channeling": False,
     }
 
 
 def _intents(view: GameState) -> List[Dict[str, Any]]:
+    """The veiled intents list (D8-1.4): a server contract, not a UI courtesy.
+    One line per living enemy for the current round, in enemy board order — only
+    `{enemy_id, category, target, line}` plus the window's status/reveal fields.
+    Never the intent's name, verbs, or amounts (the cockpit's serializer keeps
+    the full data; this seat-filtered snapshot is what players receive)."""
     out: List[Dict[str, Any]] = []
-    for e in view.living_enemies():
-        if e.intent is None:
-            continue
-        amount = e.intent.attack_damage(e.power_bonus)  # live: blunted by any wound
-        amt = f" {amount}" if isinstance(amount, int) else ""
-        # Reuse the stack's mode logic: an attack intent reads the enemy's reach
-        # (melee/ranged), a spell reads "spell", a component ability reads nothing.
-        mode = action_mode(e.intent.action_type, e.attack_mode)
-        out.append({
-            "creature_id": e.id,
-            "creature_name": e.name,
-            "intent_text": f"{e.intent.name}{amt}",
-            "mode": mode,
-            "target_id": e.intent.target_id,
-            "target_name": _name_of(view, e.intent.target_id),
-        })
+    for e in _ordered(view.living_enemies()):
+        entry = veiled_intent(view, e)
+        if entry is not None:
+            out.append(entry)
     return out
 
 

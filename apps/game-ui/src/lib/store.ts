@@ -102,6 +102,9 @@ interface StoreState {
   you: string[];
 
   focusedId: string | null;
+  // Intents-window hover wiring (D8-1.5): hovering a line highlights the enemy
+  // and its target on the battlefield, and hovering the enemy highlights its line.
+  hoverIntent: { enemyId: string; targetId: string | null } | null;
   armed: Armed | null; // a target selection in progress
   chooseModeFor: Choice | null; // a modal card awaiting a mode pick
   manaSelect: ManaSelect | null; // an ambiguous cast awaiting a mana pick
@@ -125,6 +128,7 @@ interface StoreState {
   release: (ids: string[]) => void;
 
   // interaction (§4.6)
+  setHoverIntent: (h: { enemyId: string; targetId: string | null } | null) => void;
   setFocus: (id: string) => void;
   selectChoice: (c: Choice) => void; // arm a target, submit immediately, or open a mode modal
   pickMode: (sub: Choice) => void;
@@ -160,6 +164,7 @@ export const useGame = create<StoreState>((set, get) => ({
   seats: {},
   you: [],
   focusedId: null,
+  hoverIntent: null,
   armed: null,
   chooseModeFor: null,
   manaSelect: null,
@@ -247,6 +252,8 @@ export const useGame = create<StoreState>((set, get) => ({
 
   claim: (ids) => get().socket?.send({ type: "claim_seat", character_ids: ids }),
   release: (ids) => get().socket?.send({ type: "release_seat", character_ids: ids }),
+
+  setHoverIntent: (h) => set({ hoverIntent: h }),
 
   setFocus: (id) => set({ focusedId: id, armed: null, chooseModeFor: null }),
 

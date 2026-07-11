@@ -46,6 +46,7 @@ from ltg_core.schema import (
 
 from .state import (
     Action,
+    Affliction,
     Channel,
     CharacterState,
     Component,
@@ -167,7 +168,8 @@ def _advance(st: GameState) -> None:
                     return
         elif st.phase == "draw":
             _upkeep_draws(st)
-            _fire_recurring(st)  # held channels' upkeep engines fire after the draw
+            _tick_afflictions(st)  # poison/regen ticks (D8-2.3): after mana+draw,
+            _fire_recurring(st)    # before the recurring channel effects
             st.phase = "intents"
         elif st.phase == "intents":
             _declare_intents(st)
@@ -489,9 +491,14 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     terminates in the default Attack (priority 90), so a non-stunned enemy that can
     still act always produces an intent. An enemy with no components goes straight to
     the default attack (legacy behaviour, unchanged)."""
+    # Reset this round's intents-window line (D8-1.5); every path below re-sets it.
+    e.round_intent = None
+    e.round_intent_status = "none"
+    e.round_intent_reveal = ""
     if e.stunned > 0:  # stun: skip this intent, spend one charge (R-11)
         e.stunned -= 1
         e.intent = None
+        e.round_intent_status = "stunned"
         _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
              enemy=e.id, intents=e.stunned)
         return
@@ -499,6 +506,8 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
         intent = _try_declare_component(st, e, comp)
         if intent is not None:
             e.intent = intent
+            e.round_intent = intent
+            e.round_intent_status = "declared"
             tgt = st.combatant(intent.target_id)
             _log(st, "intent_declared",
                  f"{e.name} declares {intent.name}" + (f" → {tgt.name}" if tgt else "") + ".",
@@ -522,6 +531,8 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
         dest = _move_toward_reach(st, e)  # §F-7.3: step toward reach instead of idling
         if dest is not None:
             e.intent = _move_intent("Advance", dest, None)
+            e.round_intent = e.intent
+            e.round_intent_status = "declared"
             _log(st, "intent_declared", f"{e.name} advances toward {dest} (no target in reach).",
                  enemy=e.id, intent="Advance", destination=dest)
             return
@@ -540,6 +551,8 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
     base = int(src_tmpl.get("amount", 0))
     e.intent = Intent(name=name, action_type=kind, effects=effects, target_id=target.id,
                       attack_power=base)
+    e.round_intent = e.intent
+    e.round_intent_status = "declared"
     _log(st, "intent_declared",
          f"{e.name} declares {name} ({mode} {amount} dmg) → {target.name}.",
          enemy=e.id, intent=name, amount=amount, target=target.id, mode=mode)
@@ -900,12 +913,14 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     if intent.kind == "move":  # a Move queues a destination row, resolved at End step
         enemy.pending_voluntary = intent.move_to
         enemy.intent = None
+        enemy.round_intent_status = "executed"
         _log(st, "enemy_move",
              f"{enemy.name} will move to {intent.move_to} (resolves at End step).",
              enemy=enemy.id, destination=intent.move_to)
         return
     if intent.target_id is None:
         enemy.intent = None
+        enemy.round_intent_status = "fizzled"
         return
     # Re-check target legality as the intent ENTERS the stack: a target that left play
     # or was incapacitated since this was telegraphed makes the swing fizzle now rather
@@ -916,6 +931,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no legal target.",
              enemy=enemy.id, label=intent.name)
         enemy.intent = None
+        enemy.round_intent_status = "fizzled"
         return
     # Carry the base attack Power so the damage is recomputed from the enemy's CURRENT
     # power when it RESOLVES — a wound (e.g. Agony Warp −3/−0) applied after declaration,
@@ -931,6 +947,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
                         starts_channel=bool(src_comp is not None and src_comp.channel),
                         component_id=intent.source_component))
     enemy.intent = None
+    enemy.round_intent_status = "executed"  # the stack is honest — its line strikes (D8-1.5)
     st.priority = None  # open a fresh reaction window (party order, set in _advance)
     st.passes = 0
     _log(st, "intent_execute", f"{enemy.name} executes {intent.name}.",
@@ -1037,6 +1054,8 @@ def _apply(st: GameState, action: Action) -> None:
         "choose_target": _do_choose_target,
         "choose_mode": _do_choose_mode,
         "drop_channels": _do_drop_channels,
+        "use_skill": _do_use_skill,
+        "use_ultimate": _do_use_ultimate,
     }[action.kind]
     handler(st, action)
 
@@ -1108,7 +1127,9 @@ def _do_pass(st: GameState, action: Action) -> None:
     resolve. Otherwise the top resolves, and the effects it produced are offered to
     the enemy side as post-resolution triggers (on_hit / on_ally_hit / on_ally_death)."""
     actor = st.character(action.actor_id)
-    _log(st, "pass", f"{actor.name} passes.", character=actor.id)
+    suffix = " (auto)" if getattr(action, "auto", False) else ""
+    _log(st, "pass", f"{actor.name} passes{suffix}.", character=actor.id,
+         auto=bool(getattr(action, "auto", False)))
     st.passes += 1
     if st.passes >= len(st.living_party()):
         if _offer_reactions(st, _pre_trigger_ctx(st)):
@@ -1318,12 +1339,16 @@ def _do_end_turn(st: GameState, action: Action) -> None:
              f"({actor.stunned} turn(s) remain).", character=actor.id)
     actor.turn_ended = True
     st.priority = None
-    _log(st, "end_turn", f"{actor.name} ends their turn.", character=actor.id)
+    suffix = " (auto)" if getattr(action, "auto", False) else ""
+    _log(st, "end_turn", f"{actor.name} ends their turn{suffix}.", character=actor.id,
+         auto=bool(getattr(action, "auto", False)))
 
 
 def _do_attack(st: GameState, action: Action) -> None:
     """The free basic attack (the proactive Attack): deal damage = Power."""
     actor = st.character(action.actor_id)
+    if actor.acted_mode is None:
+        _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
     actor.acted_mode = "attack"
     actor.used_attack = True
     if actor.attack_mode == "melee":  # Update 02 §M-B.3: stepping up commits you to Front
@@ -1362,7 +1387,12 @@ def _do_cast(st: GameState, action: Action) -> None:
     actor.hand.remove(card)
     actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
     if card.timing in _SORCERY_SPEED and not reactive:
+        if actor.acted_mode is None:
+            _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
         actor.acted_mode = "cast"  # choosing Cast; further sorcery-speed casts ok
+    # +1 gauge per point of mana spent (generic + coloured; X counts; a channel
+    # charges its reserved cost once, at cast) — D8-3.3.
+    _gain_gauge(st, actor, len(paid))
     reserved = list(paid) if card.timing == Timing.channeled else []
     _push(st, StackItem(kind="spell", source_id=actor.id, source_side="party",
                         label=card.name, effects=list(card.effects),
@@ -1386,9 +1416,14 @@ def _do_defend(st: GameState, action: Action) -> None:
     that raises effective_hp and expires at End (R-7). (Magnitude is a placeholder
     until gear/flavour set it.)"""
     actor = st.character(action.actor_id)
+    if actor.acted_mode is None:
+        _gain_gauge(st, actor, 2)  # the action itself (D8-3.3)
     actor.acted_mode = "defend"
     actor.used_defend = True
     actor.temp_mod += _DEFEND_TEMP_HP
+    # …plus +1 per point of temp HP granted as the source: Defend now earns +5
+    # total — turtling charges your finisher, at the price of tempo (D8-3.3).
+    _gain_gauge(st, actor, _DEFEND_TEMP_HP)
     st.priority = None
     _log(st, "defend", f"{actor.name} defends (+{_DEFEND_TEMP_HP} temp HP).",
          character=actor.id, temp_mod=actor.temp_mod)
@@ -1407,6 +1442,8 @@ def _do_move(st: GameState, action: Action) -> None:
     actor = st.character(action.actor_id)
     actor.pending_voluntary = action.target_id  # the chosen destination row
     if not _has_kw(actor, "haste"):
+        if actor.acted_mode is None:
+            _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
         actor.acted_mode = "move"
     st.priority = None
     _log(st, "move", f"{actor.name} will move to {action.target_id} (resolves at End step).",
@@ -1466,6 +1503,51 @@ def _do_drop_channels(st: GameState, action: Action) -> None:
         return
     _log(st, "drop_channels", f"{actor.name} drops concentration.", character=actor.id)
     _end_channels(st, actor, droppable, reason="voluntary")
+
+
+def _do_use_skill(st: GameState, action: Action) -> None:
+    """The authored once-per-encounter Skill (D8-3.1): instant speed, free of the
+    proactive action, castable in any window an instant fits. It lands on the
+    stack as an ACTIVATED ability — a spell-filter counter cannot answer it; an
+    ability/action-filter counter can. May carry a mana cost, paid normally."""
+    actor = st.character(action.actor_id)
+    card = actor.skill
+    reactive = bool(st.stack)
+    x = max(0, int(action.x or 0))
+    _pay(actor, card, action.mana, x=x)
+    actor.skill_used = True
+    _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
+                        label=f"{card.name} (Skill)", effects=list(card.effects),
+                        target_id=action.target_id, targets=action.targets,
+                        card=card, mode=action.mode, x=x,
+                        cast_mode="reaction" if reactive else "action"))
+    _open_window(st, actor.id, reactive=reactive)
+    tgt = st.combatant(action.target_id)
+    _log(st, "skill", f"{actor.name} uses their Skill — {card.name}"
+         + (f" on {tgt.name}" if tgt else "") + ".",
+         character=actor.id, card=card.id, target=action.target_id)
+    _gain_gauge(st, actor, 5)  # using your Skill charges the gauge (D8-3.3)
+
+
+def _do_use_ultimate(st: GameState, action: Action) -> None:
+    """The authored once-per-encounter Ultimate (D8-3.2): an action (sorcery
+    speed, consumes the proactive action), castable only on a full gauge, never
+    costs mana — the gauge is the cost, spent to 0 as it is cast. An activated
+    ability on the stack: a Negate does not stop a limit break."""
+    actor = st.character(action.actor_id)
+    card = actor.ultimate
+    actor.ultimate_used = True
+    actor.ultimate_gauge = 0
+    actor.acted_mode = "ultimate"
+    _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
+                        label=f"{card.name} (Ultimate)", effects=list(card.effects),
+                        target_id=action.target_id, targets=action.targets,
+                        card=card, mode=action.mode, cast_mode="action"))
+    _open_window(st, actor.id, reactive=False)
+    tgt = st.combatant(action.target_id)
+    _log(st, "ultimate", f"{actor.name} unleashes their Ultimate — {card.name}"
+         + (f" on {tgt.name}" if tgt else "") + "!",
+         character=actor.id, card=card.id, target=action.target_id)
 
 
 _DEFEND_TEMP_HP = 3   # placeholder; GDD leaves Defend's amount to gear/flavour
@@ -2152,7 +2234,7 @@ def _do_choose_target(st: GameState, action: Action) -> None:
 
 # Effects that act on the source or a stack item, not on the resolved `target`
 # (a None target is legitimate for them); every other effect needs a target to land on.
-_TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana"})
+_TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge"})
 
 
 def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
@@ -2463,13 +2545,63 @@ def _trample_cleave(st: GameState, attacker, primary, excess: int,
 
 
 def _r_heal(st, item, effect, target, ctx):
-    _heal(st, target, _value(effect.amount, ctx))
+    _heal(st, target, _value(effect.amount, ctx), source_obj=st.combatant(item.source_id))
+
+
+def _r_poison(st, item, effect, target, ctx):
+    # A poison effect (D8-2.1): counters now, and again at each Upkeep until it
+    # concludes (death, any received healing, or its optional turn bound).
+    amount = _value(effect.amount, ctx)
+    if amount <= 0:
+        return
+    target.poison_effects.append(Affliction(amount=amount, turns_left=effect.turns,
+                                            source_id=item.source_id))
+    bound = f" for {effect.turns} turn(s)" if effect.turns else ""
+    _log(st, "poison",
+         f"{target.name} is poisoned — {amount} counter(s) now and at each "
+         f"Upkeep{bound}; any healing cures it.",
+         target=_tid(target), amount=amount, turns=effect.turns)
+    _place_poison_counters(st, target, amount)
+
+
+def _r_regen(st, item, effect, target, ctx):
+    # The mirror (D8-2.2): counters now and per Upkeep until damage connects
+    # (or the turn bound expires). Each placement counts as healing.
+    amount = _value(effect.amount, ctx)
+    if amount <= 0:
+        return
+    target.regen_effects.append(Affliction(amount=amount, turns_left=effect.turns,
+                                           source_id=item.source_id))
+    bound = f" for {effect.turns} turn(s)" if effect.turns else ""
+    _log(st, "regen",
+         f"{target.name} regenerates — {amount} counter(s) now and at each "
+         f"Upkeep{bound}; broken by damage that connects.",
+         target=_tid(target), amount=amount, turns=effect.turns)
+    _place_regen_counters(st, target, amount, source_id=item.source_id)
+
+
+def _r_charge(st, item, effect, target, ctx):
+    # The windup verb (D8-2.4): enemy-only, always self — fills the visible gauge
+    # and detonates the hidden on_charge_full component at its threshold.
+    enemy = st.enemy(item.source_id)
+    if enemy is None or not enemy.alive:
+        return
+    gained = max(0, int(effect.amount))
+    enemy.charge += gained
+    threshold = _charge_threshold(enemy)
+    pips = f"{enemy.charge}/{threshold}" if threshold else str(enemy.charge)
+    _log(st, "charge", f"{enemy.name} gathers its power — charge {pips}.",
+         enemy=enemy.id, charge=enemy.charge, threshold=threshold, gained=gained)
+    _check_charge_full(st, enemy)
 
 
 def _r_lose_life(st, item, effect, target, ctx):
     # Life loss is not damage: prevention and temp HP do not apply (GDD §4.8/§11).
     amount = _value(effect.amount, ctx)
+    lost = target.hp - max(0, target.hp - amount)
     target.hp = max(0, target.hp - amount)
+    if isinstance(target, CharacterState):
+        _gain_gauge(st, target, lost)  # +1 gauge per point of current HP lost (D8-3.3)
     _log(st, "lose_life", f"{target.name} loses {amount} HP (HP {target.hp}).",
          target=_tid(target), amount=amount, hp=target.hp)
     _after_damage(st, target)
@@ -2505,6 +2637,10 @@ def _r_pump(st, item, effect, target, ctx):
     if hasattr(target, "power_bonus"):
         target.power_bonus += power
     target.temp_mod += toughness
+    # The toughness half is temp HP granted — the caster's gauge charges +1 per
+    # point, like any shielding (D8-3.3).
+    if toughness > 0:
+        _gain_gauge(st, st.character(item.source_id), toughness)
     _log(st, "pump", f"{target.name} gets +{power}/+{toughness} "
          f"(eff HP {target.effective_hp}).", target=_tid(target),
          power=power, toughness=toughness)
@@ -2802,12 +2938,32 @@ def _r_counter(st, item, effect, target, ctx):
          label=victim.label, source=victim.source_id)
 
 
+def _intent_reveal(intent: Intent, enemy: EnemyState) -> str:
+    """What a stripped intent turns out to have been (D8-1.3): its on-stack name
+    plus a short effect summary — paying a card buys the information along with
+    the tempo, and teaches the enemy's kit across a fight."""
+    if intent.action_type == "attack":
+        amt = intent.attack_damage(enemy.power_bonus)
+        return f"{intent.name} — deal {amt}" if amt is not None else intent.name
+    try:
+        from ltg_core.translation import render_effects
+        text = render_effects(intent.effects).strip()
+    except Exception:
+        text = ""
+    return f"{intent.name} — {text}" if text else intent.name
+
+
 def _r_strip_intent(st, item, effect, target, ctx):
     if isinstance(target, EnemyState) and target.intent is not None:
-        name = target.intent.name
+        reveal = _intent_reveal(target.intent, target)
         target.intent = None
-        _log(st, "strip_intent", f"{target.name}'s telegraphed {name} is stripped.",
-             enemy=target.id)
+        # Stripping an intent reveals it (D8-1.3): the log names what was
+        # prevented, and the intents window annotates the struck line.
+        target.round_intent_status = "stripped"
+        target.round_intent_reveal = reveal
+        _log(st, "strip_intent",
+             f"{target.name}'s intent is unravelled — it would have been "
+             f"*{reveal}*.", enemy=target.id, reveal=reveal)
 
 
 def _r_stun(st, item, effect, target, ctx):
@@ -2899,6 +3055,7 @@ def _r_revive(st, item, effect, target, ctx):
     if isinstance(target, CharacterState) and target.effective_hp <= 0:
         target.temp_mod = 0
         target.hp = max(1, int(target.max_hp * effect.to_fraction))
+        target.down_credited = False  # a later downing charges gauges anew (D8-3.3)
         _log(st, "revive", f"{target.name} is revived (HP {target.hp}).", character=target.id)
 
 
@@ -2957,6 +3114,9 @@ RESOLVERS = {
     "deal_damage": _r_deal_damage,
     "heal": _r_heal,
     "lose_life": _r_lose_life,
+    "poison": _r_poison,
+    "regen": _r_regen,
+    "charge": _r_charge,
     "destroy": _r_destroy,
     "exile": _r_exile,
     "bounce": _r_bounce,
@@ -3012,6 +3172,179 @@ def _filter_matches(filter_node: str, item: StackItem) -> bool:
 def _duration_value(effect) -> str:
     dur = getattr(effect, "duration", None)
     return dur.value if dur is not None else "this_turn"
+
+
+# --------------------------------------------------------------------------- #
+# Typed counters: poison / regen / charge (Design Update 08 §D8-2)
+# --------------------------------------------------------------------------- #
+def _annihilate_typed_counters(st: GameState, target) -> None:
+    """A poison counter and a regen counter on the same creature annihilate 1:1 as
+    a state-based action (§D8-2.2). The folded stat changes cancel exactly (−0/−1
+    against +0/+1), so only the tallies move."""
+    n = min(getattr(target, "poison_counters", 0), getattr(target, "regen_counters", 0))
+    if n <= 0:
+        return
+    target.poison_counters -= n
+    target.regen_counters -= n
+    _log(st, "annihilate",
+         f"{n} poison and {n} regen counter(s) on {target.name} annihilate.",
+         target=_tid(target), amount=n)
+
+
+def _place_poison_counters(st: GameState, target, n: int) -> None:
+    """Land `n` poison counters: each a persistent −0/−1 (−1 max HP and −1 current
+    HP as it lands). Not damage — no prevention, no temp-HP soak, no on-hit
+    triggers, never breaks a channel — but lethality is checked as always on
+    effective HP: poison kills (§D8-2.1)."""
+    if target is None or n <= 0:
+        return
+    target.poison_counters += n
+    target.max_hp = max(0, target.max_hp - n)
+    lost = target.hp - max(0, target.hp - n)
+    target.hp = max(0, target.hp - n)
+    _annihilate_typed_counters(st, target)
+    _log(st, "poison_counters",
+         f"{target.name} gains {n} poison counter(s) (−0/−{n}; "
+         f"HP {target.hp}/{target.max_hp}).",
+         target=_tid(target), amount=n, hp=target.hp, max_hp=target.max_hp)
+    if isinstance(target, CharacterState):
+        _gain_gauge(st, target, lost)  # +1 gauge per point of current HP lost (T-49)
+    _after_damage(st, target)
+
+
+def _place_regen_counters(st: GameState, target, n: int,
+                          source_id: Optional[str] = None) -> None:
+    """Land `n` regen counters: each a persistent +0/+1. A regen tick counts as
+    healing (§D8-2.2): it cures poison, fires life-gain triggers, and credits the
+    applier's ultimate gauge as restored HP."""
+    if target is None or n <= 0:
+        return
+    target.regen_counters += n
+    target.max_hp += n
+    target.hp += n
+    _annihilate_typed_counters(st, target)
+    _log(st, "regen_counters",
+         f"{target.name} gains {n} regen counter(s) (+0/+{n}; "
+         f"HP {target.hp}/{target.max_hp}).",
+         target=_tid(target), amount=n, hp=target.hp, max_hp=target.max_hp)
+    _cure_poison(st, target, reason="regeneration")
+    if source_id is not None:
+        _gain_gauge(st, st.character(source_id), n)  # +1 per HP restored as source
+    _fire_event(st, "life_gain", target)
+
+
+def _cure_poison(st: GameState, target, reason: str = "healing") -> None:
+    """Any received healing ends ALL poison effects on a creature — an antidote is
+    an antidote (§D8-2.1). The accumulated counters remain."""
+    effects = getattr(target, "poison_effects", None)
+    if effects:
+        target.poison_effects = []
+        _log(st, "poison_cured",
+             f"{target.name}'s poison is cured ({reason}) — "
+             f"{len(effects)} effect(s) end.",
+             target=_tid(target), reason=reason, ended=len(effects))
+
+
+def _break_regen(st: GameState, target) -> None:
+    """Damage that connects (≥1 after mitigation/prevention) concludes every regen
+    effect on the victim (§D8-2.2). Counters remain."""
+    if getattr(target, "regen_effects", None):
+        target.regen_effects = []
+        _log(st, "regen_broken", f"{target.name}'s regeneration is broken.",
+             target=_tid(target))
+
+
+def _tick_afflictions(st: GameState) -> None:
+    """The Upkeep tick (§D8-2.3): every active poison/regen effect places its
+    counters again. State-based, not stack events — no reaction windows open (the
+    counters are the drama; the tick is bookkeeping). Order is deterministic:
+    party side then enemy side, each in board order; poison before regen on a
+    creature. Deaths from a poison tick fire death triggers normally."""
+    for c in list(st.party) + _ordered(st.living_tokens()) + _ordered(st.living_enemies()):
+        _tick_afflictions_one(st, c)
+
+
+def _tick_afflictions_one(st: GameState, c) -> None:
+    for eff in list(getattr(c, "poison_effects", [])):
+        if eff not in c.poison_effects:  # concluded mid-tick (e.g. death)
+            continue
+        eff.pending = False
+        _place_poison_counters(st, c, eff.amount)
+        if eff in c.poison_effects and eff.turns_left is not None:
+            eff.turns_left -= 1
+            if eff.turns_left <= 0:
+                c.poison_effects.remove(eff)
+                _log(st, "poison_expired",
+                     f"The poison on {c.name} runs its course.", target=_tid(c))
+    if not getattr(c, "alive", False) and not isinstance(c, CharacterState):
+        return  # died to its own poison — nothing left to regenerate
+    for eff in list(getattr(c, "regen_effects", [])):
+        if eff not in c.regen_effects:
+            continue
+        _place_regen_counters(st, c, eff.amount, source_id=eff.source_id)
+        if eff in c.regen_effects and eff.turns_left is not None:
+            eff.turns_left -= 1
+            if eff.turns_left <= 0:
+                c.regen_effects.remove(eff)
+                _log(st, "regen_expired",
+                     f"The regeneration on {c.name} fades.", target=_tid(c))
+
+
+def _charge_threshold(e: EnemyState) -> Optional[int]:
+    """The lowest armed on_charge_full threshold — the public pips the party
+    watches fill (§D8-2.4). None when the enemy has no charge-triggered ability."""
+    thresholds = [c.charge_threshold for c in e.components
+                  if c.trigger == "on_charge_full" and c.charge_threshold]
+    return min(thresholds) if thresholds else None
+
+
+def _check_charge_full(st: GameState, e: EnemyState) -> None:
+    """§D8-2.4: the moment the enemy's charge reaches a component's threshold, the
+    hidden ability fires — immediately, mid-step, going ON THE STACK like any enemy
+    reaction, where the party may respond in full view of what it now is. Charge
+    resets to 0 as the ability hits the stack (not when it resolves): countering
+    the detonation still consumes the charge."""
+    for comp in _reactive_rules(e):
+        if comp.trigger != "on_charge_full":
+            continue
+        threshold = comp.charge_threshold or 0
+        if threshold <= 0 or e.charge < threshold:
+            continue
+        if not _component_eligible(st, e, comp):
+            continue
+        target = _component_target(st, e, comp)
+        tid = target.id if target is not None else None
+        _start_cooldown(st, e, comp.id)
+        e.charge = 0
+        label = comp.telegraph or comp.archetype or "Detonation"
+        kind = "spell" if comp.action_type == "spell" else "triggered"
+        _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
+                            label=label, effects=list(comp.verbs), target_id=tid))
+        st.priority = None  # fresh window — re-seeded by _advance
+        st.passes = 0
+        _log(st, "charge_detonate",
+             f"{e.name}'s gathered power erupts — {label} goes on the stack.",
+             enemy=e.id, label=label, component=comp.id, target=tid)
+        return
+
+
+# --------------------------------------------------------------------------- #
+# The ultimate gauge (Design Update 08 §D8-3.3)
+# --------------------------------------------------------------------------- #
+def _gain_gauge(st: GameState, char, n: int) -> None:
+    """Fill a character's public 0–100 ultimate gauge (clamped). Quiet except at
+    the moment it fills — the bar is the display; the log marks only the drama.
+    The gauge persists through incapacitation (a revived character keeps it)."""
+    if n <= 0 or not isinstance(char, CharacterState):
+        return
+    before = char.ultimate_gauge
+    char.ultimate_gauge = min(100, before + n)
+    if (before < 100 <= char.ultimate_gauge
+            and char.ultimate is not None and not char.ultimate_used):
+        _log(st, "gauge_full",
+             f"{char.name}'s ultimate gauge is full — "
+             f"{char.ultimate.name} is ready.",
+             character=char.id, ultimate=char.ultimate.name)
 
 
 # --------------------------------------------------------------------------- #
@@ -3132,8 +3465,27 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     # (so a shielded hit still feeds lifelink/deathtouch; identical to before when no
     # temp HP was present).
     connected = absorbed + dealt
+    # Ultimate-gauge accounting (D8-3.3): the victim charges +1 per point of
+    # current HP lost; a character source charges +1 per point of their damage
+    # that connects (their attacks/spells/abilities — not their tokens').
+    if isinstance(target, CharacterState):
+        _gain_gauge(st, target, dealt)
+    if isinstance(source_obj, CharacterState):
+        _gain_gauge(st, source_obj, connected)
+    if connected > 0:
+        # Damage that connects breaks regeneration (D8-2.2) and carries infect
+        # (D8-2.5): the victim gains a poison effect whose FIRST counter lands at
+        # the next Upkeep — a venomed blade wounds now and sickens later.
+        _break_regen(st, target)
+        if source_obj is not None and _has_kw(source_obj, "infect"):
+            target.poison_effects.append(
+                Affliction(amount=1, turns_left=None, pending=True,
+                           source_id=getattr(source_obj, "id", None)))
+            _log(st, "infect",
+                 f"{target.name} is infected — the poison sets in at the next Upkeep.",
+                 target=_tid(target), source=getattr(source_obj, "id", None))
     if source_obj is not None and connected > 0 and _has_kw(source_obj, "lifelink"):
-        _heal(st, source_obj, connected, reason="lifelink")
+        _heal(st, source_obj, connected, reason="lifelink", source_obj=source_obj)
     if (source_obj is not None and connected > 0 and _has_kw(source_obj, "deathtouch")
             and isinstance(target, EnemyState) and target.alive
             and not (target.is_boss and not target.in_execute_window)):
@@ -3148,11 +3500,16 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     return overkill if target.effective_hp <= 0 else 0
 
 
-def _heal(st: GameState, target, amount: int, reason: str = "") -> None:
+def _heal(st: GameState, target, amount: int, reason: str = "",
+          source_obj=None) -> None:
     """Restore HP. A heal fills an outstanding negative `temp_mod` (a wound) first,
-    cancelling it toward 0, and only then restores `hp` (never above max) — R-7."""
+    cancelling it toward 0, and only then restores `hp` (never above max) — R-7.
+    Any resolved heal — even one that restores 0 HP — cures poison (§D8-2.1).
+    `source_obj` is the healer, credited +1 ultimate gauge per point restored
+    (overheal beyond max counts 0 — §D8-3.3)."""
     if amount <= 0 or target is None:
         return
+    _cure_poison(st, target)  # an antidote is an antidote — even a 0-restore heal
     gained = 0  # wound closed + HP restored — what on-life-gain triggers key off
     if target.temp_mod < 0:  # cancel the wound toward 0 first
         fill = min(-target.temp_mod, amount)
@@ -3168,6 +3525,9 @@ def _heal(st: GameState, target, amount: int, reason: str = "") -> None:
     if target.hp != before or reason:
         _log(st, "heal", f"{target.name} heals {target.hp - before} (HP {target.hp}).",
              target=_tid(target), amount=target.hp - before, hp=target.hp, reason=reason)
+    _gain_gauge(st, source_obj, gained)
+    if isinstance(target, CharacterState) and target.effective_hp > 0:
+        target.down_credited = False  # back on their feet — a later downing counts anew
     if gained > 0:
         _fire_event(st, "life_gain", target)
 
@@ -3202,6 +3562,17 @@ def _after_damage(st: GameState, target) -> None:
         _remove_token(st, target)
     else:  # a player-character: incapacitated (its channels then break)
         _log(st, "incapacitated", f"{target.name} is incapacitated.", character=target.id)
+        # Afflictions conclude when the creature falls (D8-2.1/2.2 "dies"; an
+        # incapacitation is the character-side analogue). Counters remain.
+        target.poison_effects = []
+        target.regen_effects = []
+        # +25 ultimate gauge to each OTHER living party member, once per downing
+        # (D8-3.3). The flag clears when this character stands back up.
+        if not target.down_credited:
+            target.down_credited = True
+            for other in st.party:
+                if other.id != target.id and other.alive:
+                    _gain_gauge(st, other, 25)
         _note_break(st, target, "incapacitated")
         _purge_stack_from(st, target.id, "incapacitated")  # its pending spells/attacks drop
         # On-death channel triggers hear an incapacitation too. The downed
@@ -3472,6 +3843,7 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     for card in actor.hand:            # Free instants (mana-limited, any time)
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
+    actions += _heroic_actions(st, actor, main_phase=True)  # Skill / Ultimate (D8-3)
     actions += _drop_actions(st, actor)
     actions.append(Action("end_turn", actor.id, label="End turn"))
     return actions
@@ -3512,6 +3884,7 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
                     and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
                 actions.append(Action("mitigate", actor.id, target_id=ally.id,
                                       label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
+    actions += _heroic_actions(st, actor, main_phase=False)  # Skill reacts (D8-3.1)
     actions += _drop_actions(st, actor)
     actions.append(Action("pass", actor.id, label="Pass"))
     return actions
@@ -3541,6 +3914,33 @@ def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:
         actions.append(Action("drop_channels", actor.id,
                               label=f"Drop concentration (end all {len(droppable)})"))
     return actions
+
+
+def _heroic_actions(st: GameState, actor: CharacterState,
+                    main_phase: bool) -> List[Action]:
+    """The once-per-encounter Skill/Ultimate offers (D8-3). The Skill is instant
+    speed — offered wherever an instant is (main phase and reaction windows); the
+    Ultimate is an action — main phase only, proactive action unspent, and only
+    while the gauge is full."""
+    out: List[Action] = []
+    if actor.skill is not None and not actor.skill_used and _can_pay(actor, actor.skill):
+        out += _hero_ability_actions(st, actor, actor.skill, "use_skill", "Skill")
+    if (main_phase and actor.ultimate is not None and not actor.ultimate_used
+            and actor.ultimate_gauge >= 100 and actor.acted_mode is None):
+        out += _hero_ability_actions(st, actor, actor.ultimate, "use_ultimate", "Ultimate")
+    return out
+
+
+def _hero_ability_actions(st: GameState, actor: CharacterState, card: Card,
+                          kind: str, tag: str) -> List[Action]:
+    """Enumerate a Skill/Ultimate exactly like a cast — one action per
+    (mode × target × X) — re-labelled and re-kinded as the heroic action."""
+    out = []
+    for a in _cast_actions(st, actor, card):
+        a.kind = kind
+        a.label = a.label.replace(f"Cast {card.name}", f"{tag}: {card.name}", 1)
+        out.append(a)
+    return out
 
 
 def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Action]:
@@ -3863,6 +4263,56 @@ def _site_label(key, effects, card: Card) -> Optional[str]:
             if slot_name(getattr(e, "target", None)) == ident:
                 return _effect_site_label(e)
     return None
+
+
+def auto_pass_action(state: GameState) -> Optional[Action]:
+    """The synthetic action a presentation layer should submit when the current
+    priority holder has NO meaningful option (Design Update 08 §D8-4) — or None
+    when a real decision exists. Engine-truth, computed from the legal set:
+
+      * reaction window: the set holds nothing beyond `pass`/`drop_channels`,
+        and any drop would not make an instant in hand or an unused Skill
+        castable (a drop that enables nothing is not a decision);
+      * main phase: after the same refinement, only `end_turn` remains.
+
+    A `pending_choice` always waits (choices are never auto-resolved), as does
+    the capacity-colour choice. Deterministic: the same state always auto-passes
+    the same seats, so scripted scenarios and replay are unaffected. The engine
+    itself never submits this — the game server does (the cockpit never will)."""
+    st = copy.deepcopy(state)
+    _advance(st)
+    if st.result is not None or st.priority is None or st.pending_choice is not None:
+        return None
+    if st.phase == "capacity" and not st.stack:
+        return None  # the capacity colour is a mandatory real choice
+    actions = _legal(st)
+    if not actions:
+        return None
+    kinds = {a.kind for a in actions}
+    actor = st.character(st.priority)
+    if "pass" in kinds and not (kinds - {"pass", "drop_channels"}):
+        if "drop_channels" in kinds and _drop_enables_play(st, actor):
+            return None
+        return Action("pass", st.priority, auto=True, label="Pass (auto)")
+    if "end_turn" in kinds and not (kinds - {"end_turn", "drop_channels"}):
+        if "drop_channels" in kinds and _drop_enables_play(st, actor):
+            return None
+        return Action("end_turn", st.priority, auto=True, label="End turn (auto)")
+    return None
+
+
+def _drop_enables_play(st: GameState, actor: Optional[CharacterState]) -> bool:
+    """Would releasing the reserved channel mana make any instant in hand, or an
+    unused Skill, castable (cost ≤ pool + reserved, colours respected)? (§D8-4.1)"""
+    if actor is None or not actor.reserved:
+        return False
+    probe = CharacterState(id=actor.id, name=actor.name, max_hp=1, hp=1,
+                           power=0, hand_size=0)
+    probe.pool = list(actor.pool) + list(actor.reserved)
+    candidates = [c for c in actor.hand if c.timing == Timing.instant]
+    if actor.skill is not None and not actor.skill_used:
+        candidates.append(actor.skill)
+    return any(_can_pay(probe, c) for c in candidates)
 
 
 def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:

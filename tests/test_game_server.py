@@ -290,9 +290,12 @@ def test_snapshot_handles_non_damage_component_intent():
     }
     snap = build_snapshot(state_from_dict(spec), {"p"})  # raised AttributeError before the fix
     brood = next(c for c in snap["creatures"] if c["name"] == "Broodmother")
-    assert brood["intent"]["name"] == "Spawn Husklings"
-    assert brood["intent"]["amount"] is None            # no damage number for a Swarm
-    assert any(it["intent_text"] == "Spawn Husklings" for it in snap["intents"])
+    # D8-1: the snapshot ships the VEILED intent — a category and locked target,
+    # never the component's telegraph text or amounts.
+    assert brood["intent"]["category"] == "summon"
+    assert "Spawn Husklings" not in str(brood["intent"])
+    assert any(it["category"] == "summon" for it in snap["intents"])
+    assert all("Spawn Husklings" not in it["line"] for it in snap["intents"])
 
 
 def test_multitarget_cast_carries_per_site_targets():

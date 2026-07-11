@@ -16,10 +16,14 @@ import asyncio
 import secrets
 from typing import Any, Dict, List, Optional, Set
 
-from ltg_combat.engine import apply_action, legal_actions
+from ltg_combat.engine import apply_action, auto_pass_action, legal_actions
 from ltg_combat.state import GameState
 
 from .snapshot import build_snapshot
+
+# Safety valve for the auto-pass loop (D8-4): each synthetic action strictly
+# advances the game, but cap the chain so a rules bug can never spin forever.
+_AUTO_CAP = 200
 
 
 def _short_id(n: int = 8) -> str:
@@ -34,6 +38,9 @@ class Session:
         self.id = session_id
         self.name = name
         self.state = state  # authoritative (un-settled) engine state
+        # Smart auto-pass (D8-4) runs from the first snapshot: a character with
+        # nothing meaningful to do at the opening window is passed for, silently.
+        self._auto_advance()
         # character_id -> portrait (data URL / image URL); the engine drops it.
         self.portraits: Dict[str, str] = portraits or {}
         # Which encounter this game was built from, and its generated art
@@ -112,6 +119,23 @@ class Session:
         # apply_action re-validates against the engine's current legal set as well.
         new_state, _events = apply_action(self.state, action)
         self.state = new_state
+        # Smart auto-pass / auto end-turn (D8-4): after every state change,
+        # submit synthetic actions for seats with no meaningful option.
+        self._auto_advance()
+
+    def _auto_advance(self) -> None:
+        """Drain every no-decision priority stop (D8-4): while the engine-truth
+        check says the priority holder's legal set holds nothing beyond
+        pass/end_turn (with the drop-channels refinement), submit the synthetic
+        action through the same `apply_action` path a click takes. Each is logged
+        distinctly ("… passes (auto)"). Choices and the capacity pick always
+        wait; the cockpit, being a debugger, never runs this."""
+        for _ in range(_AUTO_CAP):
+            action = auto_pass_action(self.state)
+            if action is None:
+                return
+            new_state, _events = apply_action(self.state, action)
+            self.state = new_state
 
     def set_art(self, art: Dict[str, Any]) -> None:
         """Swap in fresh art references (scene + pool-enemy urls), keeping this

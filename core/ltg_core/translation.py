@@ -632,6 +632,22 @@ def _render_counters(e) -> str:
     return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)}/+{_value(e.toughness)}{_duration_suffix(e) or ' for the encounter'}."
 
 
+def _affliction_suffix(e) -> str:
+    return f" for {e.turns} turn(s)" if getattr(e, "turns", None) else ""
+
+
+def _render_poison(e) -> str:
+    n = _value(e.amount)
+    return (f"Poison {_tgt(e.target)}: {n} −0/−1 counter(s) now and at each "
+            f"Upkeep{_affliction_suffix(e)} (any healing cures it).")
+
+
+def _render_regen(e) -> str:
+    n = _value(e.amount)
+    return (f"{_tgt(e.target).capitalize()} regenerates: {n} +0/+1 counter(s) now "
+            f"and at each Upkeep{_affliction_suffix(e)} (broken by damage).")
+
+
 RENDERERS = {
     "deal_damage": lambda e: (
         f"Deal 1 damage to {_tgt(e.target)} for each point of mana capacity."
@@ -642,6 +658,9 @@ RENDERERS = {
         if _is_capacity(e.amount) else f"Restore {_value(e.amount)} HP to {_tgt(e.target)}."
     ),
     "lose_life": lambda e: _render_lose_life(e),
+    "poison": _render_poison,
+    "regen": _render_regen,
+    "charge": lambda e: f"Gather {e.amount} charge.",
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
     "exile": lambda e: f"Exile {_tgt(e.target)}.",
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",

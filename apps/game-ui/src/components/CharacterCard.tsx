@@ -23,6 +23,8 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
   const setFocus = useGame((s) => s.setFocus);
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  // Intents-window hover (D8-1.5): light up when a hovered intent locks onto us.
+  const intentLit = useGame((s) => s.hoverIntent?.targetId === char.id);
 
   const onClick = () => {
     if (isTarget) {
@@ -58,8 +60,8 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       className={`relative aspect-[9/16] shrink-0 select-none border bg-ink-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)] transition ${
         char.portrait ? "" : "bg-gradient-to-b from-ink-3 to-ink-1"
       } ${frame} ${dim} ${dimUntargeted} ${
-        char.is_active_focusable || isTarget ? "cursor-pointer" : "cursor-default"
-      }`}
+        intentLit ? "shadow-[0_0_0_1px_rgba(194,90,80,0.6)]" : ""
+      } ${char.is_active_focusable || isTarget ? "cursor-pointer" : "cursor-default"}`}
     >
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />
@@ -80,8 +82,28 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
 
       {/* keyword sigils + counters — top-left, off the face */}
       <div className="absolute left-1.5 top-1.5">
-        <KeywordBadges keywords={char.keywords} counters={char.counters} />
+        <KeywordBadges keywords={char.keywords} counters={char.counters}
+          poison={char.poison_counters} regen={char.regen_counters} />
       </div>
+
+      {/* ultimate gauge (D8-3.3) — a thin brass meter above the stat gems */}
+      {char.ultimate != null && (
+        <div
+          title={`Ultimate gauge ${char.ultimate_gauge}/100${char.ultimate.used ? " — spent this encounter" : char.ultimate_gauge >= 100 ? " — READY" : ""}`}
+          className="absolute inset-x-1.5 bottom-[8%] h-[3px] bg-black/60 ring-1 ring-line"
+        >
+          <div
+            className={`h-full transition-all ${
+              char.ultimate.used
+                ? "bg-dimmed/50"
+                : char.ultimate_gauge >= 100
+                  ? "anim-ember bg-gradient-to-r from-brass to-brass-hi"
+                  : "bg-brass/70"
+            }`}
+            style={{ width: `${Math.min(100, char.ultimate_gauge)}%` }}
+          />
+        </div>
+      )}
 
       {/* Channeling chip */}
       {char.is_channeling && (

@@ -71,11 +71,16 @@ main.layout {
 }
 .col-left { display: flex; flex-direction: column; gap: 16px; }
 .col-right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* Top row: Heroic Actions | (Deck status over Add cards). `stretch` (the grid
+   default) makes the heroics pane exactly as tall as the stacked pair. */
 .right-top {
   display: grid; gap: 16px;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  align-items: stretch;
 }
+.right-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* Add cards absorbs any spare height in the stack, so the two columns stay flush. */
+.right-stack #search-panel { flex: 1; min-height: 0; }
 
 /* Panels: hairline shell + brass corner ticks (DESIGN_SYSTEM §2). */
 .panel {
