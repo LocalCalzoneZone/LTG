@@ -581,6 +581,34 @@ async function addCard(name) {
   }
 }
 
+// "+ New Card": author a card from scratch — no MTG source, no translation
+// pass. A blank sorcery opens straight in the editor; the type is switchable
+// there (instant / sorcery / enchantment).
+function newBlankCard() {
+  const card = {
+    id: `custom_${Date.now()}`,
+    name: "New Card",
+    source_name: "New Card",
+    rarity: "common",
+    level: 0,
+    type: "Sorcery",
+    timing: "sorcery",
+    cost: { generic: 0, colors: {}, x: false },
+    original_text: "",
+    translated_text: "",
+    flavor_text: "",
+    effects: [],
+    targets: {},
+    needs_translation: false,
+    text_override: false,
+    validated: false,
+  };
+  state.cards.push(card);
+  renderDeck();
+  scheduleValidate();
+  openDetail(state.cards.length - 1);
+}
+
 // Preview a search result (full MTG card) before committing it to the deck.
 function searchCostString(m) {
   return (m.mana_cost || "").replace(/[{}]/g, "") || "—";
@@ -785,18 +813,29 @@ function describeTargetJS(d) {
   if (!d || d.mode === "self") return "you";
   if (d.mode === "all") {
     const n = { ally: "all allies", enemy: "all enemies", any: "everyone" }[d.side];
-    return d.exclude_self && d.side !== "enemy" ? "all other " + n.split(" ").slice(1).join(" ") : n;
+    let out = d.exclude_self && d.side !== "enemy" ? "all other " + n.split(" ").slice(1).join(" ") : n;
+    if (d.rows && d.rows.length) out += ` in the ${d.rows.join("/")} row`;
+    return out;
   }
-  const noun = { ally: "ally", enemy: "enemy", any: "target" }[d.side];
+  let noun = { ally: "ally", enemy: "enemy", any: "target" }[d.side];
+  if (d.state === "corpse") noun += " corpse";
+  else if (d.state === "any") noun += " (living or dead)";
+  const splash = d.scope === "row" ? " + its row" : d.scope === "blast" ? " + blast" : "";
   const art = d.exclude_self ? "another" : ("aeiou".includes(noun[0]) ? "an" : "a");
-  return `${art} ${noun}${d.targeted ? ", targeted" : ""}`;
+  return `${art} ${noun}${splash}${d.targeted ? ", targeted" : ""}`;
 }
 
 // Normalize a descriptor so it stays schema-coherent as the user toggles mode.
 function normTarget(d) {
   if (d.mode === "self") return { mode: "self" };
   const out = { mode: d.mode, side: d.side || "ally", exclude_self: !!d.exclude_self };
-  if (d.mode === "chosen") out.targeted = !!d.targeted;
+  if (d.mode === "chosen") {
+    out.targeted = !!d.targeted;
+    // The corpse axis (§D9-1.3) and splash scope (§D9-3.2) ride chosen targets.
+    if (d.state && d.state !== "living") out.state = d.state;
+    if (d.scope) out.scope = d.scope;
+  }
+  if (d.mode === "all" && d.rows && d.rows.length) out.rows = d.rows;
   return out;
 }
 
@@ -807,6 +846,9 @@ const KINDS = () => Object.keys(EFFECT_SPECS).sort();
 function newItem(kind) {
   if (kind === "modal") return { kind: "modal", label: "", choose: 1, or_more: false };
   if (kind === "conditional") return { kind: "conditional", condition: { kind: "cast_mode", mode: "reaction" } };
+  // A stance must change at least one slot (§D9-2.2) — seed a valid default.
+  if (kind === "stance") return { kind: "stance", attack: "removed", defend: "unchanged",
+                                  mitigate: "unchanged", move: "unchanged" };
   return defaultEffect(kind);
 }
 
@@ -867,7 +909,22 @@ function targetControlHtml(i, current, card, field = "target") {
     `<label class="inline mini"><input type="checkbox" class="tgt-exclude" ${f} ${d.exclude_self ? "checked" : ""}/> another</label>`;
   const targeted = d.mode === "chosen" ?
     `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" ${f} ${d.targeted ? "checked" : ""}/> targets</label>` : "";
-  return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}</span>`;
+  // Splash scope (§D9-3.2): the pick's row, or its row plus adjacent rows.
+  const scopeSel = d.mode === "chosen" ? scopeSelectHtml("tgt-scope", f, d.scope) : "";
+  // Row filter (§D9-3.2) for a whole-side effect: everyone, or one row of them.
+  const rowSel = d.mode === "all" ?
+    `<select class="tgt-rows" ${f} title="Row filter (§D9-3.2): hit only the named row of that side">
+       <option value="" ${!(d.rows && d.rows.length) ? "selected" : ""}>every row</option>
+       ${ROWS.map((r) => `<option value="${r}" ${(d.rows || [])[0] === r && (d.rows || []).length === 1 ? "selected" : ""}>${r} row only</option>`).join("")}</select>` : "";
+  return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}${scopeSel}${rowSel}</span>`;
+}
+
+// The splash-scope select (§D9-3.2), shared by inline targets and slot rows.
+function scopeSelectHtml(cls, attrs, scope) {
+  return `<select class="${cls}" ${attrs} title="Splash (§D9-3.2): also hit the pick's row, or its row + adjacent rows — splash victims are never targeted">
+       <option value="" ${!scope ? "selected" : ""}>no splash</option>
+       <option value="row" ${scope === "row" ? "selected" : ""}>+ its row</option>
+       <option value="blast" ${scope === "blast" ? "selected" : ""}>+ row & adjacent (blast)</option></select>`;
 }
 
 // The reference names offered by the dropdown: every registry ref except
@@ -965,6 +1022,18 @@ function paramHtml(i, p, val) {
       else summary = "—";
       return `<span class="nested-note">${p.name}: ${escapeHtml(summary)} · edit in { } raw JSON</span>`;
     }
+    case "stance_slot": {
+      // One main-ability slot of a stance (§D9-2.2): unchanged | removed | a
+      // replacement. Choosing "replace with effects" opens a replacement block
+      // below the stance row; its effects stack there like a modal option's.
+      const v = val ?? "unchanged";
+      const choice = typeof v === "string" ? v : "replace";
+      const sel = `<select class="stance-slot" data-i="${i}" data-p="${p.name}">
+          <option value="unchanged" ${choice === "unchanged" ? "selected" : ""}>unchanged</option>
+          <option value="removed" ${choice === "removed" ? "selected" : ""}>removed</option>
+          <option value="replace" ${choice === "replace" ? "selected" : ""}>replace with effects…</option></select>`;
+      return `<label class="inline">${p.name} ${sel}</label>`;
+    }
     default:
       return `<label class="inline">${p.name} <input type="text" class="eff-param" data-i="${i}" data-p="${p.name}" value="${escapeAttr(val ?? "")}" /></label>`;
   }
@@ -1003,6 +1072,22 @@ function flattenEffects(effects) {
         items.push(marker);
         (m.effects || []).forEach(pushEffect);
       });
+    } else if (e.kind === "stance") {
+      // The stance row keeps the four slot CHOICES; each replaced slot flattens
+      // to a `stance_slot` marker followed by its effect rows (§D9-2.2) — the
+      // same below-the-marker editing as a modal option.
+      const row = { kind: "stance" };
+      const groups = [];
+      for (const slot of STANCE_SLOTS) {
+        const v = e[slot] ?? "unchanged";
+        if (typeof v === "string") row[slot] = v;
+        else { row[slot] = "replace"; groups.push({ slot, name: v.name || "", effects: v.effects || [] }); }
+      }
+      items.push(row);
+      groups.forEach((g) => {
+        items.push({ kind: "stance_slot", slot: g.slot, name: g.name });
+        g.effects.forEach(pushEffect);
+      });
     } else {
       pushEffect(e);
     }
@@ -1010,12 +1095,51 @@ function flattenEffects(effects) {
   return items;
 }
 
+const STANCE_SLOTS = ["attack", "defend", "mitigate", "move"];
+
+// Card type choices: engine timing ↔ player-facing label ("Enchantment" is the
+// channeled type; card.type stores the label, card.timing drives the rules).
+const TYPE_OPTIONS = [["instant", "Instant"], ["sorcery", "Sorcery"],
+                      ["channeled", "Enchantment"]];
+const TYPE_LABEL = { instant: "Instant", sorcery: "Sorcery", channeled: "Enchantment" };
+
+// [start, end) of one slot's replacement group (its marker + the effect rows
+// under it), searched below the stance row at `stanceIdx`; null when the slot
+// has no marker. A group runs until the next structural row.
+function stanceGroupSpan(stanceIdx, slot) {
+  for (let j = stanceIdx + 1; j < editorItems.length; j++) {
+    const k = editorItems[j].kind;
+    if (k === "stance" || k === "modal") break;
+    if (k === "stance_slot" && editorItems[j].slot === slot) {
+      let end = j + 1;
+      while (end < editorItems.length
+             && !["stance", "stance_slot", "modal"].includes(editorItems[end].kind)) end++;
+      return [j, end];
+    }
+  }
+  return null;
+}
+
+// Where a NEW replacement group inserts: after the stance row's existing
+// groups, before any unrelated top-level rows.
+function stanceInsertAt(stanceIdx) {
+  let at = stanceIdx + 1, inGroup = false;
+  while (at < editorItems.length) {
+    const k = editorItems[at].kind;
+    if (k === "stance_slot") { inGroup = true; at++; continue; }
+    if (inGroup && k !== "stance" && k !== "modal") { at++; continue; }
+    break;
+  }
+  return at;
+}
+
 function rebuildEffects(items) {
   const out = [];
-  let modal = null, mode = null, cond = null;
+  let modal = null, mode = null, cond = null, stance = null, slotRepl = null;
   for (const it of items) {
     if (it.kind === "modal") {
       cond = null;  // a new mode starts; close any open conditional
+      stance = slotRepl = null;
       mode = { label: it.label || "", effects: [] };
       if (modal) { modal.modes.push(mode); }
       else {
@@ -1025,15 +1149,30 @@ function rebuildEffects(items) {
         if (it.trigger != null) modal.trigger = clone(it.trigger);
         out.push(modal);
       }
+    } else if (it.kind === "stance") {
+      modal = mode = cond = slotRepl = null;
+      stance = { kind: "stance" };
+      for (const slot of STANCE_SLOTS) {
+        // A "replace" choice is filled by its stance_slot marker below; a
+        // dangling one (marker removed) degrades to unchanged, never an error.
+        stance[slot] = it[slot] === "replace" ? "unchanged" : (it[slot] ?? "unchanged");
+      }
+      out.push(stance);
+    } else if (it.kind === "stance_slot") {
+      modal = mode = cond = null;
+      slotRepl = { name: it.name || "", effects: [] };
+      if (stance && STANCE_SLOTS.includes(it.slot)) stance[it.slot] = slotRepl;
     } else if (it.kind === "conditional") {
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
       if (it.trigger != null) cond.trigger = clone(it.trigger);
-      // Nest the conditional inside the open modal mode (modal > conditional >
-      // effect); only a conditional with no modal above it sits at top level.
+      // Nest the conditional inside the open modal mode / stance replacement
+      // (one container level); only an unscoped conditional sits at top level.
       if (mode) mode.effects.push(cond);
+      else if (slotRepl) slotRepl.effects.push(cond);
       else out.push(cond);
     } else {
-      const dest = cond ? cond.effects : (mode ? mode.effects : out);
+      const dest = cond ? cond.effects
+        : (mode ? mode.effects : (slotRepl ? slotRepl.effects : out));
       dest.push(clone(it));
     }
   }
@@ -1097,7 +1236,8 @@ function conditionControlHtml(i, cond) {
         <option value="has_keyword" ${prop === "has_keyword" ? "selected" : ""}>has keyword</option>
         <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option>
         <option value="level" ${prop === "level" ? "selected" : ""}>is level</option>
-        <option value="row" ${prop === "row" ? "selected" : ""}>is in row</option></select>`;
+        <option value="row" ${prop === "row" ? "selected" : ""}>is in row</option>
+        <option value="is_dead" ${prop === "is_dead" ? "selected" : ""}>is dead (a corpse)</option></select>`;
     if (prop === "has_keyword") {
       const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
       const opts = kwSpec.options || [];
@@ -1112,7 +1252,7 @@ function conditionControlHtml(i, cond) {
     } else if (prop === "row") {
       rest += `<select class="cond-row" data-i="${i}">${ROWS.map((r) =>
         `<option value="${r}" ${cond.row === r ? "selected" : ""}>${r}</option>`).join("")}</select>`;
-    } else {
+    } else if (prop !== "is_dead") {  // is_dead needs no extra control (§D9-1.3)
       rest += `<select class="cond-side" data-i="${i}">${["ally", "enemy"].map((s) =>
         `<option value="${s}" ${cond.side === s ? "selected" : ""}>${SIDE_LABEL[s] || s}</option>`).join("")}</select>`;
     }
@@ -1158,11 +1298,24 @@ function effectRowHtml(e, i, card, depth = 0) {
         <div class="effect-params">${trg}${conditionControlHtml(i, e.condition)}
           <span class="marker-note">applies to the effects below</span></div></div>`;
   }
+  if (e.kind === "stance_slot") {
+    // A replaced main ability (§D9-2.2): auto-managed by the stance row's slot
+    // select above — the effect rows below it (until the next block) ARE the
+    // replacement, edited exactly like a modal option's.
+    return `<div class="effect-row marker">
+        <div class="effect-head"><span class="kw-label">${e.slot} — replacement</span></div>
+        <div class="effect-params">
+          <label class="inline">name <input type="text" class="stance-name" data-i="${i}" value="${escapeAttr(e.name || "")}" placeholder="e.g. Soothing Palm"/></label>
+          <span class="marker-note">the effects below (until the next block) resolve as this ability — set the slot to unchanged/removed above to delete</span>
+        </div></div>`;
+  }
 
   const spec = EFFECT_SPECS[e.kind];
   const params = (spec?.params || []).filter((p) =>
     // The level value is meaningless until a level comparator is chosen.
     !(e.kind === "move_card" && p.name === "filter_level" && (e.filter_level_compare ?? "any") === "any")
+    // A stance is always continuous — a recurring stance is rejected (§D9-2.2).
+    && !(e.kind === "stance" && p.name === "trigger")
   ).map((p) => {
     if (p.name === "target" && p.control === "action_target")
       return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
@@ -1184,11 +1337,13 @@ function effectRowHtml(e, i, card, depth = 0) {
 // > effect). A top-level conditional scopes its effects to depth 1.
 function renderEffectRows(card) {
   if (!editorItems.length) return "<div class='meta'>No effects yet.</div>";
-  let inMode = false, inCond = false;
+  let inMode = false, inCond = false, inSlot = false;
   return editorItems.map((e, i) => {
-    if (e.kind === "modal") { inMode = true; inCond = false; return effectRowHtml(e, i, card, 0); }
-    if (e.kind === "conditional") { const d = inMode ? 1 : 0; inCond = true; return effectRowHtml(e, i, card, d); }
-    return effectRowHtml(e, i, card, (inMode ? 1 : 0) + (inCond ? 1 : 0));
+    if (e.kind === "modal") { inMode = true; inCond = false; inSlot = false; return effectRowHtml(e, i, card, 0); }
+    if (e.kind === "stance") { inMode = inCond = inSlot = false; return effectRowHtml(e, i, card, 0); }
+    if (e.kind === "stance_slot") { inSlot = true; inMode = false; inCond = false; return effectRowHtml(e, i, card, 0); }
+    if (e.kind === "conditional") { const d = (inMode || inSlot) ? 1 : 0; inCond = true; return effectRowHtml(e, i, card, d); }
+    return effectRowHtml(e, i, card, ((inMode || inSlot) ? 1 : 0) + (inCond ? 1 : 0));
   }).join("");
 }
 
@@ -1208,11 +1363,19 @@ function openDetail(idx) {
   const slots = Object.keys(card.targets);
   const el = $("#detail-card");
 
+  // The card TYPE is editable (instant / sorcery / enchantment→channeled) —
+  // except on heroic slots, whose timing is forced (skill instant, ultimate
+  // sorcery, D8-3.5). Switching re-validates: channeled-only effects (stance,
+  // while_channeled, triggers) flag an error on a one-shot type and vice versa.
+  const typeSel = `<select id="detail-type" title="Card type — instant reacts, sorcery is an action, enchantment is channeled">
+      ${TYPE_OPTIONS.map(([t, label]) =>
+        `<option value="${t}" ${card.timing === t ? "selected" : ""}>${label}</option>`).join("")}
+    </select>`;
   const sub = heroic
     ? (idx === "skill"
         ? "Skill — instant speed · once per encounter · may cost mana (D8-3.1)"
         : "Ultimate — an action · once per encounter · needs a full gauge · never costs mana (D8-3.2)")
-    : `${card.source_name} · ${card.type} · ${card.rarity} · Level ${card.level}`;
+    : `${card.source_name} · ${typeSel} · ${card.rarity} · Level ${card.level}`;
 
   const costBlock = idx === "ultimate"
     ? `<div class="block">
@@ -1268,6 +1431,7 @@ function openDetail(idx) {
           <select class="slot-side" data-slot="${s}">${SIDES.map((t) => `<option value="${t}" ${d.side === t ? "selected" : ""}>${SIDE_LABEL[t] || t}</option>`).join("")}</select>
           <label class="inline mini"><input type="checkbox" class="slot-exclude" data-slot="${s}" ${d.exclude_self ? "checked" : ""}/> another</label>
           <label class="inline mini"><input type="checkbox" class="slot-targeted" data-slot="${s}" ${d.targeted ? "checked" : ""}/> targets</label>
+          ${scopeSelectHtml("slot-scope", `data-slot="${s}"`, d.scope)}
           <button class="slot-remove danger" data-slot="${s}" title="Remove slot">×</button>
         </div>`; }).join("")}
       </div>` : ""}
@@ -1312,6 +1476,13 @@ function wireDetail(idx) {
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
+  if ($("#detail-type")) {
+    $("#detail-type").onchange = (e) => {
+      card.timing = e.target.value;
+      card.type = TYPE_LABEL[card.timing] || card.timing;
+      recheckCard(idx, true);  // re-validate + re-render (trigger controls etc.)
+    };
+  }
 
   // Mana cost editing — any change re-derives level and re-checks the card.
   // (The block is absent for an ultimate: it never costs mana — D8-3.2.)
@@ -1391,6 +1562,8 @@ function wireDetail(idx) {
   document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], side: sel.value }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], exclude_self: cb.checked }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], targeted: cb.checked }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-scope").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], scope: sel.value || null }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-rows").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], rows: sel.value ? [sel.value] : null }); commitEffects(idx, true); }; });
 
   // Modal label + conditional condition builder
   document.querySelectorAll(".modal-label").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].label = inp.value; commitEffects(idx, false); }; });
@@ -1431,6 +1604,7 @@ function wireDetail(idx) {
         side: { kind: "target_property", property: "side", side: "enemy" },
         level: { kind: "target_property", property: "level", level: 1, compare: "exactly" },
         row: { kind: "target_property", property: "row", row: "front" },
+        is_dead: { kind: "target_property", property: "is_dead" },
       };
       editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.has_keyword;
       commitEffects(idx, true);
@@ -1452,6 +1626,31 @@ function wireDetail(idx) {
   document.querySelectorAll(".cond-side").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.side = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-level").forEach((inp) => { inp.onchange = () => { editorItems[+inp.dataset.i].condition.level = parseInt(inp.value) || 1; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-compare").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.compare = sel.value; commitEffects(idx, true); }; });
+
+  // Stance slot controls (§D9-2.2): picking "replace with effects" opens a
+  // replacement marker below the stance row (with a starter effect); picking
+  // unchanged/removed deletes that slot's marker and its effect rows.
+  document.querySelectorAll(".stance-slot").forEach((sel) => {
+    sel.onchange = () => {
+      const i = +sel.dataset.i, slot = sel.dataset.p;
+      editorItems[i][slot] = sel.value;
+      const span = stanceGroupSpan(i, slot);
+      if (sel.value === "replace" && !span) {
+        const starter = defaultEffect(slot === "attack" ? "deal_damage" : "heal");
+        editorItems.splice(stanceInsertAt(i), 0,
+                           { kind: "stance_slot", slot, name: "" }, starter);
+      } else if (sel.value !== "replace" && span) {
+        editorItems.splice(span[0], span[1] - span[0]);
+      }
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".stance-name").forEach((inp) => {
+    inp.onchange = () => {
+      editorItems[+inp.dataset.i].name = inp.value;
+      commitEffects(idx, false);
+    };
+  });
 
   // Trigger control (lifecycle literal or event trigger object).
   document.querySelectorAll(".trg-base").forEach((sel) => {
@@ -1493,6 +1692,9 @@ function wireDetail(idx) {
   });
   document.querySelectorAll(".slot-targeted").forEach((cb) => {
     cb.onchange = () => { card.targets[cb.dataset.slot] = normTarget({ ...card.targets[cb.dataset.slot], targeted: cb.checked }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".slot-scope").forEach((sel) => {
+    sel.onchange = () => { card.targets[sel.dataset.slot] = normTarget({ ...card.targets[sel.dataset.slot], scope: sel.value || null }); recheckCard(idx, true); };
   });
   document.querySelectorAll(".slot-remove").forEach((b) => {
     b.onclick = () => {
@@ -1931,6 +2133,7 @@ function init() {
   $("#btn-save").onclick = saveLoadout;
   $("#btn-export-engine").onclick = exportEngineLoadout;
   $("#btn-search").onclick = doSearch;
+  $("#btn-new-card").onclick = newBlankCard;
   $("#search-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   $("#char-name").oninput = () => { state.character.name = $("#char-name").value; scheduleValidate(); };
   $("#char-desc").oninput = () => { state.character.description = $("#char-desc").value; };

@@ -23,6 +23,7 @@ from typing import Callable, List, Tuple
 from .schema import (
     AddMana,
     Bounce,
+    Control,
     Counter,
     Ramp,
     DealDamage,
@@ -40,9 +41,12 @@ from .schema import (
     Prevent,
     Pump,
     Ref,
+    STANCE_SLOTS,
     Scry,
     Side,
+    TargetDescriptor,
     TargetMode,
+    TargetState,
     Wound,
     slot_name,
     t_all,
@@ -191,6 +195,23 @@ def _remove_all(m, ctx):
     return [RemoveKeyword(keywords=["all"], target=_grant_target(text))]
 
 
+# --- Control / necromancy (Design Update 09 §D9-1.4) ----------------------- #
+@register(r"gain control of (?:target|enchanted|another target) creature")
+def _control(m, ctx):
+    # Act of Treason → control {turns: 1}; Mind Control → control "encounter".
+    turns = 1 if "until end of turn" in m.string.lower() else None
+    return [Control(target=t_chosen("enemy", targeted=True), turns=turns)]
+
+
+@register(r"(?:return|put) target creature card from (?:a|your|an opponent's) graveyard "
+          r"(?:to|onto) the battlefield")
+def _raise_dead(m, ctx):
+    # Raise Dead / Animate Dead / Reanimate → control on a corpse (§D9-1.4).
+    target = TargetDescriptor(mode=TargetMode.chosen, side=Side.enemy,
+                              targeted=True, state=TargetState.corpse)
+    return [Control(target=target)]
+
+
 # --- Lands → mana capacity (the land names are dropped) -------------------- #
 _LAND_COLOR = {"forest": "G", "island": "U", "swamp": "B", "plains": "W", "mountain": "R"}
 
@@ -266,6 +287,26 @@ _RENDER_TARGETS = contextvars.ContextVar("ltg_render_targets", default={})
 # Noun by side for `chosen` targets; the article/another is added by describe().
 _SIDE_NOUN = {Side.ally: "ally", Side.enemy: "enemy", Side.any: "target"}
 
+_ROW_WORD = {"front": "front", "mid": "mid", "rear": "rear"}
+
+
+def _rows_phrase(rows) -> str:
+    names = [_ROW_WORD.get(getattr(r, "value", r), str(r)) for r in rows]
+    if len(names) == 1:
+        return f"the {names[0]} row"
+    return "the " + " or ".join(names) + " rows"
+
+
+def _scope_suffix(desc) -> str:
+    """The splash rider on a chosen target (§D9-3.2)."""
+    scope = getattr(desc, "scope", None)
+    scope = getattr(scope, "value", scope)
+    if scope == "row":
+        return " and its whole row"
+    if scope == "blast":
+        return " and its row plus adjacent rows"
+    return ""
+
 
 def describe_target(desc, channeled: bool = False) -> str:
     """Render a TargetDescriptor (or slot-ref string) as a lowercase phrase.
@@ -279,13 +320,22 @@ def describe_target(desc, channeled: bool = False) -> str:
         return "yourself"
     if desc.mode == TargetMode.all:
         noun = {Side.ally: "all allies", Side.enemy: "all enemies", Side.any: "everyone"}[desc.side]
-        return ("all other " + noun.split(" ", 1)[1]) if desc.exclude_self and desc.side != Side.enemy else noun
+        out = ("all other " + noun.split(" ", 1)[1]) if desc.exclude_self and desc.side != Side.enemy else noun
+        if getattr(desc, "rows", None):
+            out += f" in {_rows_phrase(desc.rows)}"
+        return out
     # chosen
     noun = _SIDE_NOUN[desc.side]
+    state = getattr(desc, "state", None)
+    state = getattr(state, "value", state)
+    if state == "corpse":
+        noun = f"{noun} corpse" if desc.side != Side.any else "corpse"
+    elif state == "any":
+        noun += " (living or dead)"
     if channeled:
-        return f"the chosen {noun}"
+        return f"the chosen {noun}" + _scope_suffix(desc)
     article = "another" if desc.exclude_self else ("an" if noun[0] in "aeiou" else "a")
-    return f"{article} {noun}"
+    return f"{article} {noun}" + _scope_suffix(desc)
 
 
 def _is_self(t) -> bool:
@@ -476,6 +526,8 @@ def _condition_phrase(cond) -> str:
     if cond.property == "row":
         row = cond.row.value if hasattr(cond.row, "value") else cond.row
         return f"the target is in the {row} row"
+    if cond.property == "is_dead":
+        return "the target is dead (a corpse)"
     return "the condition holds"
 
 
@@ -603,6 +655,12 @@ def _targets_external(effect) -> bool:
     return mode != "self"
 
 
+# target_property conditions with a natural noun-phrase qualifier ("a target
+# with flying"). Anything else — is_dead included — reads clearer as the plain
+# "If <condition>, <effect>." form, so a player always sees the condition.
+_QUALIFIER_PROPERTIES = ("has_keyword", "level", "side", "row")
+
+
 def _render_conditional(e) -> str:
     inner = render_effects(e.effects, _RENDER_TARGETS.get())
     # A target_property condition qualifies the SAME target the effect already
@@ -610,7 +668,9 @@ def _render_conditional(e) -> str:
     # "If the target …, <effect> a target." (which reads as two distinct targets).
     # Only when the effect actually has an external target; cast-mode conditions
     # (and target-less effects) keep the "If …" form.
-    if getattr(e.condition, "kind", None) == "target_property" and e.effects and _targets_external(e.effects[-1]):
+    if (getattr(e.condition, "kind", None) == "target_property"
+            and getattr(e.condition, "property", None) in _QUALIFIER_PROPERTIES
+            and e.effects and _targets_external(e.effects[-1])):
         body = inner.rstrip().rstrip(".")
         return f"{body} {_target_condition_qualifier(e.condition)}."
     return f"If {_condition_phrase(e.condition)}, {_lc_first(inner)}"
@@ -646,6 +706,52 @@ def _render_regen(e) -> str:
     n = _value(e.amount)
     return (f"{_tgt(e.target).capitalize()} regenerates: {n} +0/+1 counter(s) now "
             f"and at each Upkeep{_affliction_suffix(e)} (broken by damage).")
+
+
+def _control_span(e) -> str:
+    return f"for {e.turns} turn(s)" if getattr(e, "turns", None) else "for the encounter"
+
+
+def _render_control(e) -> str:
+    desc = _resolve(e.target, _RENDER_TARGETS.get())
+    state = getattr(getattr(desc, "state", None), "value", getattr(desc, "state", None))
+    if state == "corpse":
+        return (f"Raise {_tgt(e.target)}: it rises as an undead ally at half its "
+                f"HP {_control_span(e)}, then crumbles.")
+    # Control takes the living and the dead alike (§D9-1.4) — say so on the card.
+    return (f"Gain control of {_tgt(e.target)} or a corpse {_control_span(e)} — a "
+            f"living enemy fights for you; a corpse rises as an undead ally at half HP.")
+
+
+_MOVE_DIR_PHRASE = {
+    "forward": "one row forward", "back": "one row back",
+    "to_front": "to the front row", "to_mid": "to the mid row",
+    "to_rear": "to the rear row",
+}
+
+
+def _render_move(e) -> str:
+    return f"Move {_tgt(e.target)} {_MOVE_DIR_PHRASE.get(e.direction, e.direction)} (immediately)."
+
+
+_STANCE_LABEL = {"attack": "Attack", "defend": "Defend",
+                 "mitigate": "Mitigate", "move": "Move"}
+
+
+def _render_stance(e) -> str:
+    parts = []
+    for slot in STANCE_SLOTS:
+        v = getattr(e, slot)
+        if v == "unchanged":
+            continue
+        label = _STANCE_LABEL[slot]
+        if v == "removed":
+            parts.append(f"{label}: removed")
+        else:
+            body = render_effects(v.effects, _RENDER_TARGETS.get()).rstrip()
+            name = v.name or "replaced"
+            parts.append(f"{label}: {name} — {body}")
+    return "Stance (while channeled) — " + " · ".join(parts)
 
 
 RENDERERS = {
@@ -685,6 +791,9 @@ RENDERERS = {
     "create_token": lambda e: f"Create {_token_phrase(e)}.",
     "taunt": lambda e: f"Force {_tgt(e.target)} to target you this turn.",
     "revive": lambda e: f"Revive {_tgt(e.target)} at {int(e.to_fraction * 100)}% HP.",
+    "control": _render_control,
+    "move": _render_move,
+    "stance": _render_stance,
     "ramp": _render_ramp,
     "add_mana": _render_add_mana,
     "grant_keyword": lambda e: (
@@ -727,6 +836,8 @@ _CLAUSE = {
     # Other targetable effects need subjectless phrases too, or the shared-target
     # ("Choose X: they …") path falls back to the direct renderer and leaks the
     # raw "$slot" reference with the wrong subject.
+    "control": lambda e: f"come under your control {_control_span(e)}",
+    "move": lambda e: f"are moved {_MOVE_DIR_PHRASE.get(e.direction, e.direction)}",
     "strip_intent": lambda e: "lose their telegraphed intent",
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
@@ -902,9 +1013,13 @@ def _event_key(trig) -> tuple:
 
 def _render_channeled(effects, targets) -> str:
     parts = []
-    # Continuous (untriggered) effects, one sentence each.
+    # Continuous (untriggered) effects, one sentence each. A stance names its
+    # own persistence ("Stance (while channeled) — …"), so it skips the prefix.
     for e in effects:
-        if getattr(e, "trigger", None) is None:
+        if getattr(e, "kind", None) == "stance":
+            t = _render_stance(e)
+            parts.append(t if t.endswith(".") else t + ".")
+        elif getattr(e, "trigger", None) is None:
             parts.append("While channeled: " + _channeled_body(e, targets) + ".")
     # Each recurring trigger groups its effects under its own lead-in.
     for trigger, lead in (

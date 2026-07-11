@@ -144,6 +144,8 @@ archetype (typical effect) — base cost:
 - Counter (REACTIVE ONLY: cancel the hero action on the stack — a counterspell
   on trigger on_spell_cast, or a parry on trigger on_attack) — 3
 - Swarm (create_token) — 6
+- Necromancy (raise a fallen fellow enemy: `control` on an own-side CORPSE —
+  see the corpses section) — 5
 Cost modifiers (multiply, round up): cooldown 1 = ×1.5 · cooldown 2–3 = ×1.0 ·
 once_per_encounter = ×0.5 · reactive timing = +2 flat after multipliers.
 
@@ -201,6 +203,52 @@ any percent; give it once_per_encounter so it stays a moment) ·
 charge reaches Y; see the windup section).
 
 `"once_per_encounter": true` on a component = a single dramatic use (×0.5 cost).
+
+## Corpses & the undead shelf (Design Update 09 §D9-1)
+When a non-token enemy dies it leaves a CORPSE on its row (tokens never do).
+Corpses are objects, not creatures — only `control` (raise) and `exile` (burn)
+touch them. This unlocks a whole faction archetype, the BODY ECONOMY:
+- NECROMANCY (archetype above, base 5): proactive, `"target_rule": "corpse"`
+  (the engine finds the nearest own-side corpse; no corpse → the rule skips and
+  the priority list falls through, so a Necromancer never wastes a turn), verb
+  `{"kind": "control", "target": {"mode": "chosen", "side": "enemy",
+  "targeted": true, "state": "corpse"}}` — copy this shape verbatim. The fallen
+  minion rises as an enemy-side undead token at HALF its max HP. Classify it
+  `"action_type": "spell"` (counterable — Negate-bait). AT MOST ONE Necromancer
+  per encounter: necromancy that outpaces the party's removal is a treadmill,
+  not a fight.
+- RISES (enemy trait, min level 2, cost 3): add `"rises": 2` on the enemy —
+  when it dies its corpse visibly STIRS and it revives after 2 Upkeeps at half
+  max HP, once per encounter. The enemy is NOT defeated while stirring; the
+  party answers by exiling or raising the corpse first. The shambling tide.
+- CORPSE-BURST (Burst variant): consume an own-side corpse for a blast — pair
+  `"target_rule": "corpse"` with an exile of the corpse plus row damage, e.g.
+  `[{"kind": "exile", "target": {"mode": "chosen", "side": "enemy",
+  "targeted": true, "state": "corpse"}}, {"kind": "deal_damage", "amount": <X>,
+  "target": {"mode": "all", "side": "ally", "rows": ["front"]}}]` — the faction
+  that eats its own dead.
+Faction guidance: cheap corpse-leaving Husks up front, ONE Necromancer feeding
+on the fallen (kill-priority incarnate), a riser or two. Exile and control are
+the party's trump cards against it — that tension is the design.
+
+## Forced movement & row blasts (Design Update 09 §D9-3)
+The `move` verb shoves a creature between rows, IMMEDIATELY (current and
+committed): `{"kind": "move", "direction": "forward" | "back" | "to_front" |
+"to_mid" | "to_rear", "target": {"mode": "chosen", "side": "ally",
+"targeted": true}}`. It never cancels a declared intent — it is positional
+play, not a soft stun. Blessed patterns:
+- The HOOKER (Debilitate variant): `move` a hero `"to_front"`, cooldown 2 —
+  drags the caster into the wall's reach; pairs with a front-row biter.
+- The LINE-BREAKER: a shove `"back"` on the party's wall, opening your own
+  melee lanes to the squishy rows behind it.
+At most ONE forced-mover per encounter at standard difficulty; two only at hard.
+Row-scoped damage shapes (use them for area attacks):
+- a whole row: `{"mode": "all", "side": "ally", "rows": ["front"]}`;
+- splash around the picked hero: add `"scope": "row"` (their whole row) or
+  `"scope": "blast"` (their row plus adjacent rows; front↔mid, mid↔rear) to a
+  chosen target. Only the pick is targeted; the splash is incidental.
+Magnitude schedule by scope (T-55): single target = L+1 · a whole row = L per
+creature · blast / party-wide = ceil(L/2)+1 — wider is always shallower.
 
 ## The windup (charge — Design Update 08 §D8-2.4)
 The most dramatic pattern you have besides a channel: a GATHERER visibly fills a
@@ -347,6 +395,10 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
   so the fight transforms when it turns: e.g. a single-target breath before, a
   party-wide firestorm after. Give the post-enrage kit a clearly scarier shape —
   the fight's final act should FEEL different, not just bigger numbers.
+- declares TWO intents per round once enraged (engine-enforced — Design Update
+  09 §D9-4). Design the post-enrage kit knowing every component fires twice as
+  often: cooldowns matter double, and the guaranteed basic attack backstops the
+  second slot every round.
 - Elite minions can carry their own mini-enrage: a reactive component on
   `"trigger": "on_self_below_50"` (any percent) with once_per_encounter — the
   fight stays dynamic even away from the boss.
@@ -385,6 +437,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
       "home_row": "front" | "mid" | "rear",   // optional; where it redeploys to
       "attack_mode": "melee" | "ranged",
       "is_boss": true,                  // AT MOST ONE enemy, only when asked for
+      "rises": 2,                       // optional undead trait (min level 2, cost 3): revives after 2 Upkeeps, once
       "keywords": ["flying", ...],      // may be []
       "components": [                   // may be []; a plain chassis just attacks
         {
@@ -407,6 +460,10 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
           "verbs": [                    // the effects; omit for pure Evasive
             {"kind": "deal_damage", "amount": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true}},
             {"kind": "deal_damage", "amount": <int>, "target": {"mode": "all", "side": "ally"}},   // AoE: every hero
+            {"kind": "deal_damage", "amount": <int>, "target": {"mode": "all", "side": "ally", "rows": ["front"]}},  // ROW assault (T-55: L per creature)
+            {"kind": "deal_damage", "amount": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true, "scope": "blast"}},  // BLAST: the pick + its row + adjacent rows
+            {"kind": "move", "direction": "to_front", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // the Hooker's drag; "back" for a Line-breaker
+            {"kind": "control", "target": {"mode": "chosen", "side": "enemy", "targeted": true, "state": "corpse"}},    // NECROMANCY ONLY: raise an own-side corpse (target_rule "corpse")
             {"kind": "lose_life",   "amount": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // unpreventable
             {"kind": "heal",        "amount": <int>, "target": {"mode": "self"}},          // or chosen ally (see target_rule)
             {"kind": "wound", "power": <int>, "toughness": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true}},
@@ -449,8 +506,11 @@ uses `{"mode": "all", "side": "ally"}`. Copy these shapes verbatim — do not in
 target shapes. The `counter` verb is REACTIVE-ONLY (a Counter component answering
 on_spell_cast / on_attack) and takes no target field — the engine aims it at the
 action that tripped the trigger. NEVER use these verbs (player-only; they do nothing
-or break the fight): destroy, exile, bounce, strip_intent, fight, revive, draw, scry,
-move_card, ramp, add_mana. Never grant enemies first_strike / vigilance / haste.
+or break the fight): destroy, bounce, strip_intent, fight, revive, draw, scry,
+move_card, ramp, add_mana, stance. `control` is enemy-legal ONLY on corpses (the
+Necromancy shape above — never on a living hero), and `exile` is enemy-legal ONLY
+on an own-side corpse (the Corpse-burst shape). Never grant enemies first_strike /
+vigilance / haste.
 
 # Three worked examples that build correctly (study these, then design your own)
 

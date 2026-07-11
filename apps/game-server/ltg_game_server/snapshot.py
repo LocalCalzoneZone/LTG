@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Set
 from ltg_combat.engine import _ordered, cast_target_labels, legal_actions, settle
 from ltg_combat.serialize import (
     _character_dict,
+    _corpse_dict,
     _enemy_dict,
     _stack_list,
     _token_dict,
@@ -26,6 +27,7 @@ from ltg_combat.serialize import (
     phase_label,
     serialize_actions,
     veiled_intent,
+    veiled_intents,
 )
 from ltg_combat.state import Action, GameState
 from ltg_core.schema import KEYWORDS
@@ -128,6 +130,8 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "ultimate": cd["ultimate"] if controlled else (
             {"used": cd["ultimate"]["used"]} if cd["ultimate"] else None),
         "evergreen": cd["evergreen"],  # flavour-named Basic Attack/Defend/Mitigate (D8-3.4)
+        # The active stance (§D9-2), or None: which main abilities are rewired.
+        "stance": cd["stance"],
         "mitigate_value": cd["mitigate_value"],
         "acted_mode": cd["acted_mode"],
         "turn_ended": cd["turn_ended"],
@@ -193,6 +197,10 @@ def _creature_snapshot(view: GameState, enemy,
         # VEILED intent (D8-1): category + locked target only — the full text,
         # amounts and keywords stay server-side until the action hits the stack.
         "intent": veiled_intent(view, enemy),
+        # Every declared line (two for an enraged boss, §D9-4).
+        "intents": veiled_intents(view, enemy),
+        # The `rises` trait is public (§D9-1.5) — the stirring state, not the veil.
+        "rises": getattr(enemy, "rises", None),
         # Boss support (§F-9): the flag lights the UI's boss chrome; the execute
         # window tells players the removal immunity has lifted (≤25% max HP).
         "is_boss": bool(enemy.is_boss),
@@ -223,6 +231,11 @@ def _token_snapshot(view: GameState, token,
         "poison_counters": getattr(token, "poison_counters", 0),
         "regen_counters": getattr(token, "regen_counters", 0),
         "is_channeling": False,
+        # Control chip (§D9-1.4): dominated enemy / raised undead, holder, and
+        # remaining rounds (None == the encounter).
+        "controlled_by": td["controlled_by"],
+        "control_left": td["control_left"],
+        "control_kind": td["control_kind"],
     }
 
 
@@ -234,9 +247,7 @@ def _intents(view: GameState) -> List[Dict[str, Any]]:
     the full data; this seat-filtered snapshot is what players receive)."""
     out: List[Dict[str, Any]] = []
     for e in _ordered(view.living_enemies()):
-        entry = veiled_intent(view, e)
-        if entry is not None:
-            out.append(entry)
+        out.extend(veiled_intents(view, e))  # two lines for an enraged boss (§D9-4)
     return out
 
 
@@ -297,6 +308,9 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
     ]
     creatures = [_creature_snapshot(view, e, art) for e in view.living_enemies()]
     tokens = [_token_snapshot(view, t, art) for t in view.living_tokens()]
+    # Corpse markers (§D9-1.7): small and dim on their rows; a stirring corpse
+    # pulses. Public information — the veil hides intents, not bodies.
+    corpses = [_corpse_dict(c) for c in view.corpses]
 
     # top-first; client renders bottom = resolves last. Slim off the raw dump and
     # surface `uid` so a counter's `#<uid>` target maps to a clickable stack row.
@@ -347,6 +361,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "characters": characters,
         "creatures": creatures,
         "tokens": tokens,
+        "corpses": corpses,
         "stack": stack,
         "intents": _intents(view),
         "pending_choice": pending_cards,

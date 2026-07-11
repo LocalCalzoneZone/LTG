@@ -182,6 +182,7 @@ class CharacterState:
     used_attack: bool = False
     used_defend: bool = False
     used_mitigate: bool = False
+    used_move: bool = False  # a stance-replaced Move spent this turn (§D9-2.3)
     acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" | "move" this turn
     turn_ended: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
@@ -220,6 +221,30 @@ class CharacterState:
 
 
 @dataclass
+class Corpse:
+    """The battlefield remains of a dead non-token enemy (Design Update 09 §D9-1).
+
+    An OBJECT, not a creature: it has an identity and a row but no HP and never
+    acts. Creature-facing effects cannot resolve on it — only the corpse-legal
+    verbs (`control` raises it, `exile` burns it) touch it. `stirring` > 0 marks
+    a `rises` corpse: the enemy is NOT defeated and revives in that many Upkeeps
+    unless the corpse is exiled or raised first (§D9-1.5). `body` keeps the dead
+    EnemyState so a rise (or the inspector) has the full record. Boss corpses are
+    inert to `control`, absolutely (§D9-1.4)."""
+
+    id: str
+    name: str
+    row: str
+    power: int
+    max_hp: int
+    level: int
+    attack_mode: str = "melee"
+    is_boss: bool = False
+    stirring: int = 0
+    body: Optional["EnemyState"] = None
+
+
+@dataclass
 class TokenState:
     """An autonomous ally token (e.g. a Wisp). Acts on its own each turn and
     dies at 0 HP (unlike a player-character, which is merely incapacitated)."""
@@ -233,6 +258,13 @@ class TokenState:
     attack_mode: str = "melee"
     level: int = 1
     intent: Optional["Intent"] = None  # telegraphed in the Intents step (R-5)
+    # Control bookkeeping (§D9-1.4): a controlled combatant is a party-side token.
+    # `controlled_by` is the caster; `control_left` counts End Steps until control
+    # ends (None == the encounter). `revert` holds the living enemy that returns
+    # when MIND CONTROL ends; a raised undead has revert None and simply crumbles.
+    controlled_by: Optional[str] = None
+    control_left: Optional[int] = None
+    revert: Optional["EnemyState"] = None
     temp_mod: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
@@ -372,6 +404,10 @@ class EnemyState:
     pending_voluntary: Optional[str] = None
     home_row: str = "front"
     intent: Optional[Intent] = None
+    # Boss fury (§D9-4): after enrage a boss declares TWO intents per round; the
+    # second sits here and executes right after the first, in declaration order.
+    # Always None for non-bosses and pre-enrage.
+    intent2: Optional[Intent] = None
     # The "mind" (Design Update 04 §F-3): a blend of components merged into one priority
     # list. Empty == the legacy single-template enemy (the default Attack rule only), so
     # existing content runs unchanged. `cooldowns` maps component id → the turn number it
@@ -382,6 +418,10 @@ class EnemyState:
     is_boss: bool = False       # §F-9: removal-immune outside the execute window; enrages ≤25%
     enraged: bool = False       # one-way: set the first time a boss falls to ≤25% max HP
     created_by: Optional[str] = None  # the enemy that spawned this token (§F-4 per-creator cap)
+    # The `rises` trait (§D9-1.5): on death the corpse STIRS and the enemy revives
+    # after this many Upkeeps at half max HP (T-52), once per encounter. Cleared
+    # as the corpse is created so the risen enemy stays down the second time.
+    rises: Optional[int] = None
     intent_template: Dict[str, Any] = field(default_factory=dict)
     # An optional weaker ranged attack (R-1 heuristics): the enemy falls back to it
     # when its melee attack can't reach the target the heuristic wants. Same shape as
@@ -425,6 +465,11 @@ class EnemyState:
     round_intent: Optional["Intent"] = None
     round_intent_status: str = "none"
     round_intent_reveal: str = ""
+    # The second veiled line for an enraged boss (§D9-4) — same lifecycle as the
+    # first-slot fields above.
+    round_intent2: Optional["Intent"] = None
+    round_intent2_status: str = "none"
+    round_intent2_reveal: str = ""
 
     @property
     def effective_hp(self) -> int:
@@ -601,6 +646,10 @@ class GameState:
     # (legacy states / tests built without the field).
     party_order: List[str] = field(default_factory=list)
     tokens: List[TokenState] = field(default_factory=list)
+    # The dead on the battlefield (§D9-1): corpses of non-token enemies. Defeated
+    # for victory purposes (a STIRRING corpse is not); consumed by `control`,
+    # burned by `exile`, fed on by enemy necromancy.
+    corpses: List[Corpse] = field(default_factory=list)
     token_defs: Dict[str, Any] = field(default_factory=dict)  # token_id -> stats
     token_seq: int = 0                # for unique created-token ids
     stack_seq: int = 0                # for unique StackItem.uid
@@ -659,3 +708,16 @@ class GameState:
 
     def living_tokens(self) -> List[TokenState]:
         return [t for t in self.tokens if t.alive]
+
+    def corpse(self, cid: str) -> Optional[Corpse]:
+        """The corpse with this id, if it still lies on the battlefield (§D9-1)."""
+        return next((c for c in self.corpses if c.id == cid), None)
+
+    def stirring_corpses(self) -> List[Corpse]:
+        """Corpses under a `rises` trait, not yet risen: NOT defeated (§D9-1.5)."""
+        return [c for c in self.corpses if c.stirring > 0]
+
+    def controlled_units(self) -> List[TokenState]:
+        """Party-side combatants under a `control` effect (§D9-1.4): dominated
+        living enemies (revert set) and raised undead (revert None)."""
+        return [t for t in self.tokens if t.controlled_by is not None]

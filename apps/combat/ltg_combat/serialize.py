@@ -91,7 +91,8 @@ def intent_category(intent) -> str:
     """One of the closed set: threat / spellcraft / row assault / party assault /
     gathering / support / summon / manoeuvre (§D8-1.2). Multi-verb intents
     classify by their first hostile verb; a `charge` verb anywhere classifies as
-    gathering (the windup dominates the fiction)."""
+    gathering (the windup dominates the fiction). Row-scoped shapes (§D9-3.2 —
+    a `rows` filter or a row/blast `scope`) read as a row assault."""
     if intent is None:
         return "threat"
     if getattr(intent, "kind", "action") == "move":
@@ -111,6 +112,9 @@ def intent_category(intent) -> str:
         mode = getattr(mode, "value", mode)
         side = getattr(desc, "side", None)
         side = getattr(side, "value", side)
+        scoped = getattr(desc, "rows", None) or getattr(desc, "scope", None)
+        if scoped and (mode == "chosen" or side in ("ally", "any")):
+            return "row assault"    # §D9-3.2: a row or blast shape on the party
         if mode == "all" and side in ("ally", "any"):
             return "party assault"  # hostile mode:all on the hero side
         return "threat"
@@ -119,19 +123,14 @@ def intent_category(intent) -> str:
     return "threat"
 
 
-def veiled_intent(state: GameState, enemy) -> Optional[Dict[str, Any]]:
-    """The §D8-1.1 pre-stack information contract for one enemy: exactly a
-    category and a locked target — never names, verbs, magnitudes, or whether it
-    is a channel. `status`/`reveal` drive the intents window (§D8-1.5): a
-    stripped line is struck and annotated with what it would have been."""
-    intent = enemy.round_intent if enemy.round_intent is not None else enemy.intent
-    status = getattr(enemy, "round_intent_status", "declared" if intent else "none")
+def _veiled_entry(state: GameState, enemy, intent, status: str, reveal: str,
+                  slot: int) -> Optional[Dict[str, Any]]:
     if intent is None and status not in ("stunned",):
         return None
     category = intent_category(intent) if intent is not None else "none"
     target_id = intent.target_id if intent is not None else None
     target_name = _name_of(state, target_id)
-    line = _veiled_line(enemy, category, target_id, target_name, status)
+    line = _veiled_line(enemy, category, target_id, target_name, status, slot)
     return {
         "enemy_id": enemy.id,
         "creature_id": enemy.id,          # legacy key the client already reads
@@ -141,15 +140,46 @@ def veiled_intent(state: GameState, enemy) -> Optional[Dict[str, Any]]:
         "target_name": target_name,
         "line": line,
         "status": status,                 # declared|stripped|stunned|executed|fizzled
-        "reveal": getattr(enemy, "round_intent_reveal", ""),
+        "reveal": reveal,
+        "slot": slot,                     # 1, or 2 for a boss-fury second intent (§D9-4)
     }
 
 
+def veiled_intent(state: GameState, enemy) -> Optional[Dict[str, Any]]:
+    """The §D8-1.1 pre-stack information contract for one enemy: exactly a
+    category and a locked target — never names, verbs, magnitudes, or whether it
+    is a channel. `status`/`reveal` drive the intents window (§D8-1.5): a
+    stripped line is struck and annotated with what it would have been."""
+    intent = enemy.round_intent if enemy.round_intent is not None else enemy.intent
+    status = getattr(enemy, "round_intent_status", "declared" if intent else "none")
+    return _veiled_entry(state, enemy, intent, status,
+                         getattr(enemy, "round_intent_reveal", ""), 1)
+
+
+def veiled_intents(state: GameState, enemy) -> List[Dict[str, Any]]:
+    """Every veiled line this enemy declared this round — two for an enraged
+    boss (§D9-4: fury is twice as loud), one otherwise."""
+    out = []
+    first = veiled_intent(state, enemy)
+    if first is not None:
+        out.append(first)
+    intent2 = (enemy.round_intent2 if enemy.round_intent2 is not None
+               else enemy.intent2)
+    second = _veiled_entry(state, enemy, intent2,
+                           getattr(enemy, "round_intent2_status", "none"),
+                           getattr(enemy, "round_intent2_reveal", ""), 2)
+    if second is not None:
+        out.append(second)
+    return out
+
+
 def _veiled_line(enemy, category: str, target_id, target_name,
-                 status: str) -> str:
+                 status: str, slot: int = 1) -> str:
     """The generic template line (§D8-1.2). Presentation only."""
     name = enemy.name
     if status == "stunned":
+        if slot == 2:
+            return f"{name}'s fury is dulled — the stun suppresses one intent."
         return f"{name} reels — it has no intent."
     tname = target_name or "your party"
     if category == "threat":
@@ -273,6 +303,7 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         } for ch in char.channels],
         "hand": [card_dict(c) for c in char.hand],
         "library": [card_dict(c) for c in char.library],
+        "stance": _stance_block(char),
         "evergreen": _evergreen_block(char),
         # Heroic actions (D8-3): the once-per-encounter Skill/Ultimate and the
         # public 0–100 ultimate gauge.
@@ -292,6 +323,28 @@ def _heroic_block(card: Optional[Card], used: bool) -> Optional[Dict[str, Any]]:
     if card is None:
         return None
     return {**card_dict(card), "used": used}
+
+
+_STANCE_SLOT_NAMES = ("attack", "defend", "mitigate", "move")
+
+
+def _stance_block(char) -> Optional[Dict[str, Any]]:
+    """The holder's active stance (§D9-2), or None: the stance card's name and,
+    per main-ability slot, 'unchanged' | 'removed' | the replacement's name —
+    what the UI needs to badge the rewired abilities."""
+    for ch in getattr(char, "channels", []) or []:
+        for e in ch.card.effects:
+            if getattr(e, "kind", None) != "stance":
+                continue
+            slots = {}
+            for slot in _STANCE_SLOT_NAMES:
+                v = getattr(e, slot)
+                slots[slot] = v if isinstance(v, str) else {
+                    "name": v.name or "replaced",
+                }
+            return {"card_id": ch.card.id, "card_name": ch.card.name,
+                    "slots": slots}
+    return None
 
 
 def _evergreen_block(char) -> Dict[str, Any]:
@@ -324,6 +377,14 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
             "target_id": enemy.intent.target_id,
             "target_name": _name_of(state, enemy.intent.target_id),
         }
+    intent2 = None
+    if enemy.intent2 is not None:  # boss fury (§D9-4): the second declared intent
+        intent2 = {
+            "name": enemy.intent2.name,
+            "amount": enemy.intent2.attack_damage(enemy.power_bonus),
+            "target_id": enemy.intent2.target_id,
+            "target_name": _name_of(state, enemy.intent2.target_id),
+        }
     return {
         "id": enemy.id,
         "name": enemy.name,
@@ -345,6 +406,9 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "power_bonus": enemy.power_bonus,
         "keywords": list(enemy.keywords.keys()),
         "intent": intent,
+        "intent2": intent2,
+        # The `rises` trait is PUBLIC (§D9-1.5): the veil hides intents, not bodies.
+        "rises": getattr(enemy, "rises", None),
         "poison_counters": getattr(enemy, "poison_counters", 0),
         "regen_counters": getattr(enemy, "regen_counters", 0),
         "poisoned": bool(getattr(enemy, "poison_effects", None)),
@@ -365,6 +429,7 @@ def _enemy_charge_threshold(enemy) -> Optional[int]:
 
 
 def _token_dict(state: GameState, token) -> Dict[str, Any]:
+    controlled_by = getattr(token, "controlled_by", None)
     return {
         "id": token.id,
         "name": token.name,
@@ -375,15 +440,43 @@ def _token_dict(state: GameState, token) -> Dict[str, Any]:
         "alive": token.alive,
         "poison_counters": getattr(token, "poison_counters", 0),
         "regen_counters": getattr(token, "regen_counters", 0),
+        # Control chip (§D9-1.4): who holds it, rounds remaining (None ==
+        # encounter), and the flavour — a dominated living enemy vs raised undead.
+        "controlled_by": controlled_by,
+        "control_left": getattr(token, "control_left", None),
+        "control_kind": (None if controlled_by is None else
+                         ("dominated" if getattr(token, "revert", None) is not None
+                          else "undead")),
         "raw": to_jsonable(token),
+    }
+
+
+def _corpse_dict(corpse) -> Dict[str, Any]:
+    """A corpse marker (§D9-1.7): small and dim on its row — information, not
+    spectacle. `stirring` > 0 drives the subtle pulse and the chronicle line."""
+    return {
+        "id": corpse.id,
+        "name": corpse.name,
+        "row": corpse.row,
+        "level": corpse.level,
+        "power": corpse.power,
+        "max_hp": corpse.max_hp,
+        "stirring": corpse.stirring,
+        "is_boss": corpse.is_boss,
     }
 
 
 def _name_of(state: GameState, cid: Optional[str]) -> Optional[str]:
     if cid is None:
         return None
+    if isinstance(cid, str) and cid.endswith("::2"):  # second-intent handle (§D9-4)
+        base = _name_of(state, cid[:-3])
+        return f"{base} — second intent" if base else cid
     c = state.combatant(cid)
-    return c.name if c else cid
+    if c is not None:
+        return c.name
+    corpse = state.corpse(cid)
+    return f"{corpse.name} (corpse)" if corpse is not None else cid
 
 
 # --------------------------------------------------------------------------- #
@@ -463,6 +556,7 @@ def serialize_state(view: GameState, log_source: GameState) -> Dict[str, Any]:
         "party": [_character_dict(view, c) for c in view.party],
         "tokens": [_token_dict(view, t) for t in view.tokens],
         "enemies": [_enemy_dict(view, e) for e in view.enemies],
+        "corpses": [_corpse_dict(c) for c in view.corpses],
         "stack": _stack_list(view),
         "log": [{"type": e.type, "msg": e.msg, "data": to_jsonable(e.data)}
                 for e in log_source.log],
@@ -477,8 +571,14 @@ def _target_label(state: GameState, action: Action) -> str:
     if isinstance(tid, str) and tid.startswith("#"):  # a counter naming a stack action
         item = next((s for s in state.stack if f"#{s.uid}" == tid), None)
         return item.label if item is not None else "the action"
+    if isinstance(tid, str) and tid.endswith("::2"):  # a boss-fury second intent (§D9-4)
+        tgt = state.combatant(tid[:-3])
+        return f"{tgt.name} — second intent" if tgt is not None else "second intent"
     tgt = state.combatant(tid)
     if tgt is None:
+        corpse = state.corpse(tid) if tid is not None else None
+        if corpse is not None:
+            return f"{corpse.name} (corpse)"
         return "self"
     return f"{tgt.name} (HP {tgt.hp}/{tgt.max_hp})"
 
@@ -560,6 +660,7 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
     others = [(i, a) for i, a in indexed
               if a.kind in ("defend", "pass", "end_turn", "drop_channels",
                             "use_skill", "use_ultimate")]
+    stance_abilities = [(i, a) for i, a in indexed if a.kind == "stance_ability"]
 
     entries: List[Dict[str, Any]] = []
     for i, a in mana:
@@ -583,6 +684,22 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
     if moves:
         entries.append({"label": "Move — choose row", "kind": "move",
                         "targets": [{"label": a.label, "index": i} for i, a in moves]})
+
+    # Stance-replaced abilities (§D9-2): grouped per slot, a submenu when the
+    # replacement has multiple legal targets.
+    seen_slots: List[str] = []
+    for i, a in stance_abilities:
+        if a.card_id in seen_slots:
+            continue
+        seen_slots.append(a.card_id)
+        group = [(j, g) for j, g in stance_abilities if g.card_id == a.card_id]
+        if len(group) == 1:
+            entries.append({"label": a.label, "index": i, "kind": "stance_ability"})
+        else:
+            base = a.label.split(" on ")[0]
+            entries.append({"label": f"{base} — choose target", "kind": "stance_ability",
+                            "targets": [{"label": _target_label(state, g), "index": j}
+                                        for j, g in group]})
 
     # Group by (card, modal mode): a modal card offers one entry per mode (chosen
     # at cast), and a multi-target card collapses its targets into a sub-menu.

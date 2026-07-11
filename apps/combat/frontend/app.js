@@ -194,6 +194,11 @@ function renderEnemies() {
       intent.textContent = "no intent declared";
     }
     box.append(intent);
+    if (e.intent2) {  // boss fury (§D9-4): the second declared intent
+      const dmg2 = e.intent2.amount != null ? ` (${e.intent2.amount})` : "";
+      box.append(el("div", "intent",
+        `▶▶ ${e.intent2.name}${dmg2} → ${e.intent2.target_name || "—"}`));
+    }
 
     const tags = el("div", "tags");
     if (e.in_hand) tags.append(el("span", "tag disabled", "bounced"));
@@ -204,7 +209,22 @@ function renderEnemies() {
     if (e.prevent_pool) tags.append(el("span", "tag", `reduce ${e.prevent_pool}`));
     if (e.protection) tags.append(el("span", "tag", `protection ×${e.protection}`));
     (e.keywords || []).forEach((k) => tags.append(el("span", "tag", `⚜ ${k}`)));
+    if (e.rises) tags.append(el("span", "tag", `rises ×${e.rises}`));
     if (tags.children.length) box.append(tags);
+    lane.append(box);
+  });
+
+  // Corpses (§D9-1): the dead stay on the battlefield — dim markers, raw on click.
+  (STATE.corpses || []).forEach((c) => {
+    const box = el("div", "card-unit enemy dead");
+    box.onclick = () => inspect(`Corpse — ${c.name}`, c);
+    const head = el("div", "unit-head");
+    const sub = c.stirring > 0 ? `stirring ×${c.stirring} · ${c.row}` : `corpse · ${c.row}`;
+    head.append(el("span", "unit-name", `✝ ${c.name}`), el("span", "unit-sub", sub));
+    box.append(head);
+    if (c.stirring > 0) {
+      box.append(el("div", "intent", `▶ rises in ${c.stirring} Upkeep(s) — exile or raise it`));
+    }
     lane.append(box);
   });
 }
@@ -259,6 +279,12 @@ function renderParty() {
     const head = el("div", "unit-head");
     head.append(el("span", "unit-name", `⊹ ${t.name}`), el("span", "unit-sub", `Power ${t.power} · ${t.row}`));
     box.append(head, hpbar(t.hp, t.max_hp, false));
+    if (t.control_kind) {  // a controlled combatant (§D9-1.4)
+      const left = t.control_left != null ? ` ×${t.control_left}` : "";
+      const tags = el("div", "tags");
+      tags.append(el("span", "tag channel", `${t.control_kind}${left}`));
+      box.append(tags);
+    }
     lane.append(box);
   });
 }

@@ -2,7 +2,7 @@ import type { Row } from "../lib/types";
 import { armedTargetIdSet, useGame } from "../lib/store";
 import { ArtControls } from "./ArtControls";
 import { CharacterCard } from "./CharacterCard";
-import { CreatureCard, TokenCard } from "./CreatureCard";
+import { CorpseMarker, CreatureCard, TokenCard } from "./CreatureCard";
 
 const PLAYER_ROWS: Row[] = ["rear", "mid", "front"]; // left → right
 const CREATURE_ROWS: Row[] = ["front", "mid", "rear"]; // mirror: front faces centre
@@ -99,6 +99,7 @@ export function Battlefield() {
       <div className="flex min-w-0 basis-3/5 gap-1.5">
         {CREATURE_ROWS.map((row) => {
           const creatures = snapshot.creatures.filter((c) => c.row === row);
+          const corpses = (snapshot.corpses ?? []).filter((c) => c.row === row);
           return (
             <div
               key={row}
@@ -107,6 +108,13 @@ export function Battlefield() {
               {creatures.map((c) => (
                 <CreatureCard key={c.id} creature={c} isTarget={targetIds.has(c.id)} />
               ))}
+              {corpses.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {corpses.map((c) => (
+                    <CorpseMarker key={c.id} corpse={c} isTarget={targetIds.has(c.id)} />
+                  ))}
+                </div>
+              )}
               <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
                 {row}
               </span>
