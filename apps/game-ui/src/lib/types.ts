@@ -104,6 +104,13 @@ export interface CharacterView {
   ultimate: HeroicView | null;
   // The evergreen abilities wearing their authored flavour names (D8-3.4).
   evergreen: EvergreenBlock;
+  // The active stance (§D9-2), or null: per main-ability slot, "unchanged" |
+  // "removed" | {name} for a replacement.
+  stance: {
+    card_id: string;
+    card_name: string;
+    slots: Record<string, "unchanged" | "removed" | { name: string }>;
+  } | null;
   mitigate_value: number;
   acted_mode: string | null;
   turn_ended: boolean;
@@ -143,6 +150,22 @@ export interface IntentView {
   line: string; // the template line ("The Spore Husk threatens Soren.")
   status: "declared" | "stripped" | "stunned" | "executed" | "fizzled" | "none";
   reveal: string; // what a stripped intent turned out to be ("" otherwise)
+  // 1, or 2 for an enraged boss's second declared intent (§D9-4 boss fury).
+  slot: number;
+}
+
+// A corpse marker (§D9-1): the dead stay on the battlefield — an object, not a
+// creature. `stirring` > 0 means it revives in that many Upkeeps (rises) unless
+// exiled or raised first; such an enemy is NOT yet defeated.
+export interface CorpseView {
+  id: string;
+  name: string;
+  row: Row;
+  level: number;
+  power: number;
+  max_hp: number;
+  stirring: number;
+  is_boss: boolean;
 }
 
 export interface CreatureView {
@@ -171,6 +194,10 @@ export interface CreatureView {
   charge: number;
   charge_threshold: number | null;
   intent: IntentView | null;
+  // Every declared line this round — two for an enraged boss (§D9-4).
+  intents: IntentView[];
+  // The rises trait (§D9-1.5) — public: it will stir and revive when killed.
+  rises: number | null;
   is_boss: boolean;
   is_channeling: boolean;
   // Held enemy channels (§8): named so the player knows what breaking does.
@@ -196,6 +223,12 @@ export interface TokenView {
   poison_counters: number;
   regen_counters: number;
   is_channeling: boolean;
+  // Control chip (§D9-1.4): set when this party-side combatant is a controlled
+  // enemy — "dominated" (a living enemy that snaps back) or "undead" (raised,
+  // crumbles). `control_left` counts End Steps remaining; null == the encounter.
+  controlled_by: string | null;
+  control_left: number | null;
+  control_kind: "dominated" | "undead" | null;
 }
 
 export interface StackRow {
@@ -268,6 +301,8 @@ export interface GameSnapshot {
   characters: CharacterView[];
   creatures: CreatureView[];
   tokens: TokenView[];
+  // Corpse markers (§D9-1.7): the dead on their rows; a stirring one pulses.
+  corpses: CorpseView[];
   stack: StackRow[];
   // The veiled intents window (D8-1.5): one line per living enemy this round.
   intents: IntentView[];

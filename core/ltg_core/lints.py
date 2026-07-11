@@ -90,6 +90,8 @@ def _lint_channeled_persistence(card):
     out = []
     for e in card.effects:
         continuous = getattr(e, "duration", None) == Duration.while_channeled
+        if e.kind == "stance":  # a stance is inherently continuous (§D9-2.2)
+            continue
         if continuous or e.trigger is not None:
             continue
         # Only effects that carry a `duration` field can be made continuous; the rest

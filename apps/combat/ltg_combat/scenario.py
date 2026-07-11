@@ -31,6 +31,30 @@ from .state import CharacterState, Component, EnemyState, GameState
 _VERBS = TypeAdapter(List[Effect])
 
 
+def _check_enemy_verbs(verbs) -> None:
+    """Enemy-side legality (Design Update 09): `stance` is player-only (§D9-2.3),
+    and enemy `control` may target only corpses — their necromancers raise the
+    fallen; they never mind-control a living hero (§D9-1.4)."""
+    for v in verbs:
+        if getattr(v, "kind", None) == "stance":
+            raise ValueError("stance is player-only and cannot appear in enemy verbs")
+        if getattr(v, "kind", None) == "control":
+            desc = getattr(v, "target", None)
+            state = getattr(getattr(desc, "state", None), "value", None)
+            if state != "corpse":
+                raise ValueError(
+                    "enemy control is legal only on corpses — author its target "
+                    'with "state": "corpse" (§D9-1.4)')
+        if getattr(v, "kind", None) == "exile":
+            desc = getattr(v, "target", None)
+            state = getattr(getattr(desc, "state", None), "value", None)
+            if state != "corpse":
+                raise ValueError(
+                    "enemy exile is legal only on an own-side corpse (the "
+                    "Corpse-burst pattern, §D9-1.6) — exile stays the party's "
+                    "trump card")
+
+
 def _component_from_dict(spec: Dict[str, Any]) -> Component:
     """Build a runtime `Component` (Design Update 04 §F-3) from its JSON form. `verbs`
     are schema-validated §11 primitives; everything else is a scalar the engine reads.
@@ -40,6 +64,8 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
     auto-fires it in the first reaction window after its boss falls to ≤25% max HP."""
     is_enrage = (str(spec.get("archetype", "")).lower() == "enrage"
                  or spec.get("trigger") == "on_enrage")
+    verbs = list(_VERBS.validate_python(spec.get("verbs", [])))
+    _check_enemy_verbs(verbs)
     return Component(
         id=spec["id"], archetype=spec.get("archetype", ""),
         timing="reactive" if is_enrage else spec.get("timing", "proactive"),
@@ -50,7 +76,7 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
         condition=spec.get("condition"), cooldown=int(spec.get("cooldown", 0)),
         once_per_encounter=True if is_enrage else bool(spec.get("once_per_encounter", False)),
         priority=int(spec.get("priority", 90)),
-        verbs=list(_VERBS.validate_python(spec.get("verbs", []))),
+        verbs=verbs,
         target_rule=spec.get("target_rule", "valuation"),
         telegraph=spec.get("telegraph", ""),
         move_home=bool(spec.get("move_home", False)),
@@ -271,6 +297,9 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             attack_mode=attack_mode,
             components=[_component_from_dict(c) for c in e.get("components", [])],
             is_boss=bool(e.get("is_boss", False)),
+            # The `rises` trait (§D9-1.5): the corpse stirs and the enemy revives
+            # after this many Upkeeps (T-56: 2), once per encounter.
+            rises=(int(e["rises"]) if e.get("rises") else None),
             # Starting keywords (flying, lifelink, deathtouch, reach …). Authored as a
             # list (permanent) or a {keyword: duration} dict; a bare list means "no
             # expiry" so encounter keywords persist across turns.

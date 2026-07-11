@@ -128,12 +128,15 @@ export function SidePanel() {
         <div className="mt-1 pl-4 text-[10px] font-light text-dimmed">top resolves first</div>
       </Panel>
 
-      {/* Intents (D8-1.5) — one veiled line per living enemy for this round */}
+      {/* Intents (D8-1.5) — one veiled line per living enemy for this round
+          (two for an enraged boss, §D9-4) */}
       <Panel title="Intents">
         {snapshot.intents.length === 0 ? (
           <Empty>no declared intents</Empty>
         ) : (
-          snapshot.intents.map((it) => <IntentLine key={it.enemy_id} intent={it} />)
+          snapshot.intents.map((it) => (
+            <IntentLine key={`${it.enemy_id}:${it.slot ?? 1}`} intent={it} />
+          ))
         )}
       </Panel>
 

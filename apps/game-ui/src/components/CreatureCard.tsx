@@ -1,4 +1,4 @@
-import type { CreatureView, TokenView } from "../lib/types";
+import type { CorpseView, CreatureView, TokenView } from "../lib/types";
 import { hpColor, powerColor, roman } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
@@ -148,15 +148,58 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
   );
 }
 
+// A corpse marker (§D9-1.7): small and dim on its row — information, not
+// spectacle. A stirring corpse carries a subtle pulse; corpse-legal picks
+// (control / exile) make it a clickable target like any card.
+export function CorpseMarker({ corpse, isTarget }: { corpse: CorpseView; isTarget?: boolean }) {
+  const pickTargetId = useGame((s) => s.pickTargetId);
+  const armed = useGame((s) => s.armed);
+  const dimUntargeted = armed && !isTarget ? "opacity-30" : "";
+  const stirring = corpse.stirring > 0;
+  const title = stirring
+    ? `${corpse.name}'s corpse stirs — it rises in ${corpse.stirring} Upkeep(s) unless exiled or raised.`
+    : `${corpse.name}'s corpse — defeated; a necromancer can raise it, exile burns it.`;
+  return (
+    <div
+      onClick={() => isTarget && pickTargetId(corpse.id)}
+      title={title}
+      style={{ width: "clamp(50px, 5.5vh, 80px)" }}
+      className={`relative aspect-square shrink-0 select-none border transition ${
+        isTarget
+          ? "brackets cursor-pointer border-brass-hi opacity-90"
+          : stirring
+            ? "anim-ember border-blood/50 opacity-70"
+            : "border-line2 opacity-40"
+      } ${dimUntargeted} bg-ink-0/70`}
+    >
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-dimmed">
+        <IconSkull className="h-3/5 w-3/5" />
+      </div>
+      {stirring && (
+        <div className="caps-label absolute inset-x-0 top-0 text-center text-[8px] tracking-[0.14em] text-blood">
+          {corpse.stirring}
+        </div>
+      )}
+      <div className="caps-label absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-0.5 text-center text-[clamp(6px,0.9vh,8px)] tracking-[0.06em] text-dimmed">
+        {corpse.name}
+      </div>
+    </div>
+  );
+}
+
 export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
   const encounterId = useGame((s) => s.snapshot?.encounter_id ?? "");
   const dimUntargeted = armed && !isTarget ? "opacity-40" : "";
+  const controlTitle = token.control_kind == null ? "" :
+    token.control_kind === "dominated"
+      ? `\nDominated enemy — fights for the party${token.control_left != null ? ` (${token.control_left} round(s) left)` : " for the encounter"}; it snaps back when control ends.`
+      : `\nRaised undead — crumbles when the necromancy ends${token.control_left != null ? ` (${token.control_left} round(s) left)` : ""}.`;
   return (
     <div
       onClick={() => isTarget && pickTargetId(token.id)}
-      title={`${token.name} (ally)`}
+      title={`${token.name} (ally)${controlTitle}`}
       style={{ width: TOKEN_CARD_WIDTH }}
       className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
         isTarget ? "brackets cursor-pointer border-brass-hi" : "border-tide/40"
@@ -194,6 +237,13 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
         <KeywordBadges keywords={token.keywords} counters={token.counters}
           poison={token.poison_counters} regen={token.regen_counters} />
       </div>
+      {/* Control chip (§D9-1.4): a dominated enemy / raised undead with duration */}
+      {token.control_kind != null && (
+        <div className="caps-label absolute inset-x-0 top-0 truncate border-b border-aether/50 bg-ink-0/85 px-0.5 text-center text-[clamp(6px,0.9vh,8px)] tracking-[0.1em] text-aether">
+          {token.control_kind === "dominated" ? "controlled" : "undead"}
+          {token.control_left != null ? ` · ${token.control_left}` : ""}
+        </div>
+      )}
       <div className={`caps-label absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-0.5 pb-0.5 pt-1 text-center text-[clamp(7px,1vh,9px)] tracking-[0.06em] text-parch`}>
         {token.name}
       </div>

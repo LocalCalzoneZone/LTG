@@ -25,6 +25,7 @@ from pydantic import (
     Field,
     StringConstraints,
     field_validator,
+    model_serializer,
     model_validator,
 )
 from typing_extensions import Annotated
@@ -81,18 +82,59 @@ class Side(str, Enum):
     any = "any"
 
 
+class TargetState(str, Enum):
+    """The corpse axis (Design Update 09 §D9-1.3): whether the target must be a
+    living creature, a corpse on the battlefield, or either. Defaults to
+    `living`, so every pre-Update-09 card is unchanged."""
+
+    living = "living"
+    corpse = "corpse"
+    any = "any"
+
+
+class TargetScope(str, Enum):
+    """Splash around a single pick (§D9-3.2): the effect also resolves on every
+    other creature on the pick's row (`row`), or its row plus adjacent rows
+    (`blast` — front↔mid↔rear; front and rear are not adjacent). Only the pick
+    is targeted; splash victims are caught incidentally."""
+
+    row = "row"
+    blast = "blast"
+
+
 class TargetDescriptor(BaseModel):
     """How an effect picks what it affects — a mechanical property, not a label.
 
     `targeted` records whether the effect uses MTG's targeting mechanic (so the
     future engine can let hexproof/shroud interact). It is only meaningful on a
     `chosen` target. "ally" includes you unless `exclude_self`.
+
+    `state` is the corpse axis (§D9-1.3); `rows` filters a `mode: all` set to
+    named battlefield rows; `scope` splashes a single pick across its row /
+    adjacent rows (§D9-3.2).
     """
 
     mode: TargetMode
     side: Optional[Side] = None  # omitted for mode:self (always you)
     exclude_self: bool = False
     targeted: bool = False
+    state: TargetState = TargetState.living
+    rows: Optional[List[Row]] = None
+    scope: Optional[TargetScope] = None
+
+    @model_serializer(mode="wrap")
+    def _omit_tier2_defaults(self, handler):
+        # The §D9 axes serialize only when set, so every pre-Update-09 card's
+        # JSON (and the scripted-scenario dumps) stays byte-identical.
+        out = handler(self)
+        if isinstance(out, dict):
+            if out.get("state") in (TargetState.living, "living"):
+                out.pop("state", None)
+            if out.get("rows") is None:
+                out.pop("rows", None)
+            if out.get("scope") is None:
+                out.pop("scope", None)
+        return out
 
     @model_validator(mode="after")
     def _coherent(self) -> "TargetDescriptor":
@@ -101,11 +143,20 @@ class TargetDescriptor(BaseModel):
                 raise ValueError("mode 'self' must not specify a side")
             if self.targeted:
                 raise ValueError("mode 'self' cannot be targeted")
+            if self.state != TargetState.living:
+                raise ValueError("mode 'self' is always a living creature (you)")
         else:
             if self.side is None:
                 raise ValueError(f"mode '{self.mode.value}' requires a side")
         if self.targeted and self.mode != TargetMode.chosen:
             raise ValueError("targeted is only valid when mode is 'chosen'")
+        if self.rows is not None:
+            if self.mode != TargetMode.all:
+                raise ValueError("'rows' is only valid on a mode 'all' target")
+            if not self.rows:
+                raise ValueError("'rows' must name at least one row")
+        if self.scope is not None and self.mode != TargetMode.chosen:
+            raise ValueError("'scope' (row/blast splash) is only valid on a chosen target")
         return self
 
 
@@ -589,6 +640,75 @@ class Revive(EffectBase):
     to_fraction: float = 0.5
 
 
+class Control(EffectBase):
+    """Take control of an enemy — the theft-and-necromancy primitive (§D9-1.4).
+
+    On a LIVING enemy this is mind control: it fights for the caster's party for
+    the duration, keeping its stats and keywords but losing its components and
+    intents. On a CORPSE it is raise-dead: the corpse is consumed and an undead
+    token rises on the caster's side at half the corpse's max HP (T-52). `turns`
+    is the duration in rounds (expiring at that End Step); None holds for the
+    encounter. Never legal on bosses (or boss corpses); enemies may use it only
+    on corpses; control never wins — a controlled enemy is not defeated, and all
+    control ends if its targets would be the last undefeated enemies."""
+
+    kind: Literal["control"] = "control"
+    target: TargetOrSlot  # enemies only; state 'any' is the typical authoring
+    turns: Optional[int] = None  # None == for the encounter
+
+
+class Move(EffectBase):
+    """Forced movement (§D9-3.1) — the *effect* `move`, distinct from the Move
+    action. Shoves a living creature between rows, updating its current AND
+    committed rows the moment it resolves (the one exception to the End-Step
+    rule). Directions are side-relative: `forward` is toward that side's front
+    row. It never invalidates a declared intent."""
+
+    kind: Literal["move"] = "move"
+    direction: Literal["forward", "back", "to_front", "to_mid", "to_rear"] = "back"
+    target: TargetOrSlot  # living creatures, either side
+
+
+class StanceReplacement(BaseModel):
+    """An authored replacement for one of the four main abilities (§D9-2.1):
+    a name plus a list of effects under the modal-branch rule — leaf effects
+    plus one level of conditional, never a nested modal. The replacement
+    resolves as an activated ability."""
+
+    name: str = ""
+    effects: List["ModeEffect"] = Field(min_length=1)
+
+
+# One stance slot: leave the ability as-is, remove it outright, or swap it for
+# an authored replacement action.
+StanceSlot = Union[Literal["unchanged", "removed"], StanceReplacement]
+
+
+class Stance(EffectBase):
+    """A stance (§D9-2): a channeled effect that reshapes its holder's four main
+    abilities — attack, Defend, Mitigate, Move — for as long as it is held.
+    Replace-only: it never adds a fifth ability. Legal ONLY on channeled cards,
+    always continuous (implicitly while_channeled; a recurring stance is a
+    contradiction and is rejected). Player-only — enemies have no evergreen
+    abilities to rewire."""
+
+    kind: Literal["stance"] = "stance"
+    attack: StanceSlot = "unchanged"
+    defend: StanceSlot = "unchanged"
+    mitigate: StanceSlot = "unchanged"
+    move: StanceSlot = "unchanged"
+
+    @model_validator(mode="after")
+    def _one_change(self) -> "Stance":
+        if all(s == "unchanged" for s in (self.attack, self.defend,
+                                          self.mitigate, self.move)):
+            raise ValueError("a stance must change at least one ability slot")
+        return self
+
+    def slot(self, name: str) -> "StanceSlot":
+        return getattr(self, name)
+
+
 class GrantKeyword(EffectBase):
     """Attach one or more registry keywords to a creature for a duration."""
 
@@ -674,6 +794,8 @@ LEAF_EFFECT_CLASSES = [
     CreateToken,
     Taunt,
     Revive,
+    Control,
+    Move,
     GrantKeyword,
     RemoveKeyword,
     Ramp,
@@ -695,10 +817,11 @@ class CastModeCondition(BaseModel):
 
 class TargetPropertyCondition(BaseModel):
     """True when the (main) target has a property — a keyword, a side, a level
-    (compared with exactly / or_more / or_less), or a battlefield row."""
+    (compared with exactly / or_more / or_less), a battlefield row, or is dead
+    (`is_dead`: the resolved target is a corpse — §D9-1.3)."""
 
     kind: Literal["target_property"] = "target_property"
-    property: Literal["has_keyword", "side", "level", "row"]
+    property: Literal["has_keyword", "side", "level", "row", "is_dead"]
     keyword: Optional[str] = None
     side: Optional[Side] = None
     level: Optional[int] = None
@@ -805,6 +928,11 @@ ModeEffect = Annotated[
     Union[tuple(LEAF_EFFECT_CLASSES + [Conditional])], Field(discriminator="kind")
 ]
 
+# StanceReplacement forward-references ModeEffect (a replacement holds leaf
+# effects plus one level of conditional — the modal-branch rule) — resolve now.
+StanceReplacement.model_rebuild()
+Stance.model_rebuild()
+
 
 class Mode(BaseModel):
     """One option of a modal card; the player picks exactly one mode at cast."""
@@ -831,7 +959,7 @@ class Modal(EffectBase):
         return self
 
 
-EFFECT_CLASSES = LEAF_EFFECT_CLASSES + [Modal, Conditional]
+EFFECT_CLASSES = LEAF_EFFECT_CLASSES + [Modal, Conditional, Stance]
 
 Effect = Annotated[
     Union[tuple(EFFECT_CLASSES)],
@@ -839,8 +967,17 @@ Effect = Annotated[
 ]
 
 
+# The verbs that may resolve on a corpse (§D9-1.3): `control` raises it,
+# `exile` burns the body. Everything else is a living-creature verb.
+CORPSE_LEGAL_EFFECTS = frozenset({"control", "exile"})
+
+# The four main-ability slots a stance may rewire (§D9-2.1).
+STANCE_SLOTS = ("attack", "defend", "mitigate", "move")
+
+
 def iter_effects(effects):
-    """Yield every effect, descending into modal modes and conditional branches."""
+    """Yield every effect, descending into modal modes, conditional branches,
+    and stance replacement actions."""
     for e in effects:
         yield e
         if getattr(e, "kind", None) == "modal":
@@ -848,6 +985,11 @@ def iter_effects(effects):
                 yield from iter_effects(m.effects)
         elif getattr(e, "kind", None) == "conditional":
             yield from iter_effects(e.effects)
+        elif getattr(e, "kind", None) == "stance":
+            for slot in STANCE_SLOTS:
+                v = getattr(e, slot)
+                if not isinstance(v, str):
+                    yield from iter_effects(v.effects)
 
 
 # --------------------------------------------------------------------------- #
@@ -925,6 +1067,13 @@ def effect_specs() -> dict:
                 # Container fields (modal modes / conditional branch). The guided
                 # editor shows a summary; deep edits go through the raw-JSON hatch.
                 params.append({"name": fname, "control": "nested", "required": True})
+                continue
+            if kind == "stance" and fname in STANCE_SLOTS:
+                # A stance slot: unchanged | removed | an authored replacement
+                # ({name, effects}). The editor renders the three-way choice with
+                # an effect-list sub-editor on 'replace' (§D9-2.2).
+                params.append({"name": fname, "control": "stance_slot",
+                               "default": "unchanged", "required": False})
                 continue
             if fname == "trigger":
                 # `trigger` is a union (lifecycle literal | EventTrigger) — give the
@@ -1036,6 +1185,25 @@ class Card(BaseModel):
                 # Charge is the enemy windup verb (D8-2.4); the player analogue is
                 # the ultimate gauge. Rejected in a loadout like `draw` on an enemy.
                 raise ValueError("charge is enemy-only and cannot appear on a card")
+            # Corpse axis (§D9-1.3): only corpse-legal verbs may aim at a corpse.
+            desc = self.resolved_target(effect)
+            state = getattr(desc, "state", None)
+            if (state is not None and state != TargetState.living
+                    and effect.kind not in CORPSE_LEGAL_EFFECTS):
+                raise ValueError(
+                    f"{effect.kind} requires a living target — only "
+                    f"{sorted(CORPSE_LEGAL_EFFECTS)} may target a corpse")
+            if effect.kind == "control":
+                # Control steals enemies (§D9-1.4) — its target side is always enemy.
+                if desc is not None and desc.side != Side.enemy:
+                    raise ValueError("control may only target enemies (or enemy corpses)")
+            if effect.kind == "stance":
+                # A stance rewires the holder's own abilities (§D9-2.2): channeled
+                # cards only, always continuous — a recurring stance is rejected.
+                if self.timing != Timing.channeled:
+                    raise ValueError("stance is only valid on a channeled card")
+                if effect.trigger is not None:
+                    raise ValueError("a stance is continuous — it cannot carry a trigger")
             # Channeled-only persistence: while_channeled / upkeep are illegal on
             # one-shot cards, and an effect can't be both continuous and recurring.
             is_channeled = self.timing == Timing.channeled

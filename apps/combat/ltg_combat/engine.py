@@ -50,6 +50,7 @@ from .state import (
     Channel,
     CharacterState,
     Component,
+    Corpse,
     EnemyChannel,
     EnemyState,
     Event,
@@ -267,6 +268,45 @@ def _begin_turn(st: GameState) -> None:
                  character=char.id, color=pending["color"], capacity=char.capacity)
             _fire_capacity_increase(st, char)
     st.pending_ramp = []
+    _tick_stirring(st)  # `rises` corpses count down one Upkeep (§D9-1.5)
+
+
+def _tick_stirring(st: GameState) -> None:
+    """Stirring corpses (§D9-1.5) tick at each Upkeep; at zero the enemy revives
+    at half max HP (T-52) on its row, declaring fresh intents this round. The
+    rise is once per encounter (`rises` was cleared as the corpse was made)."""
+    for corpse in list(st.corpses):
+        if corpse.stirring <= 0:
+            continue
+        corpse.stirring -= 1
+        if corpse.stirring > 0:
+            _log(st, "corpse_stirring",
+                 f"{corpse.name}'s corpse stirs… ({corpse.stirring} Upkeep(s) "
+                 "until it rises).", enemy=corpse.id, stirring=corpse.stirring)
+            continue
+        st.corpses.remove(corpse)
+        e = corpse.body
+        if e is None:
+            continue
+        e.hp = max(1, e.max_hp // 2)
+        e.temp_mod = e.power_bonus = e.prevent_pool = 0
+        e.prevent_tags = []
+        e.protection = 0
+        e.poison_effects = []
+        e.regen_effects = []
+        e.stunned = 0
+        e.taunted_by = None
+        e.intent = e.intent2 = None
+        e.in_hand = e.exiled = False
+        e.row = corpse.row
+        e.committed = corpse.row
+        e.pending_voluntary = None
+        for kw, dur in list(e.keywords.items()):
+            if dur not in ("", "permanent", "encounter"):
+                del e.keywords[kw]
+        st.enemies.append(e)
+        _log(st, "risen", f"{e.name} rises again ({e.hp}/{e.max_hp} HP) — "
+             "kill it again and it stays down.", enemy=e.id, hp=e.hp, row=e.row)
 
 
 def _next_capacity_choice(st: GameState) -> Optional[CharacterState]:
@@ -420,7 +460,7 @@ def _upkeep_draws(st: GameState) -> None:
     for c in st.living_party():
         c.pool = _refreshed_pool(c)  # every unreserved locked colour spendable
         _draw(st, c, 1)
-        c.used_attack = c.used_defend = c.used_mitigate = False
+        c.used_attack = c.used_defend = c.used_mitigate = c.used_move = False
         c.acted_mode = None
         c.turn_ended = False
         c.taunted_to = None  # enemy taunt is a this-turn bind (§F-3)
@@ -490,25 +530,63 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     cooldown is ready, and target exists declares this turn's intent. The list always
     terminates in the default Attack (priority 90), so a non-stunned enemy that can
     still act always produces an intent. An enemy with no components goes straight to
-    the default attack (legacy behaviour, unchanged)."""
-    # Reset this round's intents-window line (D8-1.5); every path below re-sets it.
-    e.round_intent = None
-    e.round_intent_status = "none"
-    e.round_intent_reveal = ""
-    if e.stunned > 0:  # stun: skip this intent, spend one charge (R-11)
+    the default attack (legacy behaviour, unchanged).
+
+    Boss fury (§D9-4): once ENRAGED, a boss runs the pass TWICE and declares two
+    intents. Cooldowns spend as they are picked, so the first pick excludes
+    itself from the second; the default Attack backstops the second slot. A stun
+    suppresses ONE of the two — the boss declares one intent, never zero."""
+    # Reset this round's intents-window lines (D8-1.5); every path below re-sets them.
+    e.round_intent = e.round_intent2 = None
+    e.round_intent_status = e.round_intent2_status = "none"
+    e.round_intent_reveal = e.round_intent2_reveal = ""
+    e.intent2 = None
+    double = e.is_boss and e.enraged
+    if e.stunned > 0:  # stun: skip one intent, spend one charge (R-11)
         e.stunned -= 1
-        e.intent = None
-        e.round_intent_status = "stunned"
-        _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
-             enemy=e.id, intents=e.stunned)
+        if double:
+            # Fury is never fully silenced by a single stun (§D9-4): the stun
+            # suppresses the second slot; the first declares normally below.
+            double = False
+            e.round_intent2_status = "stunned"
+            _log(st, "stunned", f"{e.name}'s fury is dulled — the stun suppresses "
+                 f"one of its two intents ({e.stunned} left).",
+                 enemy=e.id, intents=e.stunned)
+        else:
+            e.intent = None
+            e.round_intent_status = "stunned"
+            _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
+                 enemy=e.id, intents=e.stunned)
+            return
+    _pick_enemy_intent(st, e)
+    if not double or e.round_intent_status != "declared":
         return
+    # Slot 2: spend slot 1's component cooldown NOW so it can't be picked twice,
+    # then run the whole pass again and file the result in the second slot.
+    if e.intent is not None and e.intent.source_component is not None:
+        _start_cooldown(st, e, e.intent.source_component)
+    first = (e.intent, e.round_intent, e.round_intent_status, e.round_intent_reveal)
+    _pick_enemy_intent(st, e)
+    e.intent2 = e.intent
+    e.round_intent2 = e.round_intent
+    e.round_intent2_status = e.round_intent_status
+    e.round_intent2_reveal = e.round_intent_reveal
+    (e.intent, e.round_intent,
+     e.round_intent_status, e.round_intent_reveal) = first
+    if e.intent2 is not None and e.intent2.source_component is not None:
+        _start_cooldown(st, e, e.intent2.source_component)
+
+
+def _pick_enemy_intent(st: GameState, e: EnemyState) -> None:
+    """One run of the proactive pass: file the top eligible component's intent
+    (or the default Attack) into `e.intent` / the slot-1 round fields."""
     for comp in _proactive_rules(e):
         intent = _try_declare_component(st, e, comp)
         if intent is not None:
             e.intent = intent
             e.round_intent = intent
             e.round_intent_status = "declared"
-            tgt = st.combatant(intent.target_id)
+            tgt = st.combatant(intent.target_id) or st.corpse(intent.target_id)
             _log(st, "intent_declared",
                  f"{e.name} declares {intent.name}" + (f" → {tgt.name}" if tgt else "") + ".",
                  enemy=e.id, intent=intent.name, target=intent.target_id,
@@ -658,6 +736,16 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
         # rule) when the warband is untouched.
         return _lowest_hp([o for o in st.living_enemies()
                            if o.id != e.id and o.effective_hp < o.max_hp])
+    if rule == "corpse":
+        # Necromancy (§D9-1.6): the nearest own-side corpse — no corpse in reach
+        # means the rule doesn't fire and the priority list falls through, so a
+        # Necromancer never wastes a turn. Boss corpses are control-inert;
+        # stirring corpses are already coming back on their own.
+        cands = [c for c in st.corpses if not c.is_boss and c.stirring <= 0]
+        if not cands:
+            return None
+        return sorted(cands, key=lambda c: (abs(_row_rank(c.row) - _row_rank(e.committed)),
+                                            _row_rank(c.row), c.level, c.name))[0]
     if rule == "channeling_player":
         return _lowest_hp([c for c in st.living_party() if c.channels])
     if rule == "highest_threat":
@@ -825,8 +913,11 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
 
     Reach is computed per mode without mutating the enemy. Hexproof does NOT
     shelter a hero from basic attacks — it wards targeted spells/abilities only
-    (Update 06), so the pools here are purely reach-based."""
-    party = st.living_party()
+    (Update 06), so the pools here are purely reach-based.
+
+    A CONTROLLED combatant is a full party-side target (§D9-1.4): the dominated
+    Bruiser standing in your front row can be attacked like any hero."""
+    party = list(st.living_party()) + [t for t in st.controlled_units() if t.alive]
     tmpl = e.intent_template
     primary_mode = tmpl.get("mode", "melee")
     primary = list(_reachable_targets(e, party, mode=primary_mode))
@@ -886,13 +977,33 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
     return none
 
 
+def _closest_enemy(cands: List) -> Optional[EnemyState]:
+    """The controlled brain's pick (§D9-1.4): the closest reachable enemy —
+    nearest row first, then lowest effective HP, then the deterministic tiebreak."""
+    if not cands:
+        return None
+    return sorted(cands, key=lambda e: (_row_rank(e.row), e.effective_hp,
+                                        getattr(e, "level", 1), e.name))[0]
+
+
 def _declare_ally_intent(st: GameState, token: TokenState) -> None:
     """An ally token telegraphs its attack on the lowest-effective-HP reachable
-    enemy (executed in the Ally step) — the enemy heuristic on the party side."""
+    enemy (executed in the Ally step) — the enemy heuristic on the party side.
+    A CONTROLLED combatant runs the deliberately simple controlled brain instead:
+    the closest reachable enemy (§D9-1.4)."""
     reachable = _reachable_targets(token, st.living_enemies())
-    target = _lowest_hp(reachable)
+    if token.controlled_by is not None:
+        target = _closest_enemy(reachable)
+    else:
+        target = _lowest_hp(reachable)
     if target is None:
         token.intent = None
+        if token.controlled_by is not None and token.row != "front":
+            # Nothing reachable: it moves toward reach, exactly as an enemy with
+            # no target does (Update 04 §F-3 / §D9-1.4).
+            token.row = "front"
+            _log(st, "ally_move", f"{token.name} advances toward the front "
+                 "(no enemy in reach).", token=token.id, row="front")
         return
     effects = [DealDamage(amount=token.current_power, target=t_chosen("enemy", targeted=True))]
     token.intent = Intent(name=f"{token.name}'s attack", action_type="attack",
@@ -901,37 +1012,57 @@ def _declare_ally_intent(st: GameState, token: TokenState) -> None:
          f"(Power {token.current_power}).", token=token.id, target=target.id)
 
 
+def _set_intent_status(enemy: EnemyState, intent: Optional[Intent],
+                       status: str) -> None:
+    """Write an executed/fizzled status to the intents-window line this intent
+    declared on — the second veiled line for a boss-fury slot-2 intent (§D9-4)."""
+    if intent is not None and intent is enemy.round_intent2:
+        enemy.round_intent2_status = status
+    else:
+        enemy.round_intent_status = status
+
+
 def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     """Move a declared intent onto the stack as an action (GDD §5.2). A component
-    intent starts that component's cooldown as it executes (§F-3.1)."""
-    st.acted_enemies.append(enemy.id)
-    intent = enemy.intent
+    intent starts that component's cooldown as it executes (§F-3.1).
+
+    Boss fury (§D9-4): an enraged boss queues TWO intents (`intent`, `intent2`).
+    Each execution takes the first queued one; the enemy is marked acted only
+    when the queue empties, so the driver returns for the second — its own stack
+    action, its own reaction windows, in declaration order."""
+    slot2_direct = enemy.intent is None and enemy.intent2 is not None
+    intent = enemy.intent if enemy.intent is not None else enemy.intent2
+    if slot2_direct:
+        enemy.intent2 = None            # slot 1 was stripped/empty — run slot 2 now
+    else:
+        enemy.intent = enemy.intent2    # promote slot 2 (None when there is none)
+        enemy.intent2 = None
+    if enemy.intent is None:            # nothing further queued — this enemy is done
+        st.acted_enemies.append(enemy.id)
     if intent is None:
         return
     if intent.source_component is not None:
         _start_cooldown(st, enemy, intent.source_component)
     if intent.kind == "move":  # a Move queues a destination row, resolved at End step
         enemy.pending_voluntary = intent.move_to
-        enemy.intent = None
-        enemy.round_intent_status = "executed"
+        _set_intent_status(enemy, intent, "executed")
         _log(st, "enemy_move",
              f"{enemy.name} will move to {intent.move_to} (resolves at End step).",
              enemy=enemy.id, destination=intent.move_to)
         return
     if intent.target_id is None:
-        enemy.intent = None
-        enemy.round_intent_status = "fizzled"
+        _set_intent_status(enemy, intent, "fizzled")
         return
     # Re-check target legality as the intent ENTERS the stack: a target that left play
     # or was incapacitated since this was telegraphed makes the swing fizzle now rather
     # than reach the stack (it is also re-checked at resolution, R-12). Hexproof does
     # NOT fizzle an attack — it wards spells/abilities, not the sword (Update 06).
-    target = st.combatant(intent.target_id)
+    # A necromancy intent aims at a CORPSE (§D9-1.6) — legal while it still lies there.
+    target = st.combatant(intent.target_id) or st.corpse(intent.target_id)
     if target is None or not _legal_target(target):
         _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no legal target.",
              enemy=enemy.id, label=intent.name)
-        enemy.intent = None
-        enemy.round_intent_status = "fizzled"
+        _set_intent_status(enemy, intent, "fizzled")
         return
     # Carry the base attack Power so the damage is recomputed from the enemy's CURRENT
     # power when it RESOLVES — a wound (e.g. Agony Warp −3/−0) applied after declaration,
@@ -946,8 +1077,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
                         attack_mode=enemy.attack_mode, attack_power=intent.attack_power,
                         starts_channel=bool(src_comp is not None and src_comp.channel),
                         component_id=intent.source_component))
-    enemy.intent = None
-    enemy.round_intent_status = "executed"  # the stack is honest — its line strikes (D8-1.5)
+    _set_intent_status(enemy, intent, "executed")  # the stack is honest (D8-1.5)
     st.priority = None  # open a fresh reaction window (party order, set in _advance)
     st.passes = 0
     _log(st, "intent_execute", f"{enemy.name} executes {intent.name}.",
@@ -964,7 +1094,9 @@ def _execute_ally(st: GameState, token: TokenState) -> None:
     intent = token.intent
     target = st.enemy(intent.target_id) if intent is not None else None
     if target is None or not target.alive:
-        target = _lowest_hp(_reachable_targets(token, st.living_enemies()))
+        pool = _reachable_targets(token, st.living_enemies())
+        target = (_closest_enemy(pool) if token.controlled_by is not None
+                  else _lowest_hp(pool))
     token.intent = None
     if target is None:
         return
@@ -1008,6 +1140,7 @@ def _end_step(st: GameState) -> None:
         t.temp_mod = t.power_bonus = t.prevent_pool = 0
         t.prevent_tags = []
         _expire_keywords(t)
+    _tick_control(st)  # turn-bound control expires at the End Step (§D9-1.4)
     _reapply_channel_stats(st)
     _reap_dead(st)
     _log(st, "end_step", "End step: temporary effects expire.")
@@ -1056,6 +1189,7 @@ def _apply(st: GameState, action: Action) -> None:
         "drop_channels": _do_drop_channels,
         "use_skill": _do_use_skill,
         "use_ultimate": _do_use_ultimate,
+        "stance_ability": _do_stance_ability,
     }[action.kind]
     handler(st, action)
 
@@ -1550,6 +1684,48 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
          character=actor.id, card=card.id, target=action.target_id)
 
 
+def _do_stance_ability(st: GameState, action: Action) -> None:
+    """Use a stance-replaced main ability (§D9-2.3). `card_id` names the slot.
+    The replacement inherits its slot's economy (a replaced attack is the once-
+    per-round proactive Attack; a replaced Mitigate is the once-per-turn
+    reaction) and lands on the stack as an ACTIVATED ability — not an attack,
+    not a spell: it trips no on_attack triggers, feeds no attack keywords, and
+    only a broad ability/action counter answers it."""
+    actor = st.character(action.actor_id)
+    slot = action.card_id
+    stance = _active_stance(actor)
+    repl = stance.slot(slot)
+    if slot == "attack":
+        if actor.acted_mode is None:
+            _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
+        actor.acted_mode = "attack"
+        actor.used_attack = True
+    elif slot == "defend":
+        if actor.acted_mode is None:
+            _gain_gauge(st, actor, 2)
+        actor.acted_mode = "defend"
+        actor.used_defend = True
+    elif slot == "move":
+        if not _has_kw(actor, "haste"):
+            if actor.acted_mode is None:
+                _gain_gauge(st, actor, 2)
+            actor.acted_mode = "move"
+        actor.used_move = True
+    else:  # mitigate — the once-per-turn reaction, in the same window
+        actor.used_mitigate = True
+    reactive = bool(st.stack)
+    name = repl.name or f"{slot.title()}"
+    _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
+                        label=f"{name} (stance)", effects=list(repl.effects),
+                        target_id=action.target_id,
+                        cast_mode="reaction" if reactive else "action"))
+    _open_window(st, actor.id, reactive=reactive)
+    tgt = st.combatant(action.target_id)
+    _log(st, "stance_ability", f"{actor.name} uses {name} (stance-{slot})"
+         + (f" on {tgt.name}" if tgt else "") + ".",
+         character=actor.id, slot=slot, target=action.target_id)
+
+
 _DEFEND_TEMP_HP = 3   # placeholder; GDD leaves Defend's amount to gear/flavour
 
 
@@ -1634,6 +1810,11 @@ def _new_ctx(st: GameState, item: StackItem) -> dict:
     ctx["casting_cost"] = _cost_total(item.card, item.x)
     ctx["party_size"] = len(st.party)
     ctx["caster_obj"] = st.combatant(item.source_id)
+    # `is_dead` (§D9-1.3) reads the target's state AS RESOLUTION BEGINS, so an
+    # earlier effect in the same resolution (exile consuming the corpse) doesn't
+    # flip the answer mid-card.
+    if item.target_id is not None and st.corpse(item.target_id) is not None:
+        ctx["target_is_dead"] = True
     if item.targets:
         top = item.effects
         modal = next((e for e in item.effects
@@ -1876,6 +2057,8 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
                 target.taunted_by = holder_id
                 if target.intent is not None:
                     target.intent.target_id = holder_id
+                if target.intent2 is not None:  # boss fury: both declared swings
+                    target.intent2.target_id = holder_id
                 if log_it:
                     _log(st, "taunt", f"{target.name} is lured into targeting {holder.name}.",
                          enemy=target.id, by=holder_id)
@@ -1892,9 +2075,9 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
             if not any(t.parameter == param for t in target.prevent_tags):
                 target.prevent_tags.append(PreventTag(param, None))
             # Pacifying an enemy also cancels any attack intent it already declared.
-            if (param in _ACTION_PREVENT and isinstance(target, EnemyState)
-                    and target.intent is not None):
+            if param in _ACTION_PREVENT and isinstance(target, EnemyState):
                 target.intent = None
+                target.intent2 = None
             if log_it:
                 _log(st, "prevent", f"{target.name} — {param} prevented (channel).",
                      target=_tid(target), parameter=param)
@@ -2290,10 +2473,26 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
             _log(st, "fizzle", f"{item.label} fizzles — {target.name} has Hexproof.",
                  kind=effect.kind)
             continue
+        # Row/blast splash (§D9-3.2): the effect resolves on the legal pick PLUS
+        # every other same-side creature in scope — incidental, never targeted.
+        # An illegal pick already fizzled above: no pick, no blast.
+        victims = [target]
+        desc = _effect_desc(item, effect)
+        scope = getattr(getattr(desc, "scope", None), "value",
+                        getattr(desc, "scope", None))
+        if scope is not None and target is not None and not isinstance(target, Corpse):
+            splash = _splash_targets(st, target, scope)
+            if splash:
+                _log(st, "splash", f"{item.label} splashes across the "
+                     f"{'row' if scope == 'row' else 'row and adjacent rows'}: "
+                     + ", ".join(c.name for c in splash) + ".",
+                     scope=scope, victims=[_tid(c) for c in splash])
+            victims += splash
         # target_* value refs read the creature this iteration lands on (each of
         # a mode:all set reads its own stats); caster_obj is set by the ctx builder.
-        ctx["target_obj"] = target
-        handler(st, item, effect, target, ctx)
+        for victim in victims:
+            ctx["target_obj"] = victim
+            handler(st, item, effect, victim, ctx)
 
 
 def _site_target(item: StackItem, ctx, effect, desc) -> Optional[str]:
@@ -2319,31 +2518,57 @@ def _site_id(item: StackItem, ctx, desc, eff_key) -> Optional[str]:
     return None
 
 
+def _lookup_target(st: GameState, tid, effect, ctx=None):
+    """Resolve a target id to its object. Strips the '::2' second-intent handle
+    (§D9-4 strip), recording the slot in ctx; falls back to a CORPSE only for
+    corpse-legal effects (§D9-1.3), so a creature-facing effect whose target died
+    in response still fizzles instead of finding the body."""
+    if isinstance(tid, str) and tid.endswith("::2"):
+        if ctx is not None:
+            ctx["intent_slot"] = 2
+        tid = tid[:-3]
+    obj = st.combatant(tid)
+    if obj is None and getattr(effect, "kind", None) in ("control", "exile"):
+        obj = st.corpse(tid)
+    return obj
+
+
 def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> List:
     """The combatant(s) an effect lands on. `self` -> the source; `all` -> every
     creature in the side; otherwise the effect's chosen target (its own per-site
     target for independent multi-target cards, else the item's primary target)."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) or desc is None:
-        return [st.combatant(_site_target(item, ctx, effect, desc))]
+        return [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
     mode = getattr(desc, "mode", None)
     if mode == TargetMode.self_:
         return [st.combatant(item.source_id)]
     if mode == TargetMode.all:
         side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
         return _creatures_on_side(st, side, item, desc)
-    return [st.combatant(_site_target(item, ctx, effect, desc))]
+    return [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
 
 
 def _creatures_on_side(st: GameState, side: str, item: StackItem, desc) -> List:
-    """Every living creature on a side (allies include ally tokens)."""
-    if side == "enemy":
-        return list(st.living_enemies())
-    if side == "any":
-        return list(st.living_party()) + list(st.living_enemies()) + list(st.living_tokens())
-    out = list(st.living_party()) + list(st.living_tokens())  # ally
-    if getattr(desc, "exclude_self", False):
-        out = [c for c in out if c.id != item.source_id]
+    """Every living creature on a side (allies include ally tokens). A `rows`
+    filter narrows the set to the named battlefield rows (§D9-3.2); a corpse
+    `state` resolves to the corpses instead (only corpse-legal verbs author it)."""
+    state = getattr(desc, "state", None)
+    state = getattr(state, "value", state)
+    if state == "corpse":
+        out = list(st.corpses)
+    elif side == "enemy":
+        out = list(st.living_enemies())
+    elif side == "any":
+        out = list(st.living_party()) + list(st.living_enemies()) + list(st.living_tokens())
+    else:
+        out = list(st.living_party()) + list(st.living_tokens())  # ally
+        if getattr(desc, "exclude_self", False):
+            out = [c for c in out if c.id != item.source_id]
+    rows = getattr(desc, "rows", None)
+    if rows:
+        wanted = {getattr(r, "value", r) for r in rows}
+        out = [c for c in out if c.row in wanted]
     return out
 
 
@@ -2389,6 +2614,12 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
         return n == cond.count
     # target_property: read the main chosen target's property.
     target = st.combatant(item.target_id)
+    if cond.property == "is_dead":
+        # §D9-1.3: true iff the resolved target is a corpse — snapshotted as
+        # resolution began (an earlier effect may have consumed the body).
+        if ctx.get("target_is_dead"):
+            return True
+        return target is None and st.corpse(item.target_id) is not None
     if cond.property == "has_keyword":
         return target is not None and _has_kw(target, cond.keyword)
     if cond.property == "side":
@@ -2429,7 +2660,11 @@ def _legal_target(target) -> bool:
     # (incapacitation is recoverable — R-7) and remains a legal heal/revive
     # target; enemies and tokens leave play at 0 HP so they must be alive, and
     # an off-field enemy — bounced (in hand) or channel-suspended (exiled) —
-    # can't be targeted (Update 03 §E-D).
+    # can't be targeted (Update 03 §E-D). A corpse still on the field is a legal
+    # corpse-legal pick (never hexproof/shrouded — §D9-1.3); one consumed or
+    # exiled in response resolved to None upstream and fizzles.
+    if isinstance(target, Corpse):
+        return True
     if isinstance(target, CharacterState):
         return True
     if not getattr(target, "alive", False):
@@ -2838,15 +3073,26 @@ def _keyword_dict_like(kw) -> dict:
 
 
 def _r_exile(st, item, effect, target, ctx):
-    # Exile removes permanently. Minions always (no boss this milestone); a player
+    # Exile removes permanently: NO corpse, ever, and no death triggers (§D9-1.2).
+    # It also burns a corpse off the battlefield — denying the necromancer, and
+    # defeating a stirring `rises` enemy on the spot (§D9-1.5). A player
     # character/token is removed to 0 (incapacitated / destroyed) — indestructible
     # does NOT save against exile (GDD §7).
+    if isinstance(target, Corpse):
+        st.corpses.remove(target)
+        if target.stirring > 0:
+            _log(st, "exiled", f"{target.name}'s stirring corpse is exiled — "
+                 f"it is defeated on the spot.", target=target.id, corpse=True)
+        else:
+            _log(st, "exiled", f"{target.name}'s corpse is exiled.",
+                 target=target.id, corpse=True)
+        return
     if isinstance(target, EnemyState):
         if _boss_shrugs_removal(st, item.label, target):
             return
         _log(st, "exiled", f"{target.name} is exiled.", target=target.id, level=target.level)
         ctx["destroyed_target"] = {"level": target.level}
-        _kill_enemy(st, target)
+        _kill_enemy(st, target, leaves_corpse=False, death_event=False)
     elif isinstance(target, TokenState):
         _remove_token(st, target)
     elif target is not None:
@@ -2873,6 +3119,7 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
     (the Intents step). Fires no death triggers — bounce is not death (§E-D)."""
     enemy.in_hand = True
     enemy.intent = None                       # pending intent reset — declares fresh on redeploy
+    enemy.intent2 = None
     enemy.pending_voluntary = None            # a queued Move is dropped; it re-enters at its row
     _break_enemy_channels(st, enemy, "channeler bounced")  # off-field = concentration gone
     enemy.committed = enemy.row
@@ -2954,16 +3201,28 @@ def _intent_reveal(intent: Intent, enemy: EnemyState) -> str:
 
 
 def _r_strip_intent(st, item, effect, target, ctx):
-    if isinstance(target, EnemyState) and target.intent is not None:
-        reveal = _intent_reveal(target.intent, target)
+    if not isinstance(target, EnemyState):
+        return
+    # §D9-4: against an enraged boss the player chose WHICH declared intent to
+    # strip — the '::2' handle marked the second (recorded in ctx by _lookup_target).
+    slot2 = ctx.get("intent_slot") == 2
+    intent = target.intent2 if slot2 else target.intent
+    if intent is None:
+        return
+    reveal = _intent_reveal(intent, target)
+    if slot2:
+        target.intent2 = None
+        target.round_intent2_status = "stripped"
+        target.round_intent2_reveal = reveal
+    else:
         target.intent = None
         # Stripping an intent reveals it (D8-1.3): the log names what was
         # prevented, and the intents window annotates the struck line.
         target.round_intent_status = "stripped"
         target.round_intent_reveal = reveal
-        _log(st, "strip_intent",
-             f"{target.name}'s intent is unravelled — it would have been "
-             f"*{reveal}*.", enemy=target.id, reveal=reveal)
+    _log(st, "strip_intent",
+         f"{target.name}'s intent is unravelled — it would have been "
+         f"*{reveal}*.", enemy=target.id, reveal=reveal, slot=2 if slot2 else 1)
 
 
 def _r_stun(st, item, effect, target, ctx):
@@ -3037,6 +3296,8 @@ def _r_taunt(st, item, effect, target, ctx):
             target.taunted_by = item.source_id
             if target.intent is not None:
                 target.intent.target_id = item.source_id
+            if target.intent2 is not None:  # boss fury: both declared swings
+                target.intent2.target_id = item.source_id
             _log(st, "taunt", f"{target.name} is taunted into targeting {who.name}.",
                  enemy=target.id, by=item.source_id)
     elif isinstance(target, CharacterState) and item.source_side == "enemy":
@@ -3050,6 +3311,61 @@ def _r_taunt(st, item, effect, target, ctx):
                  f"{taunter.name}.", character=target.id, by=taunter.id)
 
 
+_ROW_BY_RANK = {0: "front", 1: "mid", 2: "rear"}
+_MOVE_TO_RANK = {"to_front": 0, "to_mid": 1, "to_rear": 2}
+
+
+def _r_move(st, item, effect, target, ctx):
+    """Forced movement (§D9-3.1): the shove is physical and immediate — it writes
+    the target's CURRENT and COMMITTED rows the moment it resolves. This is the
+    one exception to Update 02's End-Step rule (voluntary movement stays pending;
+    a forced move happens NOW, opening the wall this turn). It never invalidates
+    a declared intent — intents lock at declaration and re-check nothing."""
+    if isinstance(target, Corpse):
+        _log(st, "fizzle", f"{item.label}'s move fizzles — corpses sit where they "
+             "fell.", kind="move")
+        return
+    d = effect.direction
+    cur = _row_rank(target.row)
+    rank = _MOVE_TO_RANK.get(d)
+    if rank is None:  # forward/back, side-relative: forward is toward that side's front
+        rank = max(0, cur - 1) if d == "forward" else min(2, cur + 1)
+    dest = _ROW_BY_RANK[rank]
+    if dest == target.row:
+        _log(st, "move_noop", f"{target.name} cannot be moved further {d} — "
+             f"it holds the {dest} row.", target=_tid(target), direction=d)
+        return
+    target.row = dest
+    if hasattr(target, "committed"):
+        target.committed = dest
+    _log(st, "forced_move", f"{target.name} is forced to the {dest} row "
+         f"(immediately — current and committed).",
+         target=_tid(target), row=dest, direction=d)
+
+
+def _effect_desc(item: StackItem, effect):
+    """The effect's target descriptor, resolving a '$slot' ref through the card."""
+    desc = getattr(effect, "target", None)
+    if isinstance(desc, str):
+        return item.card.targets.get(desc[1:]) if item.card is not None else None
+    return desc
+
+
+def _splash_targets(st: GameState, pick, scope: str) -> List:
+    """Row/blast splash around a resolved pick (§D9-3.2): every OTHER same-side
+    creature on the pick's row (`row`), or on its row and adjacent rows (`blast`;
+    front↔mid, mid↔rear — front and rear are not adjacent). Splash victims are
+    incidental — never targeted, so hexproof/shroud do not shelter them."""
+    if isinstance(pick, EnemyState):
+        pool = [c for c in st.living_enemies() if c is not pick]
+    else:
+        pool = [c for c in list(st.living_party()) + list(st.living_tokens())
+                if c is not pick]
+    prow = _row_rank(pick.row)
+    span = 0 if scope == "row" else 1
+    return [c for c in _ordered(pool) if abs(_row_rank(c.row) - prow) <= span]
+
+
 def _r_revive(st, item, effect, target, ctx):
     # Restore an incapacitated character to a fraction of max HP (R-11).
     if isinstance(target, CharacterState) and target.effective_hp <= 0:
@@ -3057,6 +3373,145 @@ def _r_revive(st, item, effect, target, ctx):
         target.hp = max(1, int(target.max_hp * effect.to_fraction))
         target.down_credited = False  # a later downing charges gauges anew (D8-3.3)
         _log(st, "revive", f"{target.name} is revived (HP {target.hp}).", character=target.id)
+
+
+# --------------------------------------------------------------------------- #
+# Control — mind control & raise dead (Design Update 09 §D9-1.4)
+# --------------------------------------------------------------------------- #
+def _r_control(st, item, effect, target, ctx):
+    turns = getattr(effect, "turns", None)
+    if isinstance(target, Corpse):
+        if target.is_boss:
+            # Boss corpses are inert to control, absolutely (§D9-1.4). Never
+            # offered as a target; this guards authored/edge paths.
+            _log(st, "boss_immune", f"{target.name}'s corpse does not answer — "
+                 "a boss cannot be raised.", target=target.id)
+            return
+        st.corpses.remove(target)
+        if target.stirring > 0:
+            _log(st, "rise_cancelled", f"{target.name}'s rise is cancelled — "
+                 "the body is claimed first.", target=target.id)
+        _raise_corpse(st, item, target, turns)
+        return
+    if isinstance(target, EnemyState):
+        if item.source_side == "enemy":
+            return  # enemies never mind-control the living (§D9-1.4); lint-guarded upstream
+        if target.is_boss:
+            _log(st, "boss_immune", f"{target.name} cannot be controlled — "
+                 "never bosses, no exceptions.", enemy=target.id)
+            return
+        _mind_control(st, item, target, turns)
+
+
+def _mind_control(st: GameState, item: StackItem, enemy: EnemyState,
+                  turns: Optional[int]) -> None:
+    """A living enemy joins the caster's party as an autonomous token (§D9-1.4):
+    it keeps its current HP, max HP, Power, and keywords, and loses its components
+    and intents. No death trigger fires — nobody died."""
+    _break_enemy_channels(st, enemy, "channeler dominated")
+    if enemy in st.enemies:
+        st.enemies.remove(enemy)
+    if enemy.id in st.acted_enemies:
+        st.acted_enemies.remove(enemy.id)
+    enemy.intent = enemy.intent2 = None
+    enemy.round_intent = enemy.round_intent2 = None
+    enemy.round_intent_status = enemy.round_intent2_status = "none"
+    enemy.taunted_by = None
+    _purge_stack_from(st, enemy.id, "dominated")
+    st.token_seq += 1
+    tok = TokenState(
+        id=f"{enemy.id}_ctl{st.token_seq}", name=enemy.name,
+        max_hp=enemy.max_hp, hp=enemy.hp, power=enemy.power,
+        row=enemy.row, attack_mode=enemy.attack_mode, level=enemy.level,
+        keywords=dict(enemy.keywords),
+        controlled_by=item.source_id, control_left=turns, revert=enemy)
+    # The venom (and any regeneration) rides the body across the table (D8-2).
+    tok.poison_effects, enemy.poison_effects = enemy.poison_effects, []
+    tok.regen_effects, enemy.regen_effects = enemy.regen_effects, []
+    tok.poison_counters, enemy.poison_counters = enemy.poison_counters, 0
+    tok.regen_counters, enemy.regen_counters = enemy.regen_counters, 0
+    st.tokens.append(tok)
+    span = f"for {turns} turn(s)" if turns else "for the encounter"
+    _log(st, "controlled", f"{enemy.name} is dominated — it fights for your party "
+         f"{span}.", enemy=enemy.id, token=tok.id, by=item.source_id, turns=turns)
+
+
+def _raise_corpse(st: GameState, item: StackItem, corpse: Corpse,
+                  turns: Optional[int]) -> None:
+    """Raise dead (§D9-1.4): the corpse is CONSUMED and an undead token rises on
+    its row, on the caster's side, at half the corpse's max HP (T-52, floor,
+    min 1) with its Power and attack mode. When the duration ends it crumbles;
+    being a token it leaves no corpse (the anti-loop rule)."""
+    hp = max(1, corpse.max_hp // 2)
+    st.token_seq += 1
+    if item.source_side == "enemy":
+        # Enemy necromancy (§D9-1.6): the fallen minion rises on the ENEMY side
+        # as an undead token (created_by set — tokens leave no corpse).
+        tok = EnemyState(
+            id=f"{corpse.id}_undead{st.token_seq}", name=f"{corpse.name} (risen)",
+            max_hp=hp, hp=hp, level=corpse.level, power=corpse.power,
+            row=corpse.row, committed=corpse.row, home_row=corpse.row,
+            attack_mode=corpse.attack_mode,
+            intent_template={"name": "Undead Strike", "amount": corpse.power,
+                             "action_type": "ability", "intent_type": "attack",
+                             "targeting": "lowest_hp_party",
+                             "mode": corpse.attack_mode},
+            created_by=item.source_id)
+        st.enemies.append(tok)
+        _log(st, "raised", f"{corpse.name} rises as an undead thrall of the enemy "
+             f"(HP {hp}/Power {corpse.power}).", enemy=tok.id, by=item.source_id)
+        return
+    tok = TokenState(
+        id=f"{corpse.id}_undead{st.token_seq}", name=f"{corpse.name} (risen)",
+        max_hp=hp, hp=hp, power=corpse.power, row=corpse.row,
+        attack_mode=corpse.attack_mode, level=corpse.level,
+        controlled_by=item.source_id, control_left=turns, revert=None)
+    st.tokens.append(tok)
+    span = f"for {turns} turn(s)" if turns else "for the encounter"
+    _log(st, "raised", f"{corpse.name} rises as your undead ally "
+         f"(HP {hp}/Power {corpse.power}) {span}.",
+         token=tok.id, by=item.source_id, turns=turns)
+
+
+def _end_control(st: GameState, tok: TokenState, reason: str) -> None:
+    """End one control effect (§D9-1.4): a dominated living enemy SNAPS BACK to
+    the enemy side — current HP intact, on the row it occupies, declaring fresh
+    intents next round; a raised undead crumbles (dies; no corpse)."""
+    if tok in st.tokens:
+        st.tokens.remove(tok)
+    if tok.id in st.acted_tokens:
+        st.acted_tokens.remove(tok.id)
+    _purge_stack_from(st, tok.id, "control ended")
+    enemy = tok.revert
+    if enemy is None:
+        _log(st, "crumbled", f"{tok.name} crumbles — the necromancy expires "
+             f"({reason}).", token=tok.id, reason=reason)
+        _fire_event(st, "death", tok)
+        return
+    enemy.hp = min(tok.hp, tok.max_hp)
+    enemy.max_hp = tok.max_hp
+    enemy.power = tok.power
+    enemy.row = tok.row
+    enemy.committed = tok.row
+    enemy.temp_mod = enemy.power_bonus = enemy.prevent_pool = 0
+    enemy.prevent_tags = []
+    enemy.poison_effects, enemy.poison_counters = tok.poison_effects, tok.poison_counters
+    enemy.regen_effects, enemy.regen_counters = tok.regen_effects, tok.regen_counters
+    st.enemies.append(enemy)
+    _log(st, "control_ended", f"{enemy.name} shakes off the domination and returns "
+         f"to the enemy side ({reason}; HP {enemy.hp}).",
+         enemy=enemy.id, reason=reason, hp=enemy.hp)
+
+
+def _tick_control(st: GameState) -> None:
+    """End-Step control bookkeeping (§D9-1.4): `turns: X` control expires at the
+    Xth End Step after resolution — decrement each End Step and end at 0."""
+    for tok in list(st.tokens):
+        if tok.controlled_by is None or tok.control_left is None:
+            continue
+        tok.control_left -= 1
+        if tok.control_left <= 0:
+            _end_control(st, tok, "duration expired")
 
 
 def _r_grant_keyword(st, item, effect, target, ctx):
@@ -3135,6 +3590,8 @@ RESOLVERS = {
     "create_token": _r_create_token,
     "taunt": _r_taunt,
     "revive": _r_revive,
+    "control": _r_control,
+    "move": _r_move,
     "grant_keyword": _r_grant_keyword,
     "remove_keyword": _r_remove_keyword,
     "ramp": _r_ramp,
@@ -3615,23 +4072,47 @@ def _purge_stack_from(st: GameState, source_id: str, reason: str) -> None:
              source=source_id, label=it.label)
 
 
-def _kill_enemy(st: GameState, enemy: EnemyState) -> None:
+def _kill_enemy(st: GameState, enemy: EnemyState, leaves_corpse: bool = True,
+                death_event: bool = True) -> None:
     """A removed enemy leaves the board and its pending intent is discarded. A channel
     aimed at it simply loses its target and holds inert — losing an aura target is not
-    a break cause (GDD §8), so the caster keeps concentrating until they drop it."""
+    a break cause (GDD §8), so the caster keeps concentrating until they drop it.
+
+    Death now leaves a CORPSE on the row where it fell (§D9-1.1) — except for
+    tokens (`created_by` set: raised undead cannot be re-raised, the anti-loop
+    rule) and for `exile`, which passes `leaves_corpse=False` (and
+    `death_event=False`: exile fires no death triggers — §D9-1.2)."""
     _break_enemy_channels(st, enemy, "channeler died")  # its OWN channels die with it
     if enemy in st.enemies:
         st.enemies.remove(enemy)
     if enemy.id in st.acted_enemies:
         st.acted_enemies.remove(enemy.id)
-    if enemy.intent is not None:
+    if enemy.intent is not None or enemy.intent2 is not None:
         _log(st, "intent_discarded", f"{enemy.name}'s pending intent is discarded.",
              enemy=enemy.id)
-    _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
+        enemy.intent = enemy.intent2 = None
+    if death_event:
+        _log(st, "enemy_died", f"{enemy.name} dies.", enemy=enemy.id)
     _purge_stack_from(st, enemy.id, "destroyed")
+    if leaves_corpse and enemy.created_by is None:
+        stirring = int(enemy.rises or 0)
+        enemy.rises = None  # the rise is once per encounter (§D9-1.5)
+        st.corpses.append(Corpse(
+            id=enemy.id, name=enemy.name, row=enemy.row, power=enemy.power,
+            max_hp=enemy.max_hp, level=enemy.level, attack_mode=enemy.attack_mode,
+            is_boss=enemy.is_boss, stirring=stirring, body=enemy))
+        if stirring > 0:
+            _log(st, "corpse_stirring",
+                 f"{enemy.name}'s corpse stirs — it will rise in {stirring} "
+                 f"Upkeep(s) unless exiled or raised.",
+                 enemy=enemy.id, row=enemy.row, stirring=stirring)
+        else:
+            _log(st, "corpse", f"{enemy.name} leaves a corpse on the {enemy.row} row.",
+                 enemy=enemy.id, row=enemy.row)
     # On-death channel triggers fire after the enemy has fully left the board
     # (its own channels are already broken, so it never hears its own death).
-    _fire_event(st, "death", enemy)
+    if death_event:
+        _fire_event(st, "death", enemy)
 
 
 def _remove_token(st: GameState, token: TokenState) -> None:
@@ -3667,7 +4148,22 @@ def _check_end(st: GameState) -> None:
     # Victory (Update 03 §E-B): every roster enemy must be gone for good — in the
     # graveyard or exile. A bounced enemy is "in hand" (alive, off-field), which keeps
     # the encounter live: you cannot win by bouncing the last enemy; it will redeploy.
-    if not st.living_enemies() and not st.bounced_enemies():
+    # A CORPSE is a defeated enemy (§D9-1.2) — but a STIRRING corpse is not
+    # (§D9-1.5), and neither is a mind-CONTROLLED enemy (§D9-1.4).
+    if not st.living_enemies() and not st.bounced_enemies() \
+            and not st.stirring_corpses():
+        # Control never wins (§D9-1.4): if only controlled enemies remain, ALL
+        # control ends immediately — each snaps back to the enemy side and the
+        # fight continues. (Raised undead are tokens of already-defeated enemies;
+        # they crumble with the victory and block nothing.)
+        dominated = [t for t in st.controlled_units() if t.revert is not None]
+        if dominated:
+            _log(st, "control_snap",
+                 "Control cannot deliver the win — the domination shatters.",
+                 tokens=[t.id for t in dominated])
+            for t in dominated:
+                _end_control(st, t, "it would be the last enemy")
+            return  # the fight continues with the returned enemies
         # Any enemy still suspended by a channeled exile is now gone for good — the
         # encounter ends before the channel could break and bring it back (GDD §8).
         for e in st.enemies:
@@ -3822,10 +4318,43 @@ def _legal_capacity(st: GameState, actor: CharacterState) -> List[Action]:
             for c in _distinct_identity(actor)]
 
 
+def _active_stance(char: Optional[CharacterState]):
+    """The stance effect on one of the holder's channels, or None (§D9-2).
+    Read live: breaking or dropping the channel removes the stance instantly."""
+    for ch in getattr(char, "channels", []) or []:
+        for e in ch.card.effects:
+            if getattr(e, "kind", None) == "stance":
+                return e
+    return None
+
+
+def _stance_slot(char: Optional[CharacterState], slot: str):
+    """One main-ability slot under the holder's stance: 'unchanged' | 'removed' |
+    a StanceReplacement. 'unchanged' when no stance is held."""
+    s = _active_stance(char)
+    return getattr(s, slot) if s is not None else "unchanged"
+
+
+def _stance_actions(st: GameState, actor: CharacterState, slot: str,
+                    repl) -> List[Action]:
+    """One Action per legal target of a replaced ability (§D9-2.3): the standard
+    target enumeration over the replacement's leaf effects. `card_id` carries the
+    slot name so `_do_stance_ability` finds the replacement again at apply time."""
+    name = repl.name or f"{slot.title()} (stance)"
+    out = []
+    for tid, tlabel in _target_options_for(st, list(repl.effects), None):
+        label = f"{name} (stance)" + (f" on {tlabel}" if tlabel else "")
+        out.append(Action("stance_ability", actor.id, card_id=slot,
+                          target_id=tid, label=label))
+    return out
+
+
 def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     """A character's own turn: the proactive mode (Attack XOR Cast XOR Defend) —
     where Cast may cast several sorcery-speed spells — plus free instants, the
-    free voluntary drop, and end turn."""
+    free voluntary drop, and end turn. A held STANCE (§D9-2) rewires the four
+    main abilities: each slot is unchanged, removed, or a replacement action.
+    Casting is untouchable — a stance rewires your body, not your spellbook."""
     actions: List[Action] = []
     # Stunned (§F-3 enemy Debilitate): the proactive window is denied outright — the
     # only move is to end the turn (which spends one stack of the stun). Reaction
@@ -3834,29 +4363,48 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
         return [Action("end_turn", actor.id, label="Stunned — end turn")]
     mode = actor.acted_mode
     vig = _has_kw(actor, "vigilance")  # lifts the attack-vs-cast restriction (GDD §7)
+    aslot = _stance_slot(actor, "attack")
+    dslot = _stance_slot(actor, "defend")
+    mslot = _stance_slot(actor, "move")
     # Attack (basic, once per round): locked out after a Cast unless vigilant, and
     # forbidden outright while a `prevent attack` shield (Pacifism) rides the actor.
-    if (not actor.used_attack and not _prevented_action(actor, "attack")
-            and (mode is None or (vig and mode == "cast"))):
-        dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
-        for e in _legal_attack_targets(st, actor):  # only rows this attack can reach
-            actions.append(Action("attack", actor.id, target_id=e.id,
-                                  label=f"Attack {e.name} ({actor.attack_mode} "
-                                        f"Power {actor.current_power}){dbl}"))
+    # A stance may remove it (gone in every form) or replace it (an activated
+    # ability with the slot's economy — once per round, satisfies the proactive
+    # Attack choice; Pacifism binds the sword, not the replacement).
+    if not actor.used_attack and (mode is None or (vig and mode == "cast")):
+        if aslot == "unchanged":
+            if not _prevented_action(actor, "attack"):
+                dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
+                for e in _legal_attack_targets(st, actor):  # only rows this attack can reach
+                    actions.append(Action("attack", actor.id, target_id=e.id,
+                                          label=f"Attack {e.name} ({actor.attack_mode} "
+                                                f"Power {actor.current_power}){dbl}"))
+        elif aslot != "removed":
+            actions += _stance_actions(st, actor, "attack", aslot)
     if mode is None and not actor.used_defend:  # Defend (the defensive action)
-        actions.append(Action("defend", actor.id, label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
+        if dslot == "unchanged":
+            actions.append(Action("defend", actor.id, label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
+        elif dslot != "removed":
+            actions += _stance_actions(st, actor, "defend", dslot)
     # Move (Update 02 §M-B.4): the proactive Move costs the action; haste makes one
     # voluntary move free (offered alongside the normal action). Once per turn.
-    if actor.pending_voluntary is None and (mode is None or _has_kw(actor, "haste")):
-        free = " (free, haste)" if _has_kw(actor, "haste") else ""
-        for row in ("front", "mid", "rear"):
-            if row != actor.row:
-                actions.append(Action("move", actor.id, target_id=row,
-                                      label=f"Move to {row.capitalize()}{free}"))
+    # A stance-removed Move is total — neither the action nor the haste free move.
+    if mslot == "unchanged":
+        if actor.pending_voluntary is None and (mode is None or _has_kw(actor, "haste")):
+            free = " (free, haste)" if _has_kw(actor, "haste") else ""
+            for row in ("front", "mid", "rear"):
+                if row != actor.row:
+                    actions.append(Action("move", actor.id, target_id=row,
+                                          label=f"Move to {row.capitalize()}{free}"))
+    elif mslot != "removed":
+        if not actor.used_move and (mode is None or _has_kw(actor, "haste")):
+            actions += _stance_actions(st, actor, "move", mslot)
     # Cast sorcery-speed spells (sorcery/channeled): after an Attack only if vigilant.
     if mode in (None, "cast") or (vig and mode == "attack"):
         for card in actor.hand:
             if card.timing in _SORCERY_SPEED and _can_pay(actor, card):
+                if _card_has_stance(card) and _active_stance(actor) is not None:
+                    continue  # one stance at a time (§D9-2.3): drop the held one first
                 actions += _cast_actions(st, actor, card)
     for card in actor.hand:            # Free instants (mana-limited, any time)
         if card.timing == Timing.instant and _can_pay(actor, card):
@@ -3865,6 +4413,10 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     actions += _drop_actions(st, actor)
     actions.append(Action("end_turn", actor.id, label="End turn"))
     return actions
+
+
+def _card_has_stance(card: Card) -> bool:
+    return any(getattr(e, "kind", None) == "stance" for e in card.effects)
 
 
 def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
@@ -3881,8 +4433,11 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     # both "didn't attack on my turn" and "haven't reacted yet"; Pacifism still forbids it.
     # The tactical payoff: you can spend your turn action on Move/Defend/Cast and still hold
     # the swing for the enemy step.
+    # A stance-removed/replaced attack takes the first-strike held swing with it
+    # (§D9-2.3): the BASIC attack is gone in every form.
     if (st.phase == "enemy" and _has_kw(actor, "first_strike") and not actor.used_attack
-            and not _prevented_action(actor, "attack") and actor.stunned == 0):
+            and not _prevented_action(actor, "attack") and actor.stunned == 0
+            and _stance_slot(actor, "attack") == "unchanged"):
         dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
         for e in _legal_attack_targets(st, actor):
             actions.append(Action("attack", actor.id, target_id=e.id,
@@ -3892,16 +4447,23 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     # Mitigate (Update 02 §M-A): once per turn, answers an enemy attack-type action.
     # Self mode if it targets the actor; ally mode for an ally it targets that is in
     # an adjacent row to the actor's COMMITTED position (§M-A.5, §M-B.2).
+    # Under a stance (§D9-2.3): 'removed' guards nobody, including yourself; a
+    # replacement stays a reaction in the same window — an incoming attack-type
+    # action — its authored effects resolving instead of the reduction.
     x = _mitigate_value(actor)
+    mit_slot = _stance_slot(actor, "mitigate")
     if not actor.used_mitigate and top.source_side == "enemy" and top.kind == "attack":
-        if top.target_id == actor.id:
-            actions.append(Action("mitigate", actor.id, target_id=actor.id,
-                                  label=f"Mitigate self (−{x} per hit)"))
-        for ally in st.living_party():
-            if (ally.id != actor.id and top.target_id == ally.id
-                    and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
-                actions.append(Action("mitigate", actor.id, target_id=ally.id,
-                                      label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
+        if mit_slot == "unchanged":
+            if top.target_id == actor.id:
+                actions.append(Action("mitigate", actor.id, target_id=actor.id,
+                                      label=f"Mitigate self (−{x} per hit)"))
+            for ally in st.living_party():
+                if (ally.id != actor.id and top.target_id == ally.id
+                        and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
+                    actions.append(Action("mitigate", actor.id, target_id=ally.id,
+                                          label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
+        elif mit_slot != "removed":
+            actions += _stance_actions(st, actor, "mitigate", mit_slot)
     actions += _heroic_actions(st, actor, main_phase=False)  # Skill reacts (D8-3.1)
     actions += _drop_actions(st, actor)
     actions.append(Action("pass", actor.id, label="Pass"))
@@ -3991,18 +4553,13 @@ def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
         sites = _target_sites(effects, card)
         if len(sites) >= 2:
             per_site = []
-            for _key, side, targeted, kind in sites:
+            for _key, side, targeted, kind, state in sites:
                 if isinstance(side, str) and side.startswith("stack:"):
                     filt = side[len("stack:"):]
                     opts = [(f"#{s.uid}", s.label) for s in st.stack
                             if s.source_side == "enemy" and _filter_matches(filt, s)]
                 else:
-                    opts = _side_options(st, side)
-                    if targeted:  # hexproof hostiles can't be TARGETED (GDD §7)
-                        opts = [(tid, tl) for tid, tl in opts
-                                if not _hexproof_hostile(st, tid)]
-                    if kind == "revive":  # only a DOWNED ally can be revived
-                        opts = _downed_only(st, opts)
+                    opts = _pick_options(st, side, targeted, kind, state)
                 per_site.append(opts)
             if not all(per_site):
                 continue  # a required site has no legal pick — combo uncastable
@@ -4076,21 +4633,52 @@ def _counter_filter(effects) -> Optional[str]:
     return None
 
 
+def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
+                  state=None):
+    """[(id, label)] a single chosen pick may name, under all the pick rules:
+    `targeted` honours hexproof; revive needs a downed ally; `control` never
+    offers a boss — or a boss corpse (§D9-1.4); a strip_intent against an
+    enraged boss offers one strip per declared intent (§D9-4 — the '::2' handle
+    names the second).
+
+    The corpse-legal verbs (`control` / `exile`) offer the battlefield's corpses
+    ALONGSIDE the living by default (§D9-1.2/§D9-1.4: exile burns bodies, one
+    control primitive covers theft and necromancy) — no per-card authoring
+    needed. An explicit `state: "corpse"` narrows the pick to corpses only
+    (enemy necromancy, Raise Dead)."""
+    state = getattr(state, "value", state) or "living"
+    corpse_only = state == "corpse" and kind in ("control", "exile")
+    opts = [] if corpse_only else _side_options(st, side)
+    if targeted:
+        opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
+    if kind == "revive":
+        opts = _downed_only(st, opts)
+    if kind == "control":
+        opts = [(tid, tl) for tid, tl in opts
+                if not getattr(st.enemy(tid), "is_boss", False)]
+    if kind == "strip_intent":
+        extra = []
+        for tid, tl in opts:
+            e = st.enemy(tid)
+            if e is not None and e.intent2 is not None:
+                extra.append((f"{tid}::2", f"{tl} — second intent"))
+        opts = opts + extra
+    if kind in ("control", "exile"):
+        opts = opts + [(c.id, f"{c.name} (corpse)") for c in st.corpses
+                       if not (kind == "control" and c.is_boss)]
+    return opts
+
+
 def _effect_target_options(st: GameState, effect, card=None):
     """[(id, label)] one effect's chosen target may pick, under the usual pick
-    rules (`targeted` honours hexproof; revive needs a downed ally). Used for the
-    trigger-time target pick of a fired triggered ability. A "$slot" target
-    resolves its descriptor through the card's slot table."""
+    rules. Used for the trigger-time target pick of a fired triggered ability.
+    A "$slot" target resolves its descriptor through the card's slot table."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) and card is not None:
         desc = card.targets.get(desc[1:])
     side = desc.side.value if getattr(desc, "side", None) is not None else "any"
-    opts = _side_options(st, side)
-    if getattr(desc, "targeted", False):
-        opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
-    if effect.kind == "revive":
-        opts = _downed_only(st, opts)
-    return opts
+    return _pick_options(st, side, bool(getattr(desc, "targeted", False)),
+                         effect.kind, getattr(desc, "state", None))
 
 
 def _hexproof_hostile(st: GameState, tid) -> bool:
@@ -4140,7 +4728,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if s.source_side == "enemy" and _filter_matches(filt, s)]
-    side, targeted, kind = None, False, None
+    side, targeted, kind, state = None, False, None, None
     # Triggered effects pick their targets when the trigger fires, not at cast
     # (mirrors the _target_sites exclusion). Nested effects never carry triggers,
     # so filtering the top level before descending is sufficient.
@@ -4151,7 +4739,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
             if sd is not None:
                 side = sd.side.value if sd.side is not None else "any"
                 targeted = bool(getattr(sd, "targeted", False))
-                kind = e.kind
+                kind, state = e.kind, getattr(sd, "state", None)
                 break
             continue
         # Any CHOSEN descriptor needs a pick at cast — `targeted` governs
@@ -4160,14 +4748,9 @@ def _target_options_for(st: GameState, effects, card: Card = None):
         if desc is not None and getattr(desc, "mode", None) == TargetMode.chosen:
             side = desc.side.value
             targeted = bool(getattr(desc, "targeted", False))
-            kind = e.kind
+            kind, state = e.kind, getattr(desc, "state", None)
             break
-    opts = _side_options(st, side)
-    if targeted:  # a TARGETED pick may not name a hexproof hostile (GDD §7)
-        opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
-    if kind == "revive":  # only a DOWNED ally can be revived
-        opts = _downed_only(st, opts)
-    return opts
+    return _pick_options(st, side, targeted, kind, state)
 
 
 def _target_sites(effects, card: Card):
@@ -4180,12 +4763,13 @@ def _target_sites(effects, card: Card):
     one shared site. A counter is a site whose options are enemy STACK actions
     (side "stack:<filter>"). conditional/modal/self/all contribute none, so a
     conditional's nested effects reuse the primary (first) target. Returns
-    [(key, side, targeted, kind)] where key is ('slot', name) or ('eff', id(effect));
-    `targeted` carries the descriptor's flag so enumeration can honour hexproof
-    (a targeted pick may not offer a hexproof hostile; an untargeted-chosen one
-    may — non-targeting effects beat hexproof, GDD §7), and `kind` is the owning
-    effect's kind so kind-specific pick rules apply (revive: downed allies only).
-    Used by enumeration AND
+    [(key, side, targeted, kind, state)] where key is ('slot', name) or
+    ('eff', id(effect)); `targeted` carries the descriptor's flag so enumeration
+    can honour hexproof (a targeted pick may not offer a hexproof hostile; an
+    untargeted-chosen one may — non-targeting effects beat hexproof, GDD §7),
+    `kind` is the owning effect's kind so kind-specific pick rules apply
+    (revive: downed allies only; control: never a boss), and `state` is the
+    corpse axis (§D9-1.3). Used by enumeration AND
     resolution, so site order matches between them."""
     sites = []
     seen_slots = set()
@@ -4198,14 +4782,16 @@ def _target_sites(effects, card: Card):
             seen_slots.add(name)
             sd = card.targets.get(name) if card is not None else None
             side = sd.side.value if sd is not None and sd.side is not None else "any"
-            sites.append((("slot", name), side, bool(getattr(sd, "targeted", False)), kind))
+            sites.append((("slot", name), side, bool(getattr(sd, "targeted", False)),
+                          kind, getattr(sd, "state", None)))
         elif desc is not None and (forced
                                    or getattr(desc, "mode", None) == TargetMode.chosen):
             sites.append((eff_key, desc.side.value,
-                          bool(getattr(desc, "targeted", False)), kind))
+                          bool(getattr(desc, "targeted", False)), kind,
+                          getattr(desc, "state", None)))
 
     for e in effects:
-        if e.kind in ("conditional", "modal"):
+        if e.kind in ("conditional", "modal", "stance"):
             continue
         # A TRIGGERED effect's chosen target is NOT a cast-time site: it is
         # picked when the trigger fires (MTG-style — see _raise_next_trigger_pick).
@@ -4215,7 +4801,7 @@ def _target_sites(effects, card: Card):
             continue
         if e.kind == "counter":
             # The counter's target is an enemy action on the stack, not a creature.
-            sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter"))
+            sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter", None))
             continue
         if e.kind == "fight":
             # Fight's two targets are always chosen (even authored inline). Force both
