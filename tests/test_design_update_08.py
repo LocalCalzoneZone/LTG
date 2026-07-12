@@ -481,6 +481,22 @@ def test_no_auto_end_turn_before_acting():
     assert auto_pass_action(st) is None         # attack/defend/move are real options
 
 
+def test_channeler_is_never_auto_passed():
+    """§D8-4.1 amended: a held channel is a standing decision (drop it to free
+    the reserved mana, shed a stance, or keep holding) — so no window is
+    auto-passed and no turn auto-ended while the holder is channeling."""
+    chant = _card("chant", "Chant", "channeled", {"colors": {"U": 1}},
+                  [{"kind": "pump", "power": 1, "toughness": 0,
+                    "duration": "while_channeled", "target": SELF}])
+    st = _state([_char("p", hand=1, library=[chant])], [_enemy("e")])
+    st = _do(st, "cast", card_id="chant")
+    st = _do(st, "pass")                    # the channel starts (turn action spent)
+    assert auto_pass_action(st) is None     # main phase: no auto end-turn
+    st = _do(st, "end_turn")
+    st = _do(st, "mitigate")                # spend the window's one real option…
+    assert auto_pass_action(st) is None     # …the held channel still keeps it open
+
+
 def test_session_auto_drives_no_decision_stops():
     from ltg_game_server.session import Session
     st = _state([_char("p")], [_enemy("e", amount=1)])

@@ -120,12 +120,21 @@ interface StoreState {
   // Portrait inspection: the combatant id whose full write-up is open (the
   // modal derives the live view from the snapshot each render), or null.
   inspectId: string | null;
-  // Characters auto-passing until the stack fully resolves. Pass All is a
-  // PER-CHARACTER commitment — "this character has nothing more to add for the
-  // rest of this stack" — so it only ever passes for the character that armed
-  // it; the player's OTHER characters keep their reaction windows and may still
-  // respond (or arm their own Pass All). Cleared when the stack empties.
+  // Characters auto-passing until the current stack episode resolves. Pass All
+  // is a PER-CHARACTER commitment — "this character has nothing more to add for
+  // the rest of THIS stack" — so it only ever passes for the character that
+  // armed it; the player's OTHER characters keep their reaction windows and may
+  // still respond (or arm their own Pass All). The commitment is scoped to the
+  // stack episode it was armed against, identified by the root (bottom) item's
+  // uid: it clears when the stack empties OR when a fresh episode opens (a new
+  // root). This matters during the enemy step, where the server chains each
+  // enemy's swing without ever emitting an empty-stack snapshot — without the
+  // root check, one Pass All would silently decline a First Strike swing the
+  // holder is owed against every LATER enemy in the same step.
   passAllFor: string[];
+  // The root stack uid the current Pass All commitment is bound to (null when
+  // no commitment is live). A different root in a new snapshot ends it.
+  passAllRootUid: number | null;
   error: string | null;
   gameOver: string | null;
 
@@ -194,6 +203,7 @@ export const useGame = create<StoreState>((set, get) => ({
   zoneModal: null,
   inspectId: null,
   passAllFor: [],
+  passAllRootUid: null,
   error: null,
   gameOver: null,
   fx: [],
@@ -266,8 +276,13 @@ export const useGame = create<StoreState>((set, get) => ({
         // for characters that did NOT arm it stay interactive.
         const autoPassers = get().passAllFor;
         if (autoPassers.length) {
-          if (snap.stack.length === 0) {
-            set({ passAllFor: [] }); // stack resolved — the commitment ends
+          // The commitment is bound to ONE stack episode, keyed by the root
+          // (bottom) item's uid. It ends when the stack empties or when a fresh
+          // episode opens under a different root — e.g. the next enemy's swing
+          // in the same enemy step, which the holder may still First Strike.
+          const rootUid = snap.stack.length ? snap.stack[0].uid : null;
+          if (rootUid === null || rootUid !== get().passAllRootUid) {
+            set({ passAllFor: [], passAllRootUid: null }); // episode ended
           } else {
             const pass = snap.legal_actions.find(
               (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
@@ -287,7 +302,7 @@ export const useGame = create<StoreState>((set, get) => ({
         break;
       case "error":
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [] });
+        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [], passAllRootUid: null });
         break;
     }
   },
@@ -465,10 +480,14 @@ export const useGame = create<StoreState>((set, get) => ({
     const armed = get().passAllFor;
     if (armed.includes(pass.actor_id)) {
       // Already committed — clicking again cancels this character's auto-pass.
-      set({ passAllFor: armed.filter((id) => id !== pass.actor_id) });
+      const remaining = armed.filter((id) => id !== pass.actor_id);
+      set({ passAllFor: remaining, passAllRootUid: remaining.length ? get().passAllRootUid : null });
       return;
     }
-    set({ passAllFor: [...armed, pass.actor_id], armed: null, chooseModeFor: null });
+    // Bind the commitment to the episode it was armed against (the root item).
+    const rootUid = snap!.stack.length ? snap!.stack[0].uid : null;
+    set({ passAllFor: [...armed, pass.actor_id], passAllRootUid: rootUid,
+          armed: null, chooseModeFor: null });
     get().submitIndex(pass.index);
   },
 

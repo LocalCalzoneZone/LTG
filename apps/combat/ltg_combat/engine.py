@@ -1953,6 +1953,48 @@ def _is_continuous(effect) -> bool:
             and getattr(effect, "duration", None) == Duration.while_channeled)
 
 
+def _desc_scope(desc) -> Optional[str]:
+    """The normalized row/blast splash scope of a target descriptor, or None."""
+    return getattr(getattr(desc, "scope", None), "value", getattr(desc, "scope", None))
+
+
+def _pin_channel_splash(st: GameState, ch, effects) -> None:
+    """Pin the §D9-3.2 splash victims of a channel's scoped continuous effect as
+    it starts: the SAME set is applied now, reasserted each end step, and lifted
+    when the channel ends — creatures that move rows (or hang suspended off the
+    board, e.g. channel-exiled) stay covered for the channel's whole life.
+    One-shot scoped effects splash through the normal resolution path instead."""
+    for effect in effects:
+        if not _is_continuous(effect):
+            continue
+        desc = getattr(effect, "target", None)
+        scope = _desc_scope(desc)
+        if scope is None or getattr(desc, "mode", None) != TargetMode.chosen:
+            continue
+        pick = st.combatant(ch.target_id)
+        if pick is None:
+            return
+        splash = _splash_targets(st, pick, scope)
+        ch.splash_ids = [_tid(c) for c in splash]
+        if splash:
+            name = getattr(ch, "name", None) or ch.card.name
+            _log(st, "splash", f"{name} splashes across the "
+                 f"{'row' if scope == 'row' else 'row and adjacent rows'}: "
+                 + ", ".join(c.name for c in splash) + ".",
+                 scope=scope, victims=list(ch.splash_ids))
+        return
+
+
+def _channel_splash_targets(st: GameState, ch, effect) -> List:
+    """The pinned splash victims a channel's scoped continuous effect also
+    covers (empty for unscoped effects). Resolved by id so a victim that moved
+    rows, or sits suspended off the board, is still found for reassert/lift."""
+    if _desc_scope(getattr(effect, "target", None)) is None:
+        return []
+    return [c for cid in ch.splash_ids
+            for c in [st.combatant(cid)] if c is not None]
+
+
 def _start_channel(st: GameState, item: StackItem) -> None:
     """Hold a resolved channeled card on its caster: reserve its mana and apply
     its continuous effects. Recurring effects are armed (they fire at upkeep);
@@ -1965,6 +2007,7 @@ def _start_channel(st: GameState, item: StackItem) -> None:
     _log(st, "channel_start",
          f"{holder.name} channels {item.card.name} (reserves {_mana_str(channel.reserved)}).",
          character=holder.id, card=item.card.id, reserved=list(channel.reserved))
+    _pin_channel_splash(st, channel, item.card.effects)  # §D9-3.2 row/blast
     for effect in item.card.effects:
         if _is_continuous(effect):
             _apply_continuous(st, channel, effect)
@@ -1999,6 +2042,7 @@ def _start_enemy_channel(st: GameState, item: StackItem) -> None:
          f"≥{_break_threshold(enemy)} damage, or remove the channeler.",
          enemy=enemy.id, component=ch.component_id, label=item.label,
          threshold=_break_threshold(enemy))
+    _pin_channel_splash(st, ch, ch.effects)  # §D9-3.2 row/blast
     for effect in ch.effects:
         if _is_continuous(effect):
             for target in _enemy_channel_targets(st, ch, effect):
@@ -2017,7 +2061,8 @@ def _enemy_channel_targets(st: GameState, ch: EnemyChannel, effect) -> List:
     """The creature(s) an enemy channel's continuous effect covers. Verb-target
     convention matches one-shot enemy verbs: `self` = the channeler, `all`+side
     resolves from the card-authoring perspective ("ally" = the party), `chosen` =
-    the single target picked when the intent declared."""
+    the single target picked when the intent declared — plus the pinned
+    row/blast splash victims when the verb is scoped (§D9-3.2)."""
     desc = getattr(effect, "target", None)
     mode = getattr(desc, "mode", None) if not isinstance(desc, str) else None
     if mode == TargetMode.self_:
@@ -2029,7 +2074,8 @@ def _enemy_channel_targets(st: GameState, ch: EnemyChannel, effect) -> List:
                          label=ch.name, effects=[])
         return _creatures_on_side(st, side, item, desc)
     tgt = st.combatant(ch.target_id)
-    return [tgt] if tgt is not None else []
+    out = [tgt] if tgt is not None else []
+    return out + _channel_splash_targets(st, ch, effect)
 
 
 def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None:
@@ -2064,7 +2110,8 @@ def _reap_aura_kills(st: GameState) -> None:
 
 def _continuous_targets(st: GameState, channel: Channel, effect) -> List:
     """The creature(s) a channel's continuous effect covers: the holder (self), a
-    whole side (anthem 'all'), or the single aura target chosen at cast."""
+    whole side (anthem 'all'), or the single aura target chosen at cast — plus
+    the pinned row/blast splash victims when the effect is scoped (§D9-3.2)."""
     desc = getattr(effect, "target", None)
     mode = getattr(desc, "mode", None) if not isinstance(desc, str) else None
     if mode == TargetMode.self_:
@@ -2078,7 +2125,8 @@ def _continuous_targets(st: GameState, channel: Channel, effect) -> List:
             return list(st.living_party()) + list(st.living_tokens()) + list(st.living_enemies())
         return list(st.living_party()) + list(st.living_tokens())
     tgt = st.combatant(channel.target_id)
-    return [tgt] if tgt is not None else []
+    out = [tgt] if tgt is not None else []
+    return out + _channel_splash_targets(st, channel, effect)
 
 
 _STAT_CONTINUOUS = ("pump", "counters", "wound")  # auras that ride the temp layers
@@ -3203,22 +3251,35 @@ def _power_of(c) -> int:
 
 
 def _r_fight(st, item, effect, target, ctx):
-    # `target` is the primary creature (the one you control); resolve the `other`
-    # from its own site. Each deals damage equal to its power to the other,
-    # SIMULTANEOUSLY — snapshot both powers before any HP changes, so a creature
-    # that dies still lands its blow (MTG fight, GDD §7).
-    other_id = _site_id(item, ctx, getattr(effect, "other", None), ("eff_other", id(effect)))
-    other = st.combatant(other_id)
-    if target is None or other is None or not _legal_target(target) or not _legal_target(other):
+    # `target` is the primary creature (the one you control); the `other` side
+    # resolves from its own site when chosen, or straight from the state when
+    # authored self/all ("Yourself fights all enemies" — one simultaneous
+    # exchange with EACH of them). All powers are snapshotted before any HP
+    # changes, so a creature that dies still lands its blow (MTG fight, GDD §7).
+    odesc = getattr(effect, "other", None)
+    omode = getattr(odesc, "mode", None)
+    if omode == TargetMode.self_:
+        others = [st.combatant(item.source_id)]
+    elif omode == TargetMode.all:
+        side = odesc.side.value if odesc.side is not None else "ally"
+        others = _creatures_on_side(st, side, item, odesc)
+    else:
+        others = [st.combatant(_site_id(item, ctx, odesc, ("eff_other", id(effect))))]
+    others = [o for o in others if o is not None and _legal_target(o)]
+    if target is None or not _legal_target(target) or not others:
         _log(st, "fizzle", f"{item.label}'s fight fizzles (a creature is gone).", kind="fight")
         return
-    p_target, p_other = _power_of(target), _power_of(other)
-    _log(st, "fight", f"{target.name} (Power {p_target}) fights {other.name} (Power {p_other}).",
-         target=_tid(target), other=_tid(other), power=p_target, other_power=p_other)
-    _deal_damage(st, other, p_target, source=f"{target.name} (fight)",
-                 source_obj=target, damage_kind="fight")
-    _deal_damage(st, target, p_other, source=f"{other.name} (fight)",
-                 source_obj=other, damage_kind="fight")
+    p_target = _power_of(target)
+    pairs = [(o, _power_of(o)) for o in others]  # snapshot BEFORE any damage
+    for other, p_other in pairs:
+        _log(st, "fight", f"{target.name} (Power {p_target}) fights {other.name} (Power {p_other}).",
+             target=_tid(target), other=_tid(other), power=p_target, other_power=p_other)
+    for other, _p in pairs:
+        _deal_damage(st, other, p_target, source=f"{target.name} (fight)",
+                     source_obj=target, damage_kind="fight")
+    for other, p_other in pairs:
+        _deal_damage(st, target, p_other, source=f"{other.name} (fight)",
+                     source_obj=other, damage_kind="fight")
 
 
 def _r_counter(st, item, effect, target, ctx):
@@ -4660,22 +4721,30 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     # Self mode if it targets the actor; ally mode for an ally it targets that is in
     # an adjacent row to the actor's COMMITTED position (§M-A.5, §M-B.2).
     # Under a stance (§D9-2.3): 'removed' guards nobody, including yourself; a
-    # replacement stays a reaction in the same window — an incoming attack-type
-    # action — its authored effects resolving instead of the reduction.
+    # replacement stays a once-per-turn reaction in the same window, its authored
+    # effects resolving instead of the reduction — and what it can ANSWER follows
+    # those effects: a counter replacement (e.g. "cancel an enemy action") reacts
+    # to any enemy top its filter matches, while a non-counter replacement keeps
+    # Mitigate's own attack-type trigger.
     x = _mitigate_value(actor)
     mit_slot = _stance_slot(actor, "mitigate")
-    if not actor.used_mitigate and top.source_side == "enemy" and top.kind == "attack":
+    if not actor.used_mitigate and top.source_side == "enemy":
         if mit_slot == "unchanged":
-            if top.target_id == actor.id:
-                actions.append(Action("mitigate", actor.id, target_id=actor.id,
-                                      label=f"Mitigate self (−{x} per hit)"))
-            for ally in st.living_party():
-                if (ally.id != actor.id and top.target_id == ally.id
-                        and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
-                    actions.append(Action("mitigate", actor.id, target_id=ally.id,
-                                          label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
+            if top.kind == "attack":
+                if top.target_id == actor.id:
+                    actions.append(Action("mitigate", actor.id, target_id=actor.id,
+                                          label=f"Mitigate self (−{x} per hit)"))
+                for ally in st.living_party():
+                    if (ally.id != actor.id and top.target_id == ally.id
+                            and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
+                        actions.append(Action("mitigate", actor.id, target_id=ally.id,
+                                              label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
         elif mit_slot != "removed":
-            actions += _stance_actions(st, actor, "mitigate", mit_slot)
+            # A counter replacement's target enumeration (_stance_actions →
+            # _target_options_for) only offers matching enemy stack items, so an
+            # unanswerable top simply yields no actions.
+            if _counter_filter(list(mit_slot.effects)) is not None or top.kind == "attack":
+                actions += _stance_actions(st, actor, "mitigate", mit_slot)
     # The Skill no longer reacts (it is an activated ability — active speed,
     # main phase only), so no heroic offers appear in a reaction window.
     actions += _drop_actions(st, actor)
@@ -5042,10 +5111,15 @@ def _target_sites(effects, card: Card):
             sites.append((("eff", id(e)), "stack_any:spell", True, "copy_spell", None))
             continue
         if e.kind == "fight":
-            # Fight's two targets are always chosen (even authored inline). Force both
-            # sites, keying `other` apart from the primary so each binds independently.
-            add(getattr(e, "target", None), ("eff", id(e)), "fight", forced=True)
-            add(getattr(e, "other", None), ("eff_other", id(e)), "fight", forced=True)
+            # Fight's CHOSEN sides are cast-time picks even when authored
+            # untargeted, keyed apart (`other` vs the primary) so each binds
+            # independently. A self/all side is NOT a pick — it resolves from
+            # the state ("Yourself fights all enemies" chooses nothing at cast;
+            # forcing a site here crashed on self's side-less descriptor).
+            for d, key in ((getattr(e, "target", None), ("eff", id(e))),
+                           (getattr(e, "other", None), ("eff_other", id(e)))):
+                if getattr(d, "mode", None) not in (TargetMode.self_, TargetMode.all):
+                    add(d, key, "fight", forced=True)
             continue
         add(getattr(e, "target", None), ("eff", id(e)), e.kind)
     return sites
@@ -5115,10 +5189,16 @@ def auto_pass_action(state: GameState) -> Optional[Action]:
     priority holder has NO meaningful option (Design Update 08 §D8-4) — or None
     when a real decision exists. Engine-truth, computed from the legal set:
 
-      * reaction window: the set holds nothing beyond `pass`/`drop_channels`,
-        and any drop would not make an instant in hand or an unused Skill
-        castable (a drop that enables nothing is not a decision);
-      * main phase: after the same refinement, only `end_turn` remains.
+      * reaction window: the set holds nothing beyond `pass`;
+      * main phase: only `end_turn` remains.
+
+    A CHANNELING holder is never auto-passed (§D8-4.1, amended): a held channel
+    is a standing decision the engine cannot rank — dropping it can free the
+    reserved mana for an instant, shed a stance to restore the default
+    abilities, or simply stop paying the channel's opportunity cost — so every
+    window stays interactive while any channel is held. (This supersedes the
+    old "would the drop enable a play?" refinement: broader, and honest about
+    non-mana reasons to drop.)
 
     A `pending_choice` always waits (choices are never auto-resolved), as does
     the capacity-colour choice. Deterministic: the same state always auto-passes
@@ -5130,40 +5210,20 @@ def auto_pass_action(state: GameState) -> Optional[Action]:
         return None
     if st.phase == "capacity" and not st.stack:
         return None  # the capacity colour is a mandatory real choice
+    actor = st.character(st.priority)
+    if actor is not None and actor.channels:
+        return None  # a channeler always keeps its windows (see docstring)
     actions = _legal(st)
     if not actions:
         return None
     kinds = {a.kind for a in actions}
-    actor = st.character(st.priority)
-    if "pass" in kinds and not (kinds - {"pass", "drop_channels"}):
-        if "drop_channels" in kinds and _drop_enables_play(st, actor):
-            return None
+    # `drop_channels` only exists for a channel holder, and channelers returned
+    # above — so the sets below need no drop refinement.
+    if kinds == {"pass"}:
         return Action("pass", st.priority, auto=True, label="Pass (auto)")
-    if "end_turn" in kinds and not (kinds - {"end_turn", "drop_channels"}):
-        if "drop_channels" in kinds and _drop_enables_play(st, actor):
-            return None
+    if kinds == {"end_turn"}:
         return Action("end_turn", st.priority, auto=True, label="End turn (auto)")
     return None
-
-
-def _drop_enables_play(st: GameState, actor: Optional[CharacterState]) -> bool:
-    """Would releasing the reserved channel mana make any instant in hand, or an
-    unused Skill, castable (cost ≤ pool + reserved, colours respected)? (§D8-4.1)"""
-    if actor is None or not actor.reserved:
-        return False
-    probe = CharacterState(id=actor.id, name=actor.name, max_hp=1, hp=1,
-                           power=0, hand_size=0)
-    probe.pool = list(actor.pool) + list(actor.reserved)
-    candidates = [c for c in actor.hand if c.timing == Timing.instant]
-    # The Skill is main-phase-only now (an activated ability that consumes the
-    # proactive action) — it only makes a drop worthwhile when it could
-    # actually be used from here.
-    if (actor.skill is not None and not actor.skill_used and not st.stack
-            and (actor.acted_mode is None
-                 or (_has_kw(actor, "vigilance")
-                     and actor.acted_mode in ("attack", "cast")))):
-        candidates.append(actor.skill)
-    return any(_can_pay(probe, c) for c in candidates)
 
 
 def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:

@@ -90,6 +90,8 @@ class EnemyChannel:
     holder_id: str = ""
     target_id: Optional[str] = None
     started_turn: int = 0
+    # Row/blast splash victims pinned at first apply (see Channel.splash_ids).
+    splash_ids: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -113,6 +115,11 @@ class Channel:
     # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
     # value references on the channel's triggered effects.
     x: int = 0
+    # Row/blast splash victims (§D9-3.2) pinned when the channel's continuous
+    # effect first applied around its pick: the SAME creatures must be covered
+    # for the channel's whole life — reasserted each end step and lifted when
+    # it ends — even if they moved rows (or are suspended) meanwhile.
+    splash_ids: List[str] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
