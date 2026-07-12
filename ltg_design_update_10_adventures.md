@@ -33,8 +33,8 @@ Applied when an act is won, in this order: end-of-encounter cleanup first, then 
 | what | across acts |
 |---|---|
 | **HP** | carries — then every character starts the act at **max(current HP, 25% of max HP)**. One rule for everyone: the incapacitated stand back up at the floor, and the barely-alive are lifted to it. There is no other healing between acts. |
-| **Hand** | carries as-is. |
-| **Library** | carries; then the **graveyard is shuffled into it**. |
+| **Hand** | does **not** carry as a hand *(amended after the first playtest — carrying the literal hand let cards accumulate)*: it is shuffled into the library at the boundary, and the next act opens on a fresh hand (below). |
+| **Library** | carries; the **hand and graveyard are shuffled into it** — the full deck, reassembled. |
 | **Graveyard** | emptied into the library (above). Spent cards, countered cards, dropped channels — all come back. |
 | **Player-exiled cards** | stay exiled. Exile is forever, even for your own cards. |
 | **Held channels** | **all drop at act end** — no break event, no break triggers, no released-mana window; the cards go to the graveyard (and thus shuffle back). |
@@ -42,7 +42,7 @@ Applied when an act is won, in this order: end-of-encounter cleanup first, then 
 | **Ultimate gauge** | carries at **50%**: `floor(gauge × 0.5)`. A 100-gauge finish opens the next act at 50. |
 | **Encounter-duration statuses** | all clear: poison, regen, and ±1/±1 counters; encounter-duration keyword grants; taunts, stuns, wounds, temp HP (most of these expire naturally anyway). |
 | **Mana** | pool and capacity **reset to base** — the base the level-up may just have raised — and the curve-up restarts at turn 1 of the act. Ramp gains are gone; reserved mana is moot (channels dropped). |
-| **The card floor** | at each act's start, every character **draws up to their starting-cards stat** if their hand is below it. This is what keeps the starting-cards stat alive mid-adventure (§D10-3.2) and refills a hand emptied winning the previous act. |
+| **The fresh hand** | at each act's start, every character **shuffles up completely and draws a new hand equal to their starting-cards stat**. This is what keeps the starting-cards stat alive mid-adventure (§D10-3.2): buying it raises every future act's opening hand. |
 
 Corpses, stirring corpses, controlled enemies: none can exist at act end (victory requires every enemy defeated; stirring and controlled enemies block victory by rule, D9-1), so nothing crosses.
 
@@ -65,7 +65,7 @@ Between acts — after the victory splash, before the narrative splash (§D10-6.
 
 ### D10-3.2 What the stats mean mid-run
 
-All purchases take effect at the next act's setup: HP (immediately, per above), mana capacity (the new base the reset returns to), Power (and with it Mitigate, `ceil(Power ÷ 2)`), and starting cards — which mid-adventure is the **card floor**: the hand size you are drawn up to at each act start (§D10-2). Buying it raises the refill line, not a dead number.
+All purchases take effect at the next act's setup: HP (immediately, per above), mana capacity (the new base the reset returns to), Power (and with it Mitigate, `ceil(Power ÷ 2)`), and starting cards — which mid-adventure is the **act-start hand**: the fresh hand drawn at each act's start (§D10-2). Buying it raises every future act's opening hand, not a dead number.
 
 ### D10-3.3 The level-up screen
 
@@ -172,7 +172,7 @@ The **combat engine is not modified**. Every act is an ordinary encounter to it;
 | system | where |
 |---|---|
 | adventure schema + validation | `apps/game-server/ltg_game_server/content.py` — `save_adventure` wrapping the per-act `save_encounter` gate + the §D10-4.1 adventure checks; registry + hide list beside encounters |
-| adventure session state | `session.py` — adventure id, act index, and the **carry-state builder**: on act victory, snapshot each character's `{hp, hand, library+graveyard, exiled, gauge, spent-points build}`; on next-act start, compose the new `GameState` via the existing `compose_spec`/`state_from_dict` path with carried hand/library (shuffled graveyard merged), HP floor `max(cur, 25% max)`, gauge `floor(×0.5)`, skill/ult flags fresh, and the card-floor draw-up |
+| adventure session state | `session.py` — adventure id, act index, and the **carry-state builder**: on act victory, snapshot each character's `{hp, all cards (hand+library+graveyard), exiled, gauge, spent-points build}`; on next-act start, compose the new `GameState` via the existing `compose_spec`/`state_from_dict` path with the carried cards fully reshuffled, a fresh hand of starting-cards drawn, HP floor `max(cur, 25% max)`, gauge `floor(×0.5)`, and skill/ult flags fresh |
 | level-up | server-side prompt state per character (entering build, +30, banked, confirmed flag); validation of the delta against §D10-3.1 (locked floor, colour immutability, keyword ≤ 1 total, Power ≤ 2×level, price list per Update 05); the engine consumes the resulting **stat block**, as it always has |
 | generation | `llm.py` — adventure prompt block, per-act budget lines at levels 1/2/3, **explicit high `max_tokens` on the request** (T-63), adventure-level repair loop |
 | art queue | `art.py` + the art API — a per-content sequential job queue (`generate_all`), skip-on-failure, progress events over the session/registry channel; adventure queue ordered Act I → II → III |
@@ -206,9 +206,9 @@ Update 05's designed-but-unbuilt escalating leveling curve (§P-5 onward) is **s
 - **Adventure** — a three-act run: three thematically linked encounters fought in sequence by one party, with carry-over (§D10-2) and between-act level-ups. Persistent, replayable content alongside Encounters.
 - **Act** — one encounter within an adventure. Never called a "round" — that word belongs to the combat turn cycle.
 - **Mini-boss** — a full-package boss (`is_boss`, enrage, fury, 2.5× budget) fielded in Act I or II, thematically distinct from and strictly lower level than the Act III boss.
-- **Carry-over** — the act-boundary rules: HP floored at 25% of max, hand and library carry, graveyard reshuffles in, exile stays, channels drop silently, uses reset, gauge halves, encounter statuses clear, mana resets to (possibly upgraded) base.
+- **Carry-over** — the act-boundary rules: HP floored at 25% of max, hand + library + graveyard shuffle up into one fresh library, a new hand of starting-cards is drawn, exile stays, channels drop silently, uses reset, gauge halves, encounter statuses clear, mana resets to (possibly upgraded) base.
 - **Level-up (adventure-local)** — +30 bankable, irreversible points per act transition on the creation points-buy; colours immutable, one keyword ever, Power cap 2 × level; never saved to the character profile.
-- **Card floor** — the mid-adventure meaning of the starting-cards stat: at each act start, draw up to it if below.
+- **Act-start hand** — the mid-adventure meaning of the starting-cards stat: at each act's start, shuffle up completely and draw a fresh hand of that many cards. *(Supersedes the original "card floor" draw-up-if-below rule — first-playtest amendment.)*
 - **Banked points** — level-up points deliberately left unspent, carried to the next level-up.
 - **Narration (act)** — the act's second-person, present-tense opening paragraph, shown on the narrative splash before its combat.
 - **Art queue** — the sequential generate-all-art job: every missing backdrop and portrait, one generation at a time, acts in order.

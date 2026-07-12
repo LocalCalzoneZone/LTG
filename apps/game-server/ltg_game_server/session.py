@@ -13,12 +13,14 @@ In-memory only for Phase 1 (a restart drops games).
 from __future__ import annotations
 
 import asyncio
+import random
 import secrets
 from typing import Any, Dict, List, Optional, Set
 
 from ltg_combat.engine import apply_action, auto_pass_action, legal_actions
 from ltg_combat.state import GameState
 
+from .adventure import AdventureRun
 from .snapshot import build_snapshot
 
 # Safety valve for the auto-pass loop (D8-4): each synthetic action strictly
@@ -34,10 +36,14 @@ class Session:
     def __init__(self, session_id: str, state: GameState, name: str = "",
                  portraits: Optional[Dict[str, str]] = None,
                  encounter_id: str = "",
-                 art: Optional[Dict[str, Any]] = None) -> None:
+                 art: Optional[Dict[str, Any]] = None,
+                 adventure: Optional[AdventureRun] = None) -> None:
         self.id = session_id
         self.name = name
         self.state = state  # authoritative (un-settled) engine state
+        # The adventure this session runs, or None for a plain encounter —
+        # every adventure behaviour below is gated on it (Update 10 §D10-7).
+        self.adventure = adventure
         # Smart auto-pass (D8-4) runs from the first snapshot: a character with
         # nothing meaningful to do at the opening window is passed for, silently.
         self._auto_advance()
@@ -133,20 +139,64 @@ class Session:
         for _ in range(_AUTO_CAP):
             action = auto_pass_action(self.state)
             if action is None:
-                return
+                break
             new_state, _events = apply_action(self.state, action)
             self.state = new_state
+        # Adventure hook: a won act opens the level-up gate; a won finale marks
+        # the run complete. No-op (and never reached) for plain encounters.
+        if self.adventure is not None:
+            self.adventure.on_state_change(self.state)
+
+    # -- adventures (Update 10) ----------------------------------------------- #
+    def public_result(self) -> Optional[str]:
+        """The result the CLIENTS should see: a non-final act victory is an act
+        boundary (the level-up gate), not a game over."""
+        result = self.state.result
+        if (self.adventure is not None
+                and self.adventure.suppresses_result(result)):
+            return None
+        return result
+
+    def confirm_level_up(self, client_id: str, character_id: str,
+                         build: Dict[str, Any]) -> None:
+        """Apply one seat's level-up confirmation; when the last seat confirms,
+        compose the next act (carry-over applied) and swap it in."""
+        if self.adventure is None:
+            raise ValueError("this game is not an adventure")
+        if self.seats.get(character_id) != client_id:
+            raise ValueError("you do not control that character")
+        self.adventure.confirm_level_up(character_id, build)
+        if self.adventure.all_confirmed():
+            state, portraits, art, encounter_id = self.adventure.advance(
+                seed=random.randrange(2**31))
+            self.state = state
+            self.portraits = portraits
+            self.art = art
+            self.encounter_id = encounter_id
+            self._auto_advance()
 
     def set_art(self, art: Dict[str, Any]) -> None:
         """Swap in fresh art references (scene + pool-enemy urls), keeping this
-        session's live-id -> pool-id map (the roster never changes mid-game)."""
-        self.art = {**art, "base_of": self.art.get("base_of", {})}
+        session's live-id -> pool-id map (the roster never changes mid-game) and
+        the party's loadout descriptions (encounter_art knows neither)."""
+        self.art = {**art, "base_of": self.art.get("base_of", {}),
+                    "char_descriptions": self.art.get("char_descriptions", {})}
 
     # -- snapshots ----------------------------------------------------------- #
     def snapshot_for(self, client_id: str) -> Dict[str, Any]:
-        return build_snapshot(self.state, self.controlled_by(client_id),
+        controlled = self.controlled_by(client_id)
+        snap = build_snapshot(self.state, controlled,
                               self.portraits, art=self.art,
                               encounter_id=self.encounter_id)
+        if self.adventure is not None:
+            # The adventure block (act, narration, the per-seat level-up gate) —
+            # and a suppressed result at a non-final act boundary, where the
+            # engine's "victory" means "act won", not "game over".
+            snap["adventure"] = self.adventure.snapshot_block(self.state, controlled)
+            result = self.public_result()
+            snap["result"] = result
+            snap["game_over"] = {"result": result} if result is not None else None
+        return snap
 
 
 class SessionManager:
@@ -156,12 +206,14 @@ class SessionManager:
     def create(self, state: GameState, name: str = "",
                portraits: Optional[Dict[str, str]] = None,
                encounter_id: str = "",
-               art: Optional[Dict[str, Any]] = None) -> Session:
+               art: Optional[Dict[str, Any]] = None,
+               adventure: Optional[AdventureRun] = None) -> Session:
         session_id = _short_id()
         while session_id in self._sessions:
             session_id = _short_id()
         session = Session(session_id, state, name=name, portraits=portraits,
-                          encounter_id=encounter_id, art=art)
+                          encounter_id=encounter_id, art=art,
+                          adventure=adventure)
         self._sessions[session_id] = session
         return session
 

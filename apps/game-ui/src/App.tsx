@@ -4,6 +4,9 @@ import { Battlefield } from "./components/Battlefield";
 import { SidePanel } from "./components/SidePanel";
 import { BottomBar } from "./components/BottomBar";
 import { TopRibbon } from "./components/TopRibbon";
+import { AdventureFlow } from "./components/AdventureFlow";
+import { ScreenFx } from "./components/FxLayer";
+import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { OptionsModal } from "./components/OptionsModal";
 import {
@@ -94,6 +97,7 @@ export default function App() {
   const connect = useGame((s) => s.connect);
   const cancelArm = useGame((s) => s.cancelArm);
   const openZone = useGame((s) => s.openZone);
+  const setInspect = useGame((s) => s.setInspect);
   const snapshot = useGame((s) => s.snapshot);
   const connected = useGame((s) => s.connected);
 
@@ -117,6 +121,7 @@ export default function App() {
       if (e.key === "Escape") {
         cancelArm();
         openZone(null);
+        setInspect(null);
       }
     };
     const onCtx = (e: MouseEvent) => {
@@ -129,7 +134,7 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("contextmenu", onCtx);
     };
-  }, [cancelArm, openZone]);
+  }, [cancelArm, openZone, setInspect]);
 
   const onStarted = (sid: string) => {
     const url = new URL(location.href);
@@ -193,12 +198,19 @@ export default function App() {
         <NewGameModal onClose={() => setShowNewGame(false)} onStarted={onStarted} />
       )}
       {showOptions && <OptionsModal onClose={() => setShowOptions(false)} />}
+      {/* Portrait inspection — under the gameplay prompts, which must stay on top */}
+      <InspectModal />
       <ChooseModeModal />
       <ZoneModal />
       <CardPickPrompt />
+      {/* Full-screen combat FX (ultimates, boss enrage) — under the modals */}
+      <ScreenFx />
+      {/* Adventure act flow (Update 10): victory splash → level-up → narration */}
+      <AdventureFlow />
       <GameOverOverlay
         onNewGame={() => setShowNewGame(true)}
         onOptions={() => setShowOptions(true)}
+        onStarted={onStarted}
       />
       <PhaseBanner />
       <Toast />

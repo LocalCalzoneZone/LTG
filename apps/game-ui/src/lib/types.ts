@@ -82,6 +82,7 @@ export interface CharacterView {
   name: string;
   archetype: string;
   portrait: string; // loadout art (data URL / image URL), "" if none
+  description: string; // the loadout's character blurb, "" if none
   row: Row;
   power: StatBlock;
   hp: StatBlock;
@@ -176,6 +177,8 @@ export interface CreatureView {
   base_id: string;
   // Generated portrait URL, "" until one exists (the card shows its sigil).
   image: string;
+  // The enemy's art-direction prose (physical appearance), "" if none.
+  description: string;
   row: Row;
   level: number;
   power: StatBlock;
@@ -215,6 +218,8 @@ export interface TokenView {
   base_id: string;
   // Generated portrait URL, "" until one exists.
   image: string;
+  // The token definition's art-direction prose, "" if none.
+  description: string;
   row: Row;
   power: StatBlock;
   hp: StatBlock;
@@ -251,6 +256,9 @@ export interface StackRow {
 }
 
 export interface LogEntry {
+  // Absolute position in the engine log — lets the client tell NEW entries
+  // from history (the combat-FX layer fires one-shot effects off exactly that).
+  seq?: number;
   type: string;
   msg: string;
   data: Record<string, unknown>;
@@ -289,6 +297,64 @@ export interface Priority {
   kind: PriorityKind;
 }
 
+// ---- Adventures (Design Update 10) ----------------------------------------- //
+// The points-buy price table (server-sent; the client renders costs, never rules).
+export interface BuildPrices {
+  hp_step: number; // per +2 HP
+  mana: number; // per +1 capacity slot
+  card: number; // per +1 starting card
+  power: number; // per +1 bought Power
+  power_cap_per_level: number; // bought Power ≤ this × level (T-60)
+  keywords: Record<string, number>; // buyable keyword -> cost
+  banned_keywords: string[];
+}
+
+// A character's points-buy build as the level-up screen edits it.
+export interface BuildView {
+  hp: number;
+  starting_mana: Color[];
+  starting_cards: number;
+  power_bought: number;
+  keyword: string | null;
+  attack_mode: "melee" | "ranged";
+  colors: Color[];
+  level: number;
+  portrait: string;
+}
+
+// One character's row in the level-up gate. `build`/points ship only for the
+// seats this client controls; everyone else is a confirmed/waiting light.
+export interface LevelUpRow {
+  id: string;
+  name: string;
+  confirmed: boolean;
+  build?: BuildView;
+  locked?: number; // the entering build's spend
+  banked?: number; // carried remainder
+  available?: number; // banked + the 30 grant (0 extra once confirmed)
+}
+
+export interface LevelUpBlock {
+  next_level: number;
+  points_per_level: number;
+  prices: BuildPrices;
+  characters: LevelUpRow[];
+}
+
+// The adventure block riding the snapshot (absent for plain encounters).
+export interface AdventureBlock {
+  id: string;
+  name: string;
+  flavor: string;
+  act: number; // 1-based
+  acts_total: number;
+  act_name: string;
+  narration: string;
+  character_ids: string[]; // roster ids — Restart from Act I re-picks these
+  complete: boolean;
+  level_up: LevelUpBlock | null;
+}
+
 export interface GameSnapshot {
   turn: number;
   phase: string;
@@ -313,6 +379,10 @@ export interface GameSnapshot {
   legal_actions: LegalAction[];
   result: string | null;
   game_over: { result: string } | null;
+  // Present only when this session runs an adventure (Update 10): act sequence,
+  // narration, and the between-acts level-up gate. A non-final act victory
+  // arrives with result/game_over suppressed and `level_up` set instead.
+  adventure?: AdventureBlock;
 }
 
 export interface SeatsMsg {
@@ -408,9 +478,40 @@ export interface EncounterDetail {
   // The editor round-trips them, pruning ids that no longer exist.
   layouts?: Record<string, string[]>;
 }
+// An adventure in the New Game / Options lists (Update 10).
+export interface AdventureOption {
+  id: string;
+  name: string;
+  flavor: string;
+  act_names: string[];
+  deletable: boolean;
+  editable: boolean;
+}
+// The full adventure: wrapper fields + each act's embedded encounter detail.
+export interface AdventureActDetail extends EncounterDetail {
+  narration: string;
+  encounter_id: string;
+}
+export interface AdventureDetail {
+  id: string;
+  name: string;
+  flavor: string;
+  acts: AdventureActDetail[];
+}
+// "Generate all art" queue progress (polled).
+export interface ArtQueueStatus {
+  total: number;
+  done: number;
+  failed: number;
+  running: boolean;
+  current: string | null;
+  errors: string[];
+}
+
 export interface SetupOptions {
   characters: CharacterOption[];
   encounters: EncounterOption[];
+  adventures: AdventureOption[];
 }
 
 // LLM / encounter generation (Options → LLM).

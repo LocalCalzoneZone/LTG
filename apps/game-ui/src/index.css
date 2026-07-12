@@ -175,6 +175,320 @@ body {
   animation: statpop 1.6s ease-out forwards;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Combat FX (FxLayer.tsx): one-shot overlays keyed off engine log events.    */
+/* Durations match FX_TTL in lib/fx.ts.                                       */
+/* ------------------------------------------------------------------------- */
+.fx-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Attack damage: a hard white flash and a blade sweep across the card. */
+@keyframes fx-hit-flash {
+  0% { opacity: 0; }
+  12% { opacity: calc(0.55 * var(--fx-mag, 1)); }
+  100% { opacity: 0; }
+}
+.fx-hit-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(75% 75% at 50% 50%, rgba(255, 235, 220, 0.75), rgba(194, 90, 80, 0.25) 60%, transparent 75%);
+  animation: fx-hit-flash 0.7s ease-out forwards;
+}
+@keyframes fx-hit-slash {
+  0% { transform: translate(-130%, -130%) rotate(45deg); opacity: 0; }
+  15% { opacity: 1; }
+  60% { transform: translate(110%, 110%) rotate(45deg); opacity: 0.9; }
+  100% { transform: translate(130%, 130%) rotate(45deg); opacity: 0; }
+}
+.fx-hit-slash {
+  position: absolute;
+  left: -25%;
+  top: -25%;
+  width: 150%;
+  height: 150%;
+  background: linear-gradient(
+    to bottom,
+    transparent 46%,
+    rgba(255, 245, 230, 0.95) 50%,
+    transparent 54%
+  );
+  animation: fx-hit-slash 0.55s ease-in forwards;
+}
+
+/* Generic radial flash (arcane burst, skill flare, poison haze …). */
+@keyframes fx-flash {
+  0% { opacity: 0; transform: scale(0.85); }
+  18% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+.fx-flash {
+  position: absolute;
+  inset: 0;
+  animation: fx-flash 0.9s ease-out forwards;
+}
+.fx-flash-strong {
+  animation-duration: 1.2s;
+}
+
+/* Expanding shockwave ring. */
+@keyframes fx-ring {
+  0% { transform: translate(-50%, -50%) scale(0.25); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(calc(1.35 * var(--fx-mag, 1))); opacity: 0; }
+}
+.fx-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 86%;
+  aspect-ratio: 1;
+  border: 2px solid;
+  border-radius: 9999px;
+  animation: fx-ring 0.85s ease-out forwards;
+}
+.fx-ring-big {
+  width: 110%;
+  border-width: 3px;
+  animation-duration: 1.1s;
+}
+.fx-ring-slow {
+  animation-duration: 1.25s;
+}
+@keyframes fx-ring-collapse {
+  0% { transform: translate(-50%, -50%) scale(1.3); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+}
+.fx-ring-collapse {
+  animation-name: fx-ring-collapse;
+}
+
+/* Healing: a vigor glow that wells up from below. */
+@keyframes fx-heal-glow {
+  0% { opacity: 0; transform: translateY(30%); }
+  25% { opacity: calc(0.8 * var(--fx-mag, 1)); }
+  100% { opacity: 0; transform: translateY(-18%); }
+}
+.fx-heal-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(70% 60% at 50% 65%, rgba(132, 199, 147, 0.55), transparent 72%);
+  animation: fx-heal-glow 1.1s ease-out forwards;
+}
+
+/* Pump / wound / revive: small design-language diamonds drifting up or down. */
+.fx-diamonds {
+  position: absolute;
+  inset: 0;
+}
+.fx-diamond {
+  position: absolute;
+  top: 62%;
+  width: 9px;
+  height: 9px;
+  border: 1px solid;
+  transform: rotate(45deg);
+  opacity: 0;
+}
+@keyframes fx-rise {
+  0% { opacity: 0; transform: rotate(45deg) translate(18px, 18px); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(45deg) translate(-26px, -26px); }
+}
+.fx-rise .fx-diamond {
+  animation: fx-rise 0.9s ease-out forwards;
+}
+@keyframes fx-sink {
+  0% { opacity: 0; transform: rotate(45deg) translate(-18px, -18px); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(45deg) translate(26px, 26px); }
+}
+.fx-sink .fx-diamond {
+  top: 30%;
+  animation: fx-sink 0.9s ease-out forwards;
+}
+
+/* Keyword grant: a diagonal light band sweeps the card. */
+@keyframes fx-shimmer {
+  0% { transform: translateX(-120%) skewX(-18deg); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateX(220%) skewX(-18deg); opacity: 0; }
+}
+.fx-shimmer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(233, 204, 130, 0.5),
+    transparent
+  );
+  animation: fx-shimmer 1.1s ease-out forwards;
+}
+
+/* The brass diamond sigil flaring out (skill / ultimate). */
+@keyframes fx-sigil {
+  0% { transform: translate(-50%, -50%) rotate(45deg) scale(0.4); opacity: 0; }
+  22% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(225deg) scale(1.5); opacity: 0; }
+}
+.fx-sigil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34%;
+  aspect-ratio: 1;
+  border-width: 2px;
+  border-style: solid;
+  animation: fx-sigil 1.1s ease-out forwards;
+}
+
+/* Revive: a golden dawn sweeping up the card. */
+@keyframes fx-revive-sweep {
+  0% { opacity: 0; transform: translateY(60%); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-40%); }
+}
+.fx-revive-sweep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(233, 204, 130, 0.55), transparent 65%);
+  animation: fx-revive-sweep 1.3s ease-out forwards;
+}
+/* The same rising sweep with its colour set inline (Defend's tide shield). */
+.fx-sweep-up {
+  position: absolute;
+  inset: 0;
+  animation: fx-revive-sweep 1.15s ease-out forwards;
+}
+
+/* Defend: the bulwark hardens — an inset tide glow that sets, then fades. */
+@keyframes fx-bulwark {
+  0% { box-shadow: inset 0 0 0 0 rgba(130, 180, 201, 0); }
+  25% { box-shadow: inset 0 0 26px 3px rgba(130, 180, 201, 0.65); }
+  55% { box-shadow: inset 0 0 18px 2px rgba(130, 180, 201, 0.45); }
+  100% { box-shadow: inset 0 0 0 0 rgba(130, 180, 201, 0); }
+}
+.fx-bulwark {
+  position: absolute;
+  inset: 0;
+  animation: fx-bulwark 1.2s ease-out forwards;
+}
+
+/* Mitigate: the parry — the sigil snaps INWARD and sets, a guard coming up. */
+@keyframes fx-sigil-in {
+  0% { transform: translate(-50%, -50%) rotate(45deg) scale(1.6); opacity: 0; }
+  35% { transform: translate(-50%, -50%) rotate(45deg) scale(0.9); opacity: 1; }
+  60% { transform: translate(-50%, -50%) rotate(45deg) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(45deg) scale(1); opacity: 0; }
+}
+.fx-sigil-in {
+  animation: fx-sigil-in 1.05s ease-out forwards;
+}
+
+/* Status chips (STUNNED / POISONED / keyword names). */
+@keyframes fx-chip {
+  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.05); }
+  30% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+.fx-chip {
+  animation: fx-chip 1.2s ease-out forwards;
+}
+
+/* Impact shake — the card (enrage, downed) or the battlefield (ultimate). */
+@keyframes fx-shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-5px, 2px); }
+  30% { transform: translate(4px, -2px); }
+  45% { transform: translate(-3px, 1px); }
+  60% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, 0); }
+}
+.fx-shake {
+  animation: fx-shake 0.55s ease-out;
+}
+
+/* Full-screen treatments (ScreenFx). */
+@keyframes fx-screen-flash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.fx-screen-flash {
+  position: absolute;
+  inset: 0;
+  animation: fx-screen-flash 1.1s ease-out forwards;
+}
+@keyframes fx-screen-pulse {
+  0% { box-shadow: inset 0 0 0 rgba(194, 90, 80, 0); }
+  20% { box-shadow: inset 0 0 140px rgba(194, 90, 80, 0.55); }
+  55% { box-shadow: inset 0 0 90px rgba(194, 90, 80, 0.35); }
+  100% { box-shadow: inset 0 0 0 rgba(194, 90, 80, 0); }
+}
+.fx-screen-pulse {
+  position: absolute;
+  inset: 0;
+  animation: fx-screen-pulse 1.6s ease-out forwards;
+}
+
+/* Departure ghosts (Battlefield.tsx): how a card LEAVES tells the story. */
+/* Exile: banished — a white flare, then an implosion to nothing. */
+@keyframes exile-implode {
+  0% { opacity: 1; filter: brightness(1); transform: scale(1); }
+  25% { opacity: 1; filter: brightness(2.4) saturate(0.4); transform: scale(1.06); }
+  100% { opacity: 0; filter: brightness(3) saturate(0); transform: scale(0.05); }
+}
+.anim-exile {
+  animation: exile-implode 1s ease-in forwards;
+}
+/* Bounce / suspend: slips away upward, unhurt. */
+@keyframes bounce-away {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-36px) scale(0.96); }
+}
+.anim-bounce {
+  animation: bounce-away 0.9s ease-in forwards;
+}
+
+/* A slain creature's send-off: a beat at full colour, a flash as the blow
+   lands, then the card drains to black-and-white and crumbles out. Duration
+   matches DEATH_MS in Battlefield.tsx. */
+@keyframes death-fade {
+  0% {
+    opacity: 1;
+    filter: grayscale(0) brightness(1);
+    transform: none;
+  }
+  16% {
+    opacity: 1;
+    filter: grayscale(0.25) brightness(1.6);
+    transform: none;
+  }
+  48% {
+    opacity: 0.95;
+    filter: grayscale(1) brightness(0.85);
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    filter: grayscale(1) brightness(0.4);
+    transform: translateY(10px) scale(0.94);
+  }
+}
+.anim-death {
+  animation: death-fade 1.4s ease-in forwards;
+}
+
 /* Next-to-resolve stack row glows. */
 @keyframes stackglow {
   0%,

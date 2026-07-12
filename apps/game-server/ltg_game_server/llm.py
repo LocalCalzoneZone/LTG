@@ -805,8 +805,22 @@ def _check_layouts(encounter: Dict[str, Any]) -> None:
                 "clone more bodies).")
 
 
-def _chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
-    """One OpenRouter chat completion; returns the assistant message text."""
+def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
+          max_tokens: Optional[int] = None,
+          timeout: float = 120.0) -> str:
+    """One OpenRouter chat completion; returns the assistant message text.
+
+    ``max_tokens`` is set explicitly for adventure generation (T-63): three full
+    encounters plus prose overflow many models' default completion budget, and a
+    truncated JSON reply would otherwise burn a repair attempt."""
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.9,
+        "response_format": {"type": "json_object"},
+    }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     try:
         resp = httpx.post(
             OPENROUTER_URL,
@@ -816,13 +830,8 @@ def _chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
                 "HTTP-Referer": "https://ltg.local",
                 "X-Title": "LTG Encounter Generator",
             },
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": 0.9,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=120.0,
+            json=payload,
+            timeout=timeout,
         )
     except httpx.HTTPError as exc:
         raise ValueError(f"could not reach OpenRouter: {exc}") from exc
@@ -892,3 +901,174 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
                 f"That output was rejected: {last_err}\n"
                 "Fix it and return ONLY the corrected encounter JSON.")})
     raise ValueError(f"generation failed after {attempts} attempts: {last_err}")
+
+
+# --------------------------------------------------------------------------- #
+# Adventure generation — one call, one arc (Design Update 10 §D10-5)
+# --------------------------------------------------------------------------- #
+# T-63: an explicit, very high completion budget — three full encounters plus
+# narration overflow the default `max_tokens` most models assume, and truncated
+# JSON would otherwise waste repair attempts. Kept below common per-model output
+# ceilings so the request never 400s.
+ADVENTURE_MAX_TOKENS = 32000
+ADVENTURE_TIMEOUT = 600.0  # one reply carries three encounters; allow the time
+
+# Appended to the (editable) encounter instructions for an adventure request:
+# everything the model already knows about designing ONE encounter holds per
+# act; this block adds the arc, the boss ladder, and the output wrapper.
+ADVENTURE_EXTENSION = r"""
+# ADVENTURE MODE — three acts, one arc (this request generates a whole adventure)
+
+You are designing an ADVENTURE: three thematically linked encounters (the ACTS)
+fought in sequence by one party — progress through a single place. Guards at the
+gate, knights in the courtyard, the tyrant in his throne room: one faction, one
+location traversed, escalating stakes. Everything in the instructions above
+applies to EACH act individually (chassis, components, budgets, layouts, scenes,
+descriptions). This block adds the arc-level rules:
+
+- SCENES PROGRESS: the three acts' `scene` texts must read as three stations of
+  ONE location — outside it, inside it, at its heart — not three unrelated
+  arenas. Same palette, same weather-world, deepening dread.
+- DIFFICULTY ESCALATES BY DESIGN: each act's Level budgets are given below,
+  computed for a party one level stronger per act. Respect each act's own
+  per-party-size layout minimums and targets.
+- ACT III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Act III —
+  the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
+  Enrage, phase gates, real HP). No enemy anywhere may exceed its level.
+- ACTS I AND II MAY each field ONE MINI-BOSS — never an obligation, use it for
+  variety. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
+  2.5× budget, counts double), thematically distinct (the gate-captain, not the
+  king), and STRICTLY lower level than Act III's boss.
+- NARRATION: each act carries a `narration` — one short paragraph, SECOND
+  PERSON, PRESENT TENSE, describing the party arriving into that act's scene
+  ("You push through the splintered gate. Beyond, the courtyard…"). Act I's
+  narration is the adventure's opening. No mechanics, no numbers — atmosphere
+  and forward motion.
+- `flavor` is the adventure's one-line pitch, shown in the New Game list.
+
+# Adventure output contract (return EXACTLY this shape, nothing else)
+{
+  "name": "Adventure name",
+  "flavor": "one-line pitch",
+  "acts": [
+    { "narration": "…", <a complete encounter object: name, scene, enemies, layouts, tokens> },
+    { "narration": "…", <act II encounter> },
+    { "narration": "…", <act III encounter — contains the one boss> }
+  ]
+}
+Each act is a COMPLETE encounter exactly per the contract above (name, scene,
+enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
+
+
+def _adventure_request_block(party: Dict[str, Any], difficulty: str,
+                             note: str) -> str:
+    """Per-request parameters: the party, the single difficulty, and each act's
+    per-party-size budget lines computed at party level 1 / 2 / 3 (T-62)."""
+    roster = "; ".join(
+        f'{m["name"]} (level {m["level"]}'
+        + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
+        for m in party["members"]
+    )
+    lines = [
+        "# THIS ADVENTURE'S PARAMETERS",
+        f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
+        f"- Difficulty: {difficulty} (applies to all three acts).",
+        "- Between acts every character levels up, so act N is budgeted for a "
+        "party of level N:",
+    ]
+    for act in range(1, content.ACT_COUNT + 1):
+        lines.append(f'- ACT {act} (party level {act}) — required layouts "1"–"4":')
+        for size in range(1, 5):
+            budget = _budget(size, float(act), difficulty)
+            lines.append(
+                f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies '
+                f"(2× the party, duplicates count), total enemy Levels about "
+                f"{budget} (a boss counts double).")
+    lines.append(
+        "- Act III must contain exactly ONE boss (is_boss: true) — the "
+        "adventure's highest-level enemy. Acts I and II may each field at most "
+        "one mini-boss, strictly lower level than Act III's boss.")
+    if difficulty != "easy":
+        lines.append("- Include at least one CHANNELER (a channel component) "
+                     "somewhere in each act's pool.")
+    note = (note or "").strip()
+    if note:
+        lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
+    lines.append("\nReturn ONLY the adventure JSON.")
+    return "\n".join(lines)
+
+
+def generate_adventure(character_ids: List[str], difficulty: str = "standard",
+                       note: str = "", attempts: int = 3) -> Dict[str, Any]:
+    """Generate, validate, persist an adventure and return its meta.
+
+    One request generates the whole arc (coherence by construction); the reply
+    then runs the same repair loop an encounter takes — per-act HP scaling,
+    per-act layout checks, then ``content.save_adventure`` (per-act engine gate
+    + the §D10-4.1 adventure checks). Any failure re-prompts the model with the
+    engine's own error, up to ``attempts`` total."""
+    settings = load_settings()
+    if not settings["api_key"]:
+        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    if difficulty not in DIFFICULTY:
+        difficulty = "standard"
+
+    party = _party_summary(character_ids)
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": settings["instructions"] + ADVENTURE_EXTENSION},
+        {"role": "user", "content": _adventure_request_block(party, difficulty, note)},
+    ]
+
+    last_err = ""
+    for _attempt in range(max(1, attempts)):
+        reply = _chat(settings["api_key"], settings["model"], messages,
+                      max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT)
+        try:
+            raw = _extract_json(reply)
+            acts = raw.get("acts")
+            if not isinstance(acts, list) or len(acts) != content.ACT_COUNT:
+                raise ValueError(
+                    f'the adventure needs an "acts" list of exactly '
+                    f"{content.ACT_COUNT} acts")
+            cleaned_acts = []
+            for i, act in enumerate(acts, start=1):
+                if not isinstance(act, dict):
+                    raise ValueError(f"act {i} must be an object")
+                try:
+                    enc = _normalize(act)
+                    _scale_hp(enc, difficulty)
+                    _check_layouts(enc)
+                    problems = []
+                    if not enc["scene"]:
+                        problems.append('missing the top-level "scene"')
+                    undescribed = [str(e.get("name", "?")) for e in enc["enemies"]
+                                   if isinstance(e, dict)
+                                   and not str(e.get("description") or "").strip()]
+                    if undescribed:
+                        problems.append('enemies missing a "description": '
+                                        + ", ".join(undescribed))
+                    if not str(act.get("narration") or "").strip():
+                        problems.append('missing its "narration" (one short '
+                                        "second-person paragraph)")
+                    if problems:
+                        raise ValueError("; ".join(problems))
+                except ValueError as exc:
+                    raise ValueError(f"act {i}: {exc}") from exc
+                enc["narration"] = str(act.get("narration") or "").strip()
+                cleaned_acts.append(enc)
+            adventure = {
+                "name": str(raw.get("name") or "Generated Adventure"),
+                "flavor": str(raw.get("flavor") or "").strip(),
+                "acts": cleaned_acts,
+            }
+            # Same gate authored content takes: per-act engine validation plus
+            # the adventure-level checks, then persist (wrapper + act files).
+            return content.save_adventure(adventure)
+        except ValueError as exc:
+            last_err = str(exc)
+            messages.append({"role": "assistant", "content": reply})
+            messages.append({"role": "user", "content": (
+                f"That output was rejected: {last_err}\n"
+                "Fix it and return ONLY the corrected adventure JSON.")})
+    raise ValueError(f"adventure generation failed after {attempts} attempts: "
+                     f"{last_err}")

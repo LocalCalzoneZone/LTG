@@ -2,6 +2,14 @@ import { create } from "zustand";
 import { GameSocket } from "./ws";
 import type { GameSnapshot, LegalAction } from "./types";
 import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choices } from "./choices";
+import {
+  FX_TTL,
+  fxFromLog,
+  stackModes,
+  syncSeq,
+  type DepartKind,
+  type FxEvent,
+} from "./fx";
 
 export type ZoneModal = { kind: "library" | "graveyard" | "channel"; charId: string } | null;
 
@@ -109,6 +117,9 @@ interface StoreState {
   chooseModeFor: Choice | null; // a modal card awaiting a mode pick
   manaSelect: ManaSelect | null; // an ambiguous cast awaiting a mana pick
   zoneModal: ZoneModal;
+  // Portrait inspection: the combatant id whose full write-up is open (the
+  // modal derives the live view from the snapshot each render), or null.
+  inspectId: string | null;
   // Characters auto-passing until the stack fully resolves. Pass All is a
   // PER-CHARACTER commitment — "this character has nothing more to add for the
   // rest of this stack" — so it only ever passes for the character that armed
@@ -118,6 +129,14 @@ interface StoreState {
   error: string | null;
   gameOver: string | null;
 
+  // Combat FX (one-shot visuals keyed off NEW log entries). `departures` maps
+  // a just-vanished combatant to HOW it left (death / exile / bounce) so the
+  // battlefield ghost can play the right send-off.
+  fx: FxEvent[];
+  departures: Record<string, DepartKind>;
+  lastLogSeq: number | null;
+  _stackModes: Record<string, string>;
+
   // lifecycle
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -126,6 +145,9 @@ interface StoreState {
   // seats
   claim: (ids: string[]) => void;
   release: (ids: string[]) => void;
+
+  // adventures (Update 10): confirm one controlled character's level-up.
+  confirmLevelUp: (characterId: string, build: Record<string, unknown>) => void;
 
   // interaction (§4.6)
   setHoverIntent: (h: { enemyId: string; targetId: string | null } | null) => void;
@@ -147,6 +169,7 @@ interface StoreState {
   resetMana: () => void; // clear the picks and start the selection over
 
   openZone: (z: ZoneModal) => void;
+  setInspect: (id: string | null) => void;
   setError: (m: string | null) => void;
 
   // internal
@@ -169,14 +192,20 @@ export const useGame = create<StoreState>((set, get) => ({
   chooseModeFor: null,
   manaSelect: null,
   zoneModal: null,
+  inspectId: null,
   passAllFor: [],
   error: null,
   gameOver: null,
+  fx: [],
+  departures: {},
+  lastLogSeq: null,
+  _stackModes: {},
 
   connect: (sessionId) => {
     get().socket?.close();
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
-    set({ socket, sessionId, snapshot: null, gameOver: null });
+    set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
+          fx: [], departures: {}, lastLogSeq: null, _stackModes: {} });
   },
 
   disconnect: () => {
@@ -201,8 +230,36 @@ export const useGame = create<StoreState>((set, get) => ({
         break;
       case "state": {
         const snap = msg as GameSnapshot;
+        // Combat FX: fire one-shot effects for the log entries NEW since the
+        // last snapshot. A fresh log (new session / act transition) is
+        // swallowed as history, never replayed — and its departures cleared,
+        // so a board swap ghosts nothing.
+        const lastSeq = get().lastLogSeq;
+        const synced = syncSeq(lastSeq, snap.log);
+        let fxState: Partial<StoreState> = { lastLogSeq: synced };
+        let fired: FxEvent[] = [];
+        if (lastSeq != null && synced === lastSeq) {
+          const r = fxFromLog(snap, lastSeq, get()._stackModes);
+          fired = r.events;
+          fxState = {
+            lastLogSeq: r.maxSeq,
+            fx: fired.length ? [...get().fx, ...fired] : get().fx,
+            departures: Object.keys(r.departures).length
+              ? { ...get().departures, ...r.departures }
+              : get().departures,
+          };
+        } else if (synced !== lastSeq) {
+          fxState = { lastLogSeq: synced, fx: [], departures: {} };
+        }
         // A fresh authoritative state ends any optimistic arming (§4.6).
-        set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null });
+        set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null,
+              _stackModes: stackModes(snap), ...fxState });
+        for (const e of fired) {
+          window.setTimeout(
+            () => set((s) => ({ fx: s.fx.filter((x) => x.key !== e.key) })),
+            FX_TTL[e.kind],
+          );
+        }
         get()._recomputeFocus();
         // Pass All: whenever a window opens for a character that armed it, pass
         // automatically — until the stack fully resolves, then reset. Windows
@@ -252,6 +309,9 @@ export const useGame = create<StoreState>((set, get) => ({
 
   claim: (ids) => get().socket?.send({ type: "claim_seat", character_ids: ids }),
   release: (ids) => get().socket?.send({ type: "release_seat", character_ids: ids }),
+
+  confirmLevelUp: (characterId, build) =>
+    get().socket?.send({ type: "confirm_level_up", character_id: characterId, build }),
 
   setHoverIntent: (h) => set({ hoverIntent: h }),
 
@@ -405,6 +465,8 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   openZone: (z) => set({ zoneModal: z }),
+
+  setInspect: (id) => set({ inspectId: id }),
 
   setError: (m) => {
     window.clearTimeout(errorTimer);

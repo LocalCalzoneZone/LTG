@@ -53,6 +53,11 @@ HIDDEN_FILE = LOADOUTS_DIR / "hidden.json"
 # The same idea for encounters (built-ins and bundled example encounters can't have
 # a file deleted, so a removal hides the id instead — see delete_encounter).
 ENCOUNTER_HIDDEN_FILE = LOADOUTS_DIR / "encounters_hidden.json"
+# And for adventures (a bundled example adventure survives file deletion).
+ADVENTURE_HIDDEN_FILE = LOADOUTS_DIR / "adventures_hidden.json"
+
+# Acts per adventure (Design Update 10, T-61).
+ACT_COUNT = 3
 
 
 def _read_id_set(path: Path) -> set:
@@ -82,6 +87,14 @@ def _enc_hidden() -> set:
 
 def _set_enc_hidden(ids: set) -> None:
     _write_id_set(ENCOUNTER_HIDDEN_FILE, ids)
+
+
+def _adv_hidden() -> set:
+    return _read_id_set(ADVENTURE_HIDDEN_FILE)
+
+
+def _set_adv_hidden(ids: set) -> None:
+    _write_id_set(ADVENTURE_HIDDEN_FILE, ids)
 
 
 def _iter_json() -> List[Path]:
@@ -252,7 +265,10 @@ def _encounter_meta(eid: str, scen: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def list_encounters() -> List[Dict[str, Any]]:
-    hidden = _enc_hidden()
+    # An adventure's acts are stored as ordinary encounter files (so the editor,
+    # the art system, and game building all work on them unchanged) but they are
+    # not standalone content: the picker lists the ADVENTURE, never its acts.
+    hidden = _enc_hidden() | _adventure_act_ids()
     return [_encounter_meta(eid, scen)
             for eid, scen in _encounter_registry().items() if eid not in hidden]
 
@@ -396,6 +412,9 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
     a user file, or shadowing a built-in / example). Saving un-hides the id."""
     cleaned = _validate_encounter(raw)
     eid = encounter_id or _slug(cleaned["name"]) or "encounter"
+    # An adventure act edited through this path must keep its adventure valid
+    # (Act III boss constraints, §D10-4.1) — checked before anything persists.
+    _check_act_edit(eid, cleaned)
     LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
     (LOADOUTS_DIR / f"{eid}.json").write_text(json.dumps(cleaned, indent=2))
     hidden = _enc_hidden()
@@ -421,6 +440,269 @@ def delete_encounter(encounter_id: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Adventures — the three-act run (Design Update 10)
+#
+# An adventure is a WRAPPER (name, flavor, per-act narration) over three acts,
+# each a complete standard encounter. The wrapper persists as its own JSON
+# (kind: "adventure"); each act persists as an ordinary encounter file with the
+# reserved id "<adventure_id>__act<n>" — so the encounter editor, the art system,
+# and the game-build path all work on an act unchanged. Act ids never appear in
+# the standalone encounter list (see list_encounters).
+# --------------------------------------------------------------------------- #
+def act_encounter_id(adventure_id: str, act_number: int) -> str:
+    """The reserved encounter id behind one act (act_number is 1-based)."""
+    return f"{adventure_id}__act{act_number}"
+
+
+def _adventure_registry() -> Dict[str, Dict[str, Any]]:
+    """id -> {name, flavor, acts:[{narration, encounter_id}], source, path}."""
+    reg: Dict[str, Dict[str, Any]] = {}
+    for path in _iter_json():
+        raw = _load_json(path)
+        if raw is None or raw.get("kind") != "adventure":
+            continue
+        acts = raw.get("acts")
+        if not isinstance(acts, list):
+            continue
+        reg[path.stem] = {
+            "name": str(raw.get("name") or path.stem),
+            "flavor": str(raw.get("flavor") or ""),
+            "acts": copy.deepcopy(acts),
+            "source": "user" if path.parent == LOADOUTS_DIR else "example",
+            "path": path,
+        }
+    return reg
+
+
+def _adventure_act_ids() -> set:
+    """Every encounter id claimed as an act by a registered adventure."""
+    out: set = set()
+    for adv in _adventure_registry().values():
+        for act in adv["acts"]:
+            if isinstance(act, dict) and act.get("encounter_id"):
+                out.add(str(act["encounter_id"]))
+    return out
+
+
+def _adventure_meta(aid: str, adv: Dict[str, Any]) -> Dict[str, Any]:
+    act_names = []
+    reg = _encounter_registry()
+    for act in adv["acts"]:
+        eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
+        scen = reg.get(eid)
+        act_names.append(scen["name"] if scen else eid)
+    return {
+        "id": aid,
+        "name": adv["name"],
+        "flavor": adv["flavor"],
+        "act_names": act_names,
+        "deletable": True,
+        "editable": True,
+    }
+
+
+def list_adventures() -> List[Dict[str, Any]]:
+    hidden = _adv_hidden()
+    return [_adventure_meta(aid, adv)
+            for aid, adv in _adventure_registry().items() if aid not in hidden]
+
+
+def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
+    """The full adventure: wrapper fields plus each act's embedded encounter
+    detail (the same shape `encounter_detail` returns, plus `narration`)."""
+    adv = _adventure_registry().get(adventure_id)
+    if adv is None:
+        return None
+    acts = []
+    for act in adv["acts"]:
+        eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
+        enc = encounter_detail(eid)
+        if enc is None:
+            return None  # a wrapper pointing at a missing act file is unusable
+        acts.append({"narration": str(act.get("narration") or ""),
+                     "encounter_id": eid, **enc})
+    return {"id": adventure_id, "name": adv["name"], "flavor": adv["flavor"],
+            "acts": acts}
+
+
+def _act_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
+    """(boss levels, highest enemy level) for one act's enemy pool."""
+    bosses = [int(e.get("level", 0)) for e in enemies
+              if isinstance(e, dict) and e.get("is_boss")]
+    highest = max((int(e.get("level", 0)) for e in enemies if isinstance(e, dict)),
+                  default=0)
+    return bosses, highest
+
+
+def _validate_act(cleaned: Dict[str, Any]) -> None:
+    """Adventure acts are held to the generated-encounter bar (§D10-4.1): party-
+    size layouts "1"–"4" with the party outnumbered (2×, duplicates count), and
+    every enemy described (the art / narration systems feed on it). Standalone
+    encounters stay free of these extras."""
+    layouts = cleaned.get("layouts") or {}
+    for size in range(1, 5):
+        roster = layouts.get(str(size))
+        if not isinstance(roster, list):
+            raise ValueError('needs a "layouts" object with keys "1"–"4" '
+                             "(one enemy roster per party size)")
+        if len(roster) < 2 * size:
+            raise ValueError(
+                f'layouts["{size}"] fields only {len(roster)} enemies — a party '
+                f"of {size} must be outnumbered with at least {2 * size}")
+    undescribed = [str(e.get("name", "?")) for e in cleaned.get("enemies", [])
+                   if isinstance(e, dict)
+                   and not str(e.get("description") or "").strip()]
+    if undescribed:
+        raise ValueError('every enemy needs a "description": '
+                         + ", ".join(undescribed))
+
+
+def _validate_adventure(acts: List[Dict[str, Any]],
+                        narrations: List[str]) -> None:
+    """The §D10-4.1 adventure-level checks, over already act-valid encounters.
+
+    ``acts`` are the three cleaned encounter dicts in order; ``narrations`` the
+    three act narrations. Per-act validity (layouts, minimum bodies, at most one
+    boss) is `_validate_encounter`'s job and assumed done."""
+    if len(acts) != ACT_COUNT:
+        raise ValueError(f"an adventure has exactly {ACT_COUNT} acts")
+    for i, text in enumerate(narrations, start=1):
+        if not str(text or "").strip():
+            raise ValueError(f"act {i} is missing its narration")
+    finale_bosses, _ = _act_boss_levels(acts[-1]["enemies"])
+    if len(finale_bosses) != 1:
+        raise ValueError("Act III must contain exactly one boss (is_boss)")
+    finale_level = finale_bosses[0]
+    for i, act in enumerate(acts, start=1):
+        bosses, highest = _act_boss_levels(act["enemies"])
+        if i < ACT_COUNT and bosses and bosses[0] >= finale_level:
+            raise ValueError(
+                f"act {i}'s mini-boss (level {bosses[0]}) must be strictly "
+                f"lower level than Act III's boss (level {finale_level})")
+        if highest > finale_level:
+            raise ValueError(
+                f"act {i} fields a level-{highest} enemy above Act III's boss "
+                f"(level {finale_level}) — the boss is the adventure's "
+                "highest-level enemy")
+
+
+def save_adventure(raw: Dict[str, Any],
+                   adventure_id: Optional[str] = None) -> Dict[str, Any]:
+    """Validate + persist an adventure (wrapper + three act files), returning its
+    meta. Each act passes the exact `_validate_encounter` gate an encounter takes;
+    then the §D10-4.1 adventure-level checks run; only then does anything persist.
+
+    ``raw`` is ``{name, flavor, acts: [{narration, ...encounter}, ×3]}``."""
+    if not isinstance(raw, dict):
+        raise ValueError("adventure must be an object")
+    acts_raw = raw.get("acts")
+    if not isinstance(acts_raw, list) or len(acts_raw) != ACT_COUNT:
+        raise ValueError(f"an adventure has exactly {ACT_COUNT} acts")
+    name = str(raw.get("name") or "Adventure")
+    cleaned_acts: List[Dict[str, Any]] = []
+    narrations: List[str] = []
+    for i, act in enumerate(acts_raw, start=1):
+        if not isinstance(act, dict):
+            raise ValueError(f"act {i} must be an object")
+        try:
+            cleaned = _validate_encounter(act)
+            _validate_act(cleaned)
+        except ValueError as exc:
+            raise ValueError(f"act {i}: {exc}") from exc
+        cleaned_acts.append(cleaned)
+        narrations.append(str(act.get("narration") or "").strip())
+    _validate_adventure(cleaned_acts, narrations)
+
+    aid = adventure_id or _slug(name) or "adventure"
+    LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
+    act_entries = []
+    for i, (act, narration) in enumerate(zip(cleaned_acts, narrations), start=1):
+        eid = act_encounter_id(aid, i)
+        (LOADOUTS_DIR / f"{eid}.json").write_text(json.dumps(act, indent=2))
+        act_entries.append({"narration": narration, "encounter_id": eid})
+    wrapper = {"kind": "adventure", "name": name,
+               "flavor": str(raw.get("flavor") or ""), "acts": act_entries}
+    (LOADOUTS_DIR / f"{aid}.json").write_text(json.dumps(wrapper, indent=2))
+    hidden = _adv_hidden()
+    if aid in hidden:
+        hidden.discard(aid)
+        _set_adv_hidden(hidden)
+    adv = _adventure_registry().get(aid)
+    return _adventure_meta(aid, adv) if adv else {"id": aid, "name": name}
+
+
+def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+    """Update the adventure-level fields only — name, flavor, the per-act
+    narrations — leaving the act encounters untouched. Returns the meta."""
+    adv = _adventure_registry().get(adventure_id)
+    if adv is None:
+        raise ValueError(f"unknown adventure: {adventure_id}")
+    name = str(patch.get("name") or adv["name"])
+    flavor = patch.get("flavor")
+    flavor = adv["flavor"] if flavor is None else str(flavor)
+    narrations = patch.get("narrations")
+    acts = copy.deepcopy(adv["acts"])
+    if narrations is not None:
+        if not isinstance(narrations, list) or len(narrations) != len(acts):
+            raise ValueError(f"narrations must be a list of {len(acts)}")
+        for act, text in zip(acts, narrations):
+            if not str(text or "").strip():
+                raise ValueError("every act needs a non-empty narration")
+            act["narration"] = str(text)
+    wrapper = {"kind": "adventure", "name": name, "flavor": flavor, "acts": acts}
+    LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
+    (LOADOUTS_DIR / f"{adventure_id}.json").write_text(json.dumps(wrapper, indent=2))
+    fresh = _adventure_registry().get(adventure_id)
+    return _adventure_meta(adventure_id, fresh)
+
+
+def delete_adventure(adventure_id: str) -> None:
+    """Remove an adventure and its act files. A bundled example that survives
+    the deletion is hidden instead (mirroring delete_encounter)."""
+    adv = _adventure_registry().get(adventure_id)
+    if adv is None:
+        raise ValueError(f"unknown adventure: {adventure_id}")
+    for act in adv["acts"]:
+        eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
+        if eid:
+            (LOADOUTS_DIR / f"{eid}.json").unlink(missing_ok=True)
+    (LOADOUTS_DIR / f"{adventure_id}.json").unlink(missing_ok=True)
+    if adventure_id in _adventure_registry():
+        hidden = _adv_hidden()
+        hidden.add(adventure_id)
+        _set_adv_hidden(hidden)
+
+
+def _check_act_edit(eid: str, cleaned: Dict[str, Any]) -> None:
+    """Adventure-level gate on an act edited through the ordinary encounter save
+    path: re-run the §D10-4.1 checks with the edited act substituted, BEFORE
+    anything persists. A non-act encounter id passes straight through."""
+    for aid, adv in _adventure_registry().items():
+        act_ids = [str(a.get("encounter_id", "")) for a in adv["acts"]
+                   if isinstance(a, dict)]
+        if eid not in act_ids:
+            continue
+        _validate_act(cleaned)
+        acts: List[Dict[str, Any]] = []
+        reg = _encounter_registry()
+        for act_eid in act_ids:
+            if act_eid == eid:
+                acts.append(cleaned)
+                continue
+            scen = reg.get(act_eid)
+            if scen is None:
+                raise ValueError(f"adventure {aid} is missing act file {act_eid}")
+            acts.append({"name": scen["name"], "enemies": scen["enemies"]})
+        narrations = [str(a.get("narration") or "") for a in adv["acts"]
+                      if isinstance(a, dict)]
+        try:
+            _validate_adventure(acts, narrations)
+        except ValueError as exc:
+            raise ValueError(f"adventure '{adv['name']}': {exc}") from exc
+        return
+
+
+# --------------------------------------------------------------------------- #
 # Game build (mirrors the cockpit's Session.start — engine setup path only)
 # --------------------------------------------------------------------------- #
 def _pool_id(enemy: Dict[str, Any]) -> str:
@@ -429,19 +711,28 @@ def _pool_id(enemy: Dict[str, Any]) -> str:
 
 def encounter_art(encounter_id: str) -> Dict[str, Any]:
     """The encounter's current art references, keyed by POOL enemy id:
-    ``{"scene": url, "enemies": {pool_id: url}}`` ("" / absent when none).
-    Token definitions (a Swarm's spawns) are creatures too — their art rides the
-    same map, keyed by the token def's key (a live spawn ``huskling_3`` resolves
+    ``{"scene": url, "enemies": {pool_id: url}, "descriptions": {pool_id: text}}``
+    ("" / absent when none). ``descriptions`` carries each enemy's art-direction
+    prose (physical appearance) so the inspect view can show it. Token
+    definitions (a Swarm's spawns) are creatures too — their art rides the
+    same maps, keyed by the token def's key (a live spawn ``huskling_3`` resolves
     back to ``huskling`` in the snapshot)."""
     scen = _encounter_registry().get(encounter_id)
     if scen is None:
-        return {"scene": "", "enemies": {}}
+        return {"scene": "", "enemies": {}, "descriptions": {}}
     enemies = {_pool_id(e): str(e["image"]) for e in scen["enemies"]
                if isinstance(e, dict) and e.get("image")}
+    descriptions = {_pool_id(e): str(e.get("description") or "").strip()
+                    for e in scen["enemies"] if isinstance(e, dict)}
     for tid, tok in (scen.get("tokens") or {}).items():
-        if isinstance(tok, dict) and tok.get("image"):
+        if not isinstance(tok, dict):
+            continue
+        if tok.get("image"):
             enemies[str(tid)] = str(tok["image"])
-    return {"scene": scen.get("scene_image", ""), "enemies": enemies}
+        if tok.get("description"):
+            descriptions[str(tid)] = str(tok["description"]).strip()
+    return {"scene": scen.get("scene_image", ""), "enemies": enemies,
+            "descriptions": descriptions}
 
 
 def _base_of(scaled_enemies: List[Dict[str, Any]], pool_ids: "set[str]") -> Dict[str, str]:
@@ -468,6 +759,13 @@ def build_state(character_ids: List[str], encounter_id: str,
     them alongside for the snapshot. Raises ValueError with a human message on
     unknown ids / empty party.
     """
+    loadouts = loadouts_for(character_ids)
+    return build_state_from_loadouts(loadouts, encounter_id, seed=seed)
+
+
+def loadouts_for(character_ids: List[str]) -> List[Dict[str, Any]]:
+    """The raw loadout dicts behind a picked party, in pick order. Raises
+    ValueError on an empty party / unknown ids."""
     if not character_ids:
         raise ValueError("choose at least one character")
     loadouts: List[Dict[str, Any]] = []
@@ -476,13 +774,21 @@ def build_state(character_ids: List[str], encounter_id: str,
         if lo is None:
             raise ValueError(f"unknown character: {cid}")
         loadouts.append(lo)
+    return loadouts
+
+
+def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
+                              seed: Optional[int] = None
+                              ) -> "tuple[GameState, Dict[str, str], Dict[str, Any]]":
+    """`build_state` with the loadouts already in hand — the adventure layer uses
+    this to field leveled (adventure-local) builds against an act."""
     scenario = encounter_for(encounter_id)
     if scenario is None:
         raise ValueError(f"unknown encounter: {encounter_id}")
     pool_ids = {_pool_id(e) for e in scenario["enemies"] if isinstance(e, dict)}
     # Party-size scaling: an encounter with per-size layouts fields the roster
     # designed for THIS party's size (clamped to the nearest defined layout).
-    scenario = scale_encounter(scenario, len(character_ids))
+    scenario = scale_encounter(scenario, len(loadouts))
     spec = compose_spec(loadouts, scenario)
     state = state_from_dict(spec, seed=seed)
     # spec["party"] keeps loadouts' order (compose_spec only dedupes ids in place),
@@ -494,4 +800,10 @@ def build_state(character_ids: List[str], encounter_id: str,
     art = encounter_art(encounter_id)
     art["base_of"] = _base_of(
         [e for e in scenario["enemies"] if isinstance(e, dict)], pool_ids)
+    # Loadout character descriptions, for the inspect view (the engine drops
+    # them like portraits, so they ride the session's art bundle).
+    art["char_descriptions"] = {
+        entry["id"]: str(raw.get("character", {}).get("description") or "")
+        for entry, raw in zip(spec["party"], loadouts)
+    }
     return state, portraits, art

@@ -124,7 +124,7 @@
     color:var(--parch); text-decoration:none; letter-spacing:.12em; text-transform:uppercase;
     font-size:11.5px; font-family:Optima,Candara,"Gill Sans","Segoe UI",sans-serif;
   }
-  nav a::before{content:counter(toc,upper-roman); display:inline-block; width:38px; color:var(--dimmed)}
+  nav a::before{content:counter(toc,upper-roman); display:inline-block; width:44px; color:var(--dimmed)}
   nav a:hover{color:var(--brass-hi)}
 
   /* ---------- misc ---------- */
@@ -151,8 +151,10 @@
     LTG is a small-party tactical RPG played as turn-based card combat. You build a
     <b>character</b> — stats bought with points, a spellbook translated from real
     <b>Magic:&nbsp;the&nbsp;Gathering</b> cards, and two signature moves of your own design —
-    then fight generated enemies on a three-row battlefield. You do not need to know Magic
-    to play; if you do, look for the <span class="tag">MTG</span> notes throughout.
+    then fight generated enemies on a three-row battlefield: one-shot <b>encounters</b>,
+    or three-act <b>adventures</b> where your wounds and your growth carry from fight to
+    fight. You do not need to know Magic to play; if you do, look for the
+    <span class="tag">MTG</span> notes throughout.
   </p>
 </header>
 
@@ -167,14 +169,16 @@
     <li><a href="#damage">Damage &amp; Defence</a></li>
     <li><a href="#stack">The Stack &amp; Reacting</a></li>
     <li><a href="#intents">Reading the Enemy</a></li>
-    <li><a href="#channeling">Channeling</a></li>
+    <li><a href="#channeling">Channeling &amp; Stances</a></li>
     <li><a href="#afflictions">Poison, Regen &amp; Infect</a></li>
+    <li><a href="#dead">The Dead &amp; the Dominated</a></li>
     <li><a href="#deck">Your Deck</a></li>
     <li><a href="#effects">The Effect Vocabulary</a></li>
     <li><a href="#keywords">Keywords</a></li>
     <li><a href="#enemies">Know Your Enemy</a></li>
     <li><a href="#character">Building a Character</a></li>
     <li><a href="#heroics">Your Skill &amp; Ultimate</a></li>
+    <li><a href="#adventures">Adventures</a></li>
     <li><a href="#tips">First-Fight Advice</a></li>
   </ol>
 </nav>
@@ -201,6 +205,14 @@ a live resource, not a one-time setup.</p>
 Enemy intents lock their target when declared, and bodies physically relocate only at
 the end of the round. Moving is about <em>next</em> round — where you'll stand when the
 next set of intents is declared — never about slipping the current one.</p>
+
+<p>The rows themselves can be redrawn, though. <b>Shove effects</b> (§XII) move a body
+between rows the instant they resolve, and both sides have them. A shove never cancels
+a declared attack — the attacker lunges regardless — but forcing the enemy's front-liner
+back mid-turn opens their wall <em>right now</em>, putting the backline in your melee's
+reach; and an enemy hook that drags your caster to the front row makes next round's
+intents very interested in them. Where everyone stands is a negotiation held every
+round.</p>
 
 <!-- ================================================================ -->
 <h2 id="round"><span class="num">II</span>The Round, Turn by Turn</h2>
@@ -235,7 +247,7 @@ fight mid-round.</p>
 
 <p><b>Free, at any time, on anyone's turn:</b> casting <b>instants</b> (limited only
 by mana), your once-per-turn <b>Mitigate</b> reaction, and your once-per-encounter
-<b>Skill</b> (§XV). None of these consume the proactive action.
+<b>Skill</b> (§XVI). None of these consume the proactive action.
 Two keywords bend the rules: <b>vigilance</b> lets you attack <em>and</em> cast in one
 turn; <b>haste</b> lets you take your action <em>and</em> make a free move.</p>
 
@@ -246,9 +258,12 @@ turn; <b>haste</b> lets you take your action <em>and</em> make a free move.</p>
   <tr><td class="phase">Basic attack</td><td>action · 1/round</td><td>Deal damage equal to your Power (melee or ranged, whichever mode you own).</td></tr>
   <tr><td class="phase">Defend</td><td>action · 1/round</td><td>+3 temporary HP until end of turn.</td></tr>
   <tr><td class="phase">Mitigate</td><td>reaction · 1/turn</td><td>Answer one incoming <b>attack</b>: reduce each of its hits by <b>half your Power, rounded up</b> — on yourself, or intercepting for an ally (see below).</td></tr>
-  <tr><td class="phase">Skill</td><td>free · 1/encounter</td><td>Your authored signature trick, cast at instant speed (§XV).</td></tr>
-  <tr><td class="phase">Ultimate</td><td>action · 1/encounter</td><td>Your authored finisher — no mana cost, but only castable on a full ultimate gauge (§XV).</td></tr>
+  <tr><td class="phase">Skill</td><td>free · 1/encounter</td><td>Your authored signature trick, cast at instant speed (§XVI).</td></tr>
+  <tr><td class="phase">Ultimate</td><td>action · 1/encounter</td><td>Your authored finisher — no mana cost, but only castable on a full ultimate gauge (§XVI).</td></tr>
 </table></div>
+
+<p class="muted">One more thing can reshape this list: a held <b>stance</b> (§VIII)
+can replace — or remove — your attack, Defend, Mitigate, and Move themselves.</p>
 
 <div class="panel">
   <p class="ptitle">Mitigate — the bodyguard rule</p>
@@ -283,7 +298,8 @@ turn&nbsp;2</b> — you hit your land drop automatically, forever.</p>
   <li><b>Ramp</b> spells raise capacity <em>above</em> the curve <span class="tag">MTG: Rampant Growth</span> — some usable immediately, some "enter tapped."</li>
   <li><b>Rituals</b> add mana to <em>this turn's pool only</em> <span class="tag">MTG: Dark Ritual</span> — a burst, not growth.</li>
   <li><b>Channeled cards reserve their cost</b> for as long as you hold them (§VIII).</li>
-  <li>Mana, hand, and HP all reset fresh between encounters.</li>
+  <li>Mana, hand, and HP all reset fresh between encounters. (Adventures bend these
+      rules — §XVII.)</li>
 </ul>
 
 <!-- ================================================================ -->
@@ -304,7 +320,7 @@ above 0. <b>Enemies and tokens die</b> at 0.</p>
   <tr><td class="phase">Absorb</td><td>Temporary HP from Defend or the toughness half of a pump</td></tr>
   <tr><td class="phase">Cancel</td><td>Counter the action while it's on the stack <span class="tag">MTG: Negate</span></td></tr>
   <tr><td class="phase">Disrupt</td><td>Strip or stun the enemy's intent before it ever acts</td></tr>
-  <tr><td class="phase">Remove</td><td>Kill, exile, or bounce the attacker (bosses resist — §XIII)</td></tr>
+  <tr><td class="phase">Remove</td><td>Kill, exile, bounce — or <b>dominate</b> (§X) — the attacker (bosses resist all of it)</td></tr>
 </table></div>
 
 <!-- ================================================================ -->
@@ -314,7 +330,9 @@ above 0. <b>Enemies and tokens die</b> at 0.</p>
 <span class="tag">MTG: the stack, as you know it</span>. Before anything resolves,
 every character gets a chance to respond with instants or reactions — and only
 <em>after</em> the whole party passes may an eligible enemy reaction fire, which
-re-opens your window. You can respond to your own spells.</p>
+re-opens your window. You can respond to your own spells. (The game passes for you
+automatically whenever you have nothing playable — you'll only ever be asked when a
+real choice exists.)</p>
 
 <p>Every action has two properties, and both matter:</p>
 
@@ -350,7 +368,7 @@ text. You'll see lines like:</p>
   <li><em>"The Spore Husk threatens Soren."</em> — a hostile physical move at one hero</li>
   <li><em>"The Myconid Mother begins casting a spell at Soren."</em> — magic, counterable when it lands</li>
   <li><em>"The Archer prepares an assault on the front of your party."</em> — a row is in danger</li>
-  <li><em>"Orgen the Dungeonmaster gathers its power."</em> — a charge is building (§XIII)</li>
+  <li><em>"Orgen the Dungeonmaster gathers its power."</em> — a charge is building (§XIV)</li>
   <li><em>"The Cinderpriest turns its attention to the Bonechanter."</em> — support; someone's getting healed</li>
 </ul>
 
@@ -365,13 +383,16 @@ text. You'll see lines like:</p>
 <p>You can attack the intent itself, before it ever reaches the stack:
 <code>strip_intent</code> deletes it — <b>and reveals what it would have been</b> —
 <span class="tag">MTG: targeted discard</span>; <code>stun</code> makes the enemy skip
-it <span class="tag">MTG: tap down</span>; killing or debuffing the owner works too.</p>
+it <span class="tag">MTG: tap down</span>; killing or debuffing the owner works too.
+One enemy deserves special mention: an <b>enraged boss telegraphs two lines a round</b>
+(§XIV) — a strip removes whichever one you choose, a stun silences one but never
+both.</p>
 
 <!-- ================================================================ -->
-<h2 id="channeling"><span class="num">VIII</span>Channeling</h2>
+<h2 id="channeling"><span class="num">VIII</span>Channeling &amp; Stances</h2>
 
-<p>Enchantments become <b>channeled</b> cards: sustained effects you actively hold —
-concentration, not a permanent on a battlefield <span class="tag">MTG: enchantments, held not played</span>.</p>
+<p>Enchantments become <b>channeled</b> cards: sustained effects a character actively
+holds — concentration, not a permanent on a battlefield <span class="tag">MTG: enchantments, held not played</span>.</p>
 
 <ul>
   <li><b>Cost:</b> casting one <b>reserves</b> its mana for as long as you hold it. Big channels lock big mana.</li>
@@ -384,18 +405,100 @@ concentration, not a permanent on a battlefield <span class="tag">MTG: enchantme
 take. Reduction (Mitigate, prevent) protects a channel; raw temp-HP absorption does
 not — the blow still lands at full size.</p>
 
+<h3>Stances — fighting in a form</h3>
+
+<p>A <b>stance</b> is a special channeled card that rewires your body while you hold
+it. For each of your four main abilities — <b>attack, Defend, Mitigate, Move</b> — a
+stance declares one of three things: <em>unchanged</em>, <em>removed</em> (you simply
+cannot do that while in this form), or <em>replaced</em> with a new authored action.</p>
+
+<ul>
+  <li><b>Replacements keep their slot.</b> A replaced attack is still your once-a-round
+      action; a replaced Mitigate is still your once-a-turn reaction to an incoming
+      attack — its new effects resolve <em>instead of</em> the reduction.</li>
+  <li><b>Removal is total.</b> No Move also means no haste free move; no attack also
+      means no first-strike held attack; no Mitigate means you guard nobody, yourself
+      included.</li>
+  <li><b>Your spellbook is untouchable.</b> Casting, instants, your Skill, and your
+      Ultimate are never stance-modified. A stance rewires your body, not your magic.</li>
+  <li><b>One stance at a time</b>, and it breaks like any channel — one hit of ≥25% of
+      your max HP knocks you out of the form, along with everything else you were
+      holding.</li>
+</ul>
+
+<p class="muted">Two classic shapes: <em>Meditative Trance</em> — attack removed,
+Defend becomes "heal an ally 3": the healer stops fighting and starts mending, until
+someone breaks the trance. <em>Stoneskin</em> — Move removed, Defend becomes
+"indestructible until end of turn": rooted, immovable, nearly unkillable — and the
+counterplay is written on it.</p>
+
 <!-- ================================================================ -->
 <h2 id="afflictions"><span class="num">IX</span>Poison, Regen &amp; Infect</h2>
 
 <div class="tbl-scroll"><table>
   <tr><th style="width:110px">Affliction</th><th>Rule</th></tr>
-  <tr><td class="phase">Poison</td><td>Each poison counter is a persistent <b>−0/−1</b>. A poison effect places its counters now, then again <b>every Upkeep</b>, until the victim dies, its optional turn-bound expires, or the victim <b>receives any healing</b> — an antidote is an antidote, even one that restores nothing. Poison is <em>not damage</em>: it can't be Mitigated or prevented, and it never breaks a channel. Multiple poison effects stack and tick together.</td></tr>
-  <tr><td class="phase">Regen</td><td>The mirror: persistent <b>+0/+1</b> counters, ticking every Upkeep until the creature is <b>dealt damage that connects</b>. A regen tick <em>counts as healing</em> — regen is the over-time poison cure. Poison and regen counters annihilate 1:1.</td></tr>
+  <tr><td class="phase">Poison</td><td>Each poison counter is a persistent <b>−0/−1</b>. A poison effect places its counters now, then again <b>every Upkeep</b>, until the victim dies, its optional turn-bound expires, or the victim <b>receives any healing</b> — and healing is a true antidote: it ends the ticking <em>and</em> sheds every accumulated poison counter, even if the heal restores nothing. Poison is <em>not damage</em>: it can't be Mitigated or prevented, and it never breaks a channel. Multiple poison effects stack and tick together.</td></tr>
+  <tr><td class="phase">Regen</td><td>The mirror: persistent <b>+0/+1</b> counters, ticking every Upkeep until the creature is <b>dealt damage that connects</b>. A regen tick <em>counts as healing</em> — it stops poison's ticking (though only a direct heal purges the counters; regen instead cancels them out one-for-one as its own counters land).</td></tr>
   <tr><td class="phase">Infect <span class="muted">(keyword)</span></td><td>Any damage this creature deals that connects <b>also poisons</b> the victim — one poison effect per landed hit, first counter arriving next Upkeep. The venomed blade wounds now, sickens later. <span class="tag">MTG: infect, loosely — damage still hits HP</span></td></tr>
 </table></div>
 
 <!-- ================================================================ -->
-<h2 id="deck"><span class="num">X</span>Your Deck</h2>
+<h2 id="dead"><span class="num">X</span>The Dead &amp; the Dominated</h2>
+
+<p><b>The dead stay on the battlefield.</b> When an enemy dies — killed by damage,
+poison, or a destroy effect — it leaves a <b>corpse</b> on the row where it fell: a
+dim marker, an object rather than a creature. You can't attack, damage, or heal a
+corpse; it just lies there. Until someone does something with it.</p>
+
+<h3>Destroy vs exile — at last, a difference</h3>
+
+<div class="tbl-scroll"><table>
+  <tr><th style="width:130px">Verb</th><th>What's left</th></tr>
+  <tr><td class="phase">destroy / death</td><td>A <b>corpse</b>. Death triggers fire. Necromancy can find it.</td></tr>
+  <tr><td class="phase">exile</td><td><b>Nothing.</b> No corpse, no death trigger, nothing to raise. Exile also works <em>on</em> a corpse — burn the body, deny the necromancer.</td></tr>
+</table></div>
+
+<p class="muted">Tokens never leave corpses (raised undead cannot be re-raised — no
+treadmills), and your characters never die at all — they're incapacitated, not
+corpses.</p>
+
+<h3>Control — one spell, two dark arts</h3>
+
+<p>The <code>control</code> effect makes an enemy <b>fight for you</b>, for a duration
+(some turns, or the whole encounter). Its flavour depends on what you aim it at:</p>
+
+<ul>
+  <li><b>On a living enemy — mind control</b> <span class="tag">MTG: Act of Treason · Mind Control</span>.
+      It crosses to your side with its current HP, Power, and keywords, but loses all
+      its clever tricks — a dominated mind is a blunt instrument.</li>
+  <li><b>On a corpse — raise dead</b> <span class="tag">MTG: Raise Dead · Animate Dead</span>.
+      The corpse is consumed and an undead servant rises where it lay: the dead
+      creature's Power, <b>half</b> its HP, on your side. When the spell ends, it
+      crumbles.</li>
+</ul>
+
+<p>Controlled creatures run the simplest brain in the game: every round, basic attack
+against the <b>closest enemy</b>. They're autonomous allies — help them, never command
+them. And two iron rules: <b>bosses can never be controlled</b> — not alive, not in
+their execute window, not as corpses; and <b>control never wins the fight</b> — if a
+controlled enemy would ever be the last one standing, the spell breaks on the spot and
+it snaps back to its own side. Like bounce, domination buys actions, never the win.</p>
+
+<h3>The stirring dead</h3>
+
+<p>Some enemies <b>rise</b>: when one dies, its corpse visibly <em>stirs</em> — and a
+few Upkeeps later it stands back up at half HP, once per fight. A stirring corpse
+means the enemy is <b>not yet defeated</b>, and the fight will not end while it stirs.
+Your answers: <b>exile the body</b>, or <b>raise it yourself</b> — a stolen corpse
+rises on <em>your</em> side instead.</p>
+
+<p class="muted">Enemy necromancers play this whole section against you: they raise
+their own fallen as fresh undead, turning every corpse on their side into a threat.
+Kill-priority incarnate — and the reason exile stops being a luxury against the
+deathless.</p>
+
+<!-- ================================================================ -->
+<h2 id="deck"><span class="num">XI</span>Your Deck</h2>
 
 <p>Your deck — your <b>loadout</b> — is a <b>20-card singleton library</b>: no
 duplicate source cards, drawn one per Upkeep, kept in hand. Rarity is a power dial
@@ -415,16 +518,16 @@ into LTG's effect language. Only <b>three MTG card types</b> exist here:</p>
 <ul>
   <li><b>Instants</b> → reactive spells, castable any time you have the mana.</li>
   <li><b>Sorceries</b> → active spells, cast on your turn with the Cast action.</li>
-  <li><b>Enchantments</b> → channeled cards (§VIII).</li>
+  <li><b>Enchantments</b> → channeled cards, including stances (§VIII).</li>
 </ul>
 
 <p class="muted">No creatures, lands, artifacts, planeswalkers, or battles. Allied
-creatures exist only as <b>tokens your spells conjure</b>; lands survive only inside
-ramp and ritual spells. A card's mana value is its <b>Level</b>, which some effects
-read ("destroy an enemy of Level 3 or less").</p>
+creatures exist only as <b>tokens your spells conjure</b> (or steal — §X); lands
+survive only inside ramp and ritual spells. A card's mana value is its <b>Level</b>,
+which some effects read ("destroy an enemy of Level 3 or less").</p>
 
 <!-- ================================================================ -->
-<h2 id="effects"><span class="num">XI</span>The Effect Vocabulary</h2>
+<h2 id="effects"><span class="num">XII</span>The Effect Vocabulary</h2>
 
 <p>Every card is built from a small set of effect <b>verbs</b> — the same verbs enemy
 abilities use. Learn these and you can read any card in the game.</p>
@@ -433,18 +536,20 @@ abilities use. Learn these and you can read any card in the game.</p>
 <div class="tbl-scroll"><table class="cw">
   <tr><th style="width:150px">Verb</th><th>Meaning</th><th style="width:200px">MTG feel</th></tr>
   <tr><td>deal_damage</td><td>Deal N damage.</td><td>Lightning Bolt</td></tr>
-  <tr><td>heal</td><td>Restore HP, capped at max.</td><td>lifegain</td></tr>
+  <tr><td>heal</td><td>Restore HP, capped at max. Also the poison antidote (§IX).</td><td>lifegain</td></tr>
   <tr><td>lose_life</td><td>Unpreventable HP loss — slips past shields.</td><td>"loses life"</td></tr>
   <tr><td>poison / regen</td><td>Ticking −0/−1 / +0/+1 counters (§IX).</td><td>infect / regeneration</td></tr>
   <tr><td>fight</td><td>Two creatures strike each other simultaneously.</td><td>Prey Upon</td></tr>
 </table></div>
 
-<h3>Removal &amp; tempo</h3>
+<h3>Removal, theft &amp; tempo</h3>
 <div class="tbl-scroll"><table class="cw">
   <tr><th style="width:150px">Verb</th><th>Meaning</th><th style="width:200px">MTG feel</th></tr>
-  <tr><td>destroy</td><td>Kill a minion outright. Bosses: only in their execute window (§XIII).</td><td>Doom Blade</td></tr>
-  <tr><td>exile</td><td>Remove permanently — no death triggers, no coming back.</td><td>Path to Exile</td></tr>
+  <tr><td>destroy</td><td>Kill a minion outright — it leaves a corpse (§X). Bosses: only in their execute window.</td><td>Doom Blade</td></tr>
+  <tr><td>exile</td><td>Remove permanently — no corpse, no death trigger. Also burns corpses.</td><td>Path to Exile</td></tr>
   <tr><td>bounce</td><td>Knock a minion off the field; it returns a round later, still wounded. Buys tempo, never the win.</td><td>Unsummon</td></tr>
+  <tr><td>control</td><td>An enemy fights for you, for a duration: mind control on the living, raise-dead on a corpse (§X). Never bosses.</td><td>Act of Treason / Animate Dead</td></tr>
+  <tr><td>move</td><td>Shove a creature between rows — forward, back, or to a named row. Immediate, on either side; a declared attack still lands (§I).</td><td>— (few analogues)</td></tr>
   <tr><td>counter</td><td>Cancel an action on the stack, by filter (§VI).</td><td>Negate / Cancel</td></tr>
   <tr><td>strip_intent</td><td>Delete an enemy's declared intent — and see what it was.</td><td>targeted discard</td></tr>
   <tr><td>stun</td><td>The enemy skips its next intent.</td><td>tap down</td></tr>
@@ -459,7 +564,8 @@ abilities use. Learn these and you can read any card in the game.</p>
   <tr><td>prevent</td><td>Nullify a named thing — e.g. the next combat damage.</td><td>Fog, narrowed</td></tr>
   <tr><td>protection</td><td>Negate the next spell or attack against the target entirely.</td><td>protection, briefly</td></tr>
   <tr><td>taunt</td><td>Force an enemy's attention onto the target.</td><td>lure</td></tr>
-  <tr><td>grant_keyword / remove_keyword</td><td>Give or strip a keyword (§XII) for a duration.</td><td>"gains flying until…"</td></tr>
+  <tr><td>grant_keyword / remove_keyword</td><td>Give or strip a keyword (§XIII) for a duration.</td><td>"gains flying until…"</td></tr>
+  <tr><td>stance</td><td>Rewire your four main abilities while channeled (§VIII).</td><td>— (LTG original)</td></tr>
 </table></div>
 
 <h3>Cards, mana &amp; conjuring</h3>
@@ -468,16 +574,28 @@ abilities use. Learn these and you can read any card in the game.</p>
   <tr><td>draw / scry</td><td>Draw N; look at the top N and keep or bottom them.</td><td>Divination / scry</td></tr>
   <tr><td>move_card</td><td>Move your cards between zones — a tutor, a graveyard recursion, a self-mill, all one verb.</td><td>Demonic Tutor, Regrowth…</td></tr>
   <tr><td>ramp / add_mana</td><td>Raise capacity above the curve / burst mana this turn only.</td><td>Rampant Growth / Dark Ritual</td></tr>
-  <tr><td>create_token</td><td>Conjure an autonomous ally (§XIII).</td><td>token-makers</td></tr>
+  <tr><td>create_token</td><td>Conjure an autonomous ally (§XIV).</td><td>token-makers</td></tr>
   <tr><td>revive</td><td>Restore an incapacitated ally to a fraction of max HP, wounds cleared.</td><td>—</td></tr>
 </table></div>
 
+<div class="panel">
+  <p class="ptitle">Area shapes — rows and blasts</p>
+  <p>Damaging effects come in footprints. A <b>row</b> effect hits everyone on a named
+  row. A <b>splash</b> effect picks one creature and also catches its whole row; a
+  <b>blast</b> catches its row <em>and all adjacent rows</em>. Adjacency: front↔mid
+  and mid↔rear — <b>front and rear are not adjacent</b>, so a blast centred on the
+  <em>mid</em> row catches everything on that side. The centre of the formation is the
+  splash magnet; standing there is a choice. Only the picked creature is
+  <em>targeted</em> — hexproof shields a creature from being the pick, never from
+  being caught in the spray.</p>
+</div>
+
 <p class="muted">Cards may also be <b>modal</b> ("choose one…") or carry
-<b>conditional</b> riders ("if cast as a reaction…") — both work the way an MTG
-charm or kicker leads you to expect.</p>
+<b>conditional</b> riders ("if cast as a reaction…", "if the target is dead…") — both
+work the way an MTG charm or kicker leads you to expect.</p>
 
 <!-- ================================================================ -->
-<h2 id="keywords"><span class="num">XII</span>Keywords</h2>
+<h2 id="keywords"><span class="num">XIII</span>Keywords</h2>
 
 <div class="tbl-scroll"><table>
   <tr><th style="width:130px">Keyword</th><th>LTG meaning</th><th style="width:210px">vs. MTG</th></tr>
@@ -500,21 +618,33 @@ charm or kicker leads you to expect.</p>
 never have them. Menace, ward, and convoke don't exist here.</p>
 
 <!-- ================================================================ -->
-<h2 id="enemies"><span class="num">XIII</span>Know Your Enemy</h2>
+<h2 id="enemies"><span class="num">XIV</span>Know Your Enemy</h2>
 
 <p>Enemies are asymmetric: no deck, no hand, no mana. Each has HP, a <b>Level</b>
 (its inherent power tier — shown as a Roman numeral), and a kit of telegraphed
 abilities. Expect support pieces that heal, control pieces that stun and taunt,
-escalating threats that grow every round you ignore them, and reactions that punish
-careless casting. You will always be outnumbered; the fight is about kill-priority.</p>
+escalating threats that grow every round you ignore them, hooks that drag your
+backline into the open, necromancers that raise their fallen (§X), and reactions that
+punish careless casting. You will always be outnumbered; the fight is about
+kill-priority.</p>
 
 <h3>Minions &amp; bosses</h3>
-<p><b>Minions</b> can be destroyed, exiled, or bounced. A <b>boss</b> is
-"player-class": immune to removal until its <b>execute window</b> — at or below
-<b>25% of max HP</b>. Crossing that line, the boss <b>enrages</b>: a free, dramatic
-eruption you always eat, stuns and taunts shaken off, cooldowns reset, and its kit
-turns nastier — but from then on it can be executed. You can always damage, counter,
-debuff, and stun a boss; you just can't <em>remove</em> it early.</p>
+<p><b>Minions</b> can be destroyed, exiled, bounced — or dominated. A <b>boss</b> is
+"player-class": immune to removal <em>and</em> to control, until its <b>execute
+window</b> — at or below <b>25% of max HP</b>. Crossing that line, the boss
+<b>enrages</b>: a free, dramatic eruption you always eat, stuns and taunts shaken off,
+cooldowns reset — and from then on it can be executed. You can always damage, counter,
+debuff, stun, and even <b>shove</b> a boss (moving it is fair play — it affects the
+boss in place); you just can't <em>remove</em> it early.</p>
+
+<div class="panel">
+  <p class="ptitle">Boss fury — the endgame bites back</p>
+  <p>An enraged boss <b>declares and executes two intents every round</b>, each veiled
+  and targeted separately — two lines in the intents window, two threats to answer
+  with one Mitigate. A stun silences <em>one</em> of the two, never both; a strip
+  removes whichever you choose. The final act of a boss fight is a race you must run
+  forward: the execute window is open, but so is the throttle.</p>
+</div>
 
 <h3>Charge — the gathering storm</h3>
 <p>Some enemies <b>gather power</b>: visible charge pips accumulate turn by turn, and
@@ -523,12 +653,12 @@ counter it. Break the windup early (kill, stun, strip) or hold an answer for the
 blast. Countering it still wastes the charge.</p>
 
 <h3>Tokens — your autonomous allies</h3>
-<p>Creatures you conjure fight <em>alongside</em> you, not <em>for</em> you: they
-declare their own intents, and you can help them but never command or sacrifice them.
-Allies die; characters are only incapacitated.</p>
+<p>Creatures you conjure — or raise, or dominate — fight <em>alongside</em> you, not
+<em>for</em> you: they declare their own intents, and you can help them but never
+command or sacrifice them. Allies die; characters are only incapacitated.</p>
 
 <!-- ================================================================ -->
-<h2 id="character"><span class="num">XIV</span>Building a Character</h2>
+<h2 id="character"><span class="num">XV</span>Building a Character</h2>
 
 <p>A character is a <b>70-point build</b>. There are no classes — the four archetypes
 below are just well-tuned example spends. Everyone starts from the same free
@@ -546,19 +676,21 @@ baseline and buys upward:</p>
   <tr><td class="phase">+2 HP</td><td>5 pts</td><td>bought two at a time</td></tr>
   <tr><td class="phase">+1 mana capacity</td><td>15 pts</td><td>your turn-1 mana; the curve-up builds on it</td></tr>
   <tr><td class="phase">+1 starting card</td><td>15 pts</td><td>opening-hand size</td></tr>
-  <tr><td class="phase">+1 Power</td><td>10 pts</td><td>max +2 bought (melee caps at 4, ranged at 3)</td></tr>
-  <tr><td class="phase">One keyword <span class="muted">(max one)</span></td><td>5–25 pts</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 15 · vigilance 20 · flying 25</td></tr>
+  <tr><td class="phase">+1 Power</td><td>10 pts</td><td>max +2 bought at creation (melee caps at 4, ranged at 3); the cap grows with adventure levels (§XVII)</td></tr>
+  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 15 · vigilance 20 · flying 25</td></tr>
 </table></div>
 
 <p><b>Guardrails:</b> HP ≥ 8, mana ≥ 1, cards ≥ 1, one attack mode, at most one
-keyword. Protection, hexproof, indestructible, deathtouch, and infect can never be
-bought — they reach a hero only through spells (or, someday, gear).</p>
+keyword — for the character's whole life, level-ups included. Protection, hexproof,
+indestructible, deathtouch, and infect can never be bought — they reach a hero only
+through spells (or, someday, gear).</p>
 
 <p>Remember the hidden coupling: <b>Mitigate = half your Power, rounded up</b>.
 Buying offence buys your guard. And every character picks a <b>colour identity</b>
 (1–3 of <span class="mana mw"></span>W <span class="mana mu"></span>U
 <span class="mana mb"></span>B <span class="mana mr"></span>R
-<span class="mana mg"></span>G), which bounds both your mana colours and your deck.</p>
+<span class="mana mg"></span>G), which bounds both your mana colours and your deck —
+permanently: not even a level-up changes your colours.</p>
 
 <h3>The four reference builds</h3>
 <div class="tbl-scroll"><table>
@@ -583,7 +715,7 @@ Buying offence buys your guard. And every character picks a <b>colour identity</
 attack, and cut down whoever swings at the backline — before their blow lands.</p>
 
 <!-- ================================================================ -->
-<h2 id="heroics"><span class="num">XV</span>Your Skill &amp; Ultimate</h2>
+<h2 id="heroics"><span class="num">XVI</span>Your Skill &amp; Ultimate</h2>
 
 <p>Beyond stats and deck, every character carries two <b>authored signature moves</b> —
 designed by you, in the Deckbuilder's character editor, with the same effect language
@@ -619,7 +751,8 @@ game:</p>
 
 <p class="muted">Note what this rewards: standing your ground charges the gauge —
 Defend alone is worth +5 (+2 action, +3 shield granted) — and a fallen ally surges
-the whole party a quarter of the way to vengeance.</p>
+the whole party a quarter of the way to vengeance. In an adventure, <b>half your
+gauge carries between acts</b> (§XVII): finish Act I full, open Act II at 50.</p>
 
 <h3>Designing them well</h3>
 <ul>
@@ -644,11 +777,69 @@ the whole party a quarter of the way to vengeance.</p>
 never change. Write it anyway.</p>
 
 <!-- ================================================================ -->
-<h2 id="tips"><span class="num">XVI</span>First-Fight Advice</h2>
+<h2 id="adventures"><span class="num">XVII</span>Adventures</h2>
+
+<p>An <b>encounter</b> is one fight. An <b>adventure</b> is a story: <b>three acts</b>
+against one theme, fought back to back by the same party — guards at the gate, knights
+in the courtyard, the tyrant in his throne room. Each act opens with a line of
+narrative and its own painted scene; each act is harder than the last; <b>Act III
+always ends in the boss</b>, and the earlier acts may hide a mini-boss (a full boss in
+every mechanical sense — enrage, fury, and all — just a lesser one: the gate-captain,
+not the king).</p>
+
+<p>Starting one is the same New Game screen: pick your party on the left, then choose
+either an Encounter or an Adventure. Win Act III and the adventure is yours.
+<b>Fall in any act and the run is over</b> — no checkpoints, no retries mid-run; the
+adventure stays on the list, and the door is always open to march back in from Act I.</p>
+
+<h3>What crosses an act boundary</h3>
+
+<div class="tbl-scroll"><table>
+  <tr><th style="width:170px">Between acts</th><th>Rule</th></tr>
+  <tr><td class="phase">HP</td><td><b>Carries.</b> Every character starts the next act at <b>max(current HP, 25% of max)</b> — the fallen stand back up at the floor, the barely-alive are lifted to it. There is no other healing between acts. Wounds are the run's currency.</td></tr>
+  <tr><td class="phase">Your deck</td><td><b>Reassembles.</b> Hand and graveyard shuffle back into the library — the full deck, minus anything exiled — and you draw a <b>fresh opening hand</b> equal to your starting-cards stat.</td></tr>
+  <tr><td class="phase">Exiled cards</td><td><b>Stay exiled.</b> Exile is forever, even for your own cards. Spend them like they're mortal.</td></tr>
+  <tr><td class="phase">Channels</td><td>All drop quietly at the act's end (no break, no triggers); the cards return with the shuffle.</td></tr>
+  <tr><td class="phase">Skill &amp; Ultimate</td><td><b>Uses reset</b> — once per encounter means once per act. Three skills, three possible ultimates per run.</td></tr>
+  <tr><td class="phase">Ultimate gauge</td><td>Carries at <b>half</b>. Momentum survives; a full bar does not.</td></tr>
+  <tr><td class="phase">Statuses</td><td>Everything encounter-bound clears: poison, regen, ±1/±1 counters, granted keywords.</td></tr>
+  <tr><td class="phase">Mana</td><td>Pool and capacity reset to base — the base your level-up may just have raised — and the curve-up starts over.</td></tr>
+</table></div>
+
+<h3>Levelling up</h3>
+
+<p>Between acts, <b>every character levels up</b>: the victory splash, then the
+level-up screen — your portrait beside the same points-buy panel you built the
+character with — then the next act's narrative, then the fight.</p>
+
+<ul>
+  <li><b>+30 points</b> per level, on the same price list as creation.</li>
+  <li><b>Bank freely:</b> spend 25 now and you'll have 35 next time. Confirming is
+      mandatory; spending is not.</li>
+  <li><b>No take-backs:</b> everything bought at creation or a previous level is
+      locked.</li>
+  <li><b>Colours never change.</b> New mana capacity picks its colour within your
+      existing identity.</li>
+  <li><b>One keyword, ever</b> — though a character who took None at creation may
+      finally buy theirs here.</li>
+  <li><b>The Power ceiling rises with you:</b> total bought Power ≤ 2 × your level
+      (+2 at creation, +4 at level 2, +6 at level 3).</li>
+  <li><b>HP purchases heal:</b> +2 max HP is also +2 current HP — the only healing
+      money can buy mid-run, at roughly 2½ points per HP.</li>
+  <li><b>It's all temporary:</b> the levelled build lives and dies with this
+      adventure. Your saved character is untouched.</li>
+</ul>
+
+<p class="muted">The enemy is levelling too — each act is budgeted a full tier above
+the last, and you carry your wounds while they arrive fresh. Expect Act III to ask for
+everything the first two acts taught you.</p>
+
+<!-- ================================================================ -->
+<h2 id="tips"><span class="num">XVIII</span>First-Fight Advice</h2>
 
 <ol>
-  <li><b>Kill-priority is the whole game.</b> Healers, escalating threats, and
-      channelers first; the wall of meat last.</li>
+  <li><b>Kill-priority is the whole game.</b> Healers, necromancers, escalating
+      threats, and channelers first; the wall of meat last.</li>
   <li><b>Answer channels.</b> An enemy ritual ticking every Upkeep will out-value
       anything you do while ignoring it. One big hit (≥25% of the channeler's max HP)
       breaks it.</li>
@@ -658,11 +849,20 @@ never change. Write it anyway.</p>
       turn. Reaction windows are where fights are won.</li>
   <li><b>Respect the veil.</b> "Threatens" might be 2 damage or 7. When an enemy
       <em>gathers its power</em>, treat the countdown as real.</li>
+  <li><b>Stand where the blast isn't.</b> The mid row is adjacent to everything — the
+      centre of the formation is the splash magnet. Spread out when the fireballs
+      start; just remember what the wall was holding.</li>
+  <li><b>Tend the dead.</b> A stirring corpse is a fight that isn't over; a necromancer
+      beside a corpse is a fight getting longer. Exile the body — or raise it yourself
+      and send it back the way it came.</li>
   <li><b>Don't hoard the Skill.</b> Once per encounter, but an encounter only lasts
       so long — a Skill unspent at victory answered nothing.</li>
   <li><b>Fall with purpose.</b> Going down isn't dying — allies can revive you, and
       your fall surges every ally's gauge +25. Sometimes the tank buys the turn the
       ultimate needs.</li>
+  <li><b>In an adventure, every HP is the run's HP.</b> A fight won at death's door is
+      a debt Act III collects. Win <em>cleanly</em> — and remember the level-up screen
+      sells the only healing between acts.</li>
 </ol>
 
 <div class="sig">◆ &nbsp; Borrow the grammar · Own the numbers &nbsp; ◆</div>

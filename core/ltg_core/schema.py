@@ -1248,6 +1248,10 @@ class Card(BaseModel):
 # leveling cliff of §P-6 is [DESIGNED — NOT SCHEDULED] and deliberately absent.
 # --------------------------------------------------------------------------- #
 CREATION_BUDGET = 70                                    # T5-01
+# Adventure-local leveling (Design Update 10 §D10-3): +30 bankable points per
+# level-up (T-57). A level-L build may spend up to the creation budget plus every
+# grant since level 1; the Deckbuilder remains creation-only (always level 1).
+LEVEL_UP_POINTS = 30                                    # T-57
 BASELINE_HP = 8                                         # §P-1 free base
 BASELINE_MANA = 1
 BASELINE_CARDS = 1
@@ -1258,7 +1262,9 @@ COST_HP_STEP = 5     # per +2 HP step (HP is bought two at a time)   T5-02
 COST_MANA = 15       # per +1 mana capacity                          T5-03
 COST_CARD = 15       # per +1 starting card                          T5-04
 COST_POWER = 10      # per +1 Power above the mode's base            T5-05
-MAX_POWER_BOUGHT = 2  # §P-4 Power cap: melee ≤ 4, ranged ≤ 3         T5-14
+# §P-4 Power cap, generalised by Update 10 (T-60): bought Power ≤ 2 × character
+# level. Creation (level 1) is the original flat +2 (melee ≤ 4, ranged ≤ 3).
+MAX_POWER_BOUGHT = 2  # per level (T5-14 / T-60)
 MAX_KEYWORDS = 1     # §P-3 one keyword at creation                  T5-06
 
 # Buyable keyword costs (§P-3, T5-07..13). The set is deliberately narrow.
@@ -1427,11 +1433,12 @@ class Character(BaseModel):
             return self
         if self.hp % 2 != 0:
             raise ValueError("HP is bought in 2-point steps and must be even (§P-2)")
-        if not (0 <= self.power_bought <= MAX_POWER_BOUGHT):
-            cap = BASE_POWER[AttackMode(self.attack_mode)] + MAX_POWER_BOUGHT
+        power_cap = MAX_POWER_BOUGHT * self.level  # T-60: 2 × level (creation = +2)
+        if not (0 <= self.power_bought <= power_cap):
+            cap = BASE_POWER[AttackMode(self.attack_mode)] + power_cap
             raise ValueError(
-                f"Power cap at creation is +{MAX_POWER_BOUGHT} "
-                f"({self.attack_mode.value} ≤ {cap}) — §P-4/T5-14"
+                f"Power cap at level {self.level} is +{power_cap} "
+                f"({self.attack_mode.value} ≤ {cap}) — §P-4/T-60"
             )
         return self
 
@@ -1461,14 +1468,22 @@ class Character(BaseModel):
 
     @model_validator(mode="after")
     def _within_budget(self) -> "Character":
-        """The build may not spend more than the 70-point creation budget (§P-1).
-        Migrated legacy characters are exempt (their odd HP can exceed it)."""
-        if not self.legacy and self.points_spent > CREATION_BUDGET:
+        """The build may not spend more than its level's budget: the 70-point
+        creation budget (§P-1) plus 30 per level-up (Update 10 T-57 — adventure-
+        local leveling). Migrated legacy characters are exempt (their odd HP can
+        exceed it)."""
+        budget = CREATION_BUDGET + LEVEL_UP_POINTS * (self.level - 1)
+        if not self.legacy and self.points_spent > budget:
             raise ValueError(
                 f"build spends {self.points_spent} points, over the "
-                f"{CREATION_BUDGET}-point creation budget (§P-1)"
+                f"{budget}-point budget for level {self.level} (§P-1/T-57)"
             )
         return self
+
+    @property
+    def points_budget(self) -> int:
+        """The total points available to a build of this level (T5-01 + T-57)."""
+        return CREATION_BUDGET + LEVEL_UP_POINTS * (self.level - 1)
 
     @model_validator(mode="after")
     def _heroics_valid(self) -> "Character":
@@ -1508,7 +1523,7 @@ class Character(BaseModel):
 
     @property
     def points_remaining(self) -> int:
-        return CREATION_BUDGET - self.points_spent
+        return self.points_budget - self.points_spent
 
     @property
     def stat_block(self) -> dict:

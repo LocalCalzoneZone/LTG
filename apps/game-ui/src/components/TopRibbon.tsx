@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { roman } from "../lib/format";
 import { useGame } from "../lib/store";
 import { IconGear, IconLink, IconPlus } from "./Icons";
 
@@ -65,6 +66,14 @@ export function TopRibbon({ onNewGame, onOptions }: {
             title={connected ? "connected" : "disconnected"}
           />
         </>
+      )}
+      {snapshot?.adventure && (
+        <span
+          className="caps-label text-[10px] tracking-[0.18em] text-mist"
+          title={`${snapshot.adventure.name} — ${snapshot.adventure.act_name}`}
+        >
+          Act {roman(snapshot.adventure.act)} / {roman(snapshot.adventure.acts_total)}
+        </span>
       )}
 
       {/* turn tracker — centred */}

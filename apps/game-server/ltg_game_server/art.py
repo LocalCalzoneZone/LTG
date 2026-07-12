@@ -14,13 +14,14 @@ and the JSON stays small. Enemy art is keyed by the POOL enemy id; layout clones
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import re
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -359,6 +360,115 @@ def generate(encounter_id: str, kind: str, enemy_id: Optional[str] = None,
         _find_enemy(enc, enemy_id)["image"] = url
     content.save_encounter(enc, encounter_id)  # same validate + persist path as edits
     return {"url": url}
+
+
+# --------------------------------------------------------------------------- #
+# The art queue — "Generate all art" (Design Update 10 §D10-6.4)
+# --------------------------------------------------------------------------- #
+class ArtQueue:
+    """Sequential generate-all jobs, one per content id (an encounter, or an
+    adventure covering its acts in order). One generation in flight per job;
+    each completion — success or failure — fires the next: a failure is logged
+    and skipped, never blocking the queue. Enqueueing is idempotent (only what
+    is still missing joins), and every landed image broadcasts to connected
+    clients through the same refresh path a single generation takes."""
+
+    def __init__(self) -> None:
+        self._jobs: Dict[str, Dict[str, Any]] = {}
+
+    @staticmethod
+    def _item_key(item: Dict[str, Any]) -> "tuple":
+        return (item["encounter_id"], item["kind"], item["enemy_id"])
+
+    @staticmethod
+    def _missing(encounter_ids: List[str]) -> List[Dict[str, Any]]:
+        """Every absent image across the given encounters, in order: the
+        backdrop first, then each undrawn enemy / token portrait."""
+        items: List[Dict[str, Any]] = []
+        for eid in encounter_ids:
+            enc = content.encounter_detail(eid)
+            if enc is None:
+                continue
+            name = str(enc.get("name") or eid)
+            # A backdrop needs a scene description to paint from; a hand-
+            # authored encounter without one is skipped, not failed.
+            if not enc.get("scene_image") and str(enc.get("scene") or "").strip():
+                items.append({"encounter_id": eid, "kind": "scene",
+                              "enemy_id": None, "label": f"{name} — backdrop"})
+            for e in enc.get("enemies", []):
+                if isinstance(e, dict) and not e.get("image"):
+                    pid = _enemy_pool_id(e)
+                    items.append({"encounter_id": eid, "kind": "enemy",
+                                  "enemy_id": pid,
+                                  "label": f"{name} — {e.get('name', pid)}"})
+            for tid, tok in (enc.get("tokens") or {}).items():
+                if isinstance(tok, dict) and not tok.get("image"):
+                    items.append({"encounter_id": eid, "kind": "enemy",
+                                  "enemy_id": str(tid),
+                                  "label": f"{name} — {tok.get('name', tid)}"})
+        return items
+
+    def start(self, key: str, encounter_ids: List[str],
+              refresh: Callable[[str], Awaitable[None]]) -> Dict[str, Any]:
+        """Queue every still-missing image for the given encounters (an
+        adventure passes its acts in order) and start the runner if idle.
+        Pressing again while running only adds what is newly missing."""
+        missing = self._missing(encounter_ids)
+        job = self._jobs.get(key)
+        if job and job["running"]:
+            queued = {self._item_key(i) for i in job["pending"]}
+            if job["current"] is not None:
+                queued.add(self._item_key(job["current"]))
+            fresh = [i for i in missing if self._item_key(i) not in queued]
+            job["pending"].extend(fresh)
+            job["total"] += len(fresh)
+            return self.status(key)
+        job = {"pending": missing, "total": len(missing), "done": 0,
+               "failed": 0, "running": bool(missing), "current": None,
+               "errors": []}
+        self._jobs[key] = job
+        if missing:
+            asyncio.get_running_loop().create_task(self._run(key, refresh))
+        return self.status(key)
+
+    async def _run(self, key: str,
+                   refresh: Callable[[str], Awaitable[None]]) -> None:
+        job = self._jobs[key]
+        try:
+            while job["pending"]:
+                item = job["pending"].pop(0)
+                job["current"] = item
+                try:
+                    # Re-check on execution: an image may have landed since the
+                    # enqueue (a manual Paint, or an overlapping press).
+                    current = content.encounter_art(item["encounter_id"])
+                    have = (current["scene"] if item["kind"] == "scene"
+                            else current["enemies"].get(item["enemy_id"] or "", ""))
+                    if not have:
+                        await asyncio.to_thread(
+                            generate, item["encounter_id"], item["kind"],
+                            item["enemy_id"], "")
+                        await refresh(item["encounter_id"])
+                    job["done"] += 1
+                except Exception as exc:  # skip-on-failure — the queue never stalls
+                    job["failed"] += 1
+                    job["errors"].append(f"{item['label']}: {exc}")
+        finally:
+            job["current"] = None
+            job["running"] = False
+
+    def status(self, key: str) -> Dict[str, Any]:
+        job = self._jobs.get(key)
+        if job is None:
+            return {"total": 0, "done": 0, "failed": 0, "running": False,
+                    "current": None, "errors": []}
+        return {"total": job["total"], "done": job["done"],
+                "failed": job["failed"], "running": job["running"],
+                "current": (job["current"] or {}).get("label"),
+                "errors": list(job["errors"][-3:])}
+
+
+QUEUE = ArtQueue()
 
 
 def remove(encounter_id: str, kind: str, enemy_id: Optional[str] = None) -> Dict[str, Any]:
