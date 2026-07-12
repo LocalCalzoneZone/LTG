@@ -381,6 +381,10 @@ def _value(v) -> str:
             return "its current HP"
         if v.ref == "casting_cost":
             return "its casting cost"
+        if v.ref == "caster_last_damage":
+            return "the last damage you took"
+        if v.ref == "target_last_damage":
+            return "the last damage it took"
         if v.ref.endswith(".level"):
             return "its Level"
         return v.ref
@@ -441,9 +445,15 @@ def _render_add_mana(e) -> str:
 
 
 def _prevent_phrase(parameter: str) -> str:
-    """A `prevent [parameter]` nullification, in player-facing words (R-11)."""
-    return {"combat_damage": "combat damage", "damage": "damage",
-            "all": "damage", "attack": "attacks"}.get(parameter, parameter.replace("_", " "))
+    """A `prevent [parameter]` nullification, in player-facing words (R-11).
+    Combat damage covers attacks AND activated abilities; spell damage covers
+    spells and triggered abilities; all damage covers everything."""
+    return {"combat_damage": "combat damage (attacks & abilities)",
+            "spell_damage": "spell damage (spells & triggers)",
+            "all_damage": "damage",
+            "damage": "damage",  # legacy spellings
+            "all": "damage",
+            "attack": "attacks"}.get(parameter, parameter.replace("_", " "))
 
 
 def _render_prevent(e) -> str:
@@ -734,6 +744,47 @@ def _render_move(e) -> str:
     return f"Move {_tgt(e.target)} {_MOVE_DIR_PHRASE.get(e.direction, e.direction)} (immediately)."
 
 
+_AMPLIFY_WHAT = {"combat_damage": "combat damage dealt",
+                 "spell_damage": "spell damage dealt",
+                 "any_damage": "damage dealt",
+                 "heal": "heal"}
+
+
+def _amplify_boost(e) -> str:
+    """'doubled' / 'tripled' / '×N' with an optional '+M' flat rider."""
+    parts = []
+    if e.multiplier == 2 and not e.bonus:
+        return "doubled"
+    if e.multiplier == 3 and not e.bonus:
+        return "tripled"
+    if e.multiplier > 1:
+        parts.append(f"×{e.multiplier}")
+    if e.bonus:
+        parts.append(f"+{e.bonus}")
+    return " and ".join(parts) if e.multiplier > 1 else f"increased by {e.bonus}"
+
+
+def _amplify_subject(e) -> str:
+    """Possessive subject: 'Your next …' for a self target, else the target's."""
+    desc = _resolve(e.target, _RENDER_TARGETS.get())
+    if getattr(desc, "mode", None) == TargetMode.self_ or desc is None:
+        return "your"
+    return f"{_tgt(e.target)}'s"
+
+
+def _render_amplify(e) -> str:
+    return (f"{_amplify_subject(e).capitalize()} next "
+            f"{_AMPLIFY_WHAT.get(e.event, e.event)} is {_amplify_boost(e)}.")
+
+
+_DOUBLE_NOUN = {"spell": "spell", "ability": "ability", "action": "action"}
+
+
+def _render_double_next(e) -> str:
+    return (f"{_amplify_subject(e).capitalize()} next "
+            f"{_DOUBLE_NOUN.get(e.filter, e.filter)} to resolve, resolves twice.")
+
+
 _STANCE_LABEL = {"attack": "Attack", "defend": "Defend",
                  "mitigate": "Mitigate", "move": "Move"}
 
@@ -779,6 +830,10 @@ RENDERERS = {
     "counters": _render_counters,
     "prevent": _render_prevent,
     "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
+    "amplify": _render_amplify,
+    "copy_spell": lambda e: ("Copy a spell on the stack — you assign the copy's "
+                             "target as it resolves."),
+    "double_next": _render_double_next,
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
         else f"Draw {_value(e.amount)} card(s)."
@@ -847,6 +902,10 @@ _CLAUSE = {
         "can't attack" if e.parameter == "attack"
         else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
              f"{_prevent_phrase(e.parameter)} prevented"),
+    "amplify": lambda e: (f"have their next {_AMPLIFY_WHAT.get(e.event, e.event)} "
+                          f"{_amplify_boost(e)}"),
+    "double_next": lambda e: (f"have their next {_DOUBLE_NOUN.get(e.filter, e.filter)} "
+                              f"resolve twice"),
 }
 
 

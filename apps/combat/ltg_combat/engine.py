@@ -47,6 +47,7 @@ from ltg_core.schema import (
 from .state import (
     Action,
     Affliction,
+    AmplifyTag,
     Channel,
     CharacterState,
     Component,
@@ -1429,10 +1430,11 @@ def _reaction_target(st: GameState, e: EnemyState, comp: Component, ctx: dict):
 
 
 def _reaction_counters_stack(comp: Component) -> bool:
-    """A reaction whose verbs include `counter` answers the STACK TOP itself (an
-    enemy counterspell, §F-3.2): its target is the action under answer, not a
-    combatant."""
-    return any(getattr(v, "kind", None) == "counter" for v in comp.verbs)
+    """A reaction whose verbs include `counter` (or `copy_spell` — an enemy
+    spell-mirror) answers the STACK TOP itself (§F-3.2): its target is the
+    action under answer, not a combatant."""
+    return any(getattr(v, "kind", None) in ("counter", "copy_spell")
+               for v in comp.verbs)
 
 
 def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> None:
@@ -1640,22 +1642,32 @@ def _do_drop_channels(st: GameState, action: Action) -> None:
 
 
 def _do_use_skill(st: GameState, action: Action) -> None:
-    """The authored once-per-encounter Skill (D8-3.1): instant speed, free of the
-    proactive action, castable in any window an instant fits. It lands on the
-    stack as an ACTIVATED ability — a spell-filter counter cannot answer it; an
-    ability/action-filter counter can. May carry a mana cost, paid normally."""
+    """The authored once-per-encounter Skill (D8-3.1, amended): an ACTIVATED
+    ability at ACTIVE speed — main phase only, and it CONSUMES the proactive
+    action (no attack/defend/etc. that turn unless the actor has vigilance;
+    the offer gating in `_heroic_actions` reads that). It lands on the stack as
+    an activated ability — a spell-filter counter cannot answer it; an
+    ability/action-filter counter can. May carry a mana cost, paid normally.
+    A CHANNELED skill starts a held channel on resolution, like any channeled
+    cast (this is what makes skill-stances possible)."""
     actor = st.character(action.actor_id)
     card = actor.skill
-    reactive = bool(st.stack)
     x = max(0, int(action.x or 0))
-    _pay(actor, card, action.mana, x=x)
+    paid = _pay(actor, card, action.mana, x=x)
     actor.skill_used = True
+    actor.acted_mode = "skill"  # the Skill IS the turn's proactive action
+    reserved = list(paid) if card.timing == Timing.channeled else []
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{card.name} (Skill)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
-                        card=card, mode=action.mode, x=x,
-                        cast_mode="reaction" if reactive else "action"))
-    _open_window(st, actor.id, reactive=reactive)
+                        card=card, reserved=reserved, mode=action.mode, x=x,
+                        # A channeled skill becomes a held channel at resolution
+                        # (the flag keeps it distinct from other activated items
+                        # that merely CARRY a channeled card, e.g. a stance's
+                        # replaced ability).
+                        starts_channel=(card.timing == Timing.channeled),
+                        cast_mode="action"))
+    _open_window(st, actor.id, reactive=False)
     tgt = st.combatant(action.target_id)
     _log(st, "skill", f"{actor.name} uses their Skill — {card.name}"
          + (f" on {tgt.name}" if tgt else "") + ".",
@@ -1715,9 +1727,11 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
         actor.used_mitigate = True
     reactive = bool(st.stack)
     name = repl.name or f"{slot.title()}"
+    # The stance's card rides along so slot refs ("$T1") and their descriptors
+    # (splash scope, corpse state) resolve during the replacement's resolution.
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{name} (stance)", effects=list(repl.effects),
-                        target_id=action.target_id,
+                        target_id=action.target_id, card=_stance_card(actor),
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
@@ -1766,10 +1780,22 @@ def _resolve_top(st: GameState) -> StackItem:
     item = st.stack.pop()
     _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
     # A channeled card CAST doesn't run its effects once — it becomes a held
-    # channel. Only the cast (kind "spell") starts it: a pushed triggered ability
-    # (kind "triggered") carries the same card purely for slot descriptors and
-    # labels, and resolves its effects normally.
-    if item.card is not None and item.card.timing == Timing.channeled and item.kind == "spell":
+    # channel. The cast (kind "spell") starts it, and so does a channeled SKILL
+    # (kind "activated" with `starts_channel` — the skill-stance path). Other
+    # items may carry the same card purely for slot descriptors and labels — a
+    # pushed break trigger (kind "triggered") or a stance-replaced ability
+    # (kind "activated", no flag) — and resolve their effects normally.
+    starts_player_channel = (item.card is not None
+                             and item.card.timing == Timing.channeled
+                             and (item.kind == "spell"
+                                  or (item.kind == "activated"
+                                      and item.starts_channel)))
+    # `double_next` (the spell multiplier): the source's next matching action
+    # resolves twice — the echo is pushed UNDER nothing (top of the now-shorter
+    # stack) so it resolves immediately after this original. Copies never chain
+    # (is_copy), and a channel start is never doubled (one card, one channel).
+    _queue_echo(st, item, skip=starts_player_channel or item.starts_channel)
+    if starts_player_channel:
         _start_channel(st, item)
         return item
     # An enemy channel-component's intent likewise becomes a held channel (§8).
@@ -1779,6 +1805,32 @@ def _resolve_top(st: GameState) -> StackItem:
     ctx = _new_ctx(st, item)
     _resolve_effect_list(st, item, item.effects, ctx)
     return item
+
+
+def _queue_echo(st: GameState, item: StackItem, skip: bool) -> None:
+    """Consume a matching `double_next` tag on the resolving item's source and
+    push an echo — a copy of the item that resolves right after it ("the next
+    spell to resolve, resolves twice")."""
+    if skip or item.is_copy:
+        return
+    src = st.combatant(item.source_id)
+    tags = getattr(src, "double_next", None)
+    if not tags:
+        return
+    for f in list(tags):
+        if item.kind in _FILTER_MATCHES.get(f, set()):
+            tags.remove(f)
+            echo = copy.deepcopy(item)
+            echo.is_copy = True
+            echo.label = f"{item.label} (echo)"
+            # The echo is its own resolution: a declared Mitigate rode the
+            # original swing only.
+            echo.mitigate_by = echo.mitigate_for = None
+            _push(st, echo)
+            _log(st, "double",
+                 f"{item.label} resolves twice — the echo follows.",
+                 source=item.source_id, label=item.label, filter=f)
+            return
 
 
 def _cost_total(card: Optional[Card], x: int = 0) -> int:
@@ -2417,7 +2469,8 @@ def _do_choose_target(st: GameState, action: Action) -> None:
 
 # Effects that act on the source or a stack item, not on the resolved `target`
 # (a None target is legitimate for them); every other effect needs a target to land on.
-_TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge"})
+_TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge",
+                         "copy_spell"})
 
 
 def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
@@ -2696,6 +2749,10 @@ def _value(amount, ctx: dict) -> int:
             return _live_stat(ctx.get("caster_obj"), amount.ref.split("_", 1)[1])
         if amount.ref in ("target_power", "target_hp"):
             return _live_stat(ctx.get("target_obj"), amount.ref.split("_", 1)[1])
+        if amount.ref == "caster_last_damage":
+            return max(0, int(getattr(ctx.get("caster_obj"), "last_damage_taken", 0) or 0))
+        if amount.ref == "target_last_damage":
+            return max(0, int(getattr(ctx.get("target_obj"), "last_damage_taken", 0) or 0))
         raise ValueError(f"unsupported value reference '{amount.ref}'")
     if amount == "all":
         return 0  # guarded earlier; never reached for a real effect
@@ -3279,6 +3336,79 @@ def _r_prevent_only(st, item, effect, target, ctx):
          target=_tid(target), parameter=effect.parameter, uses=uses)
 
 
+def _r_amplify(st, item, effect, target, ctx):
+    # The combo verb: prime the target's next outgoing damage (or heal). The tag
+    # holds until spent — a primed combo does not fizzle at end of turn.
+    target.amplify_tags.append(AmplifyTag(event=effect.event,
+                                          multiplier=effect.multiplier,
+                                          bonus=effect.bonus))
+    what = {"combat_damage": "combat damage dealt", "spell_damage": "spell damage dealt",
+            "any_damage": "damage dealt", "heal": "heal"}.get(effect.event, effect.event)
+    mult = f"×{effect.multiplier}" if effect.multiplier > 1 else ""
+    plus = f"+{effect.bonus}" if effect.bonus else ""
+    _log(st, "amplify", f"{target.name}'s next {what} is primed "
+         f"({' '.join(p for p in (mult, plus) if p)}).",
+         target=_tid(target), event=effect.event,
+         multiplier=effect.multiplier, bonus=effect.bonus)
+
+
+def _r_copy_spell(st, item, effect, target, ctx):
+    # Copy a spell on the stack (a spell multiplier). The copy belongs to the
+    # COPIER: it resolves from their side (ally/enemy language flips with
+    # source_side), and a player copier re-picks the copy's chosen target as
+    # the copy goes on the stack (the trigger-pick machinery). An enemy copier
+    # keeps the original's targets. Channeled casts can't be copied.
+    tid = _site_target(item, ctx, effect, getattr(effect, "target", None))
+    uid = _parse_uid(tid)
+    victim = next((s for s in st.stack if s.uid == uid), None) if uid is not None else None
+    if victim is None or not _filter_matches("spell", victim):
+        _log(st, "copy_fizzle", f"{item.label} has no spell to copy.", kind="copy_spell")
+        return
+    if victim.card is not None and victim.card.timing == Timing.channeled:
+        _log(st, "copy_fizzle",
+             f"{item.label} can't copy {victim.label} — a channel is a held card, "
+             f"not a one-shot.", kind="copy_spell")
+        return
+    echo = StackItem(kind="spell", source_id=item.source_id,
+                     source_side=item.source_side,
+                     label=f"Copy of {victim.label}",
+                     effects=copy.deepcopy(victim.effects),
+                     target_id=victim.target_id, targets=victim.targets,
+                     card=victim.card, card_id=victim.card_id,
+                     mode=victim.mode, x=victim.x, cast_mode=item.cast_mode,
+                     is_copy=True)
+    copier = st.character(item.source_id)
+    single_site = len(_target_sites(_pending_trigger_effects(echo), echo.card)) == 1
+    if copier is not None and single_site:
+        # A single-target copy: the copier assigns the target fresh (multi-site
+        # copies keep the original bindings — one pick can't rebind them all).
+        echo.target_id = None
+        echo.targets = ()
+        echo.needs_target = _trigger_pick_effect(echo) is not None
+    elif copier is None and single_site and item.source_side == "enemy":
+        # An enemy copier makes no interactive pick: its copy MIRRORS — the
+        # chosen target becomes the original caster ("your own fire returns").
+        echo.target_id = victim.source_id
+        echo.targets = ()
+    _push(st, echo)
+    _log(st, "copy_spell", f"{item.label} copies {victim.label} — the copy is "
+         f"{getattr(st.combatant(item.source_id), 'name', item.source_id)}'s.",
+         source=item.source_id, copied=victim.label, uid=victim.uid)
+    if echo.needs_target:
+        _raise_next_trigger_pick(st)
+
+
+def _r_double_next(st, item, effect, target, ctx):
+    # The other spell multiplier: tag the target so their next matching action
+    # resolves twice (consumed in _resolve_top via _queue_echo).
+    target.double_next.append(effect.filter)
+    noun = {"spell": "spell", "ability": "ability", "action": "action"}.get(
+        effect.filter, effect.filter)
+    _log(st, "double_next",
+         f"{target.name}'s next {noun} to resolve will resolve twice.",
+         target=_tid(target), filter=effect.filter)
+
+
 def _r_protection(st, item, effect, target, ctx):
     target.protection += 1
     _log(st, "protection", f"{target.name} gains protection ({effect.scope}).",
@@ -3584,6 +3714,9 @@ RESOLVERS = {
     "counters": _r_counters,
     "prevent": _r_prevent_only,
     "protection": _r_protection,
+    "amplify": _r_amplify,
+    "copy_spell": _r_copy_spell,
+    "double_next": _r_double_next,
     "draw": _r_draw,
     "scry": _r_scry,
     "move_card": _r_move_card,
@@ -3838,16 +3971,58 @@ def _prevented_action(combatant, action: str) -> bool:
     return any(t.parameter == action for t in getattr(combatant, "prevent_tags", []))
 
 
+# The two damage lanes (shared by `prevent` and `amplify`): COMBAT damage is the
+# physical lane — basic attacks, activated/component abilities, and fights (an
+# enemy's "Slash"/"Claw" is narratively an attack even when it is an ability);
+# SPELL damage is the arcane lane — spells and triggered abilities.
+_COMBAT_DAMAGE_KINDS = frozenset({"attack", "activated", "ability", "fight"})
+_SPELL_DAMAGE_KINDS = frozenset({"spell", "triggered"})
+
+
 def _prevent_match(parameter: str, damage_kind: str) -> bool:
     """Does a `prevent [parameter]` tag nullify this incoming damage (R-11)? Action
     shields (e.g. `prevent attack`) block the actor, not damage — they never match."""
     if parameter in _ACTION_PREVENT:
         return False
-    if parameter in ("damage", "all"):
+    if parameter in ("all_damage", "damage", "all"):  # legacy spellings included
         return True
     if parameter == "combat_damage":
-        return damage_kind == "attack"
+        return damage_kind in _COMBAT_DAMAGE_KINDS
+    if parameter == "spell_damage":
+        return damage_kind in _SPELL_DAMAGE_KINDS
     return parameter == damage_kind
+
+
+def _amplify_match(event: str, damage_kind: str) -> bool:
+    """Does an `amplify` tag prime this outgoing damage? (The `heal` event never
+    matches damage — it is consumed by `_heal` instead.)"""
+    if event == "any_damage":
+        return True
+    if event == "combat_damage":
+        return damage_kind in _COMBAT_DAMAGE_KINDS
+    if event == "spell_damage":
+        return damage_kind in _SPELL_DAMAGE_KINDS
+    return False
+
+
+def _apply_amplify(st: GameState, source_obj, amount: int, damage_kind: str,
+                   source: str) -> int:
+    """Spend the source's first matching `amplify` tag on this outgoing hit:
+    amount × multiplier + bonus. One-shot — the tag is consumed by the match."""
+    tags = getattr(source_obj, "amplify_tags", None)
+    if not tags:
+        return amount
+    for tag in list(tags):
+        if tag.event != "heal" and _amplify_match(tag.event, damage_kind):
+            tags.remove(tag)
+            boosted = amount * max(1, tag.multiplier) + tag.bonus
+            _log(st, "amplified",
+                 f"{source or 'The hit'} is amplified: {amount} → {boosted} "
+                 f"(×{tag.multiplier}" + (f" +{tag.bonus}" if tag.bonus else "") + ").",
+                 source=getattr(source_obj, "id", None), before=amount,
+                 after=boosted, event=tag.event)
+            return boosted
+    return amount
 
 
 def _deal_damage(st: GameState, target, amount: int, source: str = "", source_obj=None,
@@ -3864,6 +4039,10 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     excess onto one more creature (see `_r_deal_damage`); every other caller ignores it."""
     if target is None or amount <= 0:
         return 0
+
+    # A primed combo (`amplify`) multiplies/boosts the SOURCE's outgoing hit
+    # before the target's defences answer it.
+    amount = _apply_amplify(st, source_obj, amount, damage_kind, source)
 
     # R-11 prevent: a matching shield cancels the hit outright. A one-shot shield
     # (`uses="next"`) is spent by it; an "all" shield (uses=None) keeps standing and
@@ -3940,6 +4119,9 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     # (so a shielded hit still feeds lifelink/deathtouch; identical to before when no
     # temp HP was present).
     connected = absorbed + dealt
+    if connected > 0 and hasattr(target, "last_damage_taken"):
+        # The `*_last_damage` combo refs read the last blow that CONNECTED.
+        target.last_damage_taken = connected
     # Ultimate-gauge accounting (D8-3.3): the victim charges +1 per point of
     # current HP lost; a character source charges +1 per point of their damage
     # that connects (their attacks/spells/abilities — not their tokens').
@@ -3984,6 +4166,21 @@ def _heal(st: GameState, target, amount: int, reason: str = "",
     (overheal beyond max counts 0 — §D8-3.3)."""
     if amount <= 0 or target is None:
         return
+    # A primed heal combo: the HEALER's `amplify heal` tag multiplies/boosts
+    # their next outgoing heal ("the next time you heal, heal ×2"). One-shot.
+    tags = getattr(source_obj, "amplify_tags", None)
+    if tags:
+        for tag in list(tags):
+            if tag.event == "heal":
+                tags.remove(tag)
+                boosted = amount * max(1, tag.multiplier) + tag.bonus
+                _log(st, "amplified",
+                     f"{getattr(source_obj, 'name', 'The healer')}'s heal is amplified: "
+                     f"{amount} → {boosted}.",
+                     source=getattr(source_obj, "id", None), before=amount, after=boosted,
+                     event="heal")
+                amount = boosted
+                break
     _cure_poison(st, target)  # an antidote is an antidote — even a 0-restore heal
     gained = 0  # wound closed + HP restored — what on-life-gain triggers key off
     if target.temp_mod < 0:  # cancel the wound toward 0 first
@@ -4335,14 +4532,28 @@ def _stance_slot(char: Optional[CharacterState], slot: str):
     return getattr(s, slot) if s is not None else "unchanged"
 
 
+def _stance_card(char: Optional[CharacterState]) -> Optional[Card]:
+    """The CARD whose channel carries the holder's active stance, or None. A
+    replacement's effects may reference the card's shared target slots ("$T1"),
+    so enumeration and resolution need the card to resolve them."""
+    for ch in getattr(char, "channels", []) or []:
+        for e in ch.card.effects:
+            if getattr(e, "kind", None) == "stance":
+                return ch.card
+    return None
+
+
 def _stance_actions(st: GameState, actor: CharacterState, slot: str,
                     repl) -> List[Action]:
     """One Action per legal target of a replaced ability (§D9-2.3): the standard
     target enumeration over the replacement's leaf effects. `card_id` carries the
-    slot name so `_do_stance_ability` finds the replacement again at apply time."""
+    slot name so `_do_stance_ability` finds the replacement again at apply time.
+    The stance's own card rides along so a replacement aimed at a shared slot
+    ("$T1") resolves the slot's side instead of enumerating nothing."""
     name = repl.name or f"{slot.title()} (stance)"
     out = []
-    for tid, tlabel in _target_options_for(st, list(repl.effects), None):
+    for tid, tlabel in _target_options_for(st, list(repl.effects),
+                                           _stance_card(actor)):
         label = f"{name} (stance)" + (f" on {tlabel}" if tlabel else "")
         out.append(Action("stance_ability", actor.id, card_id=slot,
                           target_id=tid, label=label))
@@ -4371,7 +4582,7 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     # A stance may remove it (gone in every form) or replace it (an activated
     # ability with the slot's economy — once per round, satisfies the proactive
     # Attack choice; Pacifism binds the sword, not the replacement).
-    if not actor.used_attack and (mode is None or (vig and mode == "cast")):
+    if not actor.used_attack and (mode is None or (vig and mode in ("cast", "skill"))):
         if aslot == "unchanged":
             if not _prevented_action(actor, "attack"):
                 dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
@@ -4399,8 +4610,9 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     elif mslot != "removed":
         if not actor.used_move and (mode is None or _has_kw(actor, "haste")):
             actions += _stance_actions(st, actor, "move", mslot)
-    # Cast sorcery-speed spells (sorcery/channeled): after an Attack only if vigilant.
-    if mode in (None, "cast") or (vig and mode == "attack"):
+    # Cast sorcery-speed spells (sorcery/channeled): after an Attack/Skill only
+    # if vigilant.
+    if mode in (None, "cast") or (vig and mode in ("attack", "skill")):
         for card in actor.hand:
             if card.timing in _SORCERY_SPEED and _can_pay(actor, card):
                 if _card_has_stance(card) and _active_stance(actor) is not None:
@@ -4464,7 +4676,8 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
                                           label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
         elif mit_slot != "removed":
             actions += _stance_actions(st, actor, "mitigate", mit_slot)
-    actions += _heroic_actions(st, actor, main_phase=False)  # Skill reacts (D8-3.1)
+    # The Skill no longer reacts (it is an activated ability — active speed,
+    # main phase only), so no heroic offers appear in a reaction window.
     actions += _drop_actions(st, actor)
     actions.append(Action("pass", actor.id, label="Pass"))
     return actions
@@ -4498,14 +4711,26 @@ def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:
 
 def _heroic_actions(st: GameState, actor: CharacterState,
                     main_phase: bool) -> List[Action]:
-    """The once-per-encounter Skill/Ultimate offers (D8-3). The Skill is instant
-    speed — offered wherever an instant is (main phase and reaction windows); the
-    Ultimate is an action — main phase only, proactive action unspent, and only
-    while the gauge is full."""
+    """The once-per-encounter Skill/Ultimate offers (D8-3, amended). BOTH are
+    activated abilities at active speed — main phase only. The Skill consumes
+    the proactive action, so it is offered only while that action is unspent —
+    unless the actor has vigilance, which lets the Skill ride alongside an
+    Attack or Cast turn (and vice versa). The Ultimate additionally needs a
+    full gauge."""
     out: List[Action] = []
-    if actor.skill is not None and not actor.skill_used and _can_pay(actor, actor.skill):
-        out += _hero_ability_actions(st, actor, actor.skill, "use_skill", "Skill")
-    if (main_phase and actor.ultimate is not None and not actor.ultimate_used
+    if not main_phase:
+        return out
+    mode = actor.acted_mode
+    vig = _has_kw(actor, "vigilance")
+    skill_ok = mode is None or (vig and mode in ("attack", "cast"))
+    if (skill_ok and actor.skill is not None and not actor.skill_used
+            and _can_pay(actor, actor.skill)):
+        skill = actor.skill
+        # One stance at a time (§D9-2.3): a channeled stance-skill waits until
+        # the held one is dropped, same as a stance card.
+        if not (_card_has_stance(skill) and _active_stance(actor) is not None):
+            out += _hero_ability_actions(st, actor, skill, "use_skill", "Skill")
+    if (actor.ultimate is not None and not actor.ultimate_used
             and actor.ultimate_gauge >= 100 and actor.acted_mode is None):
         out += _hero_ability_actions(st, actor, actor.ultimate, "use_ultimate", "Ultimate")
     return out
@@ -4554,10 +4779,14 @@ def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
         if len(sites) >= 2:
             per_site = []
             for _key, side, targeted, kind, state in sites:
-                if isinstance(side, str) and side.startswith("stack:"):
-                    filt = side[len("stack:"):]
+                if isinstance(side, str) and side.startswith("stack"):
+                    # "stack:<filt>" = enemy actions only (a counter);
+                    # "stack_any:<filt>" = either side's (a copy_spell).
+                    any_side = side.startswith("stack_any:")
+                    filt = side.split(":", 1)[1]
                     opts = [(f"#{s.uid}", s.label) for s in st.stack
-                            if s.source_side == "enemy" and _filter_matches(filt, s)]
+                            if (any_side or s.source_side == "enemy")
+                            and _filter_matches(filt, s)]
                 else:
                     opts = _pick_options(st, side, targeted, kind, state)
                 per_site.append(opts)
@@ -4728,6 +4957,11 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if s.source_side == "enemy" and _filter_matches(filt, s)]
+    # A copy_spell targets a spell on the stack — EITHER side's (copy your
+    # ally's Fireball or the enemy ritual's shape).
+    if any(e.kind == "copy_spell" for e in _iter_leaf(effects)):
+        return [(f"#{s.uid}", s.label) for s in st.stack
+                if _filter_matches("spell", s)]
     side, targeted, kind, state = None, False, None, None
     # Triggered effects pick their targets when the trigger fires, not at cast
     # (mirrors the _target_sites exclusion). Nested effects never carry triggers,
@@ -4803,6 +5037,10 @@ def _target_sites(effects, card: Card):
             # The counter's target is an enemy action on the stack, not a creature.
             sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter", None))
             continue
+        if e.kind == "copy_spell":
+            # A copy's target is a spell on the stack, either side's ("stack_any").
+            sites.append((("eff", id(e)), "stack_any:spell", True, "copy_spell", None))
+            continue
         if e.kind == "fight":
             # Fight's two targets are always chosen (even authored inline). Force both
             # sites, keying `other` apart from the primary so each binds independently.
@@ -4848,6 +5086,9 @@ def _effect_site_label(e) -> Optional[str]:
         "strip_intent": "strip intent",
         "revive": "revive",
         "lose_life": "drain",
+        "copy_spell": "copy",
+        "amplify": "prime",
+        "double_next": "double",
     }.get(k)
 
 
@@ -4914,7 +5155,13 @@ def _drop_enables_play(st: GameState, actor: Optional[CharacterState]) -> bool:
                            power=0, hand_size=0)
     probe.pool = list(actor.pool) + list(actor.reserved)
     candidates = [c for c in actor.hand if c.timing == Timing.instant]
-    if actor.skill is not None and not actor.skill_used:
+    # The Skill is main-phase-only now (an activated ability that consumes the
+    # proactive action) — it only makes a drop worthwhile when it could
+    # actually be used from here.
+    if (actor.skill is not None and not actor.skill_used and not st.stack
+            and (actor.acted_mode is None
+                 or (_has_kw(actor, "vigilance")
+                     and actor.acted_mode in ("attack", "cast")))):
         candidates.append(actor.skill)
     return any(_can_pay(probe, c) for c in candidates)
 

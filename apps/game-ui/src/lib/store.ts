@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { GameSocket } from "./ws";
-import type { GameSnapshot, LegalAction } from "./types";
+import type { CardView, GameSnapshot, LegalAction } from "./types";
 import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choices } from "./choices";
 import {
   FX_TTL,
@@ -371,9 +371,11 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   // Submit a finished action — but casts detour through beginCast so an ambiguous
-  // mana payment can prompt a pick before the action is sent.
+  // mana payment can prompt a pick before the action is sent. The Skill pays
+  // mana exactly like a cast (engine: _do_use_skill → _pay), so it detours too;
+  // the Ultimate never costs mana (the gauge is the cost) and submits directly.
   _finishAction: (kind: string, actions: LegalAction[]) => {
-    if (kind === "cast") get().beginCast(actions);
+    if (kind === "cast" || kind === "use_skill") get().beginCast(actions);
     else get().submitIndex(actions[0].index);
   },
 
@@ -381,7 +383,13 @@ export const useGame = create<StoreState>((set, get) => ({
     const action = actions[0];
     const snap = get().snapshot;
     const char = snap?.characters.find((c) => c.id === action.actor_id) ?? null;
-    const card = char?.hand?.find((c) => c.id === action.card_id) ?? null;
+    // The card being paid for: a hand card for a cast, the Skill face for
+    // use_skill (full card fields ship for controlled characters).
+    const card =
+      char?.hand?.find((c) => c.id === action.card_id)
+      ?? (char?.skill?.id === action.card_id && char.skill.cost != null
+        ? (char.skill as CardView)
+        : null);
     if (!char || !card) {
       get().submitIndex(action.index); // no hand info — let the engine pay deterministically
       return;

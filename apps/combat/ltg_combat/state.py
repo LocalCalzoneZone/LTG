@@ -43,6 +43,18 @@ class Affliction:
 
 
 @dataclass
+class AmplifyTag:
+    """A one-shot `amplify` priming riding a combatant: their NEXT outgoing
+    damage (or heal) matching `event` is `multiplier ×` the amount plus `bonus`.
+    Spent by the first matching instance; holds until spent (no end-step wipe —
+    a primed combo keeps until it lands)."""
+
+    event: str = "any_damage"   # combat_damage | spell_damage | any_damage | heal
+    multiplier: int = 1
+    bonus: int = 0
+
+
+@dataclass
 class PreventTag:
     """A `prevent [parameter]` shield riding on one combatant.
 
@@ -147,6 +159,13 @@ class CharacterState:
     temp_mod: int = 0
     prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
     prevent_tags: List[PreventTag] = field(default_factory=list)  # shields (R-11 prevent)
+    # Combo primings: one-shot outgoing-damage/heal multipliers (`amplify`) and
+    # "next action resolves twice" tags (`double_next` — a list of filter nodes).
+    amplify_tags: List[AmplifyTag] = field(default_factory=list)
+    double_next: List[str] = field(default_factory=list)
+    # The last blow that CONNECTED with this combatant (post-prevention soak+HP),
+    # read by the `*_last_damage` value refs. 0 until first hit.
+    last_damage_taken: int = 0
     power_bonus: int = 0      # temporary Power (pump +, wound −)
     protection: int = 0       # negates the next N spells/attacks (protection)
     # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
@@ -268,6 +287,9 @@ class TokenState:
     temp_mod: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
+    amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
+    double_next: List[str] = field(default_factory=list)
+    last_damage_taken: int = 0
     protection: int = 0
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
@@ -447,6 +469,9 @@ class EnemyState:
     temp_mod: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
+    amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
+    double_next: List[str] = field(default_factory=list)
+    last_damage_taken: int = 0
     protection: int = 0
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)
@@ -534,6 +559,9 @@ class StackItem:
     # mode, an ally's id for interception). Applied per hit at resolution.
     mitigate_by: Optional[str] = None
     mitigate_for: Optional[str] = None
+    # A COPY on the stack (copy_spell / a double_next echo): resolves normally but
+    # never consumes another double_next tag (no infinite echo chains).
+    is_copy: bool = False
     # A pushed triggered ability (channel_break) whose chosen target / modal mode
     # has not been picked yet: the holder picks as it goes on the stack
     # (MTG-style), before the reaction window opens — mode first (it decides which

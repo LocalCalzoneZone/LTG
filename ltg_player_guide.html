@@ -246,10 +246,12 @@ fight mid-round.</p>
 </table></div>
 
 <p><b>Free, at any time, on anyone's turn:</b> casting <b>instants</b> (limited only
-by mana), your once-per-turn <b>Mitigate</b> reaction, and your once-per-encounter
-<b>Skill</b> (§XVI). None of these consume the proactive action.
-Two keywords bend the rules: <b>vigilance</b> lets you attack <em>and</em> cast in one
-turn; <b>haste</b> lets you take your action <em>and</em> make a free move.</p>
+by mana) and your once-per-turn <b>Mitigate</b> reaction. Neither consumes the
+proactive action. Your <b>Skill</b> and <b>Ultimate</b> (§XVI) are <em>actions</em> —
+they spend the turn like Attack or Cast does.
+Two keywords bend the rules: <b>vigilance</b> lets you pair your attack with a Cast
+turn — or with your Skill; <b>haste</b> lets you take your action <em>and</em> make a
+free move.</p>
 
 <h3>The abilities every character owns</h3>
 
@@ -258,7 +260,7 @@ turn; <b>haste</b> lets you take your action <em>and</em> make a free move.</p>
   <tr><td class="phase">Basic attack</td><td>action · 1/round</td><td>Deal damage equal to your Power (melee or ranged, whichever mode you own).</td></tr>
   <tr><td class="phase">Defend</td><td>action · 1/round</td><td>+3 temporary HP until end of turn.</td></tr>
   <tr><td class="phase">Mitigate</td><td>reaction · 1/turn</td><td>Answer one incoming <b>attack</b>: reduce each of its hits by <b>half your Power, rounded up</b> — on yourself, or intercepting for an ally (see below).</td></tr>
-  <tr><td class="phase">Skill</td><td>free · 1/encounter</td><td>Your authored signature trick, cast at instant speed (§XVI).</td></tr>
+  <tr><td class="phase">Skill</td><td>action · 1/encounter</td><td>Your authored signature move — a one-shot, or a channeled form you hold (§XVI).</td></tr>
   <tr><td class="phase">Ultimate</td><td>action · 1/encounter</td><td>Your authored finisher — no mana cost, but only castable on a full ultimate gauge (§XVI).</td></tr>
 </table></div>
 
@@ -338,8 +340,8 @@ real choice exists.)</p>
 
 <div class="tbl-scroll"><table>
   <tr><th></th><th>Spell</th><th>Ability</th></tr>
-  <tr><td class="phase">Active <span class="muted">(costs your action)</span></td><td>sorcery</td><td>attack · activated · Defend</td></tr>
-  <tr><td class="phase">Reactive <span class="muted">(free)</span></td><td>instant</td><td>triggered · Mitigate · Skill</td></tr>
+  <tr><td class="phase">Active <span class="muted">(costs your action)</span></td><td>sorcery</td><td>attack · activated · Defend · Skill · Ultimate</td></tr>
+  <tr><td class="phase">Reactive <span class="muted">(free)</span></td><td>instant</td><td>triggered · Mitigate</td></tr>
 </table></div>
 
 <h3>Counters</h3>
@@ -407,8 +409,8 @@ not — the blow still lands at full size.</p>
 
 <h3>Stances — fighting in a form</h3>
 
-<p>A <b>stance</b> is a special channeled card that rewires your body while you hold
-it. For each of your four main abilities — <b>attack, Defend, Mitigate, Move</b> — a
+<p>A <b>stance</b> is a special channeled effect — a card from your library, or a
+channeled <b>Skill</b> (§XVI) — that rewires your body while you hold it. For each of your four main abilities — <b>attack, Defend, Mitigate, Move</b> — a
 stance declares one of three things: <em>unchanged</em>, <em>removed</em> (you simply
 cannot do that while in this form), or <em>replaced</em> with a new authored action.</p>
 
@@ -561,12 +563,24 @@ abilities use. Learn these and you can read any card in the game.</p>
   <tr><td>pump</td><td>+X/+X until end of turn: +Power and temporary HP.</td><td>Giant Growth</td></tr>
   <tr><td>wound</td><td>−X/−X until end of turn; the wound also absorbs the victim's next healing.</td><td>−X/−X trick</td></tr>
   <tr><td>counters</td><td>Permanent +1/+1 counters.</td><td>+1/+1 counters</td></tr>
-  <tr><td>prevent</td><td>Nullify a named thing — e.g. the next combat damage.</td><td>Fog, narrowed</td></tr>
+  <tr><td>prevent</td><td>Nullify a named lane: <b>combat damage</b> (attacks &amp; physical abilities), <b>spell damage</b> (spells &amp; triggers), <b>all damage</b> — or <b>attack</b>, which stops the target attacking at all.</td><td>Fog / Pacifism</td></tr>
   <tr><td>protection</td><td>Negate the next spell or attack against the target entirely.</td><td>protection, briefly</td></tr>
   <tr><td>taunt</td><td>Force an enemy's attention onto the target.</td><td>lure</td></tr>
   <tr><td>grant_keyword / remove_keyword</td><td>Give or strip a keyword (§XIII) for a duration.</td><td>"gains flying until…"</td></tr>
   <tr><td>stance</td><td>Rewire your four main abilities while channeled (§VIII).</td><td>— (LTG original)</td></tr>
 </table></div>
+
+<h3>Combos &amp; multipliers</h3>
+<div class="tbl-scroll"><table class="cw">
+  <tr><th style="width:150px">Verb</th><th>Meaning</th><th style="width:200px">MTG feel</th></tr>
+  <tr><td>amplify</td><td>Prime a creature's <b>next</b> outgoing damage — combat, spell, or any — to be ×N (+M flat); or prime its next <b>heal</b>. One-shot, and it <b>holds until spent</b>: a primed combo doesn't fade at end of turn.</td><td>a one-swing Furnace of Rath</td></tr>
+  <tr><td>copy_spell</td><td>Copy a spell on the stack; <b>you aim the copy</b> as it resolves. Channeled casts can't be copied.</td><td>Twincast</td></tr>
+  <tr><td>double_next</td><td>The target's next spell (or ability, or any action) <b>resolves twice</b>. One-shot; holds until spent.</td><td>Fork, prepaid</td></tr>
+</table></div>
+
+<p class="muted">Cards can also read the recent past: <em>"heal an amount equal to the
+last damage you took"</em> — the last blow that actually connected, remembered for
+exactly this kind of retribution.</p>
 
 <h3>Cards, mana &amp; conjuring</h3>
 <div class="tbl-scroll"><table class="cw">
@@ -624,9 +638,10 @@ never have them. Menace, ward, and convoke don't exist here.</p>
 (its inherent power tier — shown as a Roman numeral), and a kit of telegraphed
 abilities. Expect support pieces that heal, control pieces that stun and taunt,
 escalating threats that grow every round you ignore them, hooks that drag your
-backline into the open, necromancers that raise their fallen (§X), and reactions that
-punish careless casting. You will always be outnumbered; the fight is about
-kill-priority.</p>
+backline into the open, necromancers that raise their fallen (§X), war-chanters that
+prime a double-strength blow (§XII), and reactions that punish careless casting —
+including <b>mirrors</b> that copy your own spell and send it back at its caster.
+You will always be outnumbered; the fight is about kill-priority.</p>
 
 <h3>Minions &amp; bosses</h3>
 <p><b>Minions</b> can be destroyed, exiled, bounced — or dominated. A <b>boss</b> is
@@ -724,9 +739,10 @@ sheet, not in your library.</p>
 
 <div class="tbl-scroll"><table>
   <tr><th style="width:110px"></th><th>Skill</th><th>Ultimate</th></tr>
-  <tr><td class="phase">Timing</td><td>Instant speed — free, any reaction window, anyone's turn</td><td>An action on your turn</td></tr>
+  <tr><td class="phase">Timing</td><td>An action on your turn (vigilance lets it share the turn with an Attack or Cast)</td><td>An action on your turn</td></tr>
+  <tr><td class="phase">Form</td><td>A one-shot — or a <b>channeled form</b> you hold, even a stance (§VIII)</td><td>Always a one-shot</td></tr>
   <tr><td class="phase">Uses</td><td>Once per encounter</td><td>Once per encounter</td></tr>
-  <tr><td class="phase">Cost</td><td>Optional mana cost — your choice at design time</td><td>Never costs mana — the gauge is the cost</td></tr>
+  <tr><td class="phase">Cost</td><td>Optional mana cost (a channeled skill reserves it while held)</td><td>Never costs mana — the gauge is the cost</td></tr>
   <tr><td class="phase">Gate</td><td>—</td><td>Castable only on a <b>full ultimate gauge</b></td></tr>
 </table></div>
 
@@ -756,8 +772,10 @@ gauge carries between acts</b> (§XVII): finish Act I full, open Act II at 50.</
 
 <h3>Designing them well</h3>
 <ul>
-  <li><b>Skills are answers.</b> Instant speed and once-only means the best skills break
-      one bad moment: a save, a reveal, a burst of mana, a perfectly timed counter.</li>
+  <li><b>Skills are signatures.</b> A skill spends your turn, so make the turn worth
+      it: a tempo swing (strip an intent, see the top of your deck), a combo primer
+      (your next spell damage doubled), or a channeled form — even a personal stance —
+      that no card in your library could hold for you.</li>
   <li><b>Ultimates are statements.</b> An action, gated behind ~4–6 rounds of play — it
       should bend the fight. Stack two or three effects; one small pump is a wasted climax.</li>
   <li><b>Match the build.</b> Rell's ultimate should end a duel; a Channeler's should
@@ -766,9 +784,9 @@ gauge carries between acts</b> (§XVII): finish Act I full, open Act II at 50.</
 
 <div class="tbl-scroll"><table>
   <tr><th style="width:110px">Archetype</th><th>Skill (example)</th><th>Ultimate (example)</th></tr>
-  <tr><td class="phase">Fighter</td><td><em>Stand Fast</em> — free: prevent the next 3 combat damage to an ally.</td><td><em>Dawnbreaker Oath</em> — +3/+3, gain vigilance and double strike this turn.</td></tr>
+  <tr><td class="phase">Fighter</td><td><em>Bulwark Form</em> — a channeled stance: Move is removed; Defend also shields an adjacent ally for 3.</td><td><em>Dawnbreaker Oath</em> — +3/+3, gain vigilance and double strike this turn.</td></tr>
   <tr><td class="phase">Tactician</td><td><em>Read the Field</em> — 1 mana: strip an enemy's intent, then scry 2.</td><td><em>Checkmate</em> — stun an enemy, deal 4 to it, and draw 2.</td></tr>
-  <tr><td class="phase">Caster</td><td><em>Flash of Insight</em> — 1 mana: draw 2.</td><td><em>Meteor Call</em> — deal 4 damage to every enemy.</td></tr>
+  <tr><td class="phase">Caster</td><td><em>Overchannel</em> — 1 mana: your next spell damage is doubled.</td><td><em>Meteor Call</em> — deal 4 damage to every enemy.</td></tr>
   <tr><td class="phase">Channeler</td><td><em>Serene Ward</em> — free: protection on self (the ritual survives the blow).</td><td><em>Worldbloom</em> — heal every ally 4 and grant each regen.</td></tr>
 </table></div>
 
@@ -856,7 +874,8 @@ everything the first two acts taught you.</p>
       beside a corpse is a fight getting longer. Exile the body — or raise it yourself
       and send it back the way it came.</li>
   <li><b>Don't hoard the Skill.</b> Once per encounter, but an encounter only lasts
-      so long — a Skill unspent at victory answered nothing.</li>
+      so long — a Skill unspent at victory was a signature never signed. It costs a
+      turn now, so pick the turn it wins.</li>
   <li><b>Fall with purpose.</b> Going down isn't dying — allies can revive you, and
       your fall surges every ally's gauge +25. Sometimes the tank buys the turn the
       ultimate needs.</li>

@@ -59,6 +59,45 @@ ADVENTURE_HIDDEN_FILE = LOADOUTS_DIR / "adventures_hidden.json"
 # Acts per adventure (Design Update 10, T-61).
 ACT_COUNT = 3
 
+# --------------------------------------------------------------------------- #
+# Balance register: the global enemy Power bump. Every enemy fields +2 Power
+# over its authored chassis (+4 for a boss) — applied at build time in
+# `build_state_from_loadouts`, the one choke point every real game passes
+# through (standalone encounters and adventure acts alike), so authored
+# content, bundled examples, and LLM-generated encounters are all lifted
+# uniformly. Authored JSON keeps its original numbers.
+# --------------------------------------------------------------------------- #
+ENEMY_POWER_BONUS = 2
+BOSS_POWER_BONUS = 4
+
+
+def _bump_enemy_power(scenario: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply the balance-register Power bump to a (scaled) encounter's enemies:
+    the chassis `power` and any attack-type intent template amounts (melee and
+    ranged fallback), so both framework and legacy enemies swing harder.
+    Component ability amounts are untouched — the bump is to Power, not spells."""
+    out = dict(scenario)
+    enemies: List[Dict[str, Any]] = []
+    for e in scenario.get("enemies", []):
+        if not isinstance(e, dict):
+            enemies.append(e)
+            continue
+        e = copy.deepcopy(e)
+        bump = BOSS_POWER_BONUS if e.get("is_boss") else ENEMY_POWER_BONUS
+        base_power = e.get("power", e.get("intent", {}).get("amount", 0))
+        try:
+            e["power"] = int(base_power) + bump
+        except (TypeError, ValueError):
+            e["power"] = bump
+        for key in ("intent", "ranged_intent"):
+            tmpl = e.get(key)
+            if (isinstance(tmpl, dict) and isinstance(tmpl.get("amount"), int)
+                    and tmpl.get("intent_type", "attack") == "attack"):
+                tmpl["amount"] += bump
+        enemies.append(e)
+    out["enemies"] = enemies
+    return out
+
 
 def _read_id_set(path: Path) -> set:
     try:
@@ -789,6 +828,8 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
     # Party-size scaling: an encounter with per-size layouts fields the roster
     # designed for THIS party's size (clamped to the nearest defined layout).
     scenario = scale_encounter(scenario, len(loadouts))
+    # Balance register: +2 Power to every enemy fielded, +4 to a boss.
+    scenario = _bump_enemy_power(scenario)
     spec = compose_spec(loadouts, scenario)
     state = state_from_dict(spec, seed=seed)
     # spec["party"] keeps loadouts' order (compose_spec only dedupes ids in place),

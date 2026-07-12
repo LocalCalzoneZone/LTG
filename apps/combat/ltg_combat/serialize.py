@@ -234,6 +234,13 @@ def _status_tags(char) -> List[str]:
     for tag in getattr(char, "prevent_tags", []):
         span = "next " if tag.uses is not None else ""
         tags.append(f"prevent {span}{tag.parameter}")
+    for tag in getattr(char, "amplify_tags", []):
+        boost = (f"×{tag.multiplier}" if tag.multiplier > 1 else "") + \
+                (f"+{tag.bonus}" if tag.bonus else "")
+        what = {"heal": "heal"}.get(tag.event, tag.event.replace("_", " "))
+        tags.append(f"next {what} {boost}")
+    for filt in getattr(char, "double_next", []):
+        tags.append(f"next {filt} ×2 resolve")
     if getattr(char, "power_bonus", 0):
         tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
     if getattr(char, "protection", 0):

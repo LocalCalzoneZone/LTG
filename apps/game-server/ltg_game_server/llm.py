@@ -14,6 +14,7 @@ so the key never enters version control and survives restarts.
 from __future__ import annotations
 
 import json
+import random
 import re
 from math import ceil
 from typing import Any, Dict, List, Optional
@@ -113,6 +114,33 @@ DEFAULT_INSTRUCTIONS = r"""You are the encounter designer for Langelier Tactical
 card-combat game. You design a *single thematic enemy group* (an "encounter") that
 a party of player-heroes will fight. Your output is consumed by a deterministic
 engine, so it MUST be valid JSON matching the schema below — no prose, no markdown.
+
+# Setting & theme (read before designing anything)
+
+LTG is CLASSIC HIGH FANTASY — the register of Magic: The Gathering or Dungeons &
+Dragons (Forgotten Realms). Swords, sorcery, monsters, ancient ruins, wild
+places. Stay in genre: no science fiction, no modern technology, no firearms.
+
+Pick ONE fresh, specific theme per request and commit to it — a faction, a
+place, a reason they stand together. Draw from the genre's full breadth. For
+the KIND of range expected (not a menu to pick from):
+- a goblin sapper crew undermining the walls of a mountain pass
+- the frozen court of a lich-queen and her hollow knights
+- sun-bleached tomb guardians waking beneath a desert necropolis
+- a fey revel turned feral in a moonlit glade
+- an efreet's brass-palace honor guard
+- plague-cultists and their rat-swarms in the sewers of a free city
+- a hag coven trading in stolen voices at a swamp crossroads
+- a frost-giant hunting party with chained wyverns
+- animated armory constructs defending a dead wizard's tower
+- serpent-folk reavers boiling out of a jungle temple
+
+Combine, twist, or invent well beyond these. Do NOT fall back on the same mood
+every time (no perpetual drowned/sunken gothic ruins) — vary the biome, the
+faction, the palette, and the emotional register between requests. The request
+parameters may list titles the player already owns: treat those as OFF-LIMITS
+creative territory — no reused names, locations, or central conceits, and no
+re-skins of them.
 
 # The enemy framework (Design Update 04)
 
@@ -357,6 +385,27 @@ is fine; overspending is impossible. Complexity self-prices into level.
     party must spend healing to cure it or race it. At most one per encounter.
   * A GATHERER (the charge windup — see its section): a visible fuse under a
     veiled kit; the drama is the gauge filling while the party guesses.
+- MECHANICAL VARIETY (anti-rut rules — as binding as the budgets):
+  * The pattern list above is a PALETTE, not a checklist. Each encounter leans
+    on a DIFFERENT 2–3 patterns; across many generations every pattern should
+    see play, including the ones you'd otherwise skip (body economy, forced
+    movement, charge windups, poison clocks, counter-sentinels, taunt/stun
+    control, infect, regen elites, avengers, medic-punishers).
+  * The well-worn rut is: a lowest_hp_ally healer + an Escalate clock + a
+    damage-tick channel + a −1/−1 hexer. Do NOT build that quartet again unless
+    the player's note asks for it.
+  * Give the encounter ONE SIGNATURE mechanic — the thing this fight is ABOUT,
+    which the layouts, the guard pieces, and the boss (if any) all serve — and
+    let it pose a tactical question beyond "kill order?": Can we afford to
+    heal? Burn the corpses or race the necromancer? Eat the detonation or break
+    the fuse? How do we keep the backline off the hook?
+  * Vary the damage SHAPES across the pool (single-target snipe, row sweep,
+    blast splash, upkeep tick, unpreventable lose_life, poison) and the
+    target_rules (not everything "valuation" — use highest_threat,
+    channeling_player, wounded_ally, trigger_source where the fiction fits).
+  * The request parameters below may ROLL suggested signature mechanics for
+    this generation — treat a roll as the encounter's default identity unless
+    the player's note pulls elsewhere.
 - Respect the per-party-size Level budgets you are given below: for each layout,
   the sum of its enemies' levels (a boss counts double) should land near that
   size's target. The party must be OUTNUMBERED at every size — each layout must
@@ -395,6 +444,17 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
   so the fight transforms when it turns: e.g. a single-target breath before, a
   party-wide firestorm after. Give the post-enrage kit a clearly scarier shape —
   the fight's final act should FEEL different, not just bigger numbers.
+- VARY THE BOSS SILHOUETTE — the worked example's "big breath pre / AoE post /
+  pump-and-burn Enrage" is ONE shape, not the mold. Fit the silhouette to the
+  faction, e.g.: the SUMMONER-TYRANT (token waves + a warband anthem; Enrage =
+  a fresh wave + permanent pump) · the RITUALIST (a channelled aura or tick the
+  party must break while the execute window looms; Enrage restarts the rite
+  harder) · the DUELLIST (a parry-Counter, a Punish riposte, taunts; Enrage
+  grants trample + a permanent pump) · the NECROMANCER-KING (raises its fallen
+  court; Enrage = raise a corpse AND a token wave) · the GATHERER TITAN (charge
+  windups set the fight's rhythm; post-enrage, a second detonation on a shorter
+  fuse) · the WARLORD (row blasts and forced movement; Enrage = shove the wall
+  back + blast the exposed rows).
 - declares TWO intents per round once enraged (engine-enforced — Design Update
   09 §D9-4). Design the post-enrage kit knowing every component fires twice as
   often: cooldowns matter double, and the guaranteed basic attack backstops the
@@ -471,7 +531,11 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "counters", "power": <int>, "toughness": <int>, "target": {"mode": "self"}},  // PERMANENT (Escalate)
             {"kind": "stun",  "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero loses a turn
             {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me
-            {"kind": "prevent", "parameter": "combat_damage", "uses": "next", "target": {"mode": "self"}},  // a shield
+            {"kind": "prevent", "parameter": "combat_damage", "uses": "next", "target": {"mode": "self"}},  // a shield; parameter ∈ combat_damage (attacks + activated abilities) | spell_damage (spells + triggered) | all_damage
+            {"kind": "amplify", "event": "combat_damage", "multiplier": 2, "bonus": 0, "target": {"mode": "self"}},  // COMBO primer: its next matching damage ×2 (+bonus); event ∈ combat_damage|spell_damage|any_damage|heal; also targets an ally enemy
+            {"kind": "double_next", "filter": "spell", "target": {"mode": "self"}},   // its next spell/ability to resolve, resolves twice; filter ∈ spell|ability|action
+            {"kind": "copy_spell"},                               // REACTIVE only (on_spell_cast): copies the triggering spell — the copy MIRRORS back at its caster; NO target field
+            {"kind": "heal", "amount": {"ref": "caster_last_damage"}, "target": {"mode": "self"}},  // retro combo: heal the last damage this enemy took
             {"kind": "protection", "target": {"mode": "self"}},   // negates the next spell/attack entirely (Ward)
             {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; NO target field
             {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: −0/−1 per Upkeep until healed
@@ -503,9 +567,13 @@ means "the combatant this component's target_rule picked" — a hero for damage/
 taunt (valuation / trigger_source / channeling_player), a fellow enemy for a support
 heal/buff (lowest_hp_ally). A self-effect uses `{"mode": "self"}`; an AoE on the party
 uses `{"mode": "all", "side": "ally"}`. Copy these shapes verbatim — do not invent new
-target shapes. The `counter` verb is REACTIVE-ONLY (a Counter component answering
-on_spell_cast / on_attack) and takes no target field — the engine aims it at the
-action that tripped the trigger. NEVER use these verbs (player-only; they do nothing
+target shapes. The `counter` and `copy_spell` verbs are REACTIVE-ONLY (components
+answering on_spell_cast / on_attack) and take no target field — the engine aims
+them at the action that tripped the trigger (a `copy_spell` copy mirrors back at
+the spell's caster, so give it ONLY to a spell-mirror sentinel and expect hostile
+spells to rebound). `amplify` and `double_next` are combo primers: use them as a
+windup the party can see coming (prime, then swing) — priming is one-shot and
+holds until spent. NEVER use these verbs (player-only; they do nothing
 or break the fight): destroy, bounce, strip_intent, fight, revive, draw, scry,
 move_card, ramp, add_mana, stance. `control` is enemy-legal ONLY on corpses (the
 Necromancy shape above — never on a living hero), and `exile` is enemy-legal ONLY
@@ -696,6 +764,74 @@ def _budget(size: int, avg_level: float, difficulty: str) -> int:
     return max(1, round(2 * size * avg_level * mult))
 
 
+# Signature mechanics rolled per request (encounters) / per act (adventures).
+# The instructions teach every one of these; sampling here — in code, not in the
+# model — is what actually spreads generations across the design space: an LLM
+# left to its own devices reaches for the same healer/clock/tick-channel kit
+# every time. Each entry is a self-contained nudge the model can build around.
+SIGNATURE_POOL: List[str] = [
+    "the BODY ECONOMY — corpse-leaving husks, ONE necromancer raising them (or "
+    "rises / a corpse-burst); the party must spend exile or control",
+    "FORCED MOVEMENT — a Hooker dragging the backline to the front, or a "
+    "Line-breaker shoving the wall back, paired with a row-scoped biter",
+    "a CHARGE WINDUP — a visible gatherer with a hidden detonation, a Ward "
+    "bodyguard on the fuse",
+    "POISON PRESSURE — a poisoner clock, plus a medic-punisher (on_hero_healed) "
+    "so curing it costs",
+    "ACTION-ECONOMY CONTROL — stun and taunt pieces that attack the party's "
+    "turns rather than their HP",
+    "a COUNTERSPELL SENTINEL — one scarce Counter (spell filter, or an "
+    "attack-parry duellist) the party must bait out",
+    "EVASION — flying / hexproof skirmishers that slip the party's answers and "
+    "redeploy home; reach and chip damage decide it",
+    "the ANTHEM WARBAND — a channelled while_channeled pump on all fellow "
+    "enemies; break the singer or fight their whole army uphill",
+    "AURA OPPRESSION — a channelled party-wide wound aura, its channeler kept "
+    "alive by a guard (self_channeling condition or a Ward)",
+    "SWARM AND AVENGER — expendable token waves feeding an on_ally_death "
+    "escalator; naive kill order loses",
+    "REGEN ELITES — regen counters that only connecting hits break, plus a "
+    "support healer creating kill-priority",
+    "the ASSASSIN'S READ — highest_threat and channeling_player snipers that "
+    "punish the party's carry and their rituals",
+    "INFECT DREAD — ONE infect biter that turns every landed hit into a healer "
+    "assignment",
+    "DESPERATION PHASES — bloodied conditions (self_hp_pct, ally_count) that "
+    "transform minions mid-fight into something worse",
+    "a TIMER — a turn >= N condition unlocking a far bigger ability; turtling "
+    "loses the race",
+]
+
+
+def _signature_rolls(k: int) -> List[str]:
+    """`k` distinct signature mechanics, freshly rolled for one request."""
+    return random.sample(SIGNATURE_POOL, k=min(k, len(SIGNATURE_POOL)))
+
+
+def _library_lines() -> List[str]:
+    """Prompt lines naming every encounter/adventure the player already owns.
+
+    Both generators append these so the model designs AWAY from the existing
+    library — without them, models converge on the same few moods and the
+    player collects five variations of one idea."""
+    encounters = [str(e.get("name") or "") for e in content.list_encounters()]
+    adventures = [str(a.get("name") or "") for a in content.list_adventures()]
+    lines: List[str] = []
+    if any(encounters):
+        lines.append("- The player already owns these encounters: "
+                     + "; ".join(n for n in encounters if n) + ".")
+    if any(adventures):
+        lines.append("- The player already owns these adventures: "
+                     + "; ".join(n for n in adventures if n) + ".")
+    if lines:
+        lines.append(
+            "- They are generating because they want something NEW. Choose a "
+            "theme, location, and faction clearly distinct from every title "
+            "above — no sequels, no re-skins; and if several titles share a "
+            "mood, steer far away from that mood entirely.")
+    return lines
+
+
 def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     """The per-request parameters appended after the editable instructions: the
     concrete party, difficulty, and the per-party-size budgets the layouts must
@@ -731,6 +867,12 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
          "- Keep the designs lean at this difficulty — one decision-generator is "
          "plenty; skip counterspells."),
     ]
+    rolls = _signature_rolls(2)
+    lines.append(
+        "- Rolled SIGNATURE MECHANICS for this generation — build the "
+        "encounter's identity around at least one (adapt it to the theme; the "
+        "player's note below overrides): (1) " + rolls[0] + "; (2) " + rolls[1] + ".")
+    lines.extend(_library_lines())
     note = (note or "").strip()
     if note:
         lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
@@ -932,6 +1074,10 @@ descriptions). This block adds the arc-level rules:
 - DIFFICULTY ESCALATES BY DESIGN: each act's Level budgets are given below,
   computed for a party one level stronger per act. Respect each act's own
   per-party-size layout minimums and targets.
+- ACTS DIFFER MECHANICALLY: each act leans on a DIFFERENT signature mechanic
+  (the parameters roll one per act) so the run escalates in KIND, not just in
+  numbers — e.g. a skirmish of evasive raiders, then the ritual they were
+  screening, then the boss spending the corpses both fights left behind.
 - ACT III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Act III —
   the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
   Enrage, phase gates, real HP). No enemy anywhere may exceed its level.
@@ -991,6 +1137,13 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     if difficulty != "easy":
         lines.append("- Include at least one CHANNELER (a channel component) "
                      "somewhere in each act's pool.")
+    rolls = _signature_rolls(content.ACT_COUNT)
+    lines.append(
+        "- Rolled SIGNATURE MECHANICS, one per act — build each act's identity "
+        "around its roll (adapt to the theme; the player's note overrides), so "
+        "the threats escalate in KIND across the run, not just in budget: "
+        + " ".join(f"Act {i}: {r}." for i, r in enumerate(rolls, start=1)))
+    lines.extend(_library_lines())
     note = (note or "").strip()
     if note:
         lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")

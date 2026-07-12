@@ -336,9 +336,10 @@ function newHeroicCard(slot) {
     source_name: isSkill ? "Skill" : "Ultimate",
     rarity: "common", level: 1,
     type: isSkill ? "Skill" : "Ultimate",
-    // Timing is forced by the schema: instant for a Skill, sorcery for an
-    // Ultimate (which also may never carry a mana cost).
-    timing: isSkill ? "instant" : "sorcery",
+    // A Skill is an activated ability: an action (sorcery) or a channeled
+    // effect (stances etc.) — never instant. The Ultimate's timing is forced
+    // to sorcery (and it may never carry a mana cost).
+    timing: "sorcery",
     cost: { generic: 0, colors: {}, x: false },
     original_text: "", translated_text: "", flavor_text: "",
     effects: [], targets: {},
@@ -347,9 +348,13 @@ function newHeroicCard(slot) {
 }
 
 const HEROIC_META = {
-  skill: { label: "Skill", hint: "instant speed · once per encounter · may cost mana" },
+  skill: { label: "Skill", hint: "activated ability (action or channeled) · once per encounter · consumes your action unless vigilant · may cost mana" },
   ultimate: { label: "Ultimate", hint: "an action · once per encounter · full gauge, no mana cost" },
 };
+
+// A Skill's timing choices: an action (sorcery) or a channeled effect — a
+// channeled Skill can hold stances. Instant is not offered (too strong).
+const SKILL_TYPE_OPTIONS = [["sorcery", "Action (sorcery)"], ["channeled", "Channeled"]];
 
 function renderHeroics() {
   const box = $("#heroic-pick");
@@ -800,6 +805,7 @@ function normalizeCharacter(ch) {
   if (ch.keyword === undefined) ch.keyword = null;
   if (ch.preset === undefined) ch.preset = null;
   if (ch.skill === undefined) ch.skill = null;          // heroic actions (D8-3)
+  if (ch.skill && ch.skill.timing === "instant") ch.skill.timing = "sorcery";  // legacy: skills are no longer instant
   if (ch.ultimate === undefined) ch.ultimate = null;
   if (!ch.ability_flavor || typeof ch.ability_flavor !== "object") ch.ability_flavor = {};
   delete ch.archetype;  // retired field
@@ -1363,19 +1369,34 @@ function openDetail(idx) {
   const slots = Object.keys(card.targets);
   const el = $("#detail-card");
 
-  // The card TYPE is editable (instant / sorcery / enchantment→channeled) —
-  // except on heroic slots, whose timing is forced (skill instant, ultimate
-  // sorcery, D8-3.5). Switching re-validates: channeled-only effects (stance,
-  // while_channeled, triggers) flag an error on a one-shot type and vice versa.
+  // The card TYPE is editable (instant / sorcery / enchantment→channeled).
+  // A Skill offers only action/channeled (an activated ability is never
+  // instant — D8-3.1 amended); the Ultimate's timing stays forced (sorcery).
+  // Switching re-validates: channeled-only effects (stance, while_channeled,
+  // triggers) flag an error on a one-shot type and vice versa.
   const typeSel = `<select id="detail-type" title="Card type — instant reacts, sorcery is an action, enchantment is channeled">
       ${TYPE_OPTIONS.map(([t, label]) =>
         `<option value="${t}" ${card.timing === t ? "selected" : ""}>${label}</option>`).join("")}
     </select>`;
   const sub = heroic
     ? (idx === "skill"
-        ? "Skill — instant speed · once per encounter · may cost mana (D8-3.1)"
+        ? "Skill — an activated ability · once per encounter · consumes your action (vigilance lifts) · may cost mana (D8-3.1)"
         : "Ultimate — an action · once per encounter · needs a full gauge · never costs mana (D8-3.2)")
     : `${card.source_name} · ${typeSel} · ${card.rarity} · Level ${card.level}`;
+
+  // The Skill's form is its own prominent control (not buried in the subtitle):
+  // an Action (resolves once) or a Channeled effect (held — enables stances).
+  const skillFormBlock = idx === "skill"
+    ? `<div class="block">
+        <div class="label">Skill form — how it resolves</div>
+        <div id="skill-form-pick" class="attack-pick">
+          ${SKILL_TYPE_OPTIONS.map(([t, label]) =>
+            `<button type="button" class="archetype-btn${card.timing === t ? " on" : ""}"
+               data-timing="${t}"
+               title="${t === "channeled" ? "A held channel — stays in play, can carry a stance" : "Resolves once, then the skill is spent"}">${label}</button>`).join("")}
+        </div>
+      </div>`
+    : "";
 
   const costBlock = idx === "ultimate"
     ? `<div class="block">
@@ -1398,6 +1419,8 @@ function openDetail(idx) {
   el.innerHTML = `
     <h3>${escapeHtml(card.name)}</h3>
     <div class="sub">${sub}</div>
+
+    ${skillFormBlock}
 
     <div class="block">
       <div class="label">Flavour name — editable</div>
@@ -1479,10 +1502,18 @@ function wireDetail(idx) {
   if ($("#detail-type")) {
     $("#detail-type").onchange = (e) => {
       card.timing = e.target.value;
-      card.type = TYPE_LABEL[card.timing] || card.timing;
+      // Heroic slots keep their display type ("Skill") — timing alone changes.
+      if (!HEROIC_SLOTS.includes(idx)) card.type = TYPE_LABEL[card.timing] || card.timing;
       recheckCard(idx, true);  // re-validate + re-render (trigger controls etc.)
     };
   }
+  // The Skill form toggle (Action / Channeled): sets timing, keeps the display type.
+  document.querySelectorAll("#skill-form-pick .archetype-btn").forEach((btn) => {
+    btn.onclick = () => {
+      card.timing = btn.dataset.timing;
+      recheckCard(idx, true);  // re-validate + re-render (channeled unlocks stances)
+    };
+  });
 
   // Mana cost editing — any change re-derives level and re-checks the card.
   // (The block is absent for an ultimate: it never costs mana — D8-3.2.)

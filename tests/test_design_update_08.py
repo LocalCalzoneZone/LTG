@@ -334,7 +334,7 @@ def test_stunned_enemy_reads_as_reeling():
 # §D8-3 heroic actions & the ultimate gauge
 # ========================================================================== #
 def _skill_card():
-    return _card("skl", "Flash Step", "instant", {},
+    return _card("skl", "Flash Step", "sorcery", {},
                  [{"kind": "pump", "power": 1, "toughness": 1, "target": SELF,
                    "duration": "this_turn"}])
 
@@ -365,7 +365,9 @@ def test_gauge_charges_from_actions_damage_and_defend():
     assert st.character("p").ultimate_gauge == 7 + 5   # Defend earns +5 (D8-3.3)
 
 
-def test_skill_is_instant_speed_once_per_encounter_and_charges_gauge():
+def test_skill_is_an_activated_action_once_per_encounter_and_charges_gauge():
+    """Update 11: the Skill is an activated ability — an action that CONSUMES
+    the proactive action (no attack afterwards without vigilance)."""
     st = _heroic_state()
     assert any(a.kind == "use_skill" for a in legal_actions(st))
     st = _do(st, "use_skill")
@@ -376,8 +378,30 @@ def test_skill_is_instant_speed_once_per_encounter_and_charges_gauge():
     # +5 for the Skill, +1 for the temp HP its pump granted (the toughness half).
     assert p.skill_used and p.ultimate_gauge == 6
     assert not any(a.kind == "use_skill" for a in legal_actions(st))
-    # …and it did not consume the proactive action.
-    assert any(a.kind == "attack" for a in legal_actions(st))
+    # …and it CONSUMED the proactive action: no attack this turn.
+    assert p.acted_mode == "skill"
+    assert not any(a.kind == "attack" for a in legal_actions(st))
+
+
+def test_skill_locked_out_after_attacking_and_not_offered_in_reaction_windows():
+    st = _heroic_state()
+    st = _do(st, "attack")
+    # The attack's own reaction window: the Skill (active speed) never reacts.
+    assert not any(a.kind == "use_skill" for a in legal_actions(st))
+    st = _do(st, "pass")
+    # Back in the main phase, the proactive action is spent — no Skill.
+    assert not any(a.kind == "use_skill" for a in legal_actions(st))
+
+
+def test_vigilance_lets_the_skill_ride_alongside_an_attack():
+    st = _heroic_state()
+    st.character("p").keywords["vigilance"] = ""
+    st = _do(st, "attack")
+    st = _do(st, "pass")
+    assert any(a.kind == "use_skill" for a in legal_actions(st))
+    st = _do(st, "use_skill")
+    st = _do(st, "pass")
+    assert st.character("p").skill_used
 
 
 def test_ultimate_gated_on_full_gauge_and_spends_it():
@@ -413,11 +437,18 @@ def test_ultimate_cost_rejected_in_schema():
                                  [{"kind": "draw", "amount": 1, "target": SELF}]))
 
 
-def test_skill_timing_forced_to_instant():
+def test_skill_timing_never_instant_legacy_coerced_to_sorcery():
+    """Update 11: a Skill is an action or channeled — never instant. A legacy
+    instant skill loads coerced to sorcery; sorcery and channeled round-trip."""
     ch = Character(name="X", colors=["U"], starting_mana=["U"],
-                   skill=_card("s", "Trick", "sorcery", {},
+                   skill=_card("s", "Trick", "instant", {},
                                [{"kind": "draw", "amount": 1, "target": SELF}]))
-    assert ch.skill.timing.value == "instant"
+    assert ch.skill.timing.value == "sorcery"
+    ch2 = Character(name="X", colors=["U"], starting_mana=["U"],
+                    skill=_card("s", "Ward Stance", "channeled", {},
+                                [{"kind": "pump", "power": 0, "toughness": 1,
+                                  "duration": "while_channeled", "target": SELF}]))
+    assert ch2.skill.timing.value == "channeled"
 
 
 # ========================================================================== #
@@ -430,10 +461,19 @@ def test_auto_pass_offered_only_when_nothing_meaningful():
     assert auto is not None and auto.kind == "pass" and auto.auto
 
 
-def test_no_auto_pass_while_a_skill_is_live():
+def test_auto_pass_ignores_the_skill_in_reaction_windows():
+    """Update 11: the Skill is main-phase-only, so an unused Skill no longer
+    blocks auto-pass inside a reaction window."""
     st = _heroic_state()
     st = _do(st, "attack")
-    assert auto_pass_action(st) is None         # the unused Skill is a real option
+    auto = auto_pass_action(st)
+    assert auto is not None and auto.kind == "pass"
+
+
+def test_no_auto_end_turn_while_the_skill_could_still_be_used():
+    """In the MAIN phase an unspent Skill is a real option: no auto end-turn."""
+    st = _heroic_state()
+    assert auto_pass_action(st) is None
 
 
 def test_no_auto_end_turn_before_acting():

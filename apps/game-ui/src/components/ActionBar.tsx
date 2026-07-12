@@ -32,14 +32,22 @@ export function ActionBar({ choices, reaction, char }: {
   const coreBtn = ({ key, Icon, label, flavor }: (typeof CORE)[number]) => {
     const choice = choices?.[key] as Choice | undefined;
     const enabled = !!choice;
-    const active = armed?.kind === choice?.kind && armed?.cardId == null;
+    // Stance replacements (§D9-2) arrive as `stance_ability` choices carrying the
+    // slot as cardId; compare it so two replaced slots don't cross-highlight.
+    const active = armed?.kind === choice?.kind && armed?.cardId == (choice?.cardId ?? null);
+    const isStance = choice?.kind === "stance_ability";
     // Evergreen flavour (D8-3.4): the authored display name wins; the default
-    // mechanical name rides the tooltip so the mechanics stay legible.
+    // mechanical name rides the tooltip so the mechanics stay legible. A stance
+    // has REPLACED this ability, so its authored name/label wins instead.
     const entry = flavor ? char?.evergreen?.[flavor] : undefined;
-    const display = entry?.name && entry.name !== label ? entry.name : label;
-    const tip = entry
-      ? `${label}: ${entry.text}${entry.flavor ? `\n${entry.flavor}` : ""}`
-      : label;
+    const display = isStance
+      ? (choice?.label || label)
+      : (entry?.name && entry.name !== label ? entry.name : label);
+    const tip = isStance
+      ? `${choice?.label ?? label} — ${label} (replaced by your stance)`
+      : entry
+        ? `${label}: ${entry.text}${entry.flavor ? `\n${entry.flavor}` : ""}`
+        : label;
     return (
       <button
         key={label}
@@ -51,7 +59,7 @@ export function ActionBar({ choices, reaction, char }: {
         }`}
       >
         <Icon size={19} className={enabled ? (active ? "text-ink-0" : "text-brass") : "text-dimmed/60"} />
-        <span className="max-w-full truncate px-1">{display}</span>
+        <span className="line-clamp-2 max-w-full px-1 text-center leading-[1.1] [overflow-wrap:anywhere]">{display}</span>
       </button>
     );
   };
@@ -68,7 +76,7 @@ export function ActionBar({ choices, reaction, char }: {
       ? "Skill — none authored for this character"
       : skill.used
         ? `${skill.name ?? "Skill"} — already used this encounter`
-        : `${skill.name ?? "Skill"} — Skill (instant speed, once per encounter).${cost}`
+        : `${skill.name ?? "Skill"} — Skill (an action, once per encounter; consumes your turn's action unless vigilant).${cost}`
           + `${skill.text ? `\n${skill.text}` : ""}`;
     return (
       <button
@@ -80,8 +88,8 @@ export function ActionBar({ choices, reaction, char }: {
         }`}
       >
         <IconSkill size={19} className={enabled ? (active ? "text-ink-0" : "text-brass") : "text-dimmed/60"} />
-        {/* The authored name lives in the tooltip — the cell only fits "Skill". */}
-        <span className="max-w-full truncate px-1">{skill?.used ? "Skill · spent" : "Skill"}</span>
+        {/* The authored name lives in the tooltip; the cell shows "Skill". */}
+        <span className="line-clamp-2 max-w-full px-1 text-center leading-[1.1] [overflow-wrap:anywhere]">{skill?.used ? "Skill · spent" : "Skill"}</span>
       </button>
     );
   };

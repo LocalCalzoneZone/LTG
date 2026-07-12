@@ -320,6 +320,11 @@ REF_VALUES = {
     "caster_hp": "your current HP (the caster's, at resolution)",
     "target_power": "the target's Power",
     "target_hp": "the target's current HP",
+    # Retroactive combo refs: the size of the last blow that CONNECTED with the
+    # named combatant (post-prevention/mitigation), 0 if never hit. "Heal an
+    # amount equal to the last damage you took."
+    "caster_last_damage": "the last damage taken by you (the caster)",
+    "target_last_damage": "the last damage taken by the target",
 }
 
 
@@ -546,11 +551,23 @@ class Counters(EffectBase):
     duration: Duration = Duration.encounter
 
 
+# The closed vocabulary of things a `prevent` can nullify (the editor renders it
+# as a dropdown — no free text). The three damage lanes cover every damage source:
+#   combat_damage — physical blows: basic attacks AND activated/component abilities
+#                   (an enemy's "Slash"/"Claw" is narratively an attack)
+#   spell_damage  — arcane harm: spells and triggered abilities
+#   all_damage    — everything
+# `attack` is the one non-damage parameter: an ACTION shield (Pacifism) that stops
+# the target from attacking at all.
+PreventParameter = Literal["combat_damage", "spell_damage", "all_damage", "attack"]
+
+
 class Prevent(EffectBase):
     """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
-    `prevent combat_damage` makes attack actions against the target deal no damage,
-    while `prevent attack` stops the target from attacking at all (Pacifism). The
-    parameter names what is nullified; scope is defined by that parameter.
+    `prevent combat_damage` makes attacks AND activated-ability damage against the
+    target deal nothing, `prevent spell_damage` blanks spell/triggered damage,
+    `prevent all_damage` blanks everything, while `prevent attack` stops the
+    target from attacking at all (Pacifism).
 
     `uses` disambiguates the two "protection" shapes the parameter can take:
       * `"all"` — nullify EVERY matching instance until the duration ends (Fog:
@@ -561,16 +578,85 @@ class Prevent(EffectBase):
     duration (a channeled Pacifism keeps the creature from attacking every turn)."""
 
     kind: Literal["prevent"] = "prevent"
-    parameter: str = "combat_damage"
+    parameter: PreventParameter = "combat_damage"
     uses: Literal["all", "next"] = "all"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_parameters(cls, data):
+        """Pre-vocabulary cards authored free-text parameters: `damage` / `all`
+        both meant "everything" and normalise to `all_damage`; `spell` (rare)
+        normalises to `spell_damage`. Unknown strings now fail validation."""
+        if isinstance(data, dict):
+            aliases = {"damage": "all_damage", "all": "all_damage",
+                       "spell": "spell_damage"}
+            p = data.get("parameter")
+            if p in aliases:
+                data = {**data, "parameter": aliases[p]}
+        return data
 
 
 class Protection(EffectBase):
     kind: Literal["protection"] = "protection"
     target: TargetOrSlot
     scope: str = "next_spell_or_attack"
+
+
+# What an `amplify` primes. The damage lanes deliberately mirror the `prevent`
+# vocabulary (combat = attacks + activated abilities; spell = spells + triggered
+# abilities); `heal` primes the target's next OUTGOING heal the same way.
+AmplifyEvent = Literal["combat_damage", "spell_damage", "any_damage", "heal"]
+
+
+class Amplify(EffectBase):
+    """The combo verb: prime a combatant's NEXT outgoing hit (or heal) — the next
+    matching damage they deal is `multiplier ×` its amount plus `bonus` flat
+    ("your next spell damage is doubled", "your next attack deals +3"). A `heal`
+    event amplifies the next heal they cast instead. One-shot: the tag is spent
+    by the first matching instance and holds until spent (a primed combo does not
+    fizzle at end of turn)."""
+
+    kind: Literal["amplify"] = "amplify"
+    event: AmplifyEvent = "any_damage"
+    multiplier: int = 2
+    bonus: int = 0
+    target: TargetOrSlot = Field(default_factory=t_self)
+
+    @model_validator(mode="after")
+    def _meaningful(self) -> "Amplify":
+        if self.multiplier < 1:
+            raise ValueError("amplify multiplier must be >= 1")
+        if self.multiplier == 1 and self.bonus == 0:
+            raise ValueError("an amplify must multiply (>1) or add a bonus")
+        return self
+
+
+class CopySpell(EffectBase):
+    """Copy a spell on the stack (a spell multiplier — instant-speed by nature:
+    there must be a spell on the stack to copy). The copy belongs to the COPIER:
+    it resolves from their side (ally/enemy language flips to the copying side),
+    and a player copier assigns the copy's target as it resolves. Channeled
+    casts cannot be copied (a channel is a held card, not a one-shot)."""
+
+    kind: Literal["copy_spell"] = "copy_spell"
+    # The spell to copy — a stack action on either side (copy your ally's
+    # Fireball, or steal the shape of the enemy ritual).
+    target: ActionTarget = Field(default_factory=lambda: ActionTarget(side=Side.any))
+
+
+class DoubleNext(EffectBase):
+    """The other spell multiplier: the target combatant's next matching action
+    RESOLVES TWICE ("the next spell you resolve, resolves twice"). `filter` is a
+    node of the action lattice: `spell`, `ability` (attacks/activated/triggered),
+    or `action` (anything). One-shot; holds until spent. The echo re-resolves
+    the same effects at the same targets; a channeled cast is never doubled
+    (one card can hold only one channel)."""
+
+    kind: Literal["double_next"] = "double_next"
+    filter: Literal["spell", "ability", "action"] = "spell"
+    target: TargetOrSlot = Field(default_factory=t_self)
 
 
 class Draw(EffectBase):
@@ -788,6 +874,9 @@ LEAF_EFFECT_CLASSES = [
     Counters,
     Prevent,
     Protection,
+    Amplify,
+    CopySpell,
+    DoubleNext,
     Draw,
     Scry,
     MoveCard,
@@ -1487,15 +1576,16 @@ class Character(BaseModel):
 
     @model_validator(mode="after")
     def _heroics_valid(self) -> "Character":
-        """D8-3.5: the Skill's timing is FORCED to instant and the Ultimate's to
-        sorcery (channeled is illegal for both — coerced away rather than
-        round-tripped); the Ultimate may never carry a mana cost (the gauge is
-        the cost)."""
-        if self.skill is not None and self.skill.timing != Timing.instant:
-            # Rebuild so Card's own validators re-run against the forced timing
+        """D8-3.5 (amended): the Skill is an ACTIVATED ability — an action
+        (sorcery timing) or a channeled effect (stances etc.); it is never
+        instant-speed (instant-speed skills proved too strong — legacy instant
+        skills are coerced to sorcery). The Ultimate's timing is forced to
+        sorcery and it may never carry a mana cost (the gauge is the cost)."""
+        if self.skill is not None and self.skill.timing == Timing.instant:
+            # Rebuild so Card's own validators re-run against the coerced timing
             # (a channeled-only effect then raises instead of slipping through).
             self.skill = Card.model_validate(
-                {**self.skill.model_dump(mode="json"), "timing": "instant"})
+                {**self.skill.model_dump(mode="json"), "timing": "sorcery"})
         if self.ultimate is not None:
             if self.ultimate.timing != Timing.sorcery:
                 self.ultimate = Card.model_validate(
