@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { roman } from "../lib/format";
+import { inviteUrl } from "../lib/settings";
 import { useGame } from "../lib/store";
 import { IconGear, IconLink, IconPlus } from "./Icons";
 
@@ -43,7 +44,9 @@ export function TopRibbon({ onNewGame, onOptions }: {
   const nowIdx = stepNow ? STEPS.indexOf(stepNow) : -1;
 
   const copyInvite = () => {
-    navigator.clipboard?.writeText(location.href);
+    // The invite host comes from Options → Settings (e.g. a Tailscale IP);
+    // unset, it falls back to however this window was opened.
+    if (sessionId) navigator.clipboard?.writeText(inviteUrl(sessionId));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };

@@ -381,8 +381,12 @@ async def _broadcast(session) -> None:
 async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     session = MANAGER.get(session_id)
     if session is None:
+        # `fatal` tells the client this can never succeed (sessions live in
+        # memory — a restart wipes them), so it must stop its reconnect loop
+        # instead of hammering the dead id every second.
         await ws.accept()
-        await ws.send_json({"type": "error", "message": "no such session"})
+        await ws.send_json({"type": "error", "message": "no such session",
+                            "fatal": True})
         await ws.close()
         return
 

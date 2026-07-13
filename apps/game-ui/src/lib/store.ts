@@ -301,6 +301,15 @@ export const useGame = create<StoreState>((set, get) => ({
         set({ gameOver: msg.result });
         break;
       case "error":
+        if (msg.fatal) {
+          // The session can never be reached (e.g. the server restarted and
+          // in-memory sessions were wiped): stop the 1s reconnect loop for
+          // good rather than hammering the dead id forever.
+          get().socket?.close();
+          set({ connected: false });
+          get().setError(`${msg.message} — start a new game`);
+          break;
+        }
         get().setError(msg.message);
         set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [], passAllRootUid: null });
         break;
