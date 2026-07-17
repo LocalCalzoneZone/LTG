@@ -1,0 +1,65 @@
+{
+  "name": "Fixture I \u2014 The Cutthroat Alley",
+  "enemies": [
+    {
+      "id": "cutpurse",
+      "name": "Cutpurse",
+      "hp": 3,
+      "level": 1,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    },
+    {
+      "id": "footpad",
+      "name": "Footpad",
+      "hp": 5,
+      "level": 2,
+      "power": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    },
+    {
+      "id": "slinger",
+      "name": "Slinger",
+      "hp": 3,
+      "level": 1,
+      "power": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "cutpurse",
+      "footpad"
+    ],
+    "2": [
+      "cutpurse",
+      "cutpurse",
+      "footpad",
+      "slinger"
+    ],
+    "3": [
+      "cutpurse",
+      "cutpurse",
+      "footpad",
+      "footpad",
+      "slinger",
+      "slinger"
+    ],
+    "4": [
+      "cutpurse",
+      "cutpurse",
+      "cutpurse",
+      "footpad",
+      "footpad",
+      "slinger",
+      "slinger",
+      "slinger"
+    ]
+  }
+}

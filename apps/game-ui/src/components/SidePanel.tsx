@@ -129,8 +129,17 @@ export function SidePanel() {
       </Panel>
 
       {/* Intents (D8-1.5) — one veiled line per living enemy for this round
-          (two for an enraged boss, §D9-4) */}
+          (two for an enraged boss, §D9-4). The objective banner (§D12-1.5) is
+          the pinned first line: fully public, present from turn 1. */}
       <Panel title="Intents">
+        {snapshot.objective && snapshot.objective.status === "active" && (
+          <div className="mb-1 border-b border-brass/40 px-1 pb-1 text-[12px] leading-snug">
+            <span className="caps-label mr-1.5 border border-brass/50 px-1 text-[9px] tracking-[0.12em] text-brass">
+              objective
+            </span>
+            <span className="text-parch">{snapshot.objective.line}</span>
+          </div>
+        )}
         {snapshot.intents.length === 0 ? (
           <Empty>no declared intents</Empty>
         ) : (

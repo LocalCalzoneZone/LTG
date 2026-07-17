@@ -24,6 +24,9 @@ from ltg_combat.serialize import (
     _stack_list,
     _token_dict,
     card_dict,
+    doom_clock,
+    objective_block,
+    objective_outcome_line,
     phase_label,
     serialize_actions,
     veiled_intent,
@@ -204,6 +207,9 @@ def _creature_snapshot(view: GameState, enemy,
         "intents": veiled_intents(view, enemy),
         # The `rises` trait is public (§D9-1.5) — the stirring state, not the veil.
         "rises": getattr(enemy, "rises", None),
+        # The doom-clock badge (§D12-1.5): rounds left on a live race clock,
+        # for the marked enemy only — None everywhere else.
+        "doom_clock": doom_clock(view, enemy),
         # Boss support (§F-9): the flag lights the UI's boss chrome; the execute
         # window tells players the removal immunity has lifted (≤25% max HP).
         "is_boss": bool(enemy.is_boss),
@@ -372,10 +378,15 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "tokens": tokens,
         "corpses": corpses,
         "stack": stack,
+        # The objective banner (§D12-1.5): fully public, pinned as the first
+        # line of the intents window. None for a standard encounter.
+        "objective": objective_block(view),
         "intents": _intents(view),
         "pending_choice": pending_cards,
         "log": log,
         "legal_actions": legal_payload,   # for the controlled holder only
         "result": view.result,
-        "game_over": {"result": view.result} if view.result is not None else None,
+        "game_over": ({"result": view.result,
+                       "objective_line": objective_outcome_line(view)}
+                      if view.result is not None else None),
     }

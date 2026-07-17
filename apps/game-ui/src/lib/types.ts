@@ -155,6 +155,19 @@ export interface IntentView {
   slot: number;
 }
 
+// The encounter objective (§D12-1.5): fully public — the mission, not an
+// intent. `line` is the banner text pinned atop the intents window; the
+// kind-specific counters back any richer rendering.
+export interface ObjectiveView {
+  kind: "survive" | "waves" | "race";
+  status: "active" | "complete" | "failed";
+  line: string;
+  rounds_remaining: number | null;
+  wave: number | null;
+  waves_total: number | null;
+  target_id: string | null;
+}
+
 // A corpse marker (§D9-1): the dead stay on the battlefield — an object, not a
 // creature. `stirring` > 0 means it revives in that many Upkeeps (rises) unless
 // exiled or raised first; such an enemy is NOT yet defeated.
@@ -199,6 +212,9 @@ export interface CreatureView {
   intent: IntentView | null;
   // Every declared line this round — two for an enraged boss (§D9-4).
   intents: IntentView[];
+  // The doom-clock badge (§D12-1.5): rounds left on a live race clock, for the
+  // marked enemy only — null everywhere else.
+  doom_clock: number | null;
   // The rises trait (§D9-1.5) — public: it will stir and revive when killed.
   rises: number | null;
   is_boss: boolean;
@@ -370,6 +386,9 @@ export interface GameSnapshot {
   // Corpse markers (§D9-1.7): the dead on their rows; a stirring one pulses.
   corpses: CorpseView[];
   stack: StackRow[];
+  // The objective banner (§D12-1.5): fully public, pinned as the first line of
+  // the intents window. Null for a standard encounter.
+  objective: ObjectiveView | null;
   // The veiled intents window (D8-1.5): one line per living enemy this round.
   intents: IntentView[];
   // A pending card pick's candidates as full cards (only sent to the chooser's
@@ -378,7 +397,7 @@ export interface GameSnapshot {
   log: LogEntry[];
   legal_actions: LegalAction[];
   result: string | null;
-  game_over: { result: string } | null;
+  game_over: { result: string; objective_line?: string | null } | null;
   // Present only when this session runs an adventure (Update 10): act sequence,
   // narration, and the between-acts level-up gate. A non-final act victory
   // arrives with result/game_over suppressed and `level_up` set instead.

@@ -5,6 +5,7 @@
 -e ./apps/deckbuilder
 -e ./apps/combat
 -e ./apps/game-server
+-e ./apps/autoplay-tester
 
 # test / dev
 pytest>=8.0

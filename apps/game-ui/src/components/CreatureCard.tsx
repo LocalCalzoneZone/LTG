@@ -93,6 +93,17 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       <div className={`absolute -left-px top-1.5 border border-l-0 border-line bg-ink-0/80 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-parch`}>
         {roman(creature.level)}
       </div>
+
+      {/* doom-clock badge (§D12-1.5) — the marked race target: rounds left in
+          brass. Frame-state precedence is unchanged (a plaque, not a frame). */}
+      {creature.doom_clock != null && (
+        <div
+          title={`The doom clock: ${creature.doom_clock} round(s) remain — defeat this enemy before it runs out.`}
+          className={`absolute -right-px top-1.5 border border-r-0 border-brass/60 bg-ink-0/85 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-brass`}
+        >
+          {creature.doom_clock}
+        </div>
+      )}
       <div className="absolute left-1.5 top-[22%]">
         <KeywordBadges keywords={creature.keywords} counters={creature.counters}
           poison={creature.poison_counters} regen={creature.regen_counters} />

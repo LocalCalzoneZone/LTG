@@ -1704,3 +1704,119 @@ def deck_status(loadout: Loadout) -> dict:
         "untranslated": untranslated,
         "starting_mana_outside_identity": starting_mana_off,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Encounter objectives (Design Update 12 §D12-1)
+#
+# An encounter may carry AT Most ONE optional `objective` from the closed set
+# survive / waves / race. Objectives are fully public — the mission, not an
+# intent. The models validate the AUTHORED form (per-party-size roster maps);
+# the combat loader resolves those maps into concrete enemy ids at build time
+# and marks the resolved dict with `resolved: true`.
+# --------------------------------------------------------------------------- #
+
+# A wave / reinforcement roster: the authored per-party-size map
+# ({"1": [ids], ..., "4": [ids]} — the standard layout-map shape) or an
+# already-concrete id list (hand-authored fixed encounters, or post-resolution).
+ObjectiveRoster = Union[Dict[str, List[str]], List[str]]
+
+
+class Reinforcement(BaseModel):
+    """One scheduled `survive` arrival (§D12-1.2): deploys at the start of the
+    Enemy Intents step of round `turn`, on the entering enemies' home rows,
+    declaring intents that same step. Until then it waits in the reserve zone.
+    Exactly one of `layouts` (authored per-size map) / `ids` (resolved) is set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn: int = Field(ge=2)
+    layouts: Optional[Dict[str, List[str]]] = None
+    ids: Optional[List[str]] = None
+    arrived: bool = False  # engine bookkeeping (serialized state round-trips)
+
+    @model_validator(mode="after")
+    def _one_roster(self) -> "Reinforcement":
+        if (self.layouts is None) == (self.ids is None):
+            raise ValueError(
+                "a reinforcement entry needs exactly one of 'layouts' "
+                "(per-party-size id map) or 'ids' (a concrete id list)")
+        if self.layouts is not None and not any(self.layouts.values()):
+            raise ValueError("a reinforcement entry's layouts must field "
+                             "at least one enemy")
+        return self
+
+
+class Escalation(BaseModel):
+    """The enrage-shaped payload a failed `escalate` race fires onto the stack
+    from its marked enemy (§D12-1.4): 2–3 verbs, budget-free (T-68), answerable
+    like an enrage. Verbs are ordinary §11 primitives (enemy-legal subset)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    telegraph: str = ""
+    verbs: List[Effect] = Field(min_length=1)
+
+
+class EncounterObjective(BaseModel):
+    """The optional encounter objective (§D12-1.1).
+
+    - `survive`: hold out `turns` rounds; optional scheduled `reinforcements`.
+      No failure shape — failing to survive IS the wipe.
+    - `waves`: the encounter's top-level layouts are wave 1; `waves` lists the
+      later waves (reserve-zone enemies block victory by construction).
+    - `race`: defeat the marked `target` (graveyard or exile — nothing else
+      counts) within `turns` rounds, or the `fail` shape fires (`escalation`
+      required iff fail == "escalate").
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["survive", "waves", "race"]
+    turns: Optional[int] = None
+    reinforcements: List[Reinforcement] = Field(default_factory=list)
+    waves: Optional[List[ObjectiveRoster]] = None
+    target: Optional[str] = None
+    fail: Optional[Literal["defeat", "escalate"]] = None
+    escalation: Optional[Escalation] = None
+    resolved: bool = False  # set by the combat loader once rosters are concrete
+
+    @model_validator(mode="after")
+    def _coherent(self) -> "EncounterObjective":
+        def forbid(*fields: str) -> None:
+            for f in fields:
+                v = getattr(self, f)
+                if v not in (None, [], False) and not (f == "reinforcements" and not v):
+                    raise ValueError(f"a '{self.kind}' objective must not carry '{f}'")
+
+        if self.kind == "survive":
+            if not self.turns or self.turns < 1:
+                raise ValueError("a 'survive' objective needs 'turns' >= 1")
+            forbid("waves", "target", "fail", "escalation")
+        elif self.kind == "waves":
+            if not self.waves:
+                raise ValueError("a 'waves' objective needs at least one later "
+                                 "wave (the top-level layouts are wave 1)")
+            for i, w in enumerate(self.waves, start=2):
+                empty = (not any(w.values())) if isinstance(w, dict) else (not w)
+                if empty:
+                    raise ValueError(f"wave {i} fields no enemies")
+            forbid("turns", "target", "fail", "escalation")
+            if self.reinforcements:
+                raise ValueError("a 'waves' objective must not carry 'reinforcements'")
+        else:  # race
+            if not self.turns or self.turns < 1:
+                raise ValueError("a 'race' objective needs 'turns' >= 1")
+            if not (self.target or "").strip():
+                raise ValueError("a 'race' objective needs a 'target' (the "
+                                 "marked enemy's pool id)")
+            if self.fail is None:
+                self.fail = "escalate"
+            if self.fail == "escalate" and self.escalation is None:
+                raise ValueError("fail 'escalate' requires an 'escalation' payload")
+            if self.fail == "defeat" and self.escalation is not None:
+                raise ValueError("fail 'defeat' must not carry an 'escalation'")
+            forbid("waves")
+            if self.reinforcements:
+                raise ValueError("a 'race' objective must not carry 'reinforcements'")
+        return self

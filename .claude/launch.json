@@ -4,32 +4,73 @@
     {
       "name": "cockpit",
       "runtimeExecutable": ".venv/bin/ltg-combat-cockpit",
-      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8011"],
+      "runtimeArgs": [
+        "--no-browser",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8011"
+      ],
       "port": 8011
     },
     {
       "name": "deckbuilder",
       "runtimeExecutable": ".venv/bin/ltg-deckbuilder",
-      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8012"],
+      "runtimeArgs": [
+        "--no-browser",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8012"
+      ],
       "port": 8012
     },
     {
       "name": "game",
       "runtimeExecutable": ".venv/bin/ltg-game",
-      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8020"],
+      "runtimeArgs": [
+        "--no-browser",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8020"
+      ],
       "port": 8020
     },
     {
       "name": "game-alt",
       "runtimeExecutable": ".venv/bin/ltg-game",
-      "runtimeArgs": ["--no-browser", "--host", "0.0.0.0", "--port", "8021"],
+      "runtimeArgs": [
+        "--no-browser",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8021"
+      ],
       "port": 8021
     },
     {
       "name": "game-ui",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "apps/game-ui", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "apps/game-ui",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "autoplay-tester",
+      "runtimeExecutable": ".venv/bin/ltg-autoplay-tester",
+      "runtimeArgs": [
+        "--no-browser",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8030"
+      ],
+      "port": 8030
     }
   ]
 }

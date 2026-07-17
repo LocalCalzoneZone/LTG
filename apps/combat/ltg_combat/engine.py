@@ -200,6 +200,13 @@ def _advance(st: GameState) -> None:
             _check_end(st)
             if st.result is not None:
                 return
+            # Objective timers tick at the completion of each End Step
+            # (§D12-1.1): a `survive` timer may win here; an expired `race`
+            # clock loses the act or pushes its escalation payload (the window
+            # opens next loop iteration, with the turn already advanced).
+            _objective_tick(st)
+            if st.result is not None:
+                return
             st.turn += 1
             st.phase = "upkeep"
 
@@ -506,6 +513,7 @@ def _declare_intents(st: GameState) -> None:
     telegraphed intent against the current state, in the canonical order. Allies
     use the same deterministic heuristic as enemies, applied on the party's side."""
     _redeploy_bounced(st)  # bounced enemies return at the start of their next turn (§E-C)
+    _deploy_objective_arrivals(st)  # waves / reinforcements enter here (§D12-1)
     for e in _ordered(st.living_enemies()):
         _declare_enemy_intent(st, e)
     for t in _ordered(st.living_tokens()):
@@ -523,6 +531,146 @@ def _redeploy_bounced(st: GameState) -> None:
             _log(st, "redeploy",
                  f"{e.name} redeploys to the battlefield ({e.row} row).",
                  enemy=e.id, row=e.row)
+
+
+# --------------------------------------------------------------------------- #
+# Encounter objectives (Design Update 12 §D12-1)
+# --------------------------------------------------------------------------- #
+def _deploy_objective_arrivals(st: GameState) -> None:
+    """Reserve-zone entries into play, at the start of the Enemy Intents step:
+
+    * `waves` — when every enemy of the current wave is defeated, the next wave
+      deploys (the party always got the End Step and Upkeep breather, §D12-1.3).
+      A bounced or stirring straggler holds the wave; a mind-CONTROLLED one does
+      not (control must never stall the assault).
+    * `survive` — each reinforcement entry deploys on its scheduled round
+      (§D12-1.2).
+
+    Deployed enemies enter on their home rows and declare intents in the normal
+    pass that follows this call."""
+    obj = st.objective
+    if obj is None:
+        return
+    if (obj.kind == "waves" and obj.wave_index < len(obj.waves)
+            and not st.living_enemies() and not st.bounced_enemies()
+            and not st.stirring_corpses()):
+        ids = obj.waves[obj.wave_index]
+        obj.wave_index += 1
+        names = [n for n in (_deploy_reserve(st, eid) for eid in ids) if n]
+        _log(st, "wave_deployed",
+             f"Wave {obj.wave_index + 1} of {len(obj.waves) + 1} takes the "
+             f"field: {', '.join(names)}.",
+             wave=obj.wave_index + 1, total=len(obj.waves) + 1, enemies=list(ids))
+    if obj.kind == "survive":
+        for entry in obj.reinforcements:
+            if not entry.get("arrived") and st.turn >= int(entry.get("turn", 0)):
+                entry["arrived"] = True
+                names = [n for n in (_deploy_reserve(st, eid)
+                                     for eid in entry.get("ids", [])) if n]
+                if names:
+                    _log(st, "reinforcements",
+                         f"Enemy reinforcements arrive: {', '.join(names)}.",
+                         turn=st.turn, enemies=list(entry.get("ids", [])))
+
+
+def _deploy_reserve(st: GameState, eid: str) -> Optional[str]:
+    """Move one reserve-zone enemy into play on its home row. Returns its name
+    (None if the id is not a waiting reserve — deploys are idempotent)."""
+    e = next((x for x in st.enemies if x.id == eid and x.reserve), None)
+    if e is None:
+        return None
+    e.reserve = False
+    e.row = e.committed = e.home_row
+    return e.name
+
+
+def _objective_tick(st: GameState) -> None:
+    """The objective timer tick, at the completion of each End Step (§D12-1.1).
+    `survive` wins the act when round N completes; an expired `race` clock
+    loses the act (`fail: defeat`) or fires the escalation payload."""
+    obj = st.objective
+    if obj is None or st.result is not None:
+        return
+    obj.rounds_done += 1
+    if obj.kind == "survive" and obj.rounds_done >= obj.turns:
+        survivors = (st.living_enemies() + st.bounced_enemies()
+                     + st.reserve_enemies())
+        if survivors:
+            # A flavour event — no kill credit, no death triggers (§D12-1.2).
+            _log(st, "withdraw",
+                 "The assault breaks off — the surviving enemies withdraw: "
+                 + ", ".join(e.name for e in survivors) + ".",
+                 enemies=[e.name for e in survivors])
+        st.result = "victory"
+        _log(st, "win", "The party holds the line — victory.",
+             result="victory", objective="survive")
+        return
+    if obj.kind == "race" and obj.status == "active" and obj.rounds_done >= obj.turns:
+        _race_expire(st, obj)
+
+
+def _race_target_defeated(st: GameState, tid: Optional[str]) -> bool:
+    """Whether the marked enemy is DEFEATED — graveyard or exile, nothing else
+    counts (§D12-1.4). Alive anywhere (in play, bounced, suspended, reserve),
+    a stirring corpse, or a mind-controlled body is NOT defeated."""
+    if tid is None:
+        return False
+    if st.enemy(tid) is not None:
+        return False
+    corpse = st.corpse(tid)
+    if corpse is not None and corpse.stirring > 0:
+        return False
+    if any(t.revert is not None and t.revert.id == tid for t in st.tokens):
+        return False
+    return True
+
+
+def _race_expire(st: GameState, obj) -> None:
+    """The doom clock runs out with the marked enemy undefeated (§D12-1.4)."""
+    obj.status = "failed"
+    if obj.fail == "defeat":
+        st.result = "defeat"
+        _log(st, "loss", "The clock runs out — the act is lost.",
+             result="defeat", objective="race", target=obj.target_id)
+        return
+    # `escalate`: if the marked enemy is out of play but undefeated, it
+    # returns/reverts FIRST, then the payload fires (§D12-1.4).
+    tok = next((t for t in st.controlled_units()
+                if t.revert is not None and t.revert.id == obj.target_id), None)
+    if tok is not None:
+        _end_control(st, tok, "the doom clock expires")
+    target = st.enemy(obj.target_id)
+    if target is not None and target.in_hand:
+        target.in_hand = False
+        _log(st, "redeploy",
+             f"{target.name} returns to the battlefield as the clock expires.",
+             enemy=target.id, row=target.row)
+    if target is not None and target.exiled:
+        target.exiled = False
+        _log(st, "redeploy",
+             f"{target.name} tears free of its suspension as the clock expires.",
+             enemy=target.id)
+    label = obj.escalation_telegraph or "Escalation"
+    effects = list(obj.escalation_verbs)
+    # Aim any chosen-target verb like an enrage would: the valuation brain over
+    # the reachable, non-hexproof party (AoE/self verbs need no pick).
+    tid = None
+    if any(_is_targeted(e) for e in effects):
+        dmg = sum(e.amount for e in effects
+                  if getattr(e, "kind", None) == "deal_damage"
+                  and isinstance(getattr(e, "amount", None), int))
+        cands = st.living_party() if target is None else \
+            _reachable_targets(target, st.living_party())
+        pick = _rank_valuation([c for c in cands if not _has_kw(c, "hexproof")], dmg)
+        tid = pick.id if pick is not None else None
+    _push(st, StackItem(kind="triggered", source_id=obj.target_id,
+                        source_side="enemy", label=label, effects=effects,
+                        target_id=tid))
+    st.priority = None  # fresh window — the payload is answerable on the stack
+    st.passes = 0
+    _log(st, "escalation",
+         f"The clock runs out — {label} erupts from the marked enemy!",
+         enemy=obj.target_id, label=label, target=tid, objective="race")
 
 
 def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
@@ -692,6 +840,17 @@ def _condition_met(st: GameState, e: EnemyState, cond: dict) -> bool:
     elif kind == "self_channeling":
         # This enemy's own held channels — e.g. defend-the-ritual behaviour.
         lhs = len(e.channels)
+    elif kind == "hero_gauge_pct":
+        # §D12-2.2: the highest ultimate gauge in the party — arm the
+        # gauge-punisher only when a hero is actually approaching the dread
+        # window (spent/absent ultimates read as 0: no threat to punish).
+        gauges = [c.ultimate_gauge for c in st.living_party()
+                  if c.ultimate is not None and not c.ultimate_used]
+        lhs = max(gauges) if gauges else 0
+    elif kind == "hero_primed":
+        # §D12-2.2: how many heroes hold a live amplify/double_next tag.
+        lhs = len([c for c in st.living_party()
+                   if c.amplify_tags or c.double_next])
     else:
         return False
     return _cmp(lhs, op, val)
@@ -759,6 +918,19 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
             return None
         return sorted(cands, key=lambda c: (-c.current_power, _role_rank(c),
                                             c.effective_hp, _row_rank(c.row), c.name))[0]
+    if rule == "primed_hero":
+        # §D12-2.2: the hero with the highest primed-threat score (§D12-2.1),
+        # falling back to plain valuation when nobody is primed — a rule using
+        # it never whiffs into an empty target.
+        cands = [c for c in _reachable_targets(e, st.living_party())
+                 if not _has_kw(c, "hexproof")]
+        cands = _filter_control_targets(comp, cands)
+        primed = [c for c in cands if _primed_score(c) > 0]
+        if primed:
+            return sorted(primed, key=lambda c: (-_primed_score(c), _role_rank(c),
+                                                 c.effective_hp, _row_rank(c.row),
+                                                 c.name))[0]
+        return _valuation_target(st, e, comp)
     if rule == "valuation":
         return _valuation_target(st, e, comp)
     return st.combatant(rule)  # a fixed combatant id
@@ -782,6 +954,25 @@ def _role_rank(c) -> int:
     if getattr(c, "channels", None):
         return 0
     return 1 if getattr(c, "attack_mode", "melee") == "ranged" else 2
+
+
+# T-69: the ultimate-gauge threshold that reads as a primed threat (§D12-2.1).
+PRIMED_GAUGE = 80
+
+
+def _primed_score(c) -> int:
+    """The §D12-2.1 primed-threat score (T-69): 2 for a live `amplify` or
+    `double_next` tag + 1 for an ultimate gauge ≥ 80 that can still be spent
+    (an ultimate already cast, or never authored, threatens nothing).
+    0 == not primed."""
+    score = 0
+    if getattr(c, "amplify_tags", None) or getattr(c, "double_next", None):
+        score += 2
+    if (getattr(c, "ultimate_gauge", 0) >= PRIMED_GAUGE
+            and getattr(c, "ultimate", None) is not None
+            and not getattr(c, "ultimate_used", False)):
+        score += 1
+    return score
 
 
 def _swarm_at_cap(st: GameState, e: EnemyState, comp: Component) -> bool:
@@ -836,6 +1027,15 @@ def _rank_valuation(cands: List, dmg: int):
                     and dmg >= _break_threshold(c)]
         if breakers:
             return sorted(breakers, key=lambda c: (_row_rank(c.row), c.name))[0]
+    # 2.5 Primed threat (§D12-2.1, T-69): heroes carrying a live amplify/
+    # double_next tag or a spendable gauge ≥ 80 — the archer snipes the
+    # war-cried duelist before the doubled swing lands. Score descending,
+    # ties falling through to the existing role/HP/row order.
+    primed = [c for c in cands if _primed_score(c) > 0]
+    if primed:
+        return sorted(primed, key=lambda c: (-_primed_score(c), _role_rank(c),
+                                             c.effective_hp, _row_rank(c.row),
+                                             c.name))[0]
     return sorted(cands, key=lambda c: (_role_rank(c), c.effective_hp, _row_rank(c.row), c.name))[0]
 
 
@@ -1356,6 +1556,13 @@ def _trigger_matches(st: GameState, e: EnemyState, comp: Component, ctx: dict) -
             return top is not None and top.source_side == "party" and top.target_id == e.id
         if trig == "on_incoming_lethal":
             return top is not None and _would_be_lethal(st, top, e)
+        if trig == "on_ultimate_cast":
+            # §D12-2.2: a hero's Ultimate is on the stack — the dread window.
+            # Punishing (damage/wound/stun) is priced as a normal reactive;
+            # a COUNTER on this trigger is boss-only, once per encounter (T-70,
+            # enforced at load).
+            return (top is not None and top.source_side == "party"
+                    and top.is_ultimate)
         return False
     # post-resolution
     hits, deaths = ctx.get("hits", []), ctx.get("deaths", [])
@@ -1688,7 +1895,8 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{card.name} (Ultimate)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
-                        card=card, mode=action.mode, cast_mode="action"))
+                        card=card, mode=action.mode, cast_mode="action",
+                        is_ultimate=True))
     _open_window(st, actor.id, reactive=False)
     tgt = st.combatant(action.target_id)
     _log(st, "ultimate", f"{actor.name} unleashes their Ultimate — {card.name}"
@@ -4172,9 +4380,12 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     dealt = target.hp - max(floor, target.hp - amount)
     target.hp = max(floor, target.hp - amount)
     if dealt > 0 or absorbed == 0:
+        # `source_id` (additive, §D12-3.4): machine-readable attribution for
+        # the autoplay metrics — `source` stays the display string.
         _log(st, "damage", f"{target.name} takes {dealt} damage (HP {target.hp}, "
              f"eff {target.effective_hp}).", target=_tid(target), amount=dealt,
-             hp=target.hp, source=source)
+             hp=target.hp, source=source,
+             source_id=getattr(source_obj, "id", None))
 
     # On-damage triggers key off the blow that connected — temp HP soaked plus HP lost
     # (so a shielded hit still feeds lifelink/deathtouch; identical to before when no
@@ -4257,7 +4468,8 @@ def _heal(st: GameState, target, amount: int, reason: str = "",
     gained += target.hp - before
     if target.hp != before or reason:
         _log(st, "heal", f"{target.name} heals {target.hp - before} (HP {target.hp}).",
-             target=_tid(target), amount=target.hp - before, hp=target.hp, reason=reason)
+             target=_tid(target), amount=target.hp - before, hp=target.hp, reason=reason,
+             source_id=getattr(source_obj, "id", None))
     _gain_gauge(st, source_obj, gained)
     if isinstance(target, CharacterState) and target.effective_hp > 0:
         target.down_credited = False  # back on their feet — a later downing counts anew
@@ -4403,13 +4615,23 @@ def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None
 def _check_end(st: GameState) -> None:
     if st.result is not None:
         return
+    # A race objective completes the moment its marked enemy is defeated
+    # (§D12-1.4): the doom clock vanishes; the act continues to standard victory.
+    obj = st.objective
+    if (obj is not None and obj.kind == "race" and obj.status == "active"
+            and _race_target_defeated(st, obj.target_id)):
+        obj.status = "complete"
+        _log(st, "objective_complete",
+             "The marked enemy is defeated — the doom clock shatters.",
+             target=obj.target_id, objective="race")
     # Victory (Update 03 §E-B): every roster enemy must be gone for good — in the
     # graveyard or exile. A bounced enemy is "in hand" (alive, off-field), which keeps
     # the encounter live: you cannot win by bouncing the last enemy; it will redeploy.
     # A CORPSE is a defeated enemy (§D9-1.2) — but a STIRRING corpse is not
-    # (§D9-1.5), and neither is a mind-CONTROLLED enemy (§D9-1.4).
+    # (§D9-1.5), and neither is a mind-CONTROLLED enemy (§D9-1.4), nor a
+    # reserve-zone wave/reinforcement enemy still awaiting deploy (§D12-1).
     if not st.living_enemies() and not st.bounced_enemies() \
-            and not st.stirring_corpses():
+            and not st.stirring_corpses() and not st.reserve_enemies():
         # Control never wins (§D9-1.4): if only controlled enemies remain, ALL
         # control ends immediately — each snaps back to the enemy side and the
         # fight continues. (Raised undead are tokens of already-defeated enemies;

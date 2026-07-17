@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LTG — Autoplay Tester</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="ribbon">
+    <div class="wordmark"><span class="diamond"></span>LTG <span class="sub">Autoplay Tester</span></div>
+    <nav id="nav">
+      <button data-view="roster" class="navbtn active">Roster</button>
+      <button data-view="bench" class="navbtn">Test Bench</button>
+      <button data-view="queue" class="navbtn">Queue</button>
+      <button data-view="verdicts" class="navbtn">Verdicts</button>
+    </nav>
+    <div class="ribbon-right" id="queue-pulse"></div>
+  </header>
+
+  <main>
+    <section id="view-roster" class="view active"></section>
+    <section id="view-bench" class="view"></section>
+    <section id="view-queue" class="view"></section>
+    <section id="view-verdicts" class="view"></section>
+  </main>
+
+  <div id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -15,13 +15,14 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ltg_core.schema import Loadout
+from ltg_core.schema import EncounterObjective, Loadout
 from ltg_combat.scenario import (
     SCENARIO_A,
     SCENARIO_C,
     _slug,
     compose_spec,
     scale_encounter,
+    sized_roster,
     state_from_dict,
 )
 from ltg_combat.state import GameState
@@ -280,6 +281,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
             "enemies": copy.deepcopy(raw["enemies"]),
             "tokens": copy.deepcopy(raw.get("tokens", {})),
             "layouts": copy.deepcopy(raw.get("layouts", {})) if isinstance(raw.get("layouts"), dict) else {},
+            "objective": copy.deepcopy(raw.get("objective")) if isinstance(raw.get("objective"), dict) else None,
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
             "path": path,
         }
@@ -322,6 +324,7 @@ def encounter_for(encounter_id: str) -> Optional[Dict[str, Any]]:
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
         "layouts": copy.deepcopy(scen.get("layouts", {})),
+        **({"objective": copy.deepcopy(scen["objective"])} if scen.get("objective") else {}),
     }
 
 
@@ -340,6 +343,7 @@ def encounter_detail(encounter_id: str) -> Optional[Dict[str, Any]]:
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
         "layouts": copy.deepcopy(scen.get("layouts", {})),
+        **({"objective": copy.deepcopy(scen["objective"])} if scen.get("objective") else {}),
     }
 
 
@@ -390,9 +394,17 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
         "enemies": copy.deepcopy(enemies),
         "tokens": copy.deepcopy(raw.get("tokens", {})) if isinstance(raw.get("tokens"), dict) else {},
     }
-    layouts = _validate_layouts(raw.get("layouts"), enemies)
+    # Parse the objective's kind first — a `waves` objective moves the
+    # mini-boss coverage rule from the layouts (wave 1) to the final wave.
+    objective_raw = raw.get("objective")
+    obj_kind = objective_raw.get("kind") if isinstance(objective_raw, dict) else None
+    layouts = _validate_layouts(raw.get("layouts"), enemies,
+                                boss_in_reserve=(obj_kind == "waves"))
     if layouts:
         cleaned["layouts"] = layouts
+    objective = _validate_objective(objective_raw, enemies, layouts)
+    if objective is not None:
+        cleaned["objective"] = objective
     # Authoritative gate: build a throwaway state (a stub 1-character party) so the
     # engine validates every enemy — intents, rows, keywords — exactly as at play.
     # With layouts, every per-size roster must build too (clones included).
@@ -411,12 +423,14 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned
 
 
-def _validate_layouts(layouts: Any, enemies: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+def _validate_layouts(layouts: Any, enemies: List[Dict[str, Any]],
+                      boss_in_reserve: bool = False) -> Dict[str, List[str]]:
     """Check per-party-size layouts (optional). Each key is a party size ("1".."4"),
     each value a list of enemy ids from the roster (repeats allowed — they clone).
     Returns the cleaned {size: [ids]} dict ({} when absent). Raises ValueError on
     unknown ids, empty rosters, or a missing boss (the centerpiece plays at every
-    party size)."""
+    party size — unless `boss_in_reserve`: a `waves` objective fields its
+    mini-boss in the FINAL wave instead, checked by `_validate_objective`)."""
     if layouts is None:
         return {}
     if not isinstance(layouts, dict):
@@ -435,12 +449,87 @@ def _validate_layouts(layouts: Any, enemies: List[Dict[str, Any]]) -> Dict[str, 
         unknown = sorted(set(ids) - known)
         if unknown:
             raise ValueError(f"layouts[{size}]: unknown enemy id(s): {', '.join(unknown)}")
-        missing_boss = sorted(boss_ids - set(ids))
-        if missing_boss:
-            raise ValueError(f"layouts[{size}]: the boss ({missing_boss[0]}) must "
-                             "appear at every party size")
+        if not boss_in_reserve:
+            missing_boss = sorted(boss_ids - set(ids))
+            if missing_boss:
+                raise ValueError(f"layouts[{size}]: the boss ({missing_boss[0]}) must "
+                                 "appear at every party size")
         out[str(int(size))] = ids
     return out
+
+
+def _objective_roster_ids(roster: Any) -> List[str]:
+    """Every id an authored wave/reinforcement roster mentions, across its
+    per-size variants (or the plain list itself)."""
+    if isinstance(roster, dict):
+        out: List[str] = []
+        for ids in roster.values():
+            out.extend(str(i) for i in (ids or []))
+        return out
+    return [str(i) for i in (roster or [])]
+
+
+def _validate_objective(raw_obj: Any, enemies: List[Dict[str, Any]],
+                        layouts: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
+    """Validate an encounter's optional objective (§D12-1): the schema shape,
+    roster ids against the pool, the race target's presence in every layout,
+    and — for `waves` — the mini-boss's final-wave placement. Returns the
+    cleaned dict, or None when absent."""
+    if raw_obj is None:
+        return None
+    try:
+        obj = EncounterObjective.model_validate(raw_obj)
+    except Exception as exc:
+        raise ValueError(f"objective: {exc}") from exc
+    known = {str(e.get("id", _slug(str(e.get("name", ""))))) for e in enemies
+             if isinstance(e, dict)}
+    boss_ids = {str(e.get("id")) for e in enemies
+                if isinstance(e, dict) and e.get("is_boss")}
+
+    def check_ids(ids: List[str], where: str) -> None:
+        unknown = sorted(set(ids) - known)
+        if unknown:
+            raise ValueError(
+                f"objective {where}: unknown enemy id(s): {', '.join(unknown)}")
+
+    raw = obj.model_dump(mode="json", exclude_none=True)
+    if obj.kind == "waves":
+        for i, wave in enumerate(raw.get("waves", []), start=2):
+            check_ids(_objective_roster_ids(wave), f"wave {i}")
+        if boss_ids:
+            boss = next(iter(boss_ids))
+            waves = raw.get("waves", [])
+            sizes = [int(s) for s in layouts.keys()] or [1]
+            for size in sizes:
+                final = sized_roster(waves[-1], size)
+                if boss not in final:
+                    raise ValueError(
+                        f"objective: the mini-boss ({boss}) must appear in the "
+                        f"FINAL wave at every party size (missing at size {size})")
+                for i, wave in enumerate(waves[:-1], start=2):
+                    if boss in sized_roster(wave, size):
+                        raise ValueError(
+                            f"objective: the mini-boss ({boss}) belongs in the "
+                            f"final wave, not wave {i}")
+                if boss in layouts.get(str(size), []):
+                    raise ValueError(
+                        f"objective: the mini-boss ({boss}) belongs in the "
+                        "final wave, not wave 1 (the layouts)")
+    elif obj.kind == "survive":
+        for r in raw.get("reinforcements", []):
+            check_ids(_objective_roster_ids(r.get("layouts") or r.get("ids")),
+                      f"reinforcements (turn {r.get('turn')})")
+    else:  # race
+        target = str(obj.target)
+        if target not in known:
+            raise ValueError(f"objective: marked target '{target}' is not in "
+                             "the enemy pool")
+        for size, roster in (layouts or {}).items():
+            if target not in roster:
+                raise ValueError(
+                    f"objective: the marked target ({target}) must be fielded "
+                    f"in every layout (missing at size {size})")
+    return raw
 
 
 def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> Dict[str, Any]:
@@ -579,12 +668,27 @@ def _validate_act(cleaned: Dict[str, Any]) -> None:
     every enemy described (the art / narration systems feed on it). Standalone
     encounters stay free of these extras."""
     layouts = cleaned.get("layouts") or {}
+    objective = cleaned.get("objective") or {}
+    waves = objective.get("waves", []) if objective.get("kind") == "waves" else []
     for size in range(1, 5):
         roster = layouts.get(str(size))
         if not isinstance(roster, list):
             raise ValueError('needs a "layouts" object with keys "1"–"4" '
                              "(one enemy roster per party size)")
-        if len(roster) < 2 * size:
+        if waves:
+            # T-66: with a `waves` objective the 2× outnumbering spreads across
+            # the waves — every wave fields ≥ 1× party size, ≥ 2× in total.
+            counts = [len(roster)] + [len(sized_roster(w, size)) for w in waves]
+            thin = [i + 1 for i, n in enumerate(counts) if n < size]
+            if thin:
+                raise ValueError(
+                    f'wave {thin[0]} fields fewer than {size} enemies at '
+                    f'layouts["{size}"] — every wave fields at least 1× the party')
+            if sum(counts) < 2 * size:
+                raise ValueError(
+                    f'layouts["{size}"]: only {sum(counts)} enemies across all '
+                    f"waves — a party of {size} must face at least {2 * size} in total")
+        elif len(roster) < 2 * size:
             raise ValueError(
                 f'layouts["{size}"] fields only {len(roster)} enemies — a party '
                 f"of {size} must be outnumbered with at least {2 * size}")
@@ -608,6 +712,16 @@ def _validate_adventure(acts: List[Dict[str, Any]],
     for i, text in enumerate(narrations, start=1):
         if not str(text or "").strip():
             raise ValueError(f"act {i} is missing its narration")
+    # Objectives (§D12-1.1): at most ONE per adventure, on Acts I–II only —
+    # Act III is always the standard boss kill (the climax stays a fight).
+    with_objective = [i for i, act in enumerate(acts, start=1)
+                      if act.get("objective")]
+    if len(with_objective) > 1:
+        raise ValueError("an adventure carries at most one objective "
+                         f"(acts {', '.join(map(str, with_objective))} all have one)")
+    if ACT_COUNT in with_objective:
+        raise ValueError("Act III is always the standard boss kill — "
+                         "objectives may appear on Acts I and II only")
     finale_bosses, _ = _act_boss_levels(acts[-1]["enemies"])
     if len(finale_bosses) != 1:
         raise ValueError("Act III must contain exactly one boss (is_boss)")
@@ -638,6 +752,17 @@ def save_adventure(raw: Dict[str, Any],
     if not isinstance(acts_raw, list) or len(acts_raw) != ACT_COUNT:
         raise ValueError(f"an adventure has exactly {ACT_COUNT} acts")
     name = str(raw.get("name") or "Adventure")
+    # Objective placement (§D12-1.1) — checked BEFORE the per-act deep dive so
+    # the standing rules produce their own message, not an id error from an act
+    # that should never have carried an objective at all.
+    with_objective = [i for i, act in enumerate(acts_raw, start=1)
+                      if isinstance(act, dict) and act.get("objective")]
+    if len(with_objective) > 1:
+        raise ValueError("an adventure carries at most one objective "
+                         f"(acts {', '.join(map(str, with_objective))} all have one)")
+    if ACT_COUNT in with_objective:
+        raise ValueError("Act III is always the standard boss kill — "
+                         "objectives may appear on Acts I and II only")
     cleaned_acts: List[Dict[str, Any]] = []
     narrations: List[str] = []
     for i, act in enumerate(acts_raw, start=1):

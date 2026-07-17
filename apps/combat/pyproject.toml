@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 ltg-combat = "ltg_combat.__main__:main"
 ltg-combat-cockpit = "ltg_combat.cockpit:main"
+ltg-autoplay = "ltg_combat.autoplay.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

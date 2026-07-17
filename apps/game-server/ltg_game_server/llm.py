@@ -205,7 +205,10 @@ a stun/taunt rule automatically spreads: it skips heroes already locked down) ·
 skips allies at full HP, so the healer never wastes a turn) ·
 "wounded_ally" (strict support: ONLY fires when an ally is actually hurt) ·
 "highest_threat" (assassin's read: the hardest-hitting hero — cut the sword arm) ·
-"channeling_player" (sniper: the hero holding a channeled spell — break it).
+"channeling_player" (sniper: the hero holding a channeled spell — break it) ·
+"primed_hero" (the hero primed to spike: holding a live amplify/double_next
+combo tag, or with a nearly-full ultimate gauge; falls back to valuation when
+nobody is primed, so a rule using it never wastes its turn).
 
 condition (optional gate on any component):
 {"kind": "self_hp_pct", "op": "<", "value": 50}   — bloodied behaviour
@@ -216,6 +219,10 @@ condition (optional gate on any component):
   when a hero is actually channeling
 {"kind": "self_channeling", "op": ">=", "value": 1} — defend-the-ritual behaviour
   while this enemy holds its own channel
+{"kind": "hero_gauge_pct", "op": ">=", "value": 80} — a hero's ultimate gauge is
+  nearly full (arm the gauge-punisher only when it matters)
+{"kind": "hero_primed", "op": ">=", "value": 1} — a hero holds a live
+  amplify/double_next combo tag (a spike is being set up)
 
 trigger (reactive components): "on_hit" (this enemy took damage) · "on_ally_hit" ·
 "on_ally_death" · "on_targeted" · "on_spell_cast" (punish or COUNTER casting) ·
@@ -228,7 +235,14 @@ any percent; give it once_per_encounter so it stays a moment) ·
 "on_hero_healed" (a hero regained HP — punish the medic; target_rule
 "trigger_source" hits whoever cast the heal) ·
 "on_charge_full" (with "charge_threshold": Y — fires the moment this enemy's
-charge reaches Y; see the windup section).
+charge reaches Y; see the windup section) ·
+"on_ultimate_cast" (a hero's ULTIMATE is on the stack — the dread window.
+PUNISH freely: damage, wound, stun the caster via target_rule "trigger_source" —
+the tyrant makes you pay for your moment, priced as a normal reactive. A
+`counter` verb on this trigger is BOSS-ONLY and MUST be once_per_encounter —
+cancelling a once-per-fight, gauge-priced ultimate is the most feel-bad answer
+in the game, so it is reserved for one dramatic "Tyrant's Contempt" per boss,
+ever; the engine rejects anything else).
 
 `"once_per_encounter": true` on a component = a single dramatic use (×0.5 cost).
 
@@ -385,6 +399,12 @@ is fine; overspending is impossible. Complexity self-prices into level.
     party must spend healing to cure it or race it. At most one per encounter.
   * A GATHERER (the charge windup — see its section): a visible fuse under a
     veiled kit; the drama is the gauge filling while the party guesses.
+  * A GAUGE-PUNISHER (reactive Debilitate/Punish, condition
+    {"kind":"hero_gauge_pct","op":">=","value":80} or trigger
+    "on_ultimate_cast", target_rule "primed_hero" / "trigger_source"): makes
+    charging an ultimate a DECISION, not a free ride — the hero nearing the
+    dread window becomes the fight's centre of gravity. AT MOST ONE per
+    encounter; it exists to tax the moment, never to lock it out.
 - MECHANICAL VARIETY (anti-rut rules — as binding as the budgets):
   * The pattern list above is a PALETTE, not a checklist. Each encounter leans
     on a DIFFERENT 2–3 patterns; across many generations every pattern should
@@ -511,7 +531,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
           "cooldown": <int>,            // turns between uses, e.g. 2
           "once_per_encounter": true,   // optional; a single dramatic use
           "priority": <int>,            // lower = evaluated first
-          "target_rule": "valuation" | "self" | "trigger_source" | "lowest_hp_ally" | "channeling_player",
+          "target_rule": "valuation" | "self" | "trigger_source" | "lowest_hp_ally" | "channeling_player" | "primed_hero",
           "action_type": "spell",       // MAGIC components only (counterable by spell counters); omit for physical
           "channel": true,              // ongoing held effect (see channel rules); omit for one-shots
           "phase": "pre_enrage" | "post_enrage",   // boss components only; optional
@@ -912,7 +932,7 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
             for c in e.get("components", []) or []:
                 if isinstance(c, dict) and not str(c.get("id", "")).strip():
                     c["id"] = _slug(str(c.get("archetype", "comp"))) or f"comp_{i}"
-    return {
+    out = {
         "name": str(raw.get("name") or "Generated Encounter"),
         # The battle backdrop + per-enemy physical descriptions ride the encounter
         # JSON for the upcoming image-generation and narration systems.
@@ -921,6 +941,11 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "layouts": raw.get("layouts") if isinstance(raw.get("layouts"), dict) else {},
         "tokens": raw.get("tokens") if isinstance(raw.get("tokens"), dict) else {},
     }
+    # The optional encounter objective (§D12-1) rides through to content
+    # validation (adventure acts only — see the adventure prompt extension).
+    if isinstance(raw.get("objective"), dict):
+        out["objective"] = raw["objective"]
+    return out
 
 
 def _check_layouts(encounter: Dict[str, Any]) -> None:
@@ -993,13 +1018,18 @@ def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
 # Public entry point
 # --------------------------------------------------------------------------- #
 def generate_encounter(character_ids: List[str], difficulty: str = "standard",
-                       note: str = "", attempts: int = 2) -> Dict[str, Any]:
+                       note: str = "", attempts: int = 2,
+                       persist: bool = True) -> Dict[str, Any]:
     """Generate, validate, persist an encounter and return its meta (id + name …).
 
     Scopes to the picked party + difficulty, calls the configured model, then feeds
     the result through ``content.save_encounter`` (the same gate an authored encounter
     passes). On a validation failure it re-prompts with the engine's error, up to
     ``attempts`` total. Raises ValueError with a human message on any hard failure.
+
+    ``persist=False`` (the Autoplay Tester's quarantine path, §D13-2.3) runs the
+    exact same validation gate but returns the CLEANED ENCOUNTER DICT instead of
+    saving — nothing enters the game's picker.
     """
     settings = load_settings()
     if not settings["api_key"]:
@@ -1034,6 +1064,9 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
                                 'appearance): ' + ", ".join(undescribed))
             if problems:
                 raise ValueError("; ".join(problems))
+            if not persist:
+                # The full authored-content gate, without the save.
+                return content._validate_encounter(encounter)
             return content.save_encounter(encounter)  # validates + persists
         except ValueError as exc:
             last_err = str(exc)
@@ -1091,6 +1124,59 @@ descriptions). This block adds the arc-level rules:
   narration is the adventure's opening. No mechanics, no numbers — atmosphere
   and forward motion.
 - `flavor` is the adventure's one-line pitch, shown in the New Game list.
+
+# Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
+
+One act MAY carry an optional `"objective"` — an alternate win condition that
+turns the act into a set piece. The standing rules are HARD validation:
+- AT MOST ONE objective in the whole adventure, and only on Act I or Act II.
+  Act III is ALWAYS the standard boss kill — the climax stays a fight.
+- Objectives are fully public (the party sees the goal and its countdown from
+  turn 1). Defeat by party wipe is unchanged.
+Use one in roughly two adventures out of three, when the fiction asks for it;
+let the act's `narration` reference the objective. The three kinds:
+
+1. SURVIVE — hold out N rounds; the party wins the act when round N's End Step
+   completes (survivors withdraw). Timer 4–6 rounds. Survival must not be
+   passive: schedule reinforcements and pick a defensible theme (a gate, a
+   bridge, a shrinking camp).
+   {"kind": "survive", "turns": 5, "reinforcements": [
+     {"turn": 3, "layouts": {"1": ["raider"], "2": ["raider","raider"],
+                             "3": ["raider","raider","howler"],
+                             "4": ["raider","raider","howler","howler"]}}]}
+   Reinforcement ids reference the act's enemy pool; repeats clone. Each entry
+   deploys at the start of round `turn`'s Enemy Intents step.
+
+2. WAVES — clear successive waves; the act's top-level `layouts` ARE wave 1,
+   and `"waves"` lists the later waves (same per-size map shape). Later waves
+   wait off-board and deploy when the current wave falls. A war-band theme with
+   DISTINCT wave compositions — vary rows and roles, don't clone one statline
+   thrice. Every wave fields at least 1× the party size (per size), at least 2×
+   in total, and the summed Level budget across waves may run to 1.5× the act's
+   standard budget (staggered arrival pays for the excess). A mini-boss, if the
+   act has one, appears in the FINAL wave only (never in `layouts`).
+   {"kind": "waves", "waves": [
+     {"1": ["cutthroat"], "2": ["cutthroat","cutthroat"],
+      "3": ["cutthroat","cutthroat","archer"],
+      "4": ["cutthroat","cutthroat","archer","archer"]},
+     {"1": ["pit_captain"], "2": ["pit_captain","cutthroat"],
+      "3": ["pit_captain","cutthroat","archer"],
+      "4": ["pit_captain","cutthroat","cutthroat","archer"]}]}
+
+3. RACE — the doom clock: one marked enemy (the ritualist, the summoner) must
+   be DEFEATED within N rounds (3–5), or the failure fires. Give the marked
+   target real HP, a Ward bodyguard, and field it in EVERY layout. Prefer
+   `"fail": "escalate"` — the escalation is an enrage-shaped, budget-free
+   eruption of 2–3 verbs (permanent counters on the enemy side, an AoE, a token
+   wave, a granted keyword) that transforms the fight but leaves it winnable;
+   `"fail": "defeat"` ends the run on the spot and is for hand-authored set
+   pieces only.
+   {"kind": "race", "target": "bonechanter", "turns": 4, "fail": "escalate",
+    "escalation": {"telegraph": "The Rite Completes",
+      "verbs": [{"kind": "counters", "power": 2, "toughness": 2,
+                 "target": {"mode": "all", "side": "enemy"}},
+                {"kind": "deal_damage", "amount": 3,
+                 "target": {"mode": "all", "side": "ally"}}]}}
 
 # Adventure output contract (return EXACTLY this shape, nothing else)
 {

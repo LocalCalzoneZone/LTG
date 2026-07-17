@@ -71,6 +71,35 @@ class PreventTag:
 
 
 # --------------------------------------------------------------------------- #
+# Encounter objectives (Design Update 12 §D12-1)
+# --------------------------------------------------------------------------- #
+@dataclass
+class Objective:
+    """The encounter's optional objective (§D12-1) — engine-owned state, fully
+    public. `rounds_done` counts completed End Steps (the timer tick). Wave and
+    reinforcement rosters are CONCRETE enemy ids (resolved at build time); the
+    referenced enemies wait in the reserve zone (`EnemyState.reserve`) until
+    deployed. `status` tracks the race clock only: 'active' → 'complete' (the
+    marked enemy defeated in time — the clock vanishes) or 'failed' (expired;
+    with fail 'escalate' the fight continues under standard victory)."""
+
+    kind: str                     # "survive" | "waves" | "race"
+    turns: int = 0                # survive/race clock length, in rounds
+    rounds_done: int = 0          # End Steps completed (ticks at each)
+    status: str = "active"        # active | complete | failed  (race clock)
+    # survive: scheduled arrivals — [{"turn": k, "ids": [...], "arrived": bool}]
+    reinforcements: List[Dict[str, Any]] = field(default_factory=list)
+    # waves: the later waves' enemy ids (top-level layouts are wave 1)
+    waves: List[List[str]] = field(default_factory=list)
+    wave_index: int = 0           # how many LATER waves have deployed
+    # race: the marked enemy and the failure shape
+    target_id: Optional[str] = None
+    fail: str = "escalate"        # "defeat" | "escalate"
+    escalation_telegraph: str = ""
+    escalation_verbs: List[Effect] = field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- #
 # Channels (held channeled enchantments, GDD §8)
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -470,6 +499,11 @@ class EnemyState:
     # does NOT satisfy victory — it redeploys at the start of its next turn. Distinct
     # from `exiled`, which counts as defeated. HP is retained across the bounce.
     in_hand: bool = False
+    # The RESERVE zone (§D12-1): an undeployed wave / reinforcement enemy — off
+    # the battlefield, untargetable, NOT defeated. Blocks the standard all-
+    # defeated victory (the timer victory of `survive` overrides it). Cleared
+    # when the objective deploys the enemy at the Enemy Intents step.
+    reserve: bool = False
 
     # Mirror the character's HP model so one damage routine serves both. An enemy's
     # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
@@ -569,6 +603,9 @@ class StackItem:
     # A COPY on the stack (copy_spell / a double_next echo): resolves normally but
     # never consumes another double_next tag (no infinite echo chains).
     is_copy: bool = False
+    # A hero Ultimate on the stack (§D12-2.2): the `on_ultimate_cast` trigger's
+    # read. Kind stays "activated" (the GDD taxonomy is unchanged).
+    is_ultimate: bool = False
     # A pushed triggered ability (channel_break) whose chosen target / modal mode
     # has not been picked yet: the holder picks as it goes on the stack
     # (MTG-style), before the reaction window opens — mode first (it decides which
@@ -710,6 +747,9 @@ class GameState:
     # Re-entrancy depth for event-triggered channel effects (an on-draw draw, an
     # on-damage hit, …). Capped so trigger-fires-trigger chains always terminate.
     event_depth: int = 0
+    # The encounter's optional objective (§D12-1). None == the standard game,
+    # byte-identical to an objective-less encounter.
+    objective: Optional["Objective"] = None
     result: Optional[str] = None      # None | "victory" | "defeat"
     log: List[Event] = field(default_factory=list)
 
@@ -731,15 +771,23 @@ class GameState:
 
     def living_enemies(self) -> List[EnemyState]:
         # The enemies "in play" (Update 03 §E-A): on the battlefield, targetable, and
-        # acting. Channel-exiled enemies are alive but out of play (suspended), and
-        # bounced enemies are alive but "in hand" (off the field, pending redeploy);
-        # both are excluded here. Defeated enemies (graveyard/exile) leave the list.
-        return [e for e in self.enemies if e.alive and not e.exiled and not e.in_hand]
+        # acting. Channel-exiled enemies are alive but out of play (suspended),
+        # bounced enemies are alive but "in hand" (off the field, pending redeploy),
+        # and reserve-zone enemies (§D12-1) await their wave/reinforcement deploy;
+        # all are excluded here. Defeated enemies (graveyard/exile) leave the list.
+        return [e for e in self.enemies
+                if e.alive and not e.exiled and not e.in_hand and not e.reserve]
 
     def bounced_enemies(self) -> List[EnemyState]:
         """Roster enemies currently in the in-hand zone (bounced, pending redeploy).
         They keep the encounter live — victory requires every enemy gone for good."""
         return [e for e in self.enemies if e.in_hand]
+
+    def reserve_enemies(self) -> List[EnemyState]:
+        """Undeployed wave/reinforcement enemies in the reserve zone (§D12-1):
+        off the battlefield, untargetable, not defeated — they block the
+        standard victory (the `survive` timer victory overrides)."""
+        return [e for e in self.enemies if e.reserve]
 
     def living_tokens(self) -> List[TokenState]:
         return [t for t in self.tokens if t.alive]

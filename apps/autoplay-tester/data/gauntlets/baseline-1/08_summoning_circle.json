@@ -1,0 +1,117 @@
+{
+  "name": "Fixture VIII \u2014 The Summoning Circle",
+  "enemies": [
+    {
+      "id": "summoner",
+      "name": "Circle Summoner",
+      "hp": 9,
+      "level": 3,
+      "power": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged"
+    },
+    {
+      "id": "circleguard",
+      "name": "Circle Guard",
+      "hp": 6,
+      "level": 2,
+      "power": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "shieldwall",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "trigger": "on_targeted",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "summoner",
+          "telegraph": "Shieldwall \u2014 shield the Summoner"
+        }
+      ]
+    },
+    {
+      "id": "thrall",
+      "name": "Circle Thrall",
+      "hp": 3,
+      "level": 1,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "summoner",
+      "thrall"
+    ],
+    "2": [
+      "summoner",
+      "circleguard",
+      "thrall",
+      "thrall"
+    ],
+    "3": [
+      "summoner",
+      "circleguard",
+      "thrall",
+      "thrall",
+      "thrall",
+      "thrall"
+    ],
+    "4": [
+      "summoner",
+      "circleguard",
+      "circleguard",
+      "thrall",
+      "thrall",
+      "thrall",
+      "thrall",
+      "thrall"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "target": "summoner",
+    "turns": 4,
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Circle Completes",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "all",
+            "side": "enemy"
+          }
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 3,
+          "target": {
+            "mode": "all",
+            "side": "ally"
+          }
+        }
+      ]
+    }
+  }
+}

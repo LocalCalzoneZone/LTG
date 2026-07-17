@@ -1,0 +1,84 @@
+{
+  "name": "Fixture VII \u2014 The Last Palisade",
+  "enemies": [
+    {
+      "id": "raider",
+      "name": "Palisade Raider",
+      "hp": 4,
+      "level": 1,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    },
+    {
+      "id": "howler",
+      "name": "Howler",
+      "hp": 5,
+      "level": 2,
+      "power": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "raider",
+      "raider"
+    ],
+    "2": [
+      "raider",
+      "raider",
+      "howler",
+      "raider"
+    ],
+    "3": [
+      "raider",
+      "raider",
+      "raider",
+      "howler",
+      "howler",
+      "raider"
+    ],
+    "4": [
+      "raider",
+      "raider",
+      "raider",
+      "raider",
+      "howler",
+      "howler",
+      "howler",
+      "raider"
+    ]
+  },
+  "objective": {
+    "kind": "survive",
+    "turns": 5,
+    "reinforcements": [
+      {
+        "turn": 3,
+        "layouts": {
+          "1": [
+            "raider"
+          ],
+          "2": [
+            "raider",
+            "raider"
+          ],
+          "3": [
+            "raider",
+            "raider",
+            "howler"
+          ],
+          "4": [
+            "raider",
+            "raider",
+            "howler",
+            "howler"
+          ]
+        }
+      }
+    ]
+  }
+}

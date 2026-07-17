@@ -282,6 +282,9 @@ export function GameOverOverlay({
 }) {
   const result = useGame((s) => s.gameOver ?? s.snapshot?.result ?? null);
   const adventure = useGame((s) => s.snapshot?.adventure ?? null);
+  // The objective outcome sentence (§D12-1.5): "You held the line" / "The doom
+  // clock ran out" — null when the ending needs no objective framing.
+  const objectiveLine = useGame((s) => s.snapshot?.game_over?.objective_line ?? null);
   const [restarting, setRestarting] = useState(false);
   const [restartErr, setRestartErr] = useState<string | null>(null);
   // Hold the splash back so the killing blow (and the death animation it
@@ -318,6 +321,9 @@ export function GameOverOverlay({
           </div>
           <span className={`h-px w-16 bg-gradient-to-l from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
         </div>
+        {objectiveLine && (
+          <div className="mt-3 text-sm font-light text-parch">{objectiveLine}</div>
+        )}
         <div className="mt-3 text-sm font-light text-mist">
           {advWin
             ? `${adventure.name} — all three acts, cleared.`
