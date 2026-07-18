@@ -479,6 +479,24 @@ def test_fight_is_simultaneous_a_dying_creature_still_hits_back():
     assert hero(after).hp == 17                                      # but hit back for 3
 
 
+def test_fight_authored_self_vs_all_needs_no_pick_and_hits_every_enemy():
+    # "Yourself fights all enemies" (Soren's Last Stand shape): neither fight
+    # side is a cast-time pick — self resolves to the caster, `all` to the whole
+    # side — and the exchange is simultaneous with EACH of them. Enumerating
+    # this card used to crash legal_actions on self's side-less descriptor.
+    last_stand = C("last_stand", "sorcery",
+                   [{"kind": "fight", "target": {"mode": "self"},
+                     "other": {"mode": "all", "side": "enemy"}}], colors={"G": 1})
+    state = make_state([last_stand], hero_hp=20, hero_power=6,
+                       enemies=_two_orcs(amount=3))
+    acts = [a for a in legal_actions(state)
+            if a.kind == "cast" and a.card_id == "last_stand"]
+    assert len(acts) == 1 and acts[0].target_id is None   # untargeted: one offer
+    after, _ = do(state, kind="cast", card_id="last_stand")
+    assert after.enemy("orc1").hp == 4 and after.enemy("orc2").hp == 4  # 6 to each
+    assert hero(after).hp == 20 - 3 - 3   # and each orc (power 3) hit back
+
+
 def test_strip_intent_clears_the_declared_intent():
     card = C("disrupt", "instant", [{"kind": "strip_intent",
         "target": {"mode": "chosen", "side": "enemy", "targeted": True}}], colors={"B": 1})

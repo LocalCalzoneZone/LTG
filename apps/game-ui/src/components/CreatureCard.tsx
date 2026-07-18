@@ -3,6 +3,7 @@ import { hpColor, powerColor, roman } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
 import { ArtControls } from "./ArtControls";
+import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
 import { IconSkull } from "./Icons";
 import { StatPop } from "./StatPop";
@@ -16,6 +17,7 @@ const NAME_LONG = "text-[clamp(8px,1.15vh,11px)]";
 export function CreatureCard({ creature, isTarget }: { creature: CreatureView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  const setInspect = useGame((s) => s.setInspect);
   const encounterId = useGame((s) => s.snapshot?.encounter_id ?? "");
   // This enemy has an action (attack / spell / ability) pending on the stack.
   const acting = useGame((s) => (s.snapshot?.stack ?? []).some((r) => r.source_id === creature.id));
@@ -41,11 +43,12 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
 
   return (
     <div
-      onClick={() => isTarget && pickTargetId(creature.id)}
+      onClick={() =>
+        isTarget ? pickTargetId(creature.id) : !armed && setInspect(creature.id)}
       onMouseEnter={() => creature.intent && setHoverIntent({
         enemyId: creature.id, targetId: creature.intent.target_id })}
       onMouseLeave={() => setHoverIntent(null)}
-      title={creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}
+      title={`${creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}\nClick to inspect.`}
       style={{
         width: size,
         ...(creature.in_execute_window && !isTarget
@@ -54,7 +57,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       }}
       className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)] transition ${frame} ${dimUntargeted} ${
         intentLit ? "shadow-[0_0_0_1px_rgba(233,204,130,0.5)]" : ""
-      } ${isTarget ? "cursor-pointer" : "cursor-default"} ${creature.is_boss ? "z-10" : ""}`}
+      } ${isTarget || !armed ? "cursor-pointer" : "cursor-default"} ${creature.is_boss ? "z-10" : ""}`}
     >
       {/* art slot — generated portrait when it exists, engraved sigil until then */}
       {creature.image ? (
@@ -90,6 +93,17 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       <div className={`absolute -left-px top-1.5 border border-l-0 border-line bg-ink-0/80 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-parch`}>
         {roman(creature.level)}
       </div>
+
+      {/* doom-clock badge (§D12-1.5) — the marked race target: rounds left in
+          brass. Frame-state precedence is unchanged (a plaque, not a frame). */}
+      {creature.doom_clock != null && (
+        <div
+          title={`The doom clock: ${creature.doom_clock} round(s) remain — defeat this enemy before it runs out.`}
+          className={`absolute -right-px top-1.5 border border-r-0 border-brass/60 bg-ink-0/85 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-brass`}
+        >
+          {creature.doom_clock}
+        </div>
+      )}
       <div className="absolute left-1.5 top-[22%]">
         <KeywordBadges keywords={creature.keywords} counters={creature.counters}
           poison={creature.poison_counters} regen={creature.regen_counters} />
@@ -144,6 +158,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       </div>
 
       <StatPop hp={creature.hp.current} />
+      <FxLayer id={creature.id} />
     </div>
   );
 }
@@ -190,6 +205,7 @@ export function CorpseMarker({ corpse, isTarget }: { corpse: CorpseView; isTarge
 export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  const setInspect = useGame((s) => s.setInspect);
   const encounterId = useGame((s) => s.snapshot?.encounter_id ?? "");
   const dimUntargeted = armed && !isTarget ? "opacity-40" : "";
   const controlTitle = token.control_kind == null ? "" :
@@ -198,12 +214,12 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
       : `\nRaised undead — crumbles when the necromancy ends${token.control_left != null ? ` (${token.control_left} round(s) left)` : ""}.`;
   return (
     <div
-      onClick={() => isTarget && pickTargetId(token.id)}
-      title={`${token.name} (ally)${controlTitle}`}
+      onClick={() => (isTarget ? pickTargetId(token.id) : !armed && setInspect(token.id))}
+      title={`${token.name} (ally)${controlTitle}\nClick to inspect.`}
       style={{ width: TOKEN_CARD_WIDTH }}
       className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
         isTarget ? "brackets cursor-pointer border-brass-hi" : "border-tide/40"
-      } ${dimUntargeted}`}
+      } ${!armed ? "cursor-pointer" : ""} ${dimUntargeted}`}
     >
       {token.image ? (
         <img
@@ -248,6 +264,7 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
         {token.name}
       </div>
       <StatPop hp={token.hp.current} />
+      <FxLayer id={token.id} />
     </div>
   );
 }

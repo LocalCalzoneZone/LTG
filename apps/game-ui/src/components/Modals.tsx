@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { createGame } from "../lib/api";
 import { actionModeColor } from "../lib/format";
+import { SPLASH_HOLD_MS, useAfterHold } from "../lib/hooks";
 import { useGame } from "../lib/store";
 import type { LegalAction, StackRow } from "../lib/types";
 import { HandCard } from "./Hand";
@@ -266,17 +268,44 @@ export function CardPickPrompt() {
   );
 }
 
-/** §4.16 game-over overlay (board stays visible behind). */
+/** §4.16 game-over overlay (board stays visible behind). For an adventure
+ * (Update 10) the finale's win reads "Adventure Complete", and a defeat offers
+ * Restart from Act I — same party, fresh state, level 1. */
 export function GameOverOverlay({
   onNewGame,
   onOptions,
+  onStarted,
 }: {
   onNewGame: () => void;
   onOptions: () => void;
+  onStarted: (sessionId: string) => void;
 }) {
   const result = useGame((s) => s.gameOver ?? s.snapshot?.result ?? null);
-  if (!result) return null;
+  const adventure = useGame((s) => s.snapshot?.adventure ?? null);
+  // The objective outcome sentence (§D12-1.5): "You held the line" / "The doom
+  // clock ran out" — null when the ending needs no objective framing.
+  const objectiveLine = useGame((s) => s.snapshot?.game_over?.objective_line ?? null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartErr, setRestartErr] = useState<string | null>(null);
+  // Hold the splash back so the killing blow (and the death animation it
+  // triggers) reads on the board before the screen changes.
+  const show = useAfterHold(result != null, SPLASH_HOLD_MS);
+  if (!result || !show) return null;
   const win = result === "victory";
+  const advWin = win && !!adventure;
+
+  const restart = async () => {
+    if (!adventure || restarting) return;
+    setRestarting(true);
+    setRestartErr(null);
+    try {
+      onStarted(await createGame(adventure.character_ids, { adventureId: adventure.id }));
+    } catch (e) {
+      setRestartErr(e instanceof Error ? e.message : String(e));
+      setRestarting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
       <div className="panel-ticks border border-line2 bg-ink-2/95 px-12 py-9 text-center shadow-2xl">
@@ -288,14 +317,31 @@ export function GameOverOverlay({
             className={`caps-label pl-[0.3em] text-4xl tracking-[0.3em] ${win ? "text-vigor" : "text-blood"}`}
             style={{ textShadow: win ? "0 0 30px rgba(132,199,147,.4)" : "0 0 30px rgba(194,90,80,.4)" }}
           >
-            {win ? "Victory" : "Defeat"}
+            {advWin ? "Adventure Complete" : win ? "Victory" : "Defeat"}
           </div>
           <span className={`h-px w-16 bg-gradient-to-l from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
         </div>
+        {objectiveLine && (
+          <div className="mt-3 text-sm font-light text-parch">{objectiveLine}</div>
+        )}
         <div className="mt-3 text-sm font-light text-mist">
-          Tweak your party, encounters, or generation settings, then start again.
+          {advWin
+            ? `${adventure.name} — all three acts, cleared.`
+            : adventure
+              ? `${adventure.name} ends in Act ${adventure.act}. No checkpoints — the run is the run.`
+              : "Tweak your party, encounters, or generation settings, then start again."}
         </div>
+        {restartErr && <div className="mt-2 text-xs font-light text-blood">{restartErr}</div>}
         <div className="mt-6 flex items-center justify-center gap-3">
+          {adventure && !win && (
+            <button
+              onClick={restart}
+              disabled={restarting}
+              className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {restarting ? "Restarting…" : "Restart from Act I"}
+            </button>
+          )}
           <button
             onClick={onOptions}
             className="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-line2 hover:text-parch"

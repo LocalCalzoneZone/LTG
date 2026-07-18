@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { saveEncounter } from "../lib/api";
+import { fetchEncounter, saveEncounter } from "../lib/api";
 import { roman } from "../lib/format";
 import type { ComponentSpec, EncounterDetail, EnemySpec, Row } from "../lib/types";
 import { ArtControls } from "./ArtControls";
+import { ArtQueueButton } from "./ArtQueueButton";
 
 // Mirrors the server's _slug (ltg_combat.scenario): how an enemy without an
 // explicit id resolves for art calls.
@@ -173,16 +174,32 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
         <label className="flex min-w-[280px] flex-[2] flex-col gap-1">
           <span className="flex items-center justify-between">
             <span className={label}>Scene (battle backdrop — feeds art & narration)</span>
-            <ArtControls
-              encounterId={initial?.id ?? ""}
-              kind="scene"
-              text={scene}
-              hasImage={!!sceneImage}
-              subject="the battlefield backdrop"
-              onChanged={setSceneImage}
-              disabled={artDisabled}
-              disabledTitle={artDisabledTitle}
-            />
+            <span className="flex items-center gap-2">
+              <ArtQueueButton
+                target={{ encounterId: initial?.id ?? "" }}
+                subject="this encounter"
+                disabled={artDisabled}
+                disabledTitle={artDisabledTitle}
+                onImage={async () => {
+                  // Progress landed server-side: refresh the backdrop preview.
+                  if (!initial?.id) return;
+                  try {
+                    const fresh = await fetchEncounter(initial.id);
+                    setSceneImage(fresh.scene_image ?? "");
+                  } catch { /* transient — the next image retries */ }
+                }}
+              />
+              <ArtControls
+                encounterId={initial?.id ?? ""}
+                kind="scene"
+                text={scene}
+                hasImage={!!sceneImage}
+                subject="the battlefield backdrop"
+                onChanged={setSceneImage}
+                disabled={artDisabled}
+                disabledTitle={artDisabledTitle}
+              />
+            </span>
           </span>
           <div className="flex gap-2">
             {sceneImage && (

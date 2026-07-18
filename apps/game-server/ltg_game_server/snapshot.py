@@ -24,6 +24,9 @@ from ltg_combat.serialize import (
     _stack_list,
     _token_dict,
     card_dict,
+    doom_clock,
+    objective_block,
+    objective_outcome_line,
     phase_label,
     serialize_actions,
     veiled_intent,
@@ -96,7 +99,7 @@ def _mana_block(char_dict: Dict[str, Any], raw_char, pending_capacity: bool) -> 
 
 def _character_snapshot(view: GameState, char, controlled: bool,
                         holder_id: Optional[str], kind: Optional[str],
-                        portrait: str = "") -> Dict[str, Any]:
+                        portrait: str = "", description: str = "") -> Dict[str, Any]:
     cd = _character_dict(view, char)  # reuse the cockpit's stat/mana/channel accessors
     is_holder = holder_id == char.id
     pending_capacity = is_holder and kind == "mana_choice"
@@ -105,6 +108,7 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "name": cd["name"],
         "archetype": cd["archetype"],
         "portrait": portrait,  # loadout art (data URL / image URL), "" if none
+        "description": description,  # the loadout's character blurb ("" if none)
         "row": cd["row"],
         "power": _power_block(cd["power"], cd["base_power"], cd["power_bonus"]),
         # `current` is the EFFECTIVE hp (hp + temp_mod), mirroring current_power —
@@ -178,6 +182,8 @@ def _creature_snapshot(view: GameState, enemy,
         "base_id": base_id,
         # Generated portrait URL ("" until one exists — the card shows its sigil).
         "image": art.get("enemies", {}).get(base_id, ""),
+        # The enemy's art-direction prose (physical appearance) for the inspect view.
+        "description": art.get("descriptions", {}).get(base_id, ""),
         "row": ed["row"],
         "level": ed["level"],
         "power": _power_block(enemy.current_power, enemy.power, enemy.power_bonus),
@@ -201,6 +207,9 @@ def _creature_snapshot(view: GameState, enemy,
         "intents": veiled_intents(view, enemy),
         # The `rises` trait is public (§D9-1.5) — the stirring state, not the veil.
         "rises": getattr(enemy, "rises", None),
+        # The doom-clock badge (§D12-1.5): rounds left on a live race clock,
+        # for the marked enemy only — None everywhere else.
+        "doom_clock": doom_clock(view, enemy),
         # Boss support (§F-9): the flag lights the UI's boss chrome; the execute
         # window tells players the removal immunity has lifted (≤25% max HP).
         "is_boss": bool(enemy.is_boss),
@@ -223,6 +232,7 @@ def _token_snapshot(view: GameState, token,
         "name": td["name"],
         "base_id": base_id,
         "image": art.get("enemies", {}).get(base_id, ""),
+        "description": art.get("descriptions", {}).get(base_id, ""),
         "row": td["row"],
         "power": _power_block(token.current_power, token.power, token.power_bonus),
         "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
@@ -303,7 +313,8 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
 
     characters = [
         _character_snapshot(view, c, c.id in controlled_ids, holder_id, kind,
-                            portraits.get(c.id, ""))
+                            portraits.get(c.id, ""),
+                            art.get("char_descriptions", {}).get(c.id, ""))
         for c in view.party
     ]
     creatures = [_creature_snapshot(view, e, art) for e in view.living_enemies()]
@@ -343,10 +354,14 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         cid = e.data.get("card")
         return card_dict(card_index[cid]) if cid in card_index else None
 
-    visible = [e for e in stored.log if e.type not in HIDDEN_LOG_TYPES]
+    # `seq` is the entry's absolute position in the engine log, so a client can
+    # tell which entries are NEW since its last snapshot (the combat-FX layer
+    # keys its one-shot effects off exactly that).
+    visible = [(i, e) for i, e in enumerate(stored.log)
+               if e.type not in HIDDEN_LOG_TYPES]
     log = [
-        {"type": e.type, "msg": e.msg, "data": e.data, "card": _log_card(e)}
-        for e in reversed(visible[-LOG_TAIL:])  # newest-first tail
+        {"seq": i, "type": e.type, "msg": e.msg, "data": e.data, "card": _log_card(e)}
+        for i, e in reversed(visible[-LOG_TAIL:])  # newest-first tail
     ]
 
     return {
@@ -363,10 +378,15 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "tokens": tokens,
         "corpses": corpses,
         "stack": stack,
+        # The objective banner (§D12-1.5): fully public, pinned as the first
+        # line of the intents window. None for a standard encounter.
+        "objective": objective_block(view),
         "intents": _intents(view),
         "pending_choice": pending_cards,
         "log": log,
         "legal_actions": legal_payload,   # for the controlled holder only
         "result": view.result,
-        "game_over": {"result": view.result} if view.result is not None else None,
+        "game_over": ({"result": view.result,
+                       "objective_line": objective_outcome_line(view)}
+                      if view.result is not None else None),
     }

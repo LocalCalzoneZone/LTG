@@ -29,15 +29,20 @@ export function StatPop({ hp }: { hp: number }) {
 
   if (!pop) return null;
   const dmg = pop.delta < 0;
+  // The numeral scales with the blow: a 1-point chip whispers, a 12-point
+  // haymaker shouts (size and glow both grow, capped so it stays on the card).
+  const mag = 1 + Math.min(11, Math.abs(pop.delta) - 1) * 0.09;
+  const glow = Math.round(10 + Math.min(11, Math.abs(pop.delta)) * 2.2);
   return (
     <div
       key={pop.key}
-      className="anim-statpop pointer-events-none absolute left-1/2 top-1/3 z-20 font-display text-[clamp(18px,3vh,30px)]"
+      className="anim-statpop pointer-events-none absolute left-1/2 top-1/3 z-20 font-display"
       style={{
+        fontSize: `calc(clamp(18px, 3vh, 30px) * ${mag.toFixed(2)})`,
         color: dmg ? "#ff9e8f" : "#a9e6b6",
         textShadow: dmg
-          ? "0 0 12px rgba(194,60,45,.9), 0 1px 2px #000"
-          : "0 0 12px rgba(90,180,110,.8), 0 1px 2px #000",
+          ? `0 0 ${glow}px rgba(194,60,45,.95), 0 1px 2px #000`
+          : `0 0 ${glow}px rgba(90,180,110,.85), 0 1px 2px #000`,
       }}
     >
       {dmg ? `−${-pop.delta}` : `+${pop.delta}`}

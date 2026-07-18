@@ -1,0 +1,125 @@
+{
+  "name": "Fixture VI \u2014 The Rusted Sentinel",
+  "enemies": [
+    {
+      "id": "sentinel",
+      "name": "The Rusted Sentinel",
+      "hp": 16,
+      "level": 4,
+      "power": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "components": [
+        {
+          "id": "piston",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "phase": "pre_enrage",
+          "telegraph": "Piston Blow \u2014 deal 5"
+        },
+        {
+          "id": "flail",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ],
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "phase": "post_enrage",
+          "telegraph": "Shrapnel Flail \u2014 3 to ALL heroes"
+        },
+        {
+          "id": "overload",
+          "archetype": "Enrage",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ],
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "OVERLOAD \u2014 +2/+2 permanently, 2 to all"
+        }
+      ]
+    },
+    {
+      "id": "oiler",
+      "name": "Grease Oiler",
+      "hp": 3,
+      "level": 1,
+      "power": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "sentinel",
+      "oiler"
+    ],
+    "2": [
+      "sentinel",
+      "oiler",
+      "oiler",
+      "oiler"
+    ],
+    "3": [
+      "sentinel",
+      "oiler",
+      "oiler",
+      "oiler",
+      "oiler",
+      "oiler"
+    ],
+    "4": [
+      "sentinel",
+      "oiler",
+      "oiler",
+      "oiler",
+      "oiler",
+      "oiler",
+      "oiler",
+      "oiler"
+    ]
+  }
+}

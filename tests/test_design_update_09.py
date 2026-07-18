@@ -571,6 +571,32 @@ def test_replaced_mitigate_fires_in_the_attack_window_instead_of_reducing():
     assert p.hp == 15 + 2 - 4
 
 
+def test_counter_replaced_mitigate_answers_a_non_attack_enemy_action():
+    """A mitigate replacement whose authored effect is a COUNTER ("cancel an
+    enemy action") reacts to any enemy top its filter matches — not only
+    attacks. The old attack-only gate hid it against a spell/ability top,
+    which collapsed the window to pass-only (and auto-pass then drained it)."""
+    flash = {"name": "Blinding Flash",
+             "effects": [{"kind": "counter", "filter": "action",
+                          "target": {"class": "action", "side": "enemy"}}]}
+    st = _state([_char("p", hp=20, hand=1, library=[_stance_card(mitigate=flash)])],
+                [_enemy("e", hp=10,
+                        intent={"name": "Dark Chant", "amount": 6,
+                                "action_type": "ability", "intent_type": "ability",
+                                "targeting": "lowest_hp_party", "mode": "melee"})])
+    st = _do(st, "cast", card_id="trance")
+    st = _do(st, "pass")
+    st = _do(st, "end_turn")
+    # The enemy ability is on the stack — NOT an attack.
+    assert st.stack and st.stack[-1].kind == "ability"
+    uid = st.stack[-1].uid
+    # The counter replacement is offered against it and cancels it.
+    st = _do(st, "stance_ability", card_id="mitigate", target_id=f"#{uid}")
+    st = _do(st, "pass")
+    assert not any(s.uid == uid for s in st.stack)
+    assert st.character("p").hp == 20       # the chant never landed
+
+
 def test_stance_attack_replacement_satisfies_the_proactive_choice():
     smite = {"name": "Radiant Smite",
              "effects": [{"kind": "deal_damage", "amount": 2, "target": CHOSEN_ENEMY_T}]}
@@ -720,6 +746,27 @@ def test_blast_on_mid_catches_everything_front_and_rear_are_not_adjacent():
     st = _do(st, "cast", card_id="b2", target_id="f")   # front: catches front+mid
     st = _do(st, "pass")
     assert (st.enemy("f").hp, st.enemy("m").hp, st.enemy("r").hp) == (6, 6, 8)
+
+
+def test_channeled_scoped_exile_suspends_the_whole_row_and_returns_it():
+    # "While channeled: exile the chosen target and its whole row" (Ys's
+    # Elsewhere shape). A CHANNELED scoped effect covers the pick PLUS its
+    # §D9-3.2 splash — the victims are pinned as the channel starts, so the
+    # SAME creatures are lifted when it ends (suspended creatures sit off the
+    # living lists meanwhile, and row moves must not change the set).
+    elsewhere = _card("elsewhere", "Elsewhere", "channeled", {"colors": {"U": 1}},
+                      [{"kind": "exile", "duration": "while_channeled",
+                        "target": {"mode": "chosen", "side": "any", "targeted": True,
+                                   "scope": "row"}}])
+    st = _state([_char("p", hand=1, library=[elsewhere])],
+                [_enemy("a", hp=10, row="front"), _enemy("b", hp=10, row="front"),
+                 _enemy("c", hp=10, row="mid")])
+    st = _do(st, "cast", card_id="elsewhere", target_id="a")
+    st = _do(st, "pass")
+    assert st.enemy("a").exiled and st.enemy("b").exiled  # the pick AND its row-mate
+    assert not st.enemy("c").exiled                       # mid row untouched
+    st = _do(st, "drop_channels", card_id="elsewhere")    # ending it returns the SET
+    assert not st.enemy("a").exiled and not st.enemy("b").exiled
 
 
 def test_hexproof_shelters_the_pick_but_not_the_splash():

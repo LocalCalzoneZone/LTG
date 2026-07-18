@@ -1,0 +1,41 @@
+{
+  "ltg_version": "0.1",
+  "character": {
+    "name": "Training Ally",
+    "description": "The gauntlet's vanilla second body: no cards, no Skill, no Ultimate \u2014 basic actions only. Every character is measured beside the same plain ally, so ally-directed support value lands somewhere and reads like-for-like.",
+    "portrait": "",
+    "level": 1,
+    "colors": [
+      "W",
+      "U"
+    ],
+    "starting_mana": [
+      "W",
+      "U"
+    ],
+    "hp": 16,
+    "starting_cards": 2,
+    "power_bought": 2,
+    "attack_mode": "melee",
+    "keyword": null,
+    "row": "front",
+    "skill": null,
+    "ultimate": null,
+    "ability_flavor": {
+      "attack": null,
+      "defend": null,
+      "mitigate": null
+    },
+    "preset": null,
+    "legacy": false,
+    "stats": {
+      "starting_hp": 16,
+      "starting_hand": 2,
+      "starting_mana": 2,
+      "power": 4,
+      "attack_mode": "melee",
+      "keywords": []
+    }
+  },
+  "cards": []
+}

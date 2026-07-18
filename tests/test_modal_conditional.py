@@ -100,7 +100,8 @@ def test_modal_mode_resolves_shared_slot():
     out = render_effects(c.effects, c.targets)
     assert "$" not in out
     assert out == ("Choose one — • Choose an ally: they heal 3. "
-                   "• Choose a target: they have the next combat damage prevented.")
+                   "• Choose a target: they have the next combat damage "
+                   "(attacks & abilities) prevented.")
 
 
 def test_parse_modal_skips_non_modal():

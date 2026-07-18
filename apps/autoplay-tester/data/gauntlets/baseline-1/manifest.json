@@ -1,0 +1,25 @@
+{
+  "name": "baseline-1",
+  "created": "2026-07-16",
+  "frozen": true,
+  "notes": "The purpose-built baseline gauntlet (Design Update 13 \u00a7D13-2.1). Eight fixtures, one per mechanical axis. Never edited in place \u2014 changes mint baseline-2.",
+  "encounters": [
+    "01_cutthroat_alley.json",
+    "02_mendicant_shrine.json",
+    "03_bonefire_rite.json",
+    "04_lash_wardens.json",
+    "05_brood_nest.json",
+    "06_rusted_sentinel.json",
+    "07_last_palisade.json",
+    "08_summoning_circle.json"
+  ],
+  "adventure": {
+    "name": "The Gauntlet Run",
+    "act_files": [
+      "01_cutthroat_alley.json",
+      "02_mendicant_shrine.json",
+      "06_rusted_sentinel.json"
+    ]
+  },
+  "sparring_partner": "sparring_partner.json"
+}

@@ -14,6 +14,7 @@ so the key never enters version control and survives restarts.
 from __future__ import annotations
 
 import json
+import random
 import re
 from math import ceil
 from typing import Any, Dict, List, Optional
@@ -114,6 +115,33 @@ card-combat game. You design a *single thematic enemy group* (an "encounter") th
 a party of player-heroes will fight. Your output is consumed by a deterministic
 engine, so it MUST be valid JSON matching the schema below — no prose, no markdown.
 
+# Setting & theme (read before designing anything)
+
+LTG is CLASSIC HIGH FANTASY — the register of Magic: The Gathering or Dungeons &
+Dragons (Forgotten Realms). Swords, sorcery, monsters, ancient ruins, wild
+places. Stay in genre: no science fiction, no modern technology, no firearms.
+
+Pick ONE fresh, specific theme per request and commit to it — a faction, a
+place, a reason they stand together. Draw from the genre's full breadth. For
+the KIND of range expected (not a menu to pick from):
+- a goblin sapper crew undermining the walls of a mountain pass
+- the frozen court of a lich-queen and her hollow knights
+- sun-bleached tomb guardians waking beneath a desert necropolis
+- a fey revel turned feral in a moonlit glade
+- an efreet's brass-palace honor guard
+- plague-cultists and their rat-swarms in the sewers of a free city
+- a hag coven trading in stolen voices at a swamp crossroads
+- a frost-giant hunting party with chained wyverns
+- animated armory constructs defending a dead wizard's tower
+- serpent-folk reavers boiling out of a jungle temple
+
+Combine, twist, or invent well beyond these. Do NOT fall back on the same mood
+every time (no perpetual drowned/sunken gothic ruins) — vary the biome, the
+faction, the palette, and the emotional register between requests. The request
+parameters may list titles the player already owns: treat those as OFF-LIMITS
+creative territory — no reused names, locations, or central conceits, and no
+re-skins of them.
+
 # The enemy framework (Design Update 04)
 
 An enemy is a **chassis** (its body: HP, Power, attack profile, home row) plus any
@@ -149,6 +177,23 @@ archetype (typical effect) — base cost:
 Cost modifiers (multiply, round up): cooldown 1 = ×1.5 · cooldown 2–3 = ×1.0 ·
 once_per_encounter = ×0.5 · reactive timing = +2 flat after multipliers.
 
+## The two-component minimum & the punching-bag rule (HARD REQUIREMENTS)
+- EVERY enemy carries AT LEAST TWO components — two abilities, two spells, or
+  ability + spell; proactive + reactive is the classic pairing. A bare statline
+  reads as filler at the table and a one-trick body telegraphs its whole game
+  on turn one. Cheap fodder affords its second component easily: a reactive
+  sting or a once_per_encounter moment costs ×0.5 — the budget-friendly pick.
+- The PUNCHING-BAG rule: the engine picks an enemy's top READY proactive
+  component every turn and only falls through to the basic attack when none is
+  ready — so a proactive self-pump with cooldown 1 fires forever and the enemy
+  NEVER attacks: it stacks counters it will never spend, a punching bag the
+  party ignores at no cost. Therefore any proactive component whose verbs only
+  develop the enemy itself (counters / pump / regen / heal / shield on SELF)
+  MUST carry cooldown ≥ 2, so the off-turn swings spend what the pump builds.
+  Pumping OTHERS (an anthem, a warband buff, a heal on an ally) is a real turn
+  and exempt, as is gathering CHARGE — but a charge gather always needs its
+  on_charge_full detonation on the same enemy, or the windup pays off nothing.
+
 ## Typed counters: poison, regen, and charge (Design Update 08)
 - POISON `{"kind": "poison", "amount": 1, "target": {chosen hero}}` — the victim
   gains 1 counter per amount NOW and again at each Upkeep (each counter is a
@@ -177,7 +222,10 @@ a stun/taunt rule automatically spreads: it skips heroes already locked down) ·
 skips allies at full HP, so the healer never wastes a turn) ·
 "wounded_ally" (strict support: ONLY fires when an ally is actually hurt) ·
 "highest_threat" (assassin's read: the hardest-hitting hero — cut the sword arm) ·
-"channeling_player" (sniper: the hero holding a channeled spell — break it).
+"channeling_player" (sniper: the hero holding a channeled spell — break it) ·
+"primed_hero" (the hero primed to spike: holding a live amplify/double_next
+combo tag, or with a nearly-full ultimate gauge; falls back to valuation when
+nobody is primed, so a rule using it never wastes its turn).
 
 condition (optional gate on any component):
 {"kind": "self_hp_pct", "op": "<", "value": 50}   — bloodied behaviour
@@ -188,6 +236,10 @@ condition (optional gate on any component):
   when a hero is actually channeling
 {"kind": "self_channeling", "op": ">=", "value": 1} — defend-the-ritual behaviour
   while this enemy holds its own channel
+{"kind": "hero_gauge_pct", "op": ">=", "value": 80} — a hero's ultimate gauge is
+  nearly full (arm the gauge-punisher only when it matters)
+{"kind": "hero_primed", "op": ">=", "value": 1} — a hero holds a live
+  amplify/double_next combo tag (a spike is being set up)
 
 trigger (reactive components): "on_hit" (this enemy took damage) · "on_ally_hit" ·
 "on_ally_death" · "on_targeted" · "on_spell_cast" (punish or COUNTER casting) ·
@@ -200,7 +252,14 @@ any percent; give it once_per_encounter so it stays a moment) ·
 "on_hero_healed" (a hero regained HP — punish the medic; target_rule
 "trigger_source" hits whoever cast the heal) ·
 "on_charge_full" (with "charge_threshold": Y — fires the moment this enemy's
-charge reaches Y; see the windup section).
+charge reaches Y; see the windup section) ·
+"on_ultimate_cast" (a hero's ULTIMATE is on the stack — the dread window.
+PUNISH freely: damage, wound, stun the caster via target_rule "trigger_source" —
+the tyrant makes you pay for your moment, priced as a normal reactive. A
+`counter` verb on this trigger is BOSS-ONLY and MUST be once_per_encounter —
+cancelling a once-per-fight, gauge-priced ultimate is the most feel-bad answer
+in the game, so it is reserved for one dramatic "Tyrant's Contempt" per boss,
+ever; the engine rejects anything else).
 
 `"once_per_encounter": true` on a component = a single dramatic use (×0.5 cost).
 
@@ -328,7 +387,10 @@ is fine; overspending is impossible. Complexity self-prices into level.
 - Challenge comes from DECISIONS, not stats. The proven patterns — use 2–3 per
   encounter:
   * A SUPPORT enemy (Fortify + target_rule lowest_hp_ally): creates kill-priority.
-  * An ESCALATE clock (counters +1/+1, self, cooldown 1–2): ignore it and lose.
+  * An ESCALATE clock (counters +1/+1, self, cooldown 2 — NEVER 1, see the
+    punching-bag rule): ignore it and lose — the pump lands every other turn
+    and the swings between grow. Pair the clock with a reaction or a second
+    ability so the stacked counters are always being spent on someone.
   * An EMERGENCY SAVE (reactive on_incoming_lethal, heal/prevent self): breaks
     exact-lethal maths; the party must overkill or double-tap.
   * An AVENGER (reactive on_ally_death, permanent counters on self): punishes
@@ -357,6 +419,33 @@ is fine; overspending is impossible. Complexity self-prices into level.
     party must spend healing to cure it or race it. At most one per encounter.
   * A GATHERER (the charge windup — see its section): a visible fuse under a
     veiled kit; the drama is the gauge filling while the party guesses.
+  * A GAUGE-PUNISHER (reactive Debilitate/Punish, condition
+    {"kind":"hero_gauge_pct","op":">=","value":80} or trigger
+    "on_ultimate_cast", target_rule "primed_hero" / "trigger_source"): makes
+    charging an ultimate a DECISION, not a free ride — the hero nearing the
+    dread window becomes the fight's centre of gravity. AT MOST ONE per
+    encounter; it exists to tax the moment, never to lock it out.
+- MECHANICAL VARIETY (anti-rut rules — as binding as the budgets):
+  * The pattern list above is a PALETTE, not a checklist. Each encounter leans
+    on a DIFFERENT 2–3 patterns; across many generations every pattern should
+    see play, including the ones you'd otherwise skip (body economy, forced
+    movement, charge windups, poison clocks, counter-sentinels, taunt/stun
+    control, infect, regen elites, avengers, medic-punishers).
+  * The well-worn rut is: a lowest_hp_ally healer + an Escalate clock + a
+    damage-tick channel + a −1/−1 hexer. Do NOT build that quartet again unless
+    the player's note asks for it.
+  * Give the encounter ONE SIGNATURE mechanic — the thing this fight is ABOUT,
+    which the layouts, the guard pieces, and the boss (if any) all serve — and
+    let it pose a tactical question beyond "kill order?": Can we afford to
+    heal? Burn the corpses or race the necromancer? Eat the detonation or break
+    the fuse? How do we keep the backline off the hook?
+  * Vary the damage SHAPES across the pool (single-target snipe, row sweep,
+    blast splash, upkeep tick, unpreventable lose_life, poison) and the
+    target_rules (not everything "valuation" — use highest_threat,
+    channeling_player, wounded_ally, trigger_source where the fiction fits).
+  * The request parameters below may ROLL suggested signature mechanics for
+    this generation — treat a roll as the encounter's default identity unless
+    the player's note pulls elsewhere.
 - Respect the per-party-size Level budgets you are given below: for each layout,
   the sum of its enemies' levels (a boss counts double) should land near that
   size's target. The party must be OUTNUMBERED at every size — each layout must
@@ -395,6 +484,17 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
   so the fight transforms when it turns: e.g. a single-target breath before, a
   party-wide firestorm after. Give the post-enrage kit a clearly scarier shape —
   the fight's final act should FEEL different, not just bigger numbers.
+- VARY THE BOSS SILHOUETTE — the worked example's "big breath pre / AoE post /
+  pump-and-burn Enrage" is ONE shape, not the mold. Fit the silhouette to the
+  faction, e.g.: the SUMMONER-TYRANT (token waves + a warband anthem; Enrage =
+  a fresh wave + permanent pump) · the RITUALIST (a channelled aura or tick the
+  party must break while the execute window looms; Enrage restarts the rite
+  harder) · the DUELLIST (a parry-Counter, a Punish riposte, taunts; Enrage
+  grants trample + a permanent pump) · the NECROMANCER-KING (raises its fallen
+  court; Enrage = raise a corpse AND a token wave) · the GATHERER TITAN (charge
+  windups set the fight's rhythm; post-enrage, a second detonation on a shorter
+  fuse) · the WARLORD (row blasts and forced movement; Enrage = shove the wall
+  back + blast the exposed rows).
 - declares TWO intents per round once enraged (engine-enforced — Design Update
   09 §D9-4). Design the post-enrage kit knowing every component fires twice as
   often: cooldowns matter double, and the guaranteed basic attack backstops the
@@ -439,7 +539,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
       "is_boss": true,                  // AT MOST ONE enemy, only when asked for
       "rises": 2,                       // optional undead trait (min level 2, cost 3): revives after 2 Upkeeps, once
       "keywords": ["flying", ...],      // may be []
-      "components": [                   // may be []; a plain chassis just attacks
+      "components": [                   // REQUIRED: at least TWO per enemy (the two-component rule)
         {
           "id": "snake_case",
           "archetype": "Drain" | "Fortify" | "Punish" | "Debilitate" | "Evasive" |
@@ -451,7 +551,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
           "cooldown": <int>,            // turns between uses, e.g. 2
           "once_per_encounter": true,   // optional; a single dramatic use
           "priority": <int>,            // lower = evaluated first
-          "target_rule": "valuation" | "self" | "trigger_source" | "lowest_hp_ally" | "channeling_player",
+          "target_rule": "valuation" | "self" | "trigger_source" | "lowest_hp_ally" | "channeling_player" | "primed_hero",
           "action_type": "spell",       // MAGIC components only (counterable by spell counters); omit for physical
           "channel": true,              // ongoing held effect (see channel rules); omit for one-shots
           "phase": "pre_enrage" | "post_enrage",   // boss components only; optional
@@ -471,7 +571,11 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "counters", "power": <int>, "toughness": <int>, "target": {"mode": "self"}},  // PERMANENT (Escalate)
             {"kind": "stun",  "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero loses a turn
             {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me
-            {"kind": "prevent", "parameter": "combat_damage", "uses": "next", "target": {"mode": "self"}},  // a shield
+            {"kind": "prevent", "parameter": "combat_damage", "uses": "next", "target": {"mode": "self"}},  // a shield; parameter ∈ combat_damage (attacks + activated abilities) | spell_damage (spells + triggered) | all_damage
+            {"kind": "amplify", "event": "combat_damage", "multiplier": 2, "bonus": 0, "target": {"mode": "self"}},  // COMBO primer: its next matching damage ×2 (+bonus); event ∈ combat_damage|spell_damage|any_damage|heal; also targets an ally enemy
+            {"kind": "double_next", "filter": "spell", "target": {"mode": "self"}},   // its next spell/ability to resolve, resolves twice; filter ∈ spell|ability|action
+            {"kind": "copy_spell"},                               // REACTIVE only (on_spell_cast): copies the triggering spell — the copy MIRRORS back at its caster; NO target field
+            {"kind": "heal", "amount": {"ref": "caster_last_damage"}, "target": {"mode": "self"}},  // retro combo: heal the last damage this enemy took
             {"kind": "protection", "target": {"mode": "self"}},   // negates the next spell/attack entirely (Ward)
             {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; NO target field
             {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: −0/−1 per Upkeep until healed
@@ -503,9 +607,13 @@ means "the combatant this component's target_rule picked" — a hero for damage/
 taunt (valuation / trigger_source / channeling_player), a fellow enemy for a support
 heal/buff (lowest_hp_ally). A self-effect uses `{"mode": "self"}`; an AoE on the party
 uses `{"mode": "all", "side": "ally"}`. Copy these shapes verbatim — do not invent new
-target shapes. The `counter` verb is REACTIVE-ONLY (a Counter component answering
-on_spell_cast / on_attack) and takes no target field — the engine aims it at the
-action that tripped the trigger. NEVER use these verbs (player-only; they do nothing
+target shapes. The `counter` and `copy_spell` verbs are REACTIVE-ONLY (components
+answering on_spell_cast / on_attack) and take no target field — the engine aims
+them at the action that tripped the trigger (a `copy_spell` copy mirrors back at
+the spell's caster, so give it ONLY to a spell-mirror sentinel and expect hostile
+spells to rebound). `amplify` and `double_next` are combo primers: use them as a
+windup the party can see coming (prime, then swing) — priming is one-shot and
+holds until spent. NEVER use these verbs (player-only; they do nothing
 or break the fight): destroy, bounce, strip_intent, fight, revive, draw, scry,
 move_card, ramp, add_mana, stance. `control` is enemy-legal ONLY on corpses (the
 Necromancy shape above — never on a living hero), and `exile` is enemy-legal ONLY
@@ -516,9 +624,17 @@ vigilance / haste.
 
 EXAMPLE A — a B/R vampire coven (pool of 3 designs, scaled 1–4 by layouts):
 {"name":"Crimson Coven — Drain & Reactions","scene":"A desecrated hillside chapel at midnight: pews toppled, red votive candles guttering in pools of wax, and a shattered rose window casting broken moonlight across a blood-slick altar.","enemies":[
- {"id":"grave_thrall","name":"Grave Thrall","flavor":"A wall that shambles forward.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":1,"row":"front","attack_mode":"melee"},
- {"id":"bloodbat","name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":2,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],
-  "components":[{"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Flit to the shadows"}]},
+ {"id":"grave_thrall","name":"Grave Thrall","flavor":"A wall that shambles forward and drags heroes into its reach.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":3,"row":"front","attack_mode":"melee",
+  "components":[
+   {"id":"corpse_grip","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Corpse-Grip — taunt a hero into the wall","verbs":[
+     {"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]},
+   {"id":"grave_chill","archetype":"Debilitate","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Grave-Chill — wound the attacker -1/-1","verbs":[
+     {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
+ {"id":"bloodbat","name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers — it shrieks when hunted.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":3,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],
+  "components":[
+   {"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Flit to the shadows"},
+   {"id":"shriek","archetype":"Debilitate","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Piercing Shriek — wound the hunter -1/-1","verbs":[
+     {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
  {"id":"vampire_adept","name":"Vampire Adept","flavor":"Drains from safety, punishes your casting.","description":"A gaunt aristocrat in a high-collared black robe, chalk-white skin stretched over sharp bones, fingertips stained to the knuckle with old blood.","hp":6,"power":1,"level":4,"row":"rear","attack_mode":"ranged","keywords":["lifelink"],
   "components":[
    {"id":"drain","archetype":"Drain","timing":"proactive","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Life Drain — deal 3, heal 3","verbs":[
@@ -549,8 +665,11 @@ EXAMPLE B — a ritual CHANNEL, a counterspell sentinel, a bloodied moment, smar
    {"id":"mend","archetype":"Fortify","timing":"proactive","priority":30,"cooldown":2,"target_rule":"wounded_ally","telegraph":"Knit Hide — heal the most wounded ally 5","verbs":[
      {"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
  {"id":"broodmother","name":"Hive Broodmother","flavor":"Spawns Husklings, at most two alive.","description":"A swollen, chitin-backed matriarch the size of an ox-cart, egg-sacs glistening along her flanks, dozens of larval eyes blinking in the dark.","hp":4,"power":2,"level":3,"row":"rear","attack_mode":"melee",
-  "components":[{"id":"swarm","archetype":"Swarm","timing":"proactive","priority":20,"cooldown":2,"target_rule":"self","telegraph":"Spawn Husklings (x2)","verbs":[
-     {"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]}]},
+  "components":[
+   {"id":"swarm","archetype":"Swarm","timing":"proactive","priority":20,"cooldown":2,"target_rule":"self","telegraph":"Spawn Husklings (x2)","verbs":[
+     {"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]},
+   {"id":"brood_fury","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","once_per_encounter":true,"priority":15,"target_rule":"self","telegraph":"Brood-Fury — +1/+1, permanently","verbs":[
+     {"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},
  {"id":"mistveil_hexer","name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":4,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
   "components":[
    {"id":"hush","archetype":"Counter","timing":"reactive","trigger":"on_spell_cast","cooldown":3,"priority":15,"action_type":"spell","target_rule":"trigger_source","telegraph":"Hushing Mist — counter the spell","verbs":[
@@ -566,8 +685,10 @@ EXAMPLE B — a ritual CHANNEL, a counterspell sentinel, a bloodied moment, smar
 },"tokens":{"huskling":{"name":"Huskling","hp":2,"power":1,"row":"front","attack_mode":"melee"}}}
 
 EXAMPLE C — a BOSS encounter: phase gates, enrage, a healer, an escalate clock, and
-action-economy control (total weight: boss 6×2=12 + 3 + 2 + 3 = 20):
-{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — a clock the party must answer.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":2,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":1,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — taunt the attacker","verbs":[{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
+action-economy control (total weight: boss 6×2=12 + 3 + 3 + 3 = 21). Note the
+Emberling's escalate clock: the pump is cooldown 2, so every off-turn it SWINGS
+with everything it has stacked — never a cooldown-1 self-pump (punching-bag rule):
+{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — taunt the attacker","verbs":[{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
  "1":["ashen_tyrant","cinderpriest"],
  "2":["ashen_tyrant","cinderpriest","emberling","ashfang_zealot"],
  "3":["ashen_tyrant","cinderpriest","emberling","emberling","ashfang_zealot","ashfang_zealot"],
@@ -696,6 +817,74 @@ def _budget(size: int, avg_level: float, difficulty: str) -> int:
     return max(1, round(2 * size * avg_level * mult))
 
 
+# Signature mechanics rolled per request (encounters) / per act (adventures).
+# The instructions teach every one of these; sampling here — in code, not in the
+# model — is what actually spreads generations across the design space: an LLM
+# left to its own devices reaches for the same healer/clock/tick-channel kit
+# every time. Each entry is a self-contained nudge the model can build around.
+SIGNATURE_POOL: List[str] = [
+    "the BODY ECONOMY — corpse-leaving husks, ONE necromancer raising them (or "
+    "rises / a corpse-burst); the party must spend exile or control",
+    "FORCED MOVEMENT — a Hooker dragging the backline to the front, or a "
+    "Line-breaker shoving the wall back, paired with a row-scoped biter",
+    "a CHARGE WINDUP — a visible gatherer with a hidden detonation, a Ward "
+    "bodyguard on the fuse",
+    "POISON PRESSURE — a poisoner clock, plus a medic-punisher (on_hero_healed) "
+    "so curing it costs",
+    "ACTION-ECONOMY CONTROL — stun and taunt pieces that attack the party's "
+    "turns rather than their HP",
+    "a COUNTERSPELL SENTINEL — one scarce Counter (spell filter, or an "
+    "attack-parry duellist) the party must bait out",
+    "EVASION — flying / hexproof skirmishers that slip the party's answers and "
+    "redeploy home; reach and chip damage decide it",
+    "the ANTHEM WARBAND — a channelled while_channeled pump on all fellow "
+    "enemies; break the singer or fight their whole army uphill",
+    "AURA OPPRESSION — a channelled party-wide wound aura, its channeler kept "
+    "alive by a guard (self_channeling condition or a Ward)",
+    "SWARM AND AVENGER — expendable token waves feeding an on_ally_death "
+    "escalator; naive kill order loses",
+    "REGEN ELITES — regen counters that only connecting hits break, plus a "
+    "support healer creating kill-priority",
+    "the ASSASSIN'S READ — highest_threat and channeling_player snipers that "
+    "punish the party's carry and their rituals",
+    "INFECT DREAD — ONE infect biter that turns every landed hit into a healer "
+    "assignment",
+    "DESPERATION PHASES — bloodied conditions (self_hp_pct, ally_count) that "
+    "transform minions mid-fight into something worse",
+    "a TIMER — a turn >= N condition unlocking a far bigger ability; turtling "
+    "loses the race",
+]
+
+
+def _signature_rolls(k: int) -> List[str]:
+    """`k` distinct signature mechanics, freshly rolled for one request."""
+    return random.sample(SIGNATURE_POOL, k=min(k, len(SIGNATURE_POOL)))
+
+
+def _library_lines() -> List[str]:
+    """Prompt lines naming every encounter/adventure the player already owns.
+
+    Both generators append these so the model designs AWAY from the existing
+    library — without them, models converge on the same few moods and the
+    player collects five variations of one idea."""
+    encounters = [str(e.get("name") or "") for e in content.list_encounters()]
+    adventures = [str(a.get("name") or "") for a in content.list_adventures()]
+    lines: List[str] = []
+    if any(encounters):
+        lines.append("- The player already owns these encounters: "
+                     + "; ".join(n for n in encounters if n) + ".")
+    if any(adventures):
+        lines.append("- The player already owns these adventures: "
+                     + "; ".join(n for n in adventures if n) + ".")
+    if lines:
+        lines.append(
+            "- They are generating because they want something NEW. Choose a "
+            "theme, location, and faction clearly distinct from every title "
+            "above — no sequels, no re-skins; and if several titles share a "
+            "mood, steer far away from that mood entirely.")
+    return lines
+
+
 def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     """The per-request parameters appended after the editable instructions: the
     concrete party, difficulty, and the per-party-size budgets the layouts must
@@ -731,6 +920,12 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
          "- Keep the designs lean at this difficulty — one decision-generator is "
          "plenty; skip counterspells."),
     ]
+    rolls = _signature_rolls(2)
+    lines.append(
+        "- Rolled SIGNATURE MECHANICS for this generation — build the "
+        "encounter's identity around at least one (adapt it to the theme; the "
+        "player's note below overrides): (1) " + rolls[0] + "; (2) " + rolls[1] + ".")
+    lines.extend(_library_lines())
     note = (note or "").strip()
     if note:
         lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
@@ -770,7 +965,7 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
             for c in e.get("components", []) or []:
                 if isinstance(c, dict) and not str(c.get("id", "")).strip():
                     c["id"] = _slug(str(c.get("archetype", "comp"))) or f"comp_{i}"
-    return {
+    out = {
         "name": str(raw.get("name") or "Generated Encounter"),
         # The battle backdrop + per-enemy physical descriptions ride the encounter
         # JSON for the upcoming image-generation and narration systems.
@@ -779,6 +974,11 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "layouts": raw.get("layouts") if isinstance(raw.get("layouts"), dict) else {},
         "tokens": raw.get("tokens") if isinstance(raw.get("tokens"), dict) else {},
     }
+    # The optional encounter objective (§D12-1) rides through to content
+    # validation (adventure acts only — see the adventure prompt extension).
+    if isinstance(raw.get("objective"), dict):
+        out["objective"] = raw["objective"]
+    return out
 
 
 def _check_layouts(encounter: Dict[str, Any]) -> None:
@@ -805,8 +1005,82 @@ def _check_layouts(encounter: Dict[str, Any]) -> None:
                 "clone more bodies).")
 
 
-def _chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
-    """One OpenRouter chat completion; returns the assistant message text."""
+# Verb kinds that only develop the acting enemy itself when aimed at "self" —
+# the punching-bag test: a proactive component made solely of these, ready
+# every turn, locks out the basic attack forever (engine picks the top ready
+# proactive component each turn), so the enemy pumps and never acts.
+_SELF_DEV_KINDS = {"counters", "pump", "regen", "heal",
+                   "prevent", "protection", "amplify", "double_next"}
+
+
+def _is_self_development(verb: Dict[str, Any]) -> bool:
+    if str(verb.get("kind") or "") not in _SELF_DEV_KINDS:
+        return False
+    target = verb.get("target") if isinstance(verb.get("target"), dict) else {}
+    return str(target.get("mode") or "self") == "self"
+
+
+def _design_problems(encounter: Dict[str, Any]) -> List[str]:
+    """The playtest-driven design gate on generated enemies (Design Update 14):
+    every enemy needs at least two components, no enemy may be a 'punching bag'
+    whose every turn goes into pumping itself, and a charge gather must have its
+    detonation. Returns repair-friendly problem strings (empty = clean)."""
+    problems: List[str] = []
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        comps = [c for c in (e.get("components") or []) if isinstance(c, dict)]
+        if len(comps) < 2:
+            problems.append(
+                f"{name} has {len(comps)} component(s) — every enemy needs at "
+                "least 2 (ability + ability, ability + spell, or spell + spell; "
+                "a reactive or once_per_encounter component is a cheap second)")
+        gathers = detonates = False
+        for c in comps:
+            verbs = [v for v in (c.get("verbs") or []) if isinstance(v, dict)]
+            kinds = {str(v.get("kind") or "") for v in verbs}
+            gathers = gathers or "charge" in kinds
+            detonates = detonates or str(c.get("trigger") or "") == "on_charge_full"
+            # Enrage auto-fires once (the engine parses it as reactive) and a
+            # verbless component (pure Evasive) only repositions — neither can
+            # monopolise the enemy's turns.
+            if (str(c.get("timing") or "proactive") != "proactive"
+                    or str(c.get("archetype") or "").lower() == "enrage"
+                    or c.get("once_per_encounter")
+                    or int(c.get("cooldown") or 0) >= 2
+                    or not verbs or "charge" in kinds):
+                continue
+            if all(_is_self_development(v) for v in verbs):
+                problems.append(
+                    f"{name}: component '{c.get('id') or c.get('archetype')}' only "
+                    "buffs the enemy itself and can fire EVERY turn (cooldown <= 1) "
+                    "— it would pump forever and never attack: a punching bag. Give "
+                    "it cooldown >= 2 so the basic attack spends the counters, make "
+                    "it reactive/once_per_encounter, or aim it at allies instead")
+        if gathers and not detonates:
+            problems.append(
+                f"{name} gathers charge but has no on_charge_full detonation "
+                "component — the windup needs its payoff on the same enemy")
+    return problems
+
+
+def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
+          max_tokens: Optional[int] = None,
+          timeout: float = 120.0) -> str:
+    """One OpenRouter chat completion; returns the assistant message text.
+
+    ``max_tokens`` is set explicitly for adventure generation (T-63): three full
+    encounters plus prose overflow many models' default completion budget, and a
+    truncated JSON reply would otherwise burn a repair attempt."""
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.9,
+        "response_format": {"type": "json_object"},
+    }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     try:
         resp = httpx.post(
             OPENROUTER_URL,
@@ -816,13 +1090,8 @@ def _chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
                 "HTTP-Referer": "https://ltg.local",
                 "X-Title": "LTG Encounter Generator",
             },
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": 0.9,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=120.0,
+            json=payload,
+            timeout=timeout,
         )
     except httpx.HTTPError as exc:
         raise ValueError(f"could not reach OpenRouter: {exc}") from exc
@@ -842,13 +1111,18 @@ def _chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
 # Public entry point
 # --------------------------------------------------------------------------- #
 def generate_encounter(character_ids: List[str], difficulty: str = "standard",
-                       note: str = "", attempts: int = 2) -> Dict[str, Any]:
+                       note: str = "", attempts: int = 2,
+                       persist: bool = True) -> Dict[str, Any]:
     """Generate, validate, persist an encounter and return its meta (id + name …).
 
     Scopes to the picked party + difficulty, calls the configured model, then feeds
     the result through ``content.save_encounter`` (the same gate an authored encounter
     passes). On a validation failure it re-prompts with the engine's error, up to
     ``attempts`` total. Raises ValueError with a human message on any hard failure.
+
+    ``persist=False`` (the Autoplay Tester's quarantine path, §D13-2.3) runs the
+    exact same validation gate but returns the CLEANED ENCOUNTER DICT instead of
+    saving — nothing enters the game's picker.
     """
     settings = load_settings()
     if not settings["api_key"]:
@@ -881,8 +1155,12 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
             if undescribed:
                 problems.append('enemies missing a "description" (physical '
                                 'appearance): ' + ", ".join(undescribed))
+            problems.extend(_design_problems(encounter))  # §D14: kit floor
             if problems:
                 raise ValueError("; ".join(problems))
+            if not persist:
+                # The full authored-content gate, without the save.
+                return content._validate_encounter(encounter)
             return content.save_encounter(encounter)  # validates + persists
         except ValueError as exc:
             last_err = str(exc)
@@ -892,3 +1170,239 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
                 f"That output was rejected: {last_err}\n"
                 "Fix it and return ONLY the corrected encounter JSON.")})
     raise ValueError(f"generation failed after {attempts} attempts: {last_err}")
+
+
+# --------------------------------------------------------------------------- #
+# Adventure generation — one call, one arc (Design Update 10 §D10-5)
+# --------------------------------------------------------------------------- #
+# T-63: an explicit, very high completion budget — three full encounters plus
+# narration overflow the default `max_tokens` most models assume, and truncated
+# JSON would otherwise waste repair attempts. Kept below common per-model output
+# ceilings so the request never 400s.
+ADVENTURE_MAX_TOKENS = 32000
+ADVENTURE_TIMEOUT = 600.0  # one reply carries three encounters; allow the time
+
+# Appended to the (editable) encounter instructions for an adventure request:
+# everything the model already knows about designing ONE encounter holds per
+# act; this block adds the arc, the boss ladder, and the output wrapper.
+ADVENTURE_EXTENSION = r"""
+# ADVENTURE MODE — three acts, one arc (this request generates a whole adventure)
+
+You are designing an ADVENTURE: three thematically linked encounters (the ACTS)
+fought in sequence by one party — progress through a single place. Guards at the
+gate, knights in the courtyard, the tyrant in his throne room: one faction, one
+location traversed, escalating stakes. Everything in the instructions above
+applies to EACH act individually (chassis, components, budgets, layouts, scenes,
+descriptions). This block adds the arc-level rules:
+
+- SCENES PROGRESS: the three acts' `scene` texts must read as three stations of
+  ONE location — outside it, inside it, at its heart — not three unrelated
+  arenas. Same palette, same weather-world, deepening dread.
+- DIFFICULTY ESCALATES BY DESIGN: each act's Level budgets are given below,
+  computed for a party one level stronger per act. Respect each act's own
+  per-party-size layout minimums and targets.
+- ACTS DIFFER MECHANICALLY: each act leans on a DIFFERENT signature mechanic
+  (the parameters roll one per act) so the run escalates in KIND, not just in
+  numbers — e.g. a skirmish of evasive raiders, then the ritual they were
+  screening, then the boss spending the corpses both fights left behind.
+- ACT III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Act III —
+  the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
+  Enrage, phase gates, real HP). No enemy anywhere may exceed its level.
+- ACTS I AND II MAY each field ONE MINI-BOSS — never an obligation, use it for
+  variety. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
+  2.5× budget, counts double), thematically distinct (the gate-captain, not the
+  king), and STRICTLY lower level than Act III's boss.
+- NARRATION: each act carries a `narration` — one short paragraph, SECOND
+  PERSON, PRESENT TENSE, describing the party arriving into that act's scene
+  ("You push through the splintered gate. Beyond, the courtyard…"). Act I's
+  narration is the adventure's opening. No mechanics, no numbers — atmosphere
+  and forward motion.
+- `flavor` is the adventure's one-line pitch, shown in the New Game list.
+
+# Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
+
+One act MAY carry an optional `"objective"` — an alternate win condition that
+turns the act into a set piece. The standing rules are HARD validation:
+- AT MOST ONE objective in the whole adventure, and only on Act I or Act II.
+  Act III is ALWAYS the standard boss kill — the climax stays a fight.
+- Objectives are fully public (the party sees the goal and its countdown from
+  turn 1). Defeat by party wipe is unchanged.
+Use one in roughly two adventures out of three, when the fiction asks for it;
+let the act's `narration` reference the objective. The three kinds:
+
+1. SURVIVE — hold out N rounds; the party wins the act when round N's End Step
+   completes (survivors withdraw). Timer 4–6 rounds. Survival must not be
+   passive: schedule reinforcements and pick a defensible theme (a gate, a
+   bridge, a shrinking camp).
+   {"kind": "survive", "turns": 5, "reinforcements": [
+     {"turn": 3, "layouts": {"1": ["raider"], "2": ["raider","raider"],
+                             "3": ["raider","raider","howler"],
+                             "4": ["raider","raider","howler","howler"]}}]}
+   Reinforcement ids reference the act's enemy pool; repeats clone. Each entry
+   deploys at the start of round `turn`'s Enemy Intents step.
+
+2. WAVES — clear successive waves; the act's top-level `layouts` ARE wave 1,
+   and `"waves"` lists the later waves (same per-size map shape). Later waves
+   wait off-board and deploy when the current wave falls. A war-band theme with
+   DISTINCT wave compositions — vary rows and roles, don't clone one statline
+   thrice. Every wave fields at least 1× the party size (per size), at least 2×
+   in total, and the summed Level budget across waves may run to 1.5× the act's
+   standard budget (staggered arrival pays for the excess). A mini-boss, if the
+   act has one, appears in the FINAL wave only (never in `layouts`).
+   {"kind": "waves", "waves": [
+     {"1": ["cutthroat"], "2": ["cutthroat","cutthroat"],
+      "3": ["cutthroat","cutthroat","archer"],
+      "4": ["cutthroat","cutthroat","archer","archer"]},
+     {"1": ["pit_captain"], "2": ["pit_captain","cutthroat"],
+      "3": ["pit_captain","cutthroat","archer"],
+      "4": ["pit_captain","cutthroat","cutthroat","archer"]}]}
+
+3. RACE — the doom clock: one marked enemy (the ritualist, the summoner) must
+   be DEFEATED within N rounds (3–5), or the failure fires. Give the marked
+   target real HP, a Ward bodyguard, and field it in EVERY layout. Prefer
+   `"fail": "escalate"` — the escalation is an enrage-shaped, budget-free
+   eruption of 2–3 verbs (permanent counters on the enemy side, an AoE, a token
+   wave, a granted keyword) that transforms the fight but leaves it winnable;
+   `"fail": "defeat"` ends the run on the spot and is for hand-authored set
+   pieces only.
+   {"kind": "race", "target": "bonechanter", "turns": 4, "fail": "escalate",
+    "escalation": {"telegraph": "The Rite Completes",
+      "verbs": [{"kind": "counters", "power": 2, "toughness": 2,
+                 "target": {"mode": "all", "side": "enemy"}},
+                {"kind": "deal_damage", "amount": 3,
+                 "target": {"mode": "all", "side": "ally"}}]}}
+
+# Adventure output contract (return EXACTLY this shape, nothing else)
+{
+  "name": "Adventure name",
+  "flavor": "one-line pitch",
+  "acts": [
+    { "narration": "…", <a complete encounter object: name, scene, enemies, layouts, tokens> },
+    { "narration": "…", <act II encounter> },
+    { "narration": "…", <act III encounter — contains the one boss> }
+  ]
+}
+Each act is a COMPLETE encounter exactly per the contract above (name, scene,
+enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
+
+
+def _adventure_request_block(party: Dict[str, Any], difficulty: str,
+                             note: str) -> str:
+    """Per-request parameters: the party, the single difficulty, and each act's
+    per-party-size budget lines computed at party level 1 / 2 / 3 (T-62)."""
+    roster = "; ".join(
+        f'{m["name"]} (level {m["level"]}'
+        + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
+        for m in party["members"]
+    )
+    lines = [
+        "# THIS ADVENTURE'S PARAMETERS",
+        f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
+        f"- Difficulty: {difficulty} (applies to all three acts).",
+        "- Between acts every character levels up, so act N is budgeted for a "
+        "party of level N:",
+    ]
+    for act in range(1, content.ACT_COUNT + 1):
+        lines.append(f'- ACT {act} (party level {act}) — required layouts "1"–"4":')
+        for size in range(1, 5):
+            budget = _budget(size, float(act), difficulty)
+            lines.append(
+                f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies '
+                f"(2× the party, duplicates count), total enemy Levels about "
+                f"{budget} (a boss counts double).")
+    lines.append(
+        "- Act III must contain exactly ONE boss (is_boss: true) — the "
+        "adventure's highest-level enemy. Acts I and II may each field at most "
+        "one mini-boss, strictly lower level than Act III's boss.")
+    if difficulty != "easy":
+        lines.append("- Include at least one CHANNELER (a channel component) "
+                     "somewhere in each act's pool.")
+    rolls = _signature_rolls(content.ACT_COUNT)
+    lines.append(
+        "- Rolled SIGNATURE MECHANICS, one per act — build each act's identity "
+        "around its roll (adapt to the theme; the player's note overrides), so "
+        "the threats escalate in KIND across the run, not just in budget: "
+        + " ".join(f"Act {i}: {r}." for i, r in enumerate(rolls, start=1)))
+    lines.extend(_library_lines())
+    note = (note or "").strip()
+    if note:
+        lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
+    lines.append("\nReturn ONLY the adventure JSON.")
+    return "\n".join(lines)
+
+
+def generate_adventure(character_ids: List[str], difficulty: str = "standard",
+                       note: str = "", attempts: int = 3) -> Dict[str, Any]:
+    """Generate, validate, persist an adventure and return its meta.
+
+    One request generates the whole arc (coherence by construction); the reply
+    then runs the same repair loop an encounter takes — per-act HP scaling,
+    per-act layout checks, then ``content.save_adventure`` (per-act engine gate
+    + the §D10-4.1 adventure checks). Any failure re-prompts the model with the
+    engine's own error, up to ``attempts`` total."""
+    settings = load_settings()
+    if not settings["api_key"]:
+        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    if difficulty not in DIFFICULTY:
+        difficulty = "standard"
+
+    party = _party_summary(character_ids)
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": settings["instructions"] + ADVENTURE_EXTENSION},
+        {"role": "user", "content": _adventure_request_block(party, difficulty, note)},
+    ]
+
+    last_err = ""
+    for _attempt in range(max(1, attempts)):
+        reply = _chat(settings["api_key"], settings["model"], messages,
+                      max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT)
+        try:
+            raw = _extract_json(reply)
+            acts = raw.get("acts")
+            if not isinstance(acts, list) or len(acts) != content.ACT_COUNT:
+                raise ValueError(
+                    f'the adventure needs an "acts" list of exactly '
+                    f"{content.ACT_COUNT} acts")
+            cleaned_acts = []
+            for i, act in enumerate(acts, start=1):
+                if not isinstance(act, dict):
+                    raise ValueError(f"act {i} must be an object")
+                try:
+                    enc = _normalize(act)
+                    _scale_hp(enc, difficulty)
+                    _check_layouts(enc)
+                    problems = []
+                    if not enc["scene"]:
+                        problems.append('missing the top-level "scene"')
+                    undescribed = [str(e.get("name", "?")) for e in enc["enemies"]
+                                   if isinstance(e, dict)
+                                   and not str(e.get("description") or "").strip()]
+                    if undescribed:
+                        problems.append('enemies missing a "description": '
+                                        + ", ".join(undescribed))
+                    problems.extend(_design_problems(enc))  # §D14: kit floor
+                    if not str(act.get("narration") or "").strip():
+                        problems.append('missing its "narration" (one short '
+                                        "second-person paragraph)")
+                    if problems:
+                        raise ValueError("; ".join(problems))
+                except ValueError as exc:
+                    raise ValueError(f"act {i}: {exc}") from exc
+                enc["narration"] = str(act.get("narration") or "").strip()
+                cleaned_acts.append(enc)
+            adventure = {
+                "name": str(raw.get("name") or "Generated Adventure"),
+                "flavor": str(raw.get("flavor") or "").strip(),
+                "acts": cleaned_acts,
+            }
+            # Same gate authored content takes: per-act engine validation plus
+            # the adventure-level checks, then persist (wrapper + act files).
+            return content.save_adventure(adventure)
+        except ValueError as exc:
+            last_err = str(exc)
+            messages.append({"role": "assistant", "content": reply})
+            messages.append({"role": "user", "content": (
+                f"That output was rejected: {last_err}\n"
+                "Fix it and return ONLY the corrected adventure JSON.")})
+    raise ValueError(f"adventure generation failed after {attempts} attempts: "
+                     f"{last_err}")

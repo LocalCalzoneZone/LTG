@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import art, content, llm
+from .adventure import AdventureRun
 from .session import SessionManager
 
 APP_ROOT = Path(__file__).resolve().parent.parent          # apps/game-server
@@ -39,7 +40,10 @@ MANAGER = SessionManager()
 # --------------------------------------------------------------------------- #
 class CreateGameBody(BaseModel):
     character_ids: List[str]
-    encounter_id: str
+    # Exactly one of these: a standalone encounter, or an adventure (Update 10 —
+    # the session then runs the three-act flow: carry-over, level-ups, splashes).
+    encounter_id: Optional[str] = None
+    adventure_id: Optional[str] = None
 
 
 @app.get("/api/setup-options")
@@ -47,12 +51,23 @@ def setup_options() -> Dict[str, Any]:
     return {
         "characters": content.list_characters(),
         "encounters": content.list_encounters(),
+        "adventures": content.list_adventures(),
     }
 
 
 @app.post("/api/games")
 def create_game(body: CreateGameBody) -> Dict[str, Any]:
+    if bool(body.encounter_id) == bool(body.adventure_id):
+        raise HTTPException(400, "choose an encounter or an adventure")
     try:
+        if body.adventure_id:
+            run = AdventureRun(body.adventure_id)
+            state, portraits, game_art, encounter_id = run.start(
+                body.character_ids, seed=random.randrange(2**31))
+            session = MANAGER.create(state, name=run.name, portraits=portraits,
+                                     encounter_id=encounter_id, art=game_art,
+                                     adventure=run)
+            return {"session_id": session.id}
         state, portraits, game_art = content.build_state(
             body.character_ids, body.encounter_id, seed=random.randrange(2**31)
         )
@@ -123,6 +138,64 @@ def delete_encounter(encounter_id: str) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# REST: adventures (Design Update 10) — list/detail/edit/delete + generation.
+# Acts are ordinary encounters (reserved ids) edited through the encounter
+# endpoints above; the wrapper (name, flavor, narrations) is edited here.
+# --------------------------------------------------------------------------- #
+class AdventureInfoBody(BaseModel):
+    name: Optional[str] = None
+    flavor: Optional[str] = None
+    narrations: Optional[List[str]] = None
+
+
+class GenerateAdventureBody(BaseModel):
+    character_ids: List[str]
+    difficulty: str = "standard"
+    note: str = ""
+
+
+@app.get("/api/adventures/{adventure_id}")
+def get_adventure(adventure_id: str) -> Dict[str, Any]:
+    """The full adventure: wrapper fields + each act's embedded encounter."""
+    detail = content.adventure_detail(adventure_id)
+    if detail is None:
+        raise HTTPException(404, "no such adventure")
+    return detail
+
+
+@app.put("/api/adventures/{adventure_id}")
+def put_adventure_info(adventure_id: str, body: AdventureInfoBody) -> Dict[str, Any]:
+    """Update the adventure-level fields (name, flavor, narrations)."""
+    try:
+        meta = content.save_adventure_info(
+            adventure_id, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"adventure": meta}
+
+
+@app.delete("/api/adventures/{adventure_id}")
+def delete_adventure(adventure_id: str) -> Dict[str, Any]:
+    """Remove an adventure and its act files."""
+    try:
+        content.delete_adventure(adventure_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/adventures/generate")
+def generate_adventure(body: GenerateAdventureBody) -> Dict[str, Any]:
+    """Generate + persist a whole three-act adventure in one model call,
+    scoped to the picked party and difficulty; returns its meta."""
+    try:
+        meta = llm.generate_adventure(body.character_ids, body.difficulty, body.note)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"adventure": meta}
 
 
 # --------------------------------------------------------------------------- #
@@ -225,6 +298,40 @@ async def delete_encounter_art(encounter_id: str, kind: str,
     return result
 
 
+# --------------------------------------------------------------------------- #
+# REST: the art queue — "Generate all art" (Update 10 §D10-6.4). POST enqueues
+# every still-missing image (idempotent); GET polls progress. The adventure
+# variant covers its acts in order (Act I first, so play can start while later
+# acts paint); completed images broadcast to sessions as they land.
+# --------------------------------------------------------------------------- #
+@app.post("/api/encounters/{encounter_id}/art/all")
+async def start_encounter_art_queue(encounter_id: str) -> Dict[str, Any]:
+    if content.encounter_detail(encounter_id) is None:
+        raise HTTPException(404, "no such encounter")
+    return art.QUEUE.start(f"encounter:{encounter_id}", [encounter_id],
+                           _refresh_sessions_art)
+
+
+@app.get("/api/encounters/{encounter_id}/art/all")
+def encounter_art_queue_status(encounter_id: str) -> Dict[str, Any]:
+    return art.QUEUE.status(f"encounter:{encounter_id}")
+
+
+@app.post("/api/adventures/{adventure_id}/art/all")
+async def start_adventure_art_queue(adventure_id: str) -> Dict[str, Any]:
+    detail = content.adventure_detail(adventure_id)
+    if detail is None:
+        raise HTTPException(404, "no such adventure")
+    act_ids = [a["encounter_id"] for a in detail["acts"]]
+    return art.QUEUE.start(f"adventure:{adventure_id}", act_ids,
+                           _refresh_sessions_art)
+
+
+@app.get("/api/adventures/{adventure_id}/art/all")
+def adventure_art_queue_status(adventure_id: str) -> Dict[str, Any]:
+    return art.QUEUE.status(f"adventure:{adventure_id}")
+
+
 @app.get("/api/games/{session_id}")
 def game_status(session_id: str) -> Dict[str, Any]:
     session = MANAGER.get(session_id)
@@ -259,20 +366,27 @@ def _prompt_msg(session) -> Dict[str, Any]:
 async def _broadcast(session) -> None:
     """Push a fresh (per-client filtered) state + seats + prompt to everyone."""
     prompt = _prompt_msg(session)
+    # public_result suppresses a non-final act victory in an adventure (the act
+    # boundary is a level-up gate, not a game over); plain encounters unchanged.
+    result = session.public_result()
     for cid, ws in list(session.clients.items()):
         await _send(ws, {"type": "seats", **session.seats_payload(cid)})
         await _send(ws, {"type": "state", **session.snapshot_for(cid)})
         await _send(ws, prompt)
-        if session.state.result is not None:
-            await _send(ws, {"type": "game_over", "result": session.state.result})
+        if result is not None:
+            await _send(ws, {"type": "game_over", "result": result})
 
 
 @app.websocket("/ws/{session_id}")
 async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     session = MANAGER.get(session_id)
     if session is None:
+        # `fatal` tells the client this can never succeed (sessions live in
+        # memory — a restart wipes them), so it must stop its reconnect loop
+        # instead of hammering the dead id every second.
         await ws.accept()
-        await ws.send_json({"type": "error", "message": "no such session"})
+        await ws.send_json({"type": "error", "message": "no such session",
+                            "fatal": True})
         await ws.close()
         return
 
@@ -315,6 +429,22 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                     except ValueError as exc:
                         await _send(ws, {"type": "error", "message": str(exc)})
                         # Re-sync just this client so its optimistic arming reverts.
+                        await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
+                        continue
+                await _broadcast(session)
+
+            elif mtype == "confirm_level_up":
+                # The between-acts gate (Update 10 §D10-3.3): one confirmation
+                # per controlled character; the last confirmation composes the
+                # next act (carry-over applied) before the broadcast.
+                async with session.lock():
+                    try:
+                        session.confirm_level_up(
+                            client_id,
+                            str(msg.get("character_id") or ""),
+                            msg.get("build") or {})
+                    except ValueError as exc:
+                        await _send(ws, {"type": "error", "message": str(exc)})
                         await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
                         continue
                 await _broadcast(session)

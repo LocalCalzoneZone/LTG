@@ -1,0 +1,108 @@
+{
+  "name": "Fixture IV \u2014 The Lash Wardens",
+  "enemies": [
+    {
+      "id": "lasher",
+      "name": "Lash Warden",
+      "hp": 6,
+      "level": 3,
+      "power": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "skullring",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Skull-Ringer \u2014 stun a hero"
+        }
+      ]
+    },
+    {
+      "id": "goad",
+      "name": "Goadhand",
+      "hp": 4,
+      "level": 2,
+      "power": 1,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "challenge",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "trigger": "on_ally_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Blood Challenge \u2014 taunt the attacker"
+        }
+      ]
+    },
+    {
+      "id": "whelp",
+      "name": "Pit Whelp",
+      "hp": 3,
+      "level": 1,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "lasher",
+      "whelp"
+    ],
+    "2": [
+      "lasher",
+      "goad",
+      "whelp",
+      "whelp"
+    ],
+    "3": [
+      "lasher",
+      "goad",
+      "goad",
+      "whelp",
+      "whelp",
+      "whelp"
+    ],
+    "4": [
+      "lasher",
+      "lasher",
+      "goad",
+      "goad",
+      "whelp",
+      "whelp",
+      "whelp",
+      "whelp"
+    ]
+  }
+}

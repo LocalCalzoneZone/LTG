@@ -15,9 +15,26 @@ _SCENE = "A drowned library at low tide: shelves furred with kelp, drifting page
 
 
 def _enemy(eid, desc="A drowned scholar in rotted robes, lantern-eyed."):
+    # Two components per enemy: generation now enforces the §D14 kit floor
+    # (every enemy needs at least two components).
     return {"id": eid, "name": eid.title(), "hp": 8, "power": 2, "level": 2,
             "row": "front", "attack_mode": "melee",
-            "flavor": "hits things", "description": desc}
+            "flavor": "hits things", "description": desc,
+            "components": [
+                {"id": "jab", "archetype": "Burst", "timing": "proactive",
+                 "priority": 30, "cooldown": 2, "target_rule": "valuation",
+                 "telegraph": "Jab — deal 3",
+                 "verbs": [{"kind": "deal_damage", "amount": 3,
+                            "target": {"mode": "chosen", "side": "ally",
+                                       "targeted": True}}]},
+                {"id": "riposte", "archetype": "Punish", "timing": "reactive",
+                 "trigger": "on_hit", "cooldown": 2, "priority": 25,
+                 "target_rule": "trigger_source",
+                 "telegraph": "Riposte — deal 2",
+                 "verbs": [{"kind": "deal_damage", "amount": 2,
+                            "target": {"mode": "chosen", "side": "ally",
+                                       "targeted": True}}]},
+            ]}
 
 
 def _encounter(name="Scene Test Zzz", scene=_SCENE, desc=True):

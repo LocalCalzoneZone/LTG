@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ltg-autoplay-tester"
+version = "0.1.0"
+description = "LTG Autoplay Tester — the playtest lab (Design Update 13): probes, gauntlets, and verdicts over the ltg-autoplay harness. Imports ltg-game as a library (one-way edge; the game server never imports this app)."
+requires-python = ">=3.9"
+dependencies = [
+    "ltg-core",
+    "ltg-combat",
+    "ltg-game",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
+
+[project.scripts]
+ltg-autoplay-tester = "ltg_autoplay_tester.launch:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ltg_autoplay_tester*"]

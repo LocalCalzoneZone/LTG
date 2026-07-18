@@ -398,7 +398,12 @@ def test_encounter_art_is_keyed_by_pool_id(loadouts, encounter, mock_openrouter)
     url = art.generate(encounter, "enemy", "ghoul")["url"]
     scene_url = art.generate(encounter, "scene")["url"]
     assert content.encounter_art(encounter) == {
-        "scene": scene_url, "enemies": {"ghoul": url}}
+        "scene": scene_url, "enemies": {"ghoul": url},
+        # Art-direction prose rides along for the inspect view ("" when unset).
+        "descriptions": {
+            "ghoul": "A grey, hunched corpse-eater with too many teeth.",
+            "warden": "",
+        }}
 
 
 # --------------------------------------------------------------------------- #

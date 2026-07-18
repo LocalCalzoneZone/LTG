@@ -1,7 +1,9 @@
-"""R-11 prevent-parameter matching against the two enemy damage lanes:
-`prevent combat_damage` (Holy Day / Fog) stops BASIC ATTACKS but not component
-ABILITY damage (a Drain's deal_damage) — and when a standing shield doesn't match,
-the engine now logs why the hit landed (the playtest-confusion fix)."""
+"""R-11 prevent-parameter matching against the two damage lanes (Update 11):
+`prevent combat_damage` (Holy Day / Fog) stops the PHYSICAL lane — basic attacks
+AND activated/component-ability damage (an enemy's "Slash"/"Claw" is narratively
+an attack) — but not the ARCANE lane (spell / triggered damage), which
+`prevent spell_damage` answers; `all_damage` blanks both. When a standing shield
+doesn't match, the engine logs why the hit landed (the playtest-confusion fix)."""
 
 from __future__ import annotations
 
@@ -19,10 +21,11 @@ _FOG = {"id": "holy_day", "name": "Holy Day", "source_name": "Holy Day",
         "validated": True}
 
 
-def _drain():
+def _drain(action_type="ability"):
     return Component(id="leech", archetype="Drain", timing="proactive",
                      priority=30, cooldown=2, target_rule="valuation",
                      telegraph="Life Leech — deal 3, heal 3",
+                     action_type=action_type,
                      verbs=[DealDamage(amount=3, target=t_chosen("ally", targeted=True)),
                             Heal(amount=3, target=t_self())])
 
@@ -62,14 +65,25 @@ def test_fog_stops_the_basic_attack():
     assert any(ev.type == "prevented" for ev in st.log if hasattr(ev, "type"))
 
 
-def test_fog_does_not_stop_drain_ability_damage_and_says_why():
+def test_fog_now_stops_drain_ability_damage_too():
+    """Update 11: combat_damage covers the physical lane — attacks AND
+    activated/component abilities (a Drain's "Life Leech" is narratively an
+    attack), so the Holy Day shield stops it."""
     st = _run_until_enemy_acted(_state(components=[_drain()]))
-    # The Drain outranks the basic attack (priority 30 < 90) and its ability damage
-    # goes through the combat_damage shield.
+    # The Drain outranks the basic attack (priority 30 < 90); its ability damage
+    # is now caught by the combat_damage shield.
+    assert st.character("ys").hp == 10
+    assert any(ev.type == "prevented" for ev in st.log if hasattr(ev, "type"))
+
+
+def test_fog_does_not_stop_spell_damage_and_says_why():
+    """A spell-classed component ("Fireball") is the ARCANE lane: it goes
+    through a combat_damage shield, and the log explains why."""
+    st = _run_until_enemy_acted(_state(components=[_drain(action_type="spell")]))
     assert st.character("ys").hp == 7
     note = [ev for ev in st.log if ev.type == "not_prevented"]
     assert note, "expected the shield-mismatch explanation in the log"
-    assert note[0].data.get("damage_kind") == "ability"
+    assert note[0].data.get("damage_kind") == "spell"
     assert "combat_damage" in note[0].data.get("shields", [])
 
 

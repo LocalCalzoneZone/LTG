@@ -320,6 +320,11 @@ REF_VALUES = {
     "caster_hp": "your current HP (the caster's, at resolution)",
     "target_power": "the target's Power",
     "target_hp": "the target's current HP",
+    # Retroactive combo refs: the size of the last blow that CONNECTED with the
+    # named combatant (post-prevention/mitigation), 0 if never hit. "Heal an
+    # amount equal to the last damage you took."
+    "caster_last_damage": "the last damage taken by you (the caster)",
+    "target_last_damage": "the last damage taken by the target",
 }
 
 
@@ -546,11 +551,23 @@ class Counters(EffectBase):
     duration: Duration = Duration.encounter
 
 
+# The closed vocabulary of things a `prevent` can nullify (the editor renders it
+# as a dropdown — no free text). The three damage lanes cover every damage source:
+#   combat_damage — physical blows: basic attacks AND activated/component abilities
+#                   (an enemy's "Slash"/"Claw" is narratively an attack)
+#   spell_damage  — arcane harm: spells and triggered abilities
+#   all_damage    — everything
+# `attack` is the one non-damage parameter: an ACTION shield (Pacifism) that stops
+# the target from attacking at all.
+PreventParameter = Literal["combat_damage", "spell_damage", "all_damage", "attack"]
+
+
 class Prevent(EffectBase):
     """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
-    `prevent combat_damage` makes attack actions against the target deal no damage,
-    while `prevent attack` stops the target from attacking at all (Pacifism). The
-    parameter names what is nullified; scope is defined by that parameter.
+    `prevent combat_damage` makes attacks AND activated-ability damage against the
+    target deal nothing, `prevent spell_damage` blanks spell/triggered damage,
+    `prevent all_damage` blanks everything, while `prevent attack` stops the
+    target from attacking at all (Pacifism).
 
     `uses` disambiguates the two "protection" shapes the parameter can take:
       * `"all"` — nullify EVERY matching instance until the duration ends (Fog:
@@ -561,16 +578,85 @@ class Prevent(EffectBase):
     duration (a channeled Pacifism keeps the creature from attacking every turn)."""
 
     kind: Literal["prevent"] = "prevent"
-    parameter: str = "combat_damage"
+    parameter: PreventParameter = "combat_damage"
     uses: Literal["all", "next"] = "all"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_parameters(cls, data):
+        """Pre-vocabulary cards authored free-text parameters: `damage` / `all`
+        both meant "everything" and normalise to `all_damage`; `spell` (rare)
+        normalises to `spell_damage`. Unknown strings now fail validation."""
+        if isinstance(data, dict):
+            aliases = {"damage": "all_damage", "all": "all_damage",
+                       "spell": "spell_damage"}
+            p = data.get("parameter")
+            if p in aliases:
+                data = {**data, "parameter": aliases[p]}
+        return data
 
 
 class Protection(EffectBase):
     kind: Literal["protection"] = "protection"
     target: TargetOrSlot
     scope: str = "next_spell_or_attack"
+
+
+# What an `amplify` primes. The damage lanes deliberately mirror the `prevent`
+# vocabulary (combat = attacks + activated abilities; spell = spells + triggered
+# abilities); `heal` primes the target's next OUTGOING heal the same way.
+AmplifyEvent = Literal["combat_damage", "spell_damage", "any_damage", "heal"]
+
+
+class Amplify(EffectBase):
+    """The combo verb: prime a combatant's NEXT outgoing hit (or heal) — the next
+    matching damage they deal is `multiplier ×` its amount plus `bonus` flat
+    ("your next spell damage is doubled", "your next attack deals +3"). A `heal`
+    event amplifies the next heal they cast instead. One-shot: the tag is spent
+    by the first matching instance and holds until spent (a primed combo does not
+    fizzle at end of turn)."""
+
+    kind: Literal["amplify"] = "amplify"
+    event: AmplifyEvent = "any_damage"
+    multiplier: int = 2
+    bonus: int = 0
+    target: TargetOrSlot = Field(default_factory=t_self)
+
+    @model_validator(mode="after")
+    def _meaningful(self) -> "Amplify":
+        if self.multiplier < 1:
+            raise ValueError("amplify multiplier must be >= 1")
+        if self.multiplier == 1 and self.bonus == 0:
+            raise ValueError("an amplify must multiply (>1) or add a bonus")
+        return self
+
+
+class CopySpell(EffectBase):
+    """Copy a spell on the stack (a spell multiplier — instant-speed by nature:
+    there must be a spell on the stack to copy). The copy belongs to the COPIER:
+    it resolves from their side (ally/enemy language flips to the copying side),
+    and a player copier assigns the copy's target as it resolves. Channeled
+    casts cannot be copied (a channel is a held card, not a one-shot)."""
+
+    kind: Literal["copy_spell"] = "copy_spell"
+    # The spell to copy — a stack action on either side (copy your ally's
+    # Fireball, or steal the shape of the enemy ritual).
+    target: ActionTarget = Field(default_factory=lambda: ActionTarget(side=Side.any))
+
+
+class DoubleNext(EffectBase):
+    """The other spell multiplier: the target combatant's next matching action
+    RESOLVES TWICE ("the next spell you resolve, resolves twice"). `filter` is a
+    node of the action lattice: `spell`, `ability` (attacks/activated/triggered),
+    or `action` (anything). One-shot; holds until spent. The echo re-resolves
+    the same effects at the same targets; a channeled cast is never doubled
+    (one card can hold only one channel)."""
+
+    kind: Literal["double_next"] = "double_next"
+    filter: Literal["spell", "ability", "action"] = "spell"
+    target: TargetOrSlot = Field(default_factory=t_self)
 
 
 class Draw(EffectBase):
@@ -788,6 +874,9 @@ LEAF_EFFECT_CLASSES = [
     Counters,
     Prevent,
     Protection,
+    Amplify,
+    CopySpell,
+    DoubleNext,
     Draw,
     Scry,
     MoveCard,
@@ -1248,6 +1337,10 @@ class Card(BaseModel):
 # leveling cliff of §P-6 is [DESIGNED — NOT SCHEDULED] and deliberately absent.
 # --------------------------------------------------------------------------- #
 CREATION_BUDGET = 70                                    # T5-01
+# Adventure-local leveling (Design Update 10 §D10-3): +30 bankable points per
+# level-up (T-57). A level-L build may spend up to the creation budget plus every
+# grant since level 1; the Deckbuilder remains creation-only (always level 1).
+LEVEL_UP_POINTS = 30                                    # T-57
 BASELINE_HP = 8                                         # §P-1 free base
 BASELINE_MANA = 1
 BASELINE_CARDS = 1
@@ -1258,7 +1351,9 @@ COST_HP_STEP = 5     # per +2 HP step (HP is bought two at a time)   T5-02
 COST_MANA = 15       # per +1 mana capacity                          T5-03
 COST_CARD = 15       # per +1 starting card                          T5-04
 COST_POWER = 10      # per +1 Power above the mode's base            T5-05
-MAX_POWER_BOUGHT = 2  # §P-4 Power cap: melee ≤ 4, ranged ≤ 3         T5-14
+# §P-4 Power cap, generalised by Update 10 (T-60): bought Power ≤ 2 × character
+# level. Creation (level 1) is the original flat +2 (melee ≤ 4, ranged ≤ 3).
+MAX_POWER_BOUGHT = 2  # per level (T5-14 / T-60)
 MAX_KEYWORDS = 1     # §P-3 one keyword at creation                  T5-06
 
 # Buyable keyword costs (§P-3, T5-07..13). The set is deliberately narrow.
@@ -1427,11 +1522,12 @@ class Character(BaseModel):
             return self
         if self.hp % 2 != 0:
             raise ValueError("HP is bought in 2-point steps and must be even (§P-2)")
-        if not (0 <= self.power_bought <= MAX_POWER_BOUGHT):
-            cap = BASE_POWER[AttackMode(self.attack_mode)] + MAX_POWER_BOUGHT
+        power_cap = MAX_POWER_BOUGHT * self.level  # T-60: 2 × level (creation = +2)
+        if not (0 <= self.power_bought <= power_cap):
+            cap = BASE_POWER[AttackMode(self.attack_mode)] + power_cap
             raise ValueError(
-                f"Power cap at creation is +{MAX_POWER_BOUGHT} "
-                f"({self.attack_mode.value} ≤ {cap}) — §P-4/T5-14"
+                f"Power cap at level {self.level} is +{power_cap} "
+                f"({self.attack_mode.value} ≤ {cap}) — §P-4/T-60"
             )
         return self
 
@@ -1461,26 +1557,35 @@ class Character(BaseModel):
 
     @model_validator(mode="after")
     def _within_budget(self) -> "Character":
-        """The build may not spend more than the 70-point creation budget (§P-1).
-        Migrated legacy characters are exempt (their odd HP can exceed it)."""
-        if not self.legacy and self.points_spent > CREATION_BUDGET:
+        """The build may not spend more than its level's budget: the 70-point
+        creation budget (§P-1) plus 30 per level-up (Update 10 T-57 — adventure-
+        local leveling). Migrated legacy characters are exempt (their odd HP can
+        exceed it)."""
+        budget = CREATION_BUDGET + LEVEL_UP_POINTS * (self.level - 1)
+        if not self.legacy and self.points_spent > budget:
             raise ValueError(
                 f"build spends {self.points_spent} points, over the "
-                f"{CREATION_BUDGET}-point creation budget (§P-1)"
+                f"{budget}-point budget for level {self.level} (§P-1/T-57)"
             )
         return self
 
+    @property
+    def points_budget(self) -> int:
+        """The total points available to a build of this level (T5-01 + T-57)."""
+        return CREATION_BUDGET + LEVEL_UP_POINTS * (self.level - 1)
+
     @model_validator(mode="after")
     def _heroics_valid(self) -> "Character":
-        """D8-3.5: the Skill's timing is FORCED to instant and the Ultimate's to
-        sorcery (channeled is illegal for both — coerced away rather than
-        round-tripped); the Ultimate may never carry a mana cost (the gauge is
-        the cost)."""
-        if self.skill is not None and self.skill.timing != Timing.instant:
-            # Rebuild so Card's own validators re-run against the forced timing
+        """D8-3.5 (amended): the Skill is an ACTIVATED ability — an action
+        (sorcery timing) or a channeled effect (stances etc.); it is never
+        instant-speed (instant-speed skills proved too strong — legacy instant
+        skills are coerced to sorcery). The Ultimate's timing is forced to
+        sorcery and it may never carry a mana cost (the gauge is the cost)."""
+        if self.skill is not None and self.skill.timing == Timing.instant:
+            # Rebuild so Card's own validators re-run against the coerced timing
             # (a channeled-only effect then raises instead of slipping through).
             self.skill = Card.model_validate(
-                {**self.skill.model_dump(mode="json"), "timing": "instant"})
+                {**self.skill.model_dump(mode="json"), "timing": "sorcery"})
         if self.ultimate is not None:
             if self.ultimate.timing != Timing.sorcery:
                 self.ultimate = Card.model_validate(
@@ -1508,7 +1613,7 @@ class Character(BaseModel):
 
     @property
     def points_remaining(self) -> int:
-        return CREATION_BUDGET - self.points_spent
+        return self.points_budget - self.points_spent
 
     @property
     def stat_block(self) -> dict:
@@ -1599,3 +1704,119 @@ def deck_status(loadout: Loadout) -> dict:
         "untranslated": untranslated,
         "starting_mana_outside_identity": starting_mana_off,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Encounter objectives (Design Update 12 §D12-1)
+#
+# An encounter may carry AT Most ONE optional `objective` from the closed set
+# survive / waves / race. Objectives are fully public — the mission, not an
+# intent. The models validate the AUTHORED form (per-party-size roster maps);
+# the combat loader resolves those maps into concrete enemy ids at build time
+# and marks the resolved dict with `resolved: true`.
+# --------------------------------------------------------------------------- #
+
+# A wave / reinforcement roster: the authored per-party-size map
+# ({"1": [ids], ..., "4": [ids]} — the standard layout-map shape) or an
+# already-concrete id list (hand-authored fixed encounters, or post-resolution).
+ObjectiveRoster = Union[Dict[str, List[str]], List[str]]
+
+
+class Reinforcement(BaseModel):
+    """One scheduled `survive` arrival (§D12-1.2): deploys at the start of the
+    Enemy Intents step of round `turn`, on the entering enemies' home rows,
+    declaring intents that same step. Until then it waits in the reserve zone.
+    Exactly one of `layouts` (authored per-size map) / `ids` (resolved) is set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn: int = Field(ge=2)
+    layouts: Optional[Dict[str, List[str]]] = None
+    ids: Optional[List[str]] = None
+    arrived: bool = False  # engine bookkeeping (serialized state round-trips)
+
+    @model_validator(mode="after")
+    def _one_roster(self) -> "Reinforcement":
+        if (self.layouts is None) == (self.ids is None):
+            raise ValueError(
+                "a reinforcement entry needs exactly one of 'layouts' "
+                "(per-party-size id map) or 'ids' (a concrete id list)")
+        if self.layouts is not None and not any(self.layouts.values()):
+            raise ValueError("a reinforcement entry's layouts must field "
+                             "at least one enemy")
+        return self
+
+
+class Escalation(BaseModel):
+    """The enrage-shaped payload a failed `escalate` race fires onto the stack
+    from its marked enemy (§D12-1.4): 2–3 verbs, budget-free (T-68), answerable
+    like an enrage. Verbs are ordinary §11 primitives (enemy-legal subset)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    telegraph: str = ""
+    verbs: List[Effect] = Field(min_length=1)
+
+
+class EncounterObjective(BaseModel):
+    """The optional encounter objective (§D12-1.1).
+
+    - `survive`: hold out `turns` rounds; optional scheduled `reinforcements`.
+      No failure shape — failing to survive IS the wipe.
+    - `waves`: the encounter's top-level layouts are wave 1; `waves` lists the
+      later waves (reserve-zone enemies block victory by construction).
+    - `race`: defeat the marked `target` (graveyard or exile — nothing else
+      counts) within `turns` rounds, or the `fail` shape fires (`escalation`
+      required iff fail == "escalate").
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["survive", "waves", "race"]
+    turns: Optional[int] = None
+    reinforcements: List[Reinforcement] = Field(default_factory=list)
+    waves: Optional[List[ObjectiveRoster]] = None
+    target: Optional[str] = None
+    fail: Optional[Literal["defeat", "escalate"]] = None
+    escalation: Optional[Escalation] = None
+    resolved: bool = False  # set by the combat loader once rosters are concrete
+
+    @model_validator(mode="after")
+    def _coherent(self) -> "EncounterObjective":
+        def forbid(*fields: str) -> None:
+            for f in fields:
+                v = getattr(self, f)
+                if v not in (None, [], False) and not (f == "reinforcements" and not v):
+                    raise ValueError(f"a '{self.kind}' objective must not carry '{f}'")
+
+        if self.kind == "survive":
+            if not self.turns or self.turns < 1:
+                raise ValueError("a 'survive' objective needs 'turns' >= 1")
+            forbid("waves", "target", "fail", "escalation")
+        elif self.kind == "waves":
+            if not self.waves:
+                raise ValueError("a 'waves' objective needs at least one later "
+                                 "wave (the top-level layouts are wave 1)")
+            for i, w in enumerate(self.waves, start=2):
+                empty = (not any(w.values())) if isinstance(w, dict) else (not w)
+                if empty:
+                    raise ValueError(f"wave {i} fields no enemies")
+            forbid("turns", "target", "fail", "escalation")
+            if self.reinforcements:
+                raise ValueError("a 'waves' objective must not carry 'reinforcements'")
+        else:  # race
+            if not self.turns or self.turns < 1:
+                raise ValueError("a 'race' objective needs 'turns' >= 1")
+            if not (self.target or "").strip():
+                raise ValueError("a 'race' objective needs a 'target' (the "
+                                 "marked enemy's pool id)")
+            if self.fail is None:
+                self.fail = "escalate"
+            if self.fail == "escalate" and self.escalation is None:
+                raise ValueError("fail 'escalate' requires an 'escalation' payload")
+            if self.fail == "defeat" and self.escalation is not None:
+                raise ValueError("fail 'defeat' must not carry an 'escalation'")
+            forbid("waves")
+            if self.reinforcements:
+                raise ValueError("a 'race' objective must not carry 'reinforcements'")
+        return self

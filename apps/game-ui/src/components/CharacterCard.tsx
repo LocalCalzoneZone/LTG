@@ -2,6 +2,7 @@ import type { CharacterView } from "../lib/types";
 import { hpColor, modifierColor, modifierText, powerColor } from "../lib/format";
 import { CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
+import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
 import { StatPop } from "./StatPop";
 
@@ -23,6 +24,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
   const setFocus = useGame((s) => s.setFocus);
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
+  const setInspect = useGame((s) => s.setInspect);
   // Intents-window hover (D8-1.5): light up when a hovered intent locks onto us.
   const intentLit = useGame((s) => s.hoverIntent?.targetId === char.id);
 
@@ -31,7 +33,9 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       pickTargetId(char.id);
       return;
     }
+    if (armed) return; // mid-targeting, a stray click must not pop the inspector
     if (char.is_active_focusable) setFocus(char.id);
+    setInspect(char.id);
   };
 
   // One frame state at a time, highest-stakes first: target brackets > holder
@@ -50,7 +54,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
   return (
     <div
       onClick={onClick}
-      title={char.name}
+      title={`${char.name} — click to inspect`}
       style={{
         width: CARD_WIDTH,
         ...(char.portrait
@@ -61,7 +65,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
         char.portrait ? "" : "bg-gradient-to-b from-ink-3 to-ink-1"
       } ${frame} ${dim} ${dimUntargeted} ${
         intentLit ? "shadow-[0_0_0_1px_rgba(194,90,80,0.6)]" : ""
-      } ${char.is_active_focusable || isTarget ? "cursor-pointer" : "cursor-default"}`}
+      } ${isTarget || !armed ? "cursor-pointer" : "cursor-default"}`}
     >
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />
@@ -144,6 +148,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       )}
 
       <StatPop hp={char.hp.current} />
+      <FxLayer id={char.id} />
     </div>
   );
 }

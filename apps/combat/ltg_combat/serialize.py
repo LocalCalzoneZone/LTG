@@ -234,6 +234,13 @@ def _status_tags(char) -> List[str]:
     for tag in getattr(char, "prevent_tags", []):
         span = "next " if tag.uses is not None else ""
         tags.append(f"prevent {span}{tag.parameter}")
+    for tag in getattr(char, "amplify_tags", []):
+        boost = (f"×{tag.multiplier}" if tag.multiplier > 1 else "") + \
+                (f"+{tag.bonus}" if tag.bonus else "")
+        what = {"heal": "heal"}.get(tag.event, tag.event.replace("_", " "))
+        tags.append(f"next {what} {boost}")
+    for filt in getattr(char, "double_next", []):
+        tags.append(f"next {filt} ×2 resolve")
     if getattr(char, "power_bonus", 0):
         tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
     if getattr(char, "protection", 0):
@@ -539,6 +546,68 @@ def phase_label(state: GameState) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Encounter objectives (Design Update 12 §D12-1.5) — fully public, no veil
+# --------------------------------------------------------------------------- #
+def objective_block(state: GameState) -> Optional[Dict[str, Any]]:
+    """The objective banner's data: kind, status, and the pinned first line of
+    the intents window. None when the encounter carries no objective."""
+    obj = state.objective
+    if obj is None:
+        return None
+    remaining = max(0, obj.turns - obj.rounds_done)
+    plural = "" if remaining == 1 else "s"
+    waves_total = len(obj.waves) + 1
+    if obj.kind == "survive":
+        line = f"Survive: {remaining} round{plural} remain"
+    elif obj.kind == "waves":
+        line = f"Wave {obj.wave_index + 1} of {waves_total}"
+    else:  # race
+        target = state.enemy(obj.target_id) if obj.target_id else None
+        name = target.name if target is not None else "the marked enemy"
+        if obj.status == "complete":
+            line = "The doom clock is shattered."
+        elif obj.status == "failed":
+            line = "The clock has run out."
+        else:
+            line = f"Defeat {name} — {remaining} round{plural} remain"
+    return {
+        "kind": obj.kind,
+        "status": obj.status,
+        "line": line,
+        "rounds_remaining": remaining if obj.kind in ("survive", "race") else None,
+        "wave": obj.wave_index + 1 if obj.kind == "waves" else None,
+        "waves_total": waves_total if obj.kind == "waves" else None,
+        "target_id": obj.target_id,
+    }
+
+
+def doom_clock(state: GameState, enemy) -> Optional[int]:
+    """Rounds left on a live race clock, for the marked enemy's badge
+    (§D12-1.5) — None for everyone else, and once the clock is resolved."""
+    obj = state.objective
+    if (obj is None or obj.kind != "race" or obj.status != "active"
+            or enemy.id != obj.target_id):
+        return None
+    return max(0, obj.turns - obj.rounds_done)
+
+
+def objective_outcome_line(state: GameState) -> Optional[str]:
+    """The victory/defeat splash's objective sentence (§D12-1.5), or None when
+    the outcome needs no objective framing."""
+    obj = state.objective
+    if obj is None or state.result is None:
+        return None
+    if obj.kind == "survive" and state.result == "victory" \
+            and obj.rounds_done >= obj.turns:
+        return "You held the line — the survivors withdraw."
+    if obj.kind == "waves" and state.result == "victory":
+        return f"All {len(obj.waves) + 1} waves broken."
+    if obj.kind == "race" and state.result == "defeat" and obj.status == "failed":
+        return "The doom clock ran out."
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # State
 # --------------------------------------------------------------------------- #
 def serialize_state(view: GameState, log_source: GameState) -> Dict[str, Any]:
@@ -557,6 +626,7 @@ def serialize_state(view: GameState, log_source: GameState) -> Dict[str, Any]:
         "tokens": [_token_dict(view, t) for t in view.tokens],
         "enemies": [_enemy_dict(view, e) for e in view.enemies],
         "corpses": [_corpse_dict(c) for c in view.corpses],
+        "objective": objective_block(view),
         "stack": _stack_list(view),
         "log": [{"type": e.type, "msg": e.msg, "data": to_jsonable(e.data)}
                 for e in log_source.log],

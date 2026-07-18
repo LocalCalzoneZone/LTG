@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { roman } from "../lib/format";
+import { inviteUrl } from "../lib/settings";
 import { useGame } from "../lib/store";
 import { IconGear, IconLink, IconPlus } from "./Icons";
 
@@ -42,7 +44,9 @@ export function TopRibbon({ onNewGame, onOptions }: {
   const nowIdx = stepNow ? STEPS.indexOf(stepNow) : -1;
 
   const copyInvite = () => {
-    navigator.clipboard?.writeText(location.href);
+    // The invite host comes from Options → Settings (e.g. a Tailscale IP);
+    // unset, it falls back to however this window was opened.
+    if (sessionId) navigator.clipboard?.writeText(inviteUrl(sessionId));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };
@@ -65,6 +69,14 @@ export function TopRibbon({ onNewGame, onOptions }: {
             title={connected ? "connected" : "disconnected"}
           />
         </>
+      )}
+      {snapshot?.adventure && (
+        <span
+          className="caps-label text-[10px] tracking-[0.18em] text-mist"
+          title={`${snapshot.adventure.name} — ${snapshot.adventure.act_name}`}
+        >
+          Act {roman(snapshot.adventure.act)} / {roman(snapshot.adventure.acts_total)}
+        </span>
       )}
 
       {/* turn tracker — centred */}

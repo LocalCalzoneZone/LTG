@@ -118,6 +118,25 @@ export function buildChoices(legal: LegalAction[]): Choices {
   if (moves.length) out.move = mk("move", "move", moves, "Move");
   const mitigates = pick("mitigate");
   if (mitigates.length) out.mitigate = mk("mitigate", "mitigate", mitigates, "Mitigate");
+
+  // A held STANCE (§D9-2) replaces one or more of the four main abilities with an
+  // authored `stance_ability` action (card_id = the slot it rewires). The engine
+  // offers it INSTEAD of the default action, so route each into its slot's cell —
+  // the ActionBar then renders the replacement's name in place of Attack/Defend/
+  // Move/Mitigate. (Without this the replacement is dropped and the slot looks
+  // dead.)
+  const STANCE_SLOTS = ["attack", "defend", "mitigate", "move"] as const;
+  const stanceActs = pick("stance_ability");
+  for (const slot of STANCE_SLOTS) {
+    const group = stanceActs.filter((a) => a.card_id === slot);
+    if (group.length) {
+      // The engine labels these "<Name> (stance) on <target>"; keep just the
+      // authored name for the cell.
+      const name = nameFromLabel(group[0].label).replace(/\s*\(stance\)$/i, "");
+      out[slot] = { key: `stance:${slot}`, kind: "stance_ability", cardId: slot,
+                    label: name, candidates: group };
+    }
+  }
   const pass = pick("pass");
   if (pass.length) out.pass = mk("pass", "pass", pass, "Pass");
   const end = pick("end_turn");

@@ -7,16 +7,20 @@ import {
   importCharacter,
 } from "../lib/api";
 import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
+import { AdventurePanel } from "./AdventurePanel";
 import { EncounterEditor } from "./EncounterEditor";
 import { LlmSettingsPanel } from "./LlmSettingsPanel";
+import { SettingsPanel } from "./SettingsPanel";
 import { ManaIcon } from "./Pips";
 import { IconEdit, IconPlus, IconSigil, IconUpload, IconX } from "./Icons";
 
-type Tab = "characters" | "encounters" | "llm";
+type Tab = "characters" | "encounters" | "adventures" | "llm" | "settings";
 const TAB_LABELS: Record<Tab, string> = {
   characters: "Characters",
   encounters: "Encounters",
+  adventures: "Adventures",
   llm: "LLM",
+  settings: "Settings",
 };
 
 const GHOST_BTN =
@@ -162,7 +166,7 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
       >
         <div className="mb-4 flex items-center gap-3">
           <div className="flex gap-4">
-            {(["characters", "encounters", "llm"] as Tab[]).map((t) => (
+            {(["characters", "encounters", "adventures", "llm", "settings"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -340,7 +344,12 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
         </>
         )}
 
+        {tab === "adventures" && (
+          <AdventurePanel onEditAct={(act) => setEditing(act)} />
+        )}
+
         {tab === "llm" && <LlmSettingsPanel />}
+        {tab === "settings" && <SettingsPanel />}
       </div>
     </div>
   );

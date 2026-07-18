@@ -1,0 +1,1093 @@
+{
+  "ltg_version": "0.1",
+  "character": {
+    "name": "Sparring Partner",
+    "description": "The gauntlet's frozen reference ally \u2014 a copy of a standard sword-and-board build, kept identical forever so two-hero probe cells stay comparable across time.",
+    "portrait": "",
+    "level": 1,
+    "colors": [
+      "W",
+      "U"
+    ],
+    "starting_mana": [
+      "W",
+      "U"
+    ],
+    "hp": 16,
+    "starting_cards": 2,
+    "power_bought": 2,
+    "attack_mode": "melee",
+    "keyword": null,
+    "row": "front",
+    "skill": {
+      "id": "skill_mri3ks3s",
+      "name": "Deficimus",
+      "source_name": "Skill",
+      "rarity": "common",
+      "level": 1,
+      "type": "Skill",
+      "cost": {
+        "generic": 0,
+        "colors": {},
+        "x": false
+      },
+      "timing": "channeled",
+      "original_text": "",
+      "translated_text": "While channeled: you have First Strike. Stance (while channeled) \u2014 Attack: Counter-Attack \u2014 Cancel an enemy attack. Deal damage equal to your Power to an enemy. \u00b7 Defend: Perfect Deflection \u2014 Prevent the next combat damage (attacks & abilities) to yourself.",
+      "flavor_text": "'We fail' - Soren's mantra said before every drawing of his sword, for times when words fail and only violence remains. Soren attacks with his sword in order to defend.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "grant_keyword",
+          "keywords": [
+            "first_strike"
+          ],
+          "params": null,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "while_channeled"
+        },
+        {
+          "trigger": null,
+          "kind": "stance",
+          "attack": {
+            "name": "Counter-Attack",
+            "effects": [
+              {
+                "trigger": null,
+                "kind": "counter",
+                "filter": "attack",
+                "target": {
+                  "class": "action",
+                  "side": "enemy"
+                }
+              },
+              {
+                "trigger": null,
+                "kind": "deal_damage",
+                "amount": {
+                  "ref": "caster_power"
+                },
+                "target": {
+                  "mode": "chosen",
+                  "side": "enemy",
+                  "exclude_self": false,
+                  "targeted": true
+                },
+                "nonlethal": false
+              }
+            ]
+          },
+          "defend": {
+            "name": "Perfect Deflection",
+            "effects": [
+              {
+                "trigger": null,
+                "kind": "prevent",
+                "parameter": "combat_damage",
+                "uses": "next",
+                "target": {
+                  "mode": "self",
+                  "side": null,
+                  "exclude_self": false,
+                  "targeted": false
+                },
+                "duration": "this_turn"
+              }
+            ]
+          },
+          "mitigate": "unchanged",
+          "move": "unchanged"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    "ultimate": {
+      "id": "ultimate_mri3tblr",
+      "name": "Last Stand",
+      "source_name": "Ultimate",
+      "rarity": "common",
+      "level": 1,
+      "type": "Ultimate",
+      "cost": {
+        "generic": 0,
+        "colors": {},
+        "x": false
+      },
+      "timing": "sorcery",
+      "original_text": "",
+      "translated_text": "Yourself fights all enemies. Prevent all damage this turn to all other allies. You gain attack and temp HP equal to the party size this turn.",
+      "flavor_text": "Soren remembers Caerwyn Hold - he still wears the ring.  He cannot let his allies fall again because he will not.  And he does not.  Soren fights gallantly to protect his allies and give them time to recover.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "prevent",
+          "parameter": "all_damage",
+          "uses": "all",
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": true,
+            "targeted": false
+          },
+          "duration": "this_turn"
+        },
+        {
+          "trigger": null,
+          "kind": "fight",
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          },
+          "other": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          }
+        },
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": {
+            "ref": "party_size"
+          },
+          "toughness": {
+            "ref": "party_size"
+          },
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    "ability_flavor": {
+      "attack": null,
+      "defend": null,
+      "mitigate": null
+    },
+    "preset": null,
+    "legacy": false,
+    "stats": {
+      "starting_hp": 16,
+      "starting_hand": 2,
+      "starting_mana": 2,
+      "power": 4,
+      "attack_mode": "melee",
+      "keywords": []
+    }
+  },
+  "cards": [
+    {
+      "id": "vanguard_s_vigil",
+      "name": "Vanguard's Vigil",
+      "source_name": "Vanguard's Vigil",
+      "rarity": "mythic",
+      "level": 4,
+      "type": "Enchantment",
+      "cost": {
+        "generic": 2,
+        "colors": {
+          "W": 1,
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "channeled",
+      "original_text": "At the beginning of your upkeep, scry 1, then target creature you control gains protection from everything until your next turn.\nYou may Mitigate one additional time each round.",
+      "translated_text": "Stance (while channeled) \u2014 Mitigate: Tireless Protection \u2014 Prevent the next combat damage (attacks & abilities) to an ally. When this channel begins: scry 1.",
+      "flavor_text": "Soren stands a tireless watch over the party, reading each threat a breath before it lands. Each round he can throw himself into an extra blow's path, and every dawn he sets his guard over one ally so the next strike against them simply glances away.",
+      "effects": [
+        {
+          "trigger": "channel_start",
+          "kind": "scry",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        },
+        {
+          "trigger": null,
+          "kind": "stance",
+          "attack": "unchanged",
+          "defend": "unchanged",
+          "mitigate": {
+            "name": "Tireless Protection",
+            "effects": [
+              {
+                "trigger": null,
+                "kind": "prevent",
+                "parameter": "combat_damage",
+                "uses": "next",
+                "target": {
+                  "mode": "chosen",
+                  "side": "ally",
+                  "exclude_self": false,
+                  "targeted": true
+                },
+                "duration": "while_channeled"
+              }
+            ]
+          },
+          "move": "unchanged"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "precision_of_the_longsword",
+      "name": "Precision of the Longsword",
+      "source_name": "Precision of the Longsword",
+      "rarity": "rare",
+      "level": 3,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "W": 1,
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Until end of turn, target creature you control gains first strike. The next time it would deal combat damage this turn, it deals double that damage plus 1 instead.",
+      "translated_text": "Choose an ally: they gain First Strike, then have their next combat damage dealt increased by 2.",
+      "flavor_text": "Soren marks the exact line of an ally's next cut and the timing of it. The blow comes first and bites far deeper, a stroke placed precisely where the armour fails.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "grant_keyword",
+          "keywords": [
+            "first_strike"
+          ],
+          "params": null,
+          "target": "$T1",
+          "duration": "this_turn"
+        },
+        {
+          "trigger": null,
+          "kind": "amplify",
+          "event": "combat_damage",
+          "multiplier": 1,
+          "bonus": 2,
+          "target": "$T1"
+        }
+      ],
+      "targets": {
+        "T1": {
+          "mode": "chosen",
+          "side": "ally",
+          "exclude_self": false,
+          "targeted": true
+        }
+      },
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "address_to_the_assembled_court",
+      "name": "Address to the Assembled",
+      "source_name": "Address to the Assembled Court",
+      "rarity": "rare",
+      "level": 4,
+      "type": "Sorcery",
+      "cost": {
+        "generic": 2,
+        "colors": {
+          "W": 1,
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "sorcery",
+      "original_text": "Draw two cards, then tap up to two target creatures.",
+      "translated_text": "Choose a target: they lose their telegraphed intent. Choose another target: they are stunned for 1 intent(s). Draw 2 card(s).",
+      "flavor_text": "The herald raises his voice in a formal address that commands the field. Two enemies falter mid-motion, held by the weight of his words, while Soren reads the room and gathers his next options.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "strip_intent",
+          "target": "$T1"
+        },
+        {
+          "trigger": null,
+          "kind": "stun",
+          "target": "$T2",
+          "intents": 1
+        },
+        {
+          "trigger": null,
+          "kind": "draw",
+          "amount": 2,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {
+        "T1": {
+          "mode": "chosen",
+          "side": "any",
+          "exclude_self": false,
+          "targeted": true
+        },
+        "T2": {
+          "mode": "chosen",
+          "side": "any",
+          "exclude_self": true,
+          "targeted": true
+        }
+      },
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "sway_the_sellsword",
+      "name": "Herald's Word",
+      "source_name": "Sway the Sellsword",
+      "rarity": "rare",
+      "level": 4,
+      "type": "Instant",
+      "cost": {
+        "generic": 2,
+        "colors": {
+          "U": 1,
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Gain control of target creature until the end of your next turn. Untap it.",
+      "translated_text": "You gain Double Strike until end of turn. Your next combat damage dealt is doubled.",
+      "flavor_text": "Soren lets his sword command the dialogue with a series of savage strikes ",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "grant_keyword",
+          "keywords": [
+            "double_strike"
+          ],
+          "params": null,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "this_turn"
+        },
+        {
+          "trigger": null,
+          "kind": "amplify",
+          "event": "combat_damage",
+          "multiplier": 2,
+          "bonus": 0,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "lay_down_your_arms",
+      "name": "Lay Down Your Arms",
+      "source_name": "Lay Down Your Arms",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Enchantment",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "channeled",
+      "original_text": "Enchant creature.\nEnchanted creature can't attack or block.",
+      "translated_text": "While channeled: the chosen enemy can't attack.",
+      "flavor_text": "Holding a steady parley, Soren keeps one foe talked down and standing at ease. So long as he sustains the terms, it will not raise a weapon.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "prevent",
+          "parameter": "attack",
+          "uses": "all",
+          "target": "$T1",
+          "duration": "while_channeled"
+        }
+      ],
+      "targets": {
+        "T1": {
+          "mode": "chosen",
+          "side": "enemy",
+          "exclude_self": false,
+          "targeted": true
+        }
+      },
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "stay_your_hand",
+      "name": "Last Argument",
+      "source_name": "Stay Your Hand",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Counter target spell, then scry 1.",
+      "translated_text": "Cancel an enemy action (spell or ability). Deal damage equal to your Power to an enemy.",
+      "flavor_text": "A sharp word and a sharp blade - Soren reacts to counter an enemy's action and deliver a rebuttal with steel.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "counter",
+          "filter": "action",
+          "target": {
+            "class": "action",
+            "side": "enemy"
+          }
+        },
+        {
+          "trigger": null,
+          "kind": "deal_damage",
+          "amount": {
+            "ref": "caster_power"
+          },
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "nonlethal": false
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "we_fail",
+      "name": "We Fail",
+      "source_name": "We Fail",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1,
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Prevent all combat damage that would be dealt this turn.\nDraw a card.",
+      "translated_text": "Prevent all combat damage (attacks & abilities) this turn to everyone. Draw 1 card(s).",
+      "flavor_text": "Deficimus. Soren interposes and de-escalates the whole clash, so that no blow struck this round finds its mark; in the lull, he takes stock.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "prevent",
+          "parameter": "combat_damage",
+          "uses": "all",
+          "target": {
+            "mode": "all",
+            "side": "any",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "this_turn"
+        },
+        {
+          "trigger": null,
+          "kind": "draw",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "disarm",
+      "name": "Disarm",
+      "source_name": "Disarm",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Tap target creature, then scry 1.",
+      "translated_text": "The chosen enemy skips its next intent. Scry 1.",
+      "flavor_text": "A precise bind and twist of the blade takes an enemy's weapon out of line, costing it its next move while Soren watches for the following one.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "stun",
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "intents": 1
+        },
+        {
+          "trigger": null,
+          "kind": "scry",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "shield_the_charge",
+      "name": "Shield the Charge",
+      "source_name": "Shield the Charge",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Prevent all damage that would be dealt to up to two target creatures you control this turn.",
+      "translated_text": "Prevent all damage this turn to an ally.",
+      "flavor_text": "Soren throws his guard over those in his charge, turning aside every blow \u2014 sword or spell \u2014 that would reach the two he shields this round.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "prevent",
+          "parameter": "all_damage",
+          "uses": "all",
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "the_watchful_stance",
+      "name": "The Watchful Stance",
+      "source_name": "The Watchful Stance",
+      "rarity": "uncommon",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature you control gains first strike and vigilance until your next turn.",
+      "translated_text": "An ally gains First Strike and Vigilance until end of turn.",
+      "flavor_text": "Soren sets an ally into the herald's ready guard: poised to answer a blow before it lands, and never dropping their watch even as they strike.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "grant_keyword",
+          "keywords": [
+            "first_strike",
+            "vigilance"
+          ],
+          "params": null,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "measured_riposte",
+      "name": "Measured Riposte",
+      "source_name": "Measured Riposte",
+      "rarity": "common",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature you control gets +2/+1 and gains first strike until end of turn.",
+      "translated_text": "Choose an ally: they gain +2/+1 this turn, then gain First Strike.",
+      "flavor_text": "Reading the incoming attack, Soren steps into it \u2014 the longsword answers first and hard, a counter delivered before the enemy's swing completes.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": 2,
+          "toughness": 1,
+          "target": "$T1",
+          "duration": "this_turn"
+        },
+        {
+          "trigger": null,
+          "kind": "grant_keyword",
+          "keywords": [
+            "first_strike"
+          ],
+          "params": null,
+          "target": "$T1",
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {
+        "T1": {
+          "mode": "chosen",
+          "side": "ally",
+          "exclude_self": false,
+          "targeted": true
+        }
+      },
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "deft_parry",
+      "name": "Deft Parry",
+      "source_name": "Deft Parry",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature you control gets +0/+3 until end of turn.",
+      "translated_text": "An ally gains +0 attack and +3 temp HP this turn.",
+      "flavor_text": "A clean turn of the wrist deflects the blow aside, absorbing its force and leaving the defender braced and unhurt.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": 0,
+          "toughness": 3,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "clean_stroke",
+      "name": "Clean Stroke",
+      "source_name": "Clean Stroke",
+      "rarity": "common",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature you control gains double strike until end of turn.",
+      "translated_text": "An ally gains Double Strike until end of turn.",
+      "flavor_text": "When words are spent, one motion becomes two clean cuts \u2014 the blade returns along its own line before the first wound is even felt.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "grant_keyword",
+          "keywords": [
+            "double_strike"
+          ],
+          "params": null,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "herald_s_foresight",
+      "name": "Herald's Foresight",
+      "source_name": "Herald's Foresight",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Scry 2, then draw a card.",
+      "translated_text": "Scry 2. Draw 1 card(s).",
+      "flavor_text": "Soren looks down the road ahead, ordering what's coming and drawing the knowledge he needs to the front of his mind.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "scry",
+          "amount": 2,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        },
+        {
+          "trigger": null,
+          "kind": "draw",
+          "amount": 1,
+          "target": {
+            "mode": "self",
+            "side": null,
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "words_before_blades",
+      "name": "Words Before Blades",
+      "source_name": "Words Before Blades",
+      "rarity": "common",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target opponent discards a card.",
+      "translated_text": "Remove the chosen enemy and its whole row's telegraphed intent.",
+      "flavor_text": "Soren speaks first and reads the foe's intent aloud, unmaking their planned move before it can begin \u2014 often the blow simply never comes.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "strip_intent",
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true,
+            "scope": "row"
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "send_them_home",
+      "name": "Send Them Home",
+      "source_name": "Send Them Home",
+      "rarity": "common",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Return target creature to its owner's hand.",
+      "translated_text": "Return a target to hand.",
+      "flavor_text": "No blood spilled \u2014 Soren drives an enemy off and away, forcing it to give ground and recover before it can return, still worse for the encounter.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "bounce",
+          "target": {
+            "mode": "chosen",
+            "side": "any",
+            "exclude_self": false,
+            "targeted": true
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "stand_down",
+      "name": "Stand Down",
+      "source_name": "Stand Down",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature can't attack until your next turn.",
+      "translated_text": "Remove the chosen enemy's telegraphed intent.",
+      "flavor_text": "A firm command to hold. The foe checks itself and refuses the advance for the moment, unwilling or unable to press forward.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "strip_intent",
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "give_ground",
+      "name": "Convincing challenge",
+      "source_name": "Give Ground",
+      "rarity": "common",
+      "level": 2,
+      "type": "Instant",
+      "cost": {
+        "generic": 1,
+        "colors": {
+          "U": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Move target creature an opponent controls to the back row.",
+      "translated_text": "Move an enemy to the front row (immediately).",
+      "flavor_text": "With words and feints, Soren draws an enemy toward the front lines",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "move",
+          "direction": "to_front",
+          "target": {
+            "mode": "chosen",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": true
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "the_guard_s_vigil",
+      "name": "The Guard's Vigil",
+      "source_name": "The Guard's Vigil",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature must attack you during its controller's next turn if able.",
+      "translated_text": "Force a target to target you this turn.",
+      "flavor_text": "Soren plants himself squarely in a foe's path and draws its aggression onto himself, standing where the next blow is meant to land so an ally doesn't have to.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "taunt",
+          "target": {
+            "mode": "chosen",
+            "side": "any",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "this_turn"
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    },
+    {
+      "id": "traveler_s_endurance",
+      "name": "Traveler's Endurance",
+      "source_name": "Traveler's Endurance",
+      "rarity": "common",
+      "level": 1,
+      "type": "Instant",
+      "cost": {
+        "generic": 0,
+        "colors": {
+          "W": 1
+        },
+        "x": false
+      },
+      "timing": "instant",
+      "original_text": "Target creature you control gains 2 life and gets +1/+0 until end of turn.",
+      "translated_text": "A target gains +1 attack and +0 temp HP this turn. Restore 2 HP to an ally.",
+      "flavor_text": "Soren shares the hard-won stamina of the long road, closing an ally's lesser hurts and lending them a surge of steady strength.",
+      "effects": [
+        {
+          "trigger": null,
+          "kind": "pump",
+          "power": 1,
+          "toughness": 0,
+          "target": {
+            "mode": "chosen",
+            "side": "any",
+            "exclude_self": false,
+            "targeted": true
+          },
+          "duration": "this_turn"
+        },
+        {
+          "trigger": null,
+          "kind": "heal",
+          "amount": 2,
+          "target": {
+            "mode": "chosen",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ],
+      "targets": {},
+      "needs_translation": false,
+      "text_override": false,
+      "validated": true
+    }
+  ]
+}

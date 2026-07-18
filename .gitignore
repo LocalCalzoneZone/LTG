@@ -10,3 +10,6 @@ build/
 dist/
 # Node / client build
 node_modules/
+# Autoplay Tester run artifacts (gauntlets stay tracked; runs/verdicts are local)
+apps/autoplay-tester/data/runs/
+apps/autoplay-tester/data/verdicts/

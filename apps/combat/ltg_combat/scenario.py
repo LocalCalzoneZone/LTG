@@ -22,9 +22,9 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import TypeAdapter
 
-from ltg_core.schema import Card, Effect, Loadout
+from ltg_core.schema import Card, Effect, EncounterObjective, Loadout
 
-from .state import CharacterState, Component, EnemyState, GameState
+from .state import CharacterState, Component, EnemyState, GameState, Objective
 
 # Parses a component's `verbs` (a list of effect dicts) into core Effect models — the
 # same schema a card's effects use, so an enemy adds no new resolution vocabulary.
@@ -53,6 +53,28 @@ def _check_enemy_verbs(verbs) -> None:
                     "enemy exile is legal only on an own-side corpse (the "
                     "Corpse-burst pattern, §D9-1.6) — exile stays the party's "
                     "trump card")
+
+
+def _check_ultimate_answer_guardrail(enemy_name: str, is_boss: bool,
+                                     components: List[Component]) -> None:
+    """T-70 (§D12-2.3): a `counter` verb on the `on_ultimate_cast` trigger is
+    BOSS-ONLY and ONCE PER ENCOUNTER — cancelling a once-per-fight, gauge-priced
+    ultimate is the single most feel-bad answer in the game, reserved for one
+    dramatic Tyrant's Contempt per boss, ever. Punish components (damage/wound/
+    stun) on the trigger price as normal reactives and need no flag."""
+    for comp in components:
+        if comp.trigger != "on_ultimate_cast":
+            continue
+        if not any(getattr(v, "kind", None) == "counter" for v in comp.verbs):
+            continue
+        if not is_boss:
+            raise ValueError(
+                f"{enemy_name}: a counter on on_ultimate_cast is boss-only "
+                "(T-70) — punish the caster instead, or move it to the boss")
+        if not comp.once_per_encounter:
+            raise ValueError(
+                f"{enemy_name}: a counter on on_ultimate_cast must be "
+                "once_per_encounter (T-70) — one Tyrant's Contempt per boss, ever")
 
 
 def _component_from_dict(spec: Dict[str, Any]) -> Component:
@@ -243,6 +265,117 @@ def _keyword_dict(kw: Any) -> Dict[str, str]:
     return {}
 
 
+# --------------------------------------------------------------------------- #
+# Objective resolution (Design Update 12 §D12-1)
+#
+# An authored objective carries per-party-size roster maps (waves /
+# reinforcements). Resolution turns those into concrete enemy entries: clones
+# from the pool appended to the enemy list, and the objective rewritten with
+# the concrete ids + `resolved: true`. `scale_encounter` resolves alongside the
+# top-level layouts; `state_from_dict` resolves late (at the party's size) for
+# specs handed to it directly.
+# --------------------------------------------------------------------------- #
+def sized_roster(roster: Any, party_size: int) -> List[str]:
+    """Resolve one wave/reinforcement roster at a party size: a per-size map
+    ({"1": [...], ...}) picks the nearest defined size (clamped, like layouts);
+    a plain list is already the roster."""
+    if isinstance(roster, dict):
+        sizes = sorted(int(k) for k in roster.keys() if str(k).isdigit())
+        if not sizes:
+            return []
+        pick = max((s for s in sizes if s <= max(1, party_size)), default=sizes[0])
+        return [str(i) for i in roster.get(str(pick), [])]
+    if isinstance(roster, list):
+        return [str(i) for i in roster]
+    return []
+
+
+def _clone_into(eid: str, by_id: Dict[str, Dict[str, Any]], used: set,
+                out_enemies: List[Dict[str, Any]]) -> Optional[str]:
+    """Clone the pool enemy `eid` into the concrete roster with a unique id
+    (repeats get a numeric suffix, exactly like layout clones). Returns the
+    concrete id, or None for a stale id (validated upstream)."""
+    base = by_id.get(str(eid))
+    if base is None:
+        return None
+    entry = copy.deepcopy(base)
+    base_id = entry.get("id", str(eid))
+    if base_id in used:
+        n = 2
+        while f"{base_id}_{n}" in used or f"{base_id}_{n}" in by_id:
+            n += 1
+        entry["id"] = f"{base_id}_{n}"
+        entry["name"] = f"{entry.get('name', eid)} {n}"
+    cid = entry.get("id", base_id)
+    used.add(cid)
+    out_enemies.append(entry)
+    return cid
+
+
+def _resolve_objective(objective: Dict[str, Any], party_size: int,
+                       by_id: Dict[str, Dict[str, Any]], used: set,
+                       out_enemies: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Resolve an authored objective's rosters at `party_size`, appending the
+    reserve bodies to `out_enemies`. Returns the concrete objective dict."""
+    obj = copy.deepcopy(objective)
+    if obj.get("kind") == "waves":
+        waves_out: List[List[str]] = []
+        for w in obj.get("waves", []) or []:
+            ids = sized_roster(w, party_size)
+            waves_out.append([c for c in (_clone_into(i, by_id, used, out_enemies)
+                                          for i in ids) if c])
+        obj["waves"] = waves_out
+    if obj.get("kind") == "survive":
+        entries = []
+        for r in obj.get("reinforcements", []) or []:
+            ids = sized_roster(r.get("ids") if r.get("ids") is not None
+                               else r.get("layouts"), party_size)
+            concrete = [c for c in (_clone_into(i, by_id, used, out_enemies)
+                                    for i in ids) if c]
+            entries.append({"turn": int(r.get("turn", 0)), "ids": concrete})
+        obj["reinforcements"] = entries
+    obj["resolved"] = True
+    return obj
+
+
+def _objective_state(spec: Dict[str, Any]) -> "tuple[Optional[Objective], set]":
+    """Build the engine's Objective from a RESOLVED objective dict, returning
+    (objective, reserve enemy ids). Validates the race target exists and the
+    escalation verbs are enemy-legal §11 primitives."""
+    obj = spec.get("objective")
+    if not obj:
+        return None, set()
+    if not obj.get("resolved"):
+        raise ValueError("objective rosters are unresolved — build states "
+                         "through scale_encounter/state_from_dict, not by hand")
+    reserve_ids: set = set()
+    for w in obj.get("waves", []) or []:
+        reserve_ids.update(str(i) for i in w)
+    for r in obj.get("reinforcements", []) or []:
+        reserve_ids.update(str(i) for i in r.get("ids", []))
+    esc = obj.get("escalation") or {}
+    verbs = list(_VERBS.validate_python(esc.get("verbs", [])))
+    _check_enemy_verbs(verbs)
+    target = str(obj.get("target") or "") or None
+    if obj.get("kind") == "race":
+        fielded = {e.get("id", _slug(e.get("name", ""))) for e in spec.get("enemies", [])}
+        if target not in fielded:
+            raise ValueError(f"race objective: marked target '{target}' is not "
+                             "fielded in this encounter")
+    return Objective(
+        kind=str(obj["kind"]),
+        turns=int(obj.get("turns") or 0),
+        reinforcements=[{"turn": int(r["turn"]), "ids": list(r.get("ids", [])),
+                         "arrived": bool(r.get("arrived", False))}
+                        for r in obj.get("reinforcements", []) or []],
+        waves=[[str(i) for i in w] for w in obj.get("waves", []) or []],
+        target_id=target,
+        fail=str(obj.get("fail") or "escalate"),
+        escalation_telegraph=str(esc.get("telegraph") or ""),
+        escalation_verbs=verbs,
+    ), reserve_ids
+
+
 def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameState:
     """Build the pre-upkeep setup state from a scenario dict.
 
@@ -278,6 +411,22 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             ability_flavor=dict(p.get("ability_flavor") or {}),
         ))
 
+    # Objective (§D12-1): validate the authored shape, resolve per-size rosters
+    # at THIS party's size when the spec arrives unresolved (direct loads /
+    # tests; the server path resolves in scale_encounter), and collect the
+    # reserve-zone ids the enemy build below flags.
+    if spec.get("objective"):
+        EncounterObjective.model_validate(spec["objective"])  # schema gate
+        if not spec["objective"].get("resolved"):
+            pool = spec["enemies"]
+            by_id = {e.get("id", _slug(e.get("name", ""))): e for e in pool}
+            enemy_specs = [copy.deepcopy(e) for e in pool]
+            used = {e.get("id", _slug(e.get("name", ""))) for e in enemy_specs}
+            resolved = _resolve_objective(spec["objective"], len(spec["party"]),
+                                          by_id, used, enemy_specs)
+            spec = {**spec, "enemies": enemy_specs, "objective": resolved}
+    objective, reserve_ids = _objective_state(spec)
+
     enemies: List[EnemyState] = []
     for e in spec["enemies"]:
         row = e.get("row", "front")
@@ -286,6 +435,9 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
         # priority-90 attack is synthesized from its Power, targeted by valuation.
         intent_template = dict(e["intent"]) if "intent" in e else _default_attack_template(e)
         attack_mode = e.get("attack_mode", e.get("intent", {}).get("mode", "melee"))
+        components = [_component_from_dict(c) for c in e.get("components", [])]
+        _check_ultimate_answer_guardrail(e["name"], bool(e.get("is_boss", False)),
+                                         components)
         enemies.append(EnemyState(
             id=e.get("id", _slug(e["name"])), name=e["name"],
             max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
@@ -295,7 +447,7 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             intent_template=intent_template,
             ranged_template=dict(e.get("ranged_intent", {})),
             attack_mode=attack_mode,
-            components=[_component_from_dict(c) for c in e.get("components", [])],
+            components=components,
             is_boss=bool(e.get("is_boss", False)),
             # The `rises` trait (§D9-1.5): the corpse stirs and the enemy revives
             # after this many Upkeeps (T-56: 2), once per encounter.
@@ -304,6 +456,8 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             # list (permanent) or a {keyword: duration} dict; a bare list means "no
             # expiry" so encounter keywords persist across turns.
             keywords=_keyword_dict(e.get("keywords")),
+            # Reserve zone (§D12-1): an undeployed wave/reinforcement body.
+            reserve=(e.get("id", _slug(e["name"])) in reserve_ids),
         ))
 
     # Party TURN ORDER: randomized once at setup when a seed is given (initiative
@@ -313,7 +467,7 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
     if rng is not None:
         rng.shuffle(party_order)
     return GameState(party=party, enemies=enemies, turn=1, phase="upkeep",
-                     party_order=party_order,
+                     party_order=party_order, objective=objective,
                      token_defs=dict(spec.get("tokens", {})), rng_seed=seed)
 
 
@@ -349,31 +503,32 @@ def scale_encounter(scenario: Dict[str, Any], party_size: int) -> Dict[str, Any]
     validates and runs whatever comes out.
     """
     layouts = scenario.get("layouts")
-    if not isinstance(layouts, dict) or not layouts:
+    objective = scenario.get("objective")
+    sizes = (sorted(int(k) for k in layouts.keys() if str(k).isdigit())
+             if isinstance(layouts, dict) else [])
+    obj_unresolved = isinstance(objective, dict) and not objective.get("resolved")
+    if not sizes and not obj_unresolved:
         return scenario
-    sizes = sorted(int(k) for k in layouts.keys() if str(k).isdigit())
-    if not sizes:
-        return scenario
-    pick = max((s for s in sizes if s <= max(1, party_size)), default=sizes[0])
-    chosen = layouts.get(str(pick), [])
     by_id = {e.get("id", _slug(e.get("name", ""))): e for e in scenario.get("enemies", [])}
     out_enemies: List[Dict[str, Any]] = []
     used: set = set()
-    for eid in chosen:
-        base = by_id.get(str(eid))
-        if base is None:
-            continue  # validated upstream; a stale id degrades to a smaller roster
-        entry = copy.deepcopy(base)
-        base_id = entry.get("id", str(eid))
-        if base_id in used:  # clone: unique id + a numbered display name
-            n = 2
-            while f"{base_id}_{n}" in used or f"{base_id}_{n}" in by_id:
-                n += 1
-            entry["id"] = f"{base_id}_{n}"
-            entry["name"] = f"{entry.get('name', eid)} {n}"
-        used.add(entry["id"] if "id" in entry else base_id)
-        out_enemies.append(entry)
+    if sizes:
+        pick = max((s for s in sizes if s <= max(1, party_size)), default=sizes[0])
+        for eid in layouts.get(str(pick), []):
+            # a stale id degrades to a smaller roster (validated upstream)
+            _clone_into(eid, by_id, used, out_enemies)
+    else:
+        # No layouts: the fixed roster is wave 1 (§D12-1.3 back-compat).
+        for e in scenario.get("enemies", []):
+            entry = copy.deepcopy(e)
+            used.add(entry.get("id", _slug(entry.get("name", ""))))
+            out_enemies.append(entry)
     scaled = dict(scenario)
+    if obj_unresolved:
+        # Wave/reinforcement rosters resolve at the same size, their clones
+        # joining the enemy list as reserve-zone bodies (§D12-1).
+        scaled["objective"] = _resolve_objective(objective, party_size,
+                                                 by_id, used, out_enemies)
     scaled["enemies"] = out_enemies
     return scaled
 
@@ -442,6 +597,8 @@ def compose_spec(loadouts: List[Dict[str, Any]], scenario: Dict[str, Any],
         "enemies": [dict(e) for e in scenario.get("enemies", [])],
         "tokens": dict(scenario.get("tokens", {})),
     }
+    if scenario.get("objective"):  # the encounter's objective rides through (§D12-1)
+        spec["objective"] = copy.deepcopy(scenario["objective"])
     if overrides:
         _apply_overrides(spec, overrides)
     return spec

@@ -1,7 +1,15 @@
 import { create } from "zustand";
 import { GameSocket } from "./ws";
-import type { GameSnapshot, LegalAction } from "./types";
+import type { CardView, GameSnapshot, LegalAction } from "./types";
 import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choices } from "./choices";
+import {
+  FX_TTL,
+  fxFromLog,
+  stackModes,
+  syncSeq,
+  type DepartKind,
+  type FxEvent,
+} from "./fx";
 
 export type ZoneModal = { kind: "library" | "graveyard" | "channel"; charId: string } | null;
 
@@ -109,14 +117,43 @@ interface StoreState {
   chooseModeFor: Choice | null; // a modal card awaiting a mode pick
   manaSelect: ManaSelect | null; // an ambiguous cast awaiting a mana pick
   zoneModal: ZoneModal;
-  // Characters auto-passing until the stack fully resolves. Pass All is a
-  // PER-CHARACTER commitment — "this character has nothing more to add for the
-  // rest of this stack" — so it only ever passes for the character that armed
-  // it; the player's OTHER characters keep their reaction windows and may still
-  // respond (or arm their own Pass All). Cleared when the stack empties.
+  // Portrait inspection: the combatant id whose full write-up is open (the
+  // modal derives the live view from the snapshot each render), or null.
+  inspectId: string | null;
+  // Characters auto-passing until the current stack episode resolves. Pass All
+  // is a PER-CHARACTER commitment — "this character has nothing more to add for
+  // the rest of THIS stack" — so it only ever passes for the character that
+  // armed it; the player's OTHER characters keep their reaction windows and may
+  // still respond (or arm their own Pass All). The commitment is scoped to the
+  // stack episode it was armed against, identified by the root (bottom) item's
+  // uid: it clears when the stack empties OR when a fresh episode opens (a new
+  // root). This matters during the enemy step, where the server chains each
+  // enemy's swing without ever emitting an empty-stack snapshot — without the
+  // root check, one Pass All would silently decline a First Strike swing the
+  // holder is owed against every LATER enemy in the same step.
   passAllFor: string[];
+  // The root stack uid the current Pass All commitment is bound to (null when
+  // no commitment is live). A different root in a new snapshot ends it.
+  passAllRootUid: number | null;
+  // Idempotency guard for the Pass All auto-submit: the signature of the last
+  // game state we already auto-passed. The server re-broadcasts state for
+  // reasons that DON'T advance the game (art refresh, a reconnect, a seat
+  // change), and each such duplicate would otherwise fire a second pass for a
+  // window already passed — the stale index racing the real one into an
+  // "action index out of range" rejection (which also cancels the commitment).
+  // Keyed off the snapshot's log high-water seq, which only moves on a real
+  // state change, so a genuine next window still auto-passes.
+  _lastAutoPassKey: string | null;
   error: string | null;
   gameOver: string | null;
+
+  // Combat FX (one-shot visuals keyed off NEW log entries). `departures` maps
+  // a just-vanished combatant to HOW it left (death / exile / bounce) so the
+  // battlefield ghost can play the right send-off.
+  fx: FxEvent[];
+  departures: Record<string, DepartKind>;
+  lastLogSeq: number | null;
+  _stackModes: Record<string, string>;
 
   // lifecycle
   connect: (sessionId: string) => void;
@@ -126,6 +163,9 @@ interface StoreState {
   // seats
   claim: (ids: string[]) => void;
   release: (ids: string[]) => void;
+
+  // adventures (Update 10): confirm one controlled character's level-up.
+  confirmLevelUp: (characterId: string, build: Record<string, unknown>) => void;
 
   // interaction (§4.6)
   setHoverIntent: (h: { enemyId: string; targetId: string | null } | null) => void;
@@ -147,6 +187,7 @@ interface StoreState {
   resetMana: () => void; // clear the picks and start the selection over
 
   openZone: (z: ZoneModal) => void;
+  setInspect: (id: string | null) => void;
   setError: (m: string | null) => void;
 
   // internal
@@ -169,14 +210,23 @@ export const useGame = create<StoreState>((set, get) => ({
   chooseModeFor: null,
   manaSelect: null,
   zoneModal: null,
+  inspectId: null,
   passAllFor: [],
+  passAllRootUid: null,
+  _lastAutoPassKey: null,
   error: null,
   gameOver: null,
+  fx: [],
+  departures: {},
+  lastLogSeq: null,
+  _stackModes: {},
 
   connect: (sessionId) => {
     get().socket?.close();
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
-    set({ socket, sessionId, snapshot: null, gameOver: null });
+    set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
+          passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null,
+          fx: [], departures: {}, lastLogSeq: null, _stackModes: {} });
   },
 
   disconnect: () => {
@@ -201,21 +251,66 @@ export const useGame = create<StoreState>((set, get) => ({
         break;
       case "state": {
         const snap = msg as GameSnapshot;
+        // Combat FX: fire one-shot effects for the log entries NEW since the
+        // last snapshot. A fresh log (new session / act transition) is
+        // swallowed as history, never replayed — and its departures cleared,
+        // so a board swap ghosts nothing.
+        const lastSeq = get().lastLogSeq;
+        const synced = syncSeq(lastSeq, snap.log);
+        let fxState: Partial<StoreState> = { lastLogSeq: synced };
+        let fired: FxEvent[] = [];
+        if (lastSeq != null && synced === lastSeq) {
+          const r = fxFromLog(snap, lastSeq, get()._stackModes);
+          fired = r.events;
+          fxState = {
+            lastLogSeq: r.maxSeq,
+            fx: fired.length ? [...get().fx, ...fired] : get().fx,
+            departures: Object.keys(r.departures).length
+              ? { ...get().departures, ...r.departures }
+              : get().departures,
+          };
+        } else if (synced !== lastSeq) {
+          fxState = { lastLogSeq: synced, fx: [], departures: {} };
+        }
         // A fresh authoritative state ends any optimistic arming (§4.6).
-        set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null });
+        set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null,
+              _stackModes: stackModes(snap), ...fxState });
+        for (const e of fired) {
+          window.setTimeout(
+            () => set((s) => ({ fx: s.fx.filter((x) => x.key !== e.key) })),
+            FX_TTL[e.kind],
+          );
+        }
         get()._recomputeFocus();
         // Pass All: whenever a window opens for a character that armed it, pass
         // automatically — until the stack fully resolves, then reset. Windows
         // for characters that did NOT arm it stay interactive.
         const autoPassers = get().passAllFor;
         if (autoPassers.length) {
-          if (snap.stack.length === 0) {
-            set({ passAllFor: [] }); // stack resolved — the commitment ends
+          // The commitment is bound to ONE stack episode, keyed by the root
+          // (bottom) item's uid. It ends when the stack empties or when a fresh
+          // episode opens under a different root — e.g. the next enemy's swing
+          // in the same enemy step, which the holder may still First Strike.
+          const rootUid = snap.stack.length ? snap.stack[0].uid : null;
+          if (rootUid === null || rootUid !== get().passAllRootUid) {
+            set({ passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null }); // episode ended
           } else {
             const pass = snap.legal_actions.find(
               (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
             );
-            if (pass) get().submitIndex(pass.index);
+            // Only auto-pass ONCE per real state. A re-broadcast of an
+            // already-passed window (art refresh / reconnect / seat change)
+            // carries the same log high-water seq; firing again would submit a
+            // now-stale index (→ "action index out of range"). A genuine next
+            // window advances the log, so its key differs and the pass fires.
+            const stateSeq = snap.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
+            if (pass) {
+              const key = `${rootUid}@${stateSeq}#${pass.index}`;
+              if (get()._lastAutoPassKey !== key) {
+                set({ _lastAutoPassKey: key });
+                get().submitIndex(pass.index);
+              }
+            }
             // else: a non-committed character (or another client) holds
             // priority, or a forced choice is open — wait for the player.
           }
@@ -229,8 +324,17 @@ export const useGame = create<StoreState>((set, get) => ({
         set({ gameOver: msg.result });
         break;
       case "error":
+        if (msg.fatal) {
+          // The session can never be reached (e.g. the server restarted and
+          // in-memory sessions were wiped): stop the 1s reconnect loop for
+          // good rather than hammering the dead id forever.
+          get().socket?.close();
+          set({ connected: false });
+          get().setError(`${msg.message} — start a new game`);
+          break;
+        }
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [] });
+        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null });
         break;
     }
   },
@@ -252,6 +356,9 @@ export const useGame = create<StoreState>((set, get) => ({
 
   claim: (ids) => get().socket?.send({ type: "claim_seat", character_ids: ids }),
   release: (ids) => get().socket?.send({ type: "release_seat", character_ids: ids }),
+
+  confirmLevelUp: (characterId, build) =>
+    get().socket?.send({ type: "confirm_level_up", character_id: characterId, build }),
 
   setHoverIntent: (h) => set({ hoverIntent: h }),
 
@@ -311,9 +418,11 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   // Submit a finished action — but casts detour through beginCast so an ambiguous
-  // mana payment can prompt a pick before the action is sent.
+  // mana payment can prompt a pick before the action is sent. The Skill pays
+  // mana exactly like a cast (engine: _do_use_skill → _pay), so it detours too;
+  // the Ultimate never costs mana (the gauge is the cost) and submits directly.
   _finishAction: (kind: string, actions: LegalAction[]) => {
-    if (kind === "cast") get().beginCast(actions);
+    if (kind === "cast" || kind === "use_skill") get().beginCast(actions);
     else get().submitIndex(actions[0].index);
   },
 
@@ -321,7 +430,13 @@ export const useGame = create<StoreState>((set, get) => ({
     const action = actions[0];
     const snap = get().snapshot;
     const char = snap?.characters.find((c) => c.id === action.actor_id) ?? null;
-    const card = char?.hand?.find((c) => c.id === action.card_id) ?? null;
+    // The card being paid for: a hand card for a cast, the Skill face for
+    // use_skill (full card fields ship for controlled characters).
+    const card =
+      char?.hand?.find((c) => c.id === action.card_id)
+      ?? (char?.skill?.id === action.card_id && char.skill.cost != null
+        ? (char.skill as CardView)
+        : null);
     if (!char || !card) {
       get().submitIndex(action.index); // no hand info — let the engine pay deterministically
       return;
@@ -397,14 +512,24 @@ export const useGame = create<StoreState>((set, get) => ({
     const armed = get().passAllFor;
     if (armed.includes(pass.actor_id)) {
       // Already committed — clicking again cancels this character's auto-pass.
-      set({ passAllFor: armed.filter((id) => id !== pass.actor_id) });
+      const remaining = armed.filter((id) => id !== pass.actor_id);
+      set({ passAllFor: remaining, passAllRootUid: remaining.length ? get().passAllRootUid : null });
       return;
     }
-    set({ passAllFor: [...armed, pass.actor_id], armed: null, chooseModeFor: null });
+    // Bind the commitment to the episode it was armed against (the root item).
+    const rootUid = snap!.stack.length ? snap!.stack[0].uid : null;
+    // Record this window as already-passed so a re-broadcast of the SAME state
+    // (before the server processes this submit) can't fire a duplicate pass.
+    const stateSeq = snap!.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
+    set({ passAllFor: [...armed, pass.actor_id], passAllRootUid: rootUid,
+          _lastAutoPassKey: `${rootUid}@${stateSeq}#${pass.index}`,
+          armed: null, chooseModeFor: null });
     get().submitIndex(pass.index);
   },
 
   openZone: (z) => set({ zoneModal: z }),
+
+  setInspect: (id) => set({ inspectId: id }),
 
   setError: (m) => {
     window.clearTimeout(errorTimer);

@@ -1,0 +1,84 @@
+{
+  "name": "Fixture V \u2014 The Brood Nest",
+  "enemies": [
+    {
+      "id": "broodmother",
+      "name": "Brood Mother",
+      "hp": 6,
+      "level": 3,
+      "power": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "spawn",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "broodling",
+              "count": 2,
+              "hp": 2,
+              "power": 1
+            }
+          ],
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Spawn Broodlings (x2)"
+        }
+      ]
+    },
+    {
+      "id": "skitter",
+      "name": "Nest Skitter",
+      "hp": 2,
+      "level": 1,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "broodmother",
+      "skitter"
+    ],
+    "2": [
+      "broodmother",
+      "skitter",
+      "skitter",
+      "skitter"
+    ],
+    "3": [
+      "broodmother",
+      "broodmother",
+      "skitter",
+      "skitter",
+      "skitter",
+      "skitter"
+    ],
+    "4": [
+      "broodmother",
+      "broodmother",
+      "skitter",
+      "skitter",
+      "skitter",
+      "skitter",
+      "skitter",
+      "skitter"
+    ]
+  },
+  "tokens": {
+    "broodling": {
+      "name": "Broodling",
+      "hp": 2,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee"
+    }
+  }
+}

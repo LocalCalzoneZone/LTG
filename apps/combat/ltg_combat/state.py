@@ -43,6 +43,18 @@ class Affliction:
 
 
 @dataclass
+class AmplifyTag:
+    """A one-shot `amplify` priming riding a combatant: their NEXT outgoing
+    damage (or heal) matching `event` is `multiplier ×` the amount plus `bonus`.
+    Spent by the first matching instance; holds until spent (no end-step wipe —
+    a primed combo keeps until it lands)."""
+
+    event: str = "any_damage"   # combat_damage | spell_damage | any_damage | heal
+    multiplier: int = 1
+    bonus: int = 0
+
+
+@dataclass
 class PreventTag:
     """A `prevent [parameter]` shield riding on one combatant.
 
@@ -56,6 +68,35 @@ class PreventTag:
 
     parameter: str
     uses: Optional[int] = None
+
+
+# --------------------------------------------------------------------------- #
+# Encounter objectives (Design Update 12 §D12-1)
+# --------------------------------------------------------------------------- #
+@dataclass
+class Objective:
+    """The encounter's optional objective (§D12-1) — engine-owned state, fully
+    public. `rounds_done` counts completed End Steps (the timer tick). Wave and
+    reinforcement rosters are CONCRETE enemy ids (resolved at build time); the
+    referenced enemies wait in the reserve zone (`EnemyState.reserve`) until
+    deployed. `status` tracks the race clock only: 'active' → 'complete' (the
+    marked enemy defeated in time — the clock vanishes) or 'failed' (expired;
+    with fail 'escalate' the fight continues under standard victory)."""
+
+    kind: str                     # "survive" | "waves" | "race"
+    turns: int = 0                # survive/race clock length, in rounds
+    rounds_done: int = 0          # End Steps completed (ticks at each)
+    status: str = "active"        # active | complete | failed  (race clock)
+    # survive: scheduled arrivals — [{"turn": k, "ids": [...], "arrived": bool}]
+    reinforcements: List[Dict[str, Any]] = field(default_factory=list)
+    # waves: the later waves' enemy ids (top-level layouts are wave 1)
+    waves: List[List[str]] = field(default_factory=list)
+    wave_index: int = 0           # how many LATER waves have deployed
+    # race: the marked enemy and the failure shape
+    target_id: Optional[str] = None
+    fail: str = "escalate"        # "defeat" | "escalate"
+    escalation_telegraph: str = ""
+    escalation_verbs: List[Effect] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
@@ -78,6 +119,8 @@ class EnemyChannel:
     holder_id: str = ""
     target_id: Optional[str] = None
     started_turn: int = 0
+    # Row/blast splash victims pinned at first apply (see Channel.splash_ids).
+    splash_ids: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -101,6 +144,11 @@ class Channel:
     # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
     # value references on the channel's triggered effects.
     x: int = 0
+    # Row/blast splash victims (§D9-3.2) pinned when the channel's continuous
+    # effect first applied around its pick: the SAME creatures must be covered
+    # for the channel's whole life — reasserted each end step and lifted when
+    # it ends — even if they moved rows (or are suspended) meanwhile.
+    splash_ids: List[str] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
@@ -147,6 +195,13 @@ class CharacterState:
     temp_mod: int = 0
     prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
     prevent_tags: List[PreventTag] = field(default_factory=list)  # shields (R-11 prevent)
+    # Combo primings: one-shot outgoing-damage/heal multipliers (`amplify`) and
+    # "next action resolves twice" tags (`double_next` — a list of filter nodes).
+    amplify_tags: List[AmplifyTag] = field(default_factory=list)
+    double_next: List[str] = field(default_factory=list)
+    # The last blow that CONNECTED with this combatant (post-prevention soak+HP),
+    # read by the `*_last_damage` value refs. 0 until first hit.
+    last_damage_taken: int = 0
     power_bonus: int = 0      # temporary Power (pump +, wound −)
     protection: int = 0       # negates the next N spells/attacks (protection)
     # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
@@ -268,6 +323,9 @@ class TokenState:
     temp_mod: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
+    amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
+    double_next: List[str] = field(default_factory=list)
+    last_damage_taken: int = 0
     protection: int = 0
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
@@ -441,12 +499,20 @@ class EnemyState:
     # does NOT satisfy victory — it redeploys at the start of its next turn. Distinct
     # from `exiled`, which counts as defeated. HP is retained across the bounce.
     in_hand: bool = False
+    # The RESERVE zone (§D12-1): an undeployed wave / reinforcement enemy — off
+    # the battlefield, untargetable, NOT defeated. Blocks the standard all-
+    # defeated victory (the timer victory of `survive` overrides it). Cleared
+    # when the objective deploys the enemy at the Enemy Intents step.
+    reserve: bool = False
 
     # Mirror the character's HP model so one damage routine serves both. An enemy's
     # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
     temp_mod: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
+    amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
+    double_next: List[str] = field(default_factory=list)
+    last_damage_taken: int = 0
     protection: int = 0
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)
@@ -534,6 +600,12 @@ class StackItem:
     # mode, an ally's id for interception). Applied per hit at resolution.
     mitigate_by: Optional[str] = None
     mitigate_for: Optional[str] = None
+    # A COPY on the stack (copy_spell / a double_next echo): resolves normally but
+    # never consumes another double_next tag (no infinite echo chains).
+    is_copy: bool = False
+    # A hero Ultimate on the stack (§D12-2.2): the `on_ultimate_cast` trigger's
+    # read. Kind stays "activated" (the GDD taxonomy is unchanged).
+    is_ultimate: bool = False
     # A pushed triggered ability (channel_break) whose chosen target / modal mode
     # has not been picked yet: the holder picks as it goes on the stack
     # (MTG-style), before the reaction window opens — mode first (it decides which
@@ -675,6 +747,9 @@ class GameState:
     # Re-entrancy depth for event-triggered channel effects (an on-draw draw, an
     # on-damage hit, …). Capped so trigger-fires-trigger chains always terminate.
     event_depth: int = 0
+    # The encounter's optional objective (§D12-1). None == the standard game,
+    # byte-identical to an objective-less encounter.
+    objective: Optional["Objective"] = None
     result: Optional[str] = None      # None | "victory" | "defeat"
     log: List[Event] = field(default_factory=list)
 
@@ -696,15 +771,23 @@ class GameState:
 
     def living_enemies(self) -> List[EnemyState]:
         # The enemies "in play" (Update 03 §E-A): on the battlefield, targetable, and
-        # acting. Channel-exiled enemies are alive but out of play (suspended), and
-        # bounced enemies are alive but "in hand" (off the field, pending redeploy);
-        # both are excluded here. Defeated enemies (graveyard/exile) leave the list.
-        return [e for e in self.enemies if e.alive and not e.exiled and not e.in_hand]
+        # acting. Channel-exiled enemies are alive but out of play (suspended),
+        # bounced enemies are alive but "in hand" (off the field, pending redeploy),
+        # and reserve-zone enemies (§D12-1) await their wave/reinforcement deploy;
+        # all are excluded here. Defeated enemies (graveyard/exile) leave the list.
+        return [e for e in self.enemies
+                if e.alive and not e.exiled and not e.in_hand and not e.reserve]
 
     def bounced_enemies(self) -> List[EnemyState]:
         """Roster enemies currently in the in-hand zone (bounced, pending redeploy).
         They keep the encounter live — victory requires every enemy gone for good."""
         return [e for e in self.enemies if e.in_hand]
+
+    def reserve_enemies(self) -> List[EnemyState]:
+        """Undeployed wave/reinforcement enemies in the reserve zone (§D12-1):
+        off the battlefield, untargetable, not defeated — they block the
+        standard victory (the `survive` timer victory overrides)."""
+        return [e for e in self.enemies if e.reserve]
 
     def living_tokens(self) -> List[TokenState]:
         return [t for t in self.tokens if t.alive]
