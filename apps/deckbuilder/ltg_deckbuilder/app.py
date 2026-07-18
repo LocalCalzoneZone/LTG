@@ -47,7 +47,7 @@ from ltg_core.schema import (
 from ltg_core.lints import lint_card
 from ltg_core.translation import render_effects
 
-from . import ingest, scryfall
+from . import ingest, scryfall, update
 
 # app.py lives at apps/deckbuilder/ltg_deckbuilder/app.py; the frontend and the
 # loadout store sit at the deckbuilder app root (one level up from the package).
@@ -427,7 +427,10 @@ def _safe_path(name: str) -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# Static frontend (mounted last so /api/* wins)
+# Self-update routes (update.py), then the static frontend (mounted last so
+# /api/* wins)
 # --------------------------------------------------------------------------- #
+app.include_router(update.router)
+
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

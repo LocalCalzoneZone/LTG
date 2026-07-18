@@ -59,8 +59,13 @@ def _build_client(force: bool = False) -> None:
         return
     npm = shutil.which("npm")
     if npm is None:
-        print("!! npm not found — cannot build the client. Install Node.js, or use "
-              "--dev and run the Vite dev server yourself.", file=sys.stderr)
+        # A standalone install has no Node — the built client ships in git
+        # (apps/game-ui/dist is tracked), so serve what's checked out.
+        if DIST.exists():
+            print("npm not found — serving the bundled client as-is.")
+        else:
+            print("!! npm not found and no built client — install Node.js, or use "
+                  "--dev and run the Vite dev server yourself.", file=sys.stderr)
         return
     if not (UI_DIR / "node_modules").exists():
         print("First run: installing client dependencies (npm install)…")

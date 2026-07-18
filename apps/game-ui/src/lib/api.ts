@@ -258,3 +258,31 @@ export async function gameStatus(session_id: string): Promise<boolean> {
   const res = await fetch(`/api/games/${session_id}`);
   return res.ok;
 }
+
+// ---- Self-update + quit (appctl.py; shared updater in ltg_core.selfupdate) ----
+
+export type UpdateStatus = {
+  supported: boolean;
+  behind?: number;
+  target?: string;
+  log?: string[];
+  updated?: boolean;
+  error?: string;
+  detail?: string;
+};
+
+export async function checkUpdate(): Promise<UpdateStatus> {
+  const res = await fetch("/api/update/check");
+  if (!res.ok) throw new Error(`update check failed: ${res.status}`);
+  return res.json();
+}
+
+export async function applyUpdate(): Promise<UpdateStatus> {
+  const res = await fetch("/api/update/apply", { method: "POST" });
+  if (!res.ok) throw new Error(`update failed: ${res.status}`);
+  return res.json();
+}
+
+export async function quitApp(): Promise<void> {
+  await fetch("/api/quit", { method: "POST" });
+}

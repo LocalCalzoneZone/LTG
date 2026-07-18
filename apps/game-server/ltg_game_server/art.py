@@ -39,7 +39,12 @@ COMFY_POLL_INTERVAL = 1.0
 # Pixel sizes injected for the %width%/%height% placeholders, per aspect.
 COMFY_SIZES = {"16:9": (1344, 768), "1:1": (1024, 1024)}
 
+# Generated images write here (gitignored user data, next to the loadouts).
 ART_DIR = content.LOADOUTS_DIR / "art"
+# Published art ships in the tracked content dir; served as a read-only
+# fallback under the same /art URLs (see app.py), so a promoted encounter's
+# image references keep working on every install.
+CONTENT_ART_DIR = content.CONTENT_DIR / "art"
 ART_URL_PREFIX = "/art"
 
 _DATA_URL_RE = re.compile(r"^data:image/(\w+);base64,(.+)$", re.DOTALL)

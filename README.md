@@ -48,6 +48,9 @@ player cards are translated from, never a rule the engine follows.
 
 ## Run it
 
+> Installing on a plain Windows machine (no dev tools)? Follow
+> [WINDOWS_INSTALL.md](WINDOWS_INSTALL.md) instead.
+
 Everything installs into one virtual environment from the repo root.
 
 ```bash
@@ -55,15 +58,17 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt      # editable-installs core + all three apps
 ```
 
-Then pick a surface. Each is also a double-clickable `.command` file in Finder that
-creates the venv on first run.
+Then pick a surface. The main apps are also double-clickable launchers that create
+the venv on first run: `.command` files in Finder (macOS), `.bat` files in
+Explorer (Windows).
 
-| Command | `.command` file | Port | What it is |
+| Command | Launcher | Port | What it is |
 |---|---|---|---|
-| `ltg-game` | `LTG-Game.command` | 8020 | **The game.** React client, multiplayer seats, LLM generation |
-| `ltg-combat-cockpit` | `LTG-Combat-Cockpit.command` | 8001 | The playtest cockpit — a debugger, not a game |
-| `ltg-deckbuilder` | `LTG-Deckbuilder.command` | 8000 | Authoring: import MTG cards, translate, build characters |
-| `ltg-combat repl` | `LTG-Combat.command` | — | The text UI, for playing a fight in a terminal |
+| `ltg-game` | `LTG-Game.command` / `.bat` | 8020 | **The game.** React client, multiplayer seats, LLM generation |
+| `ltg-deckbuilder` | `LTG-Deckbuilder.command` / `.bat` | 8000 | Authoring: import MTG cards, translate, build characters |
+| `ltg-autoplay-tester` | `LTG-Autoplay-Tester.command` / `.bat` | 8030 | The playtest lab: probes, gauntlets, balance verdicts |
+| `ltg-combat-cockpit` | — | 8001 | The playtest cockpit — a debugger, not a game |
+| `ltg-combat repl` | — | — | The text UI, for playing a fight in a terminal |
 
 All the servers take `--port`, `--host`, `--reload`, and `--no-browser`. They bind
 `0.0.0.0`, so other devices on your LAN can reach them at `http://<your-ip>:<port>`

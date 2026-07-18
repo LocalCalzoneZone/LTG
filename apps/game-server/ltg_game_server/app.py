@@ -13,11 +13,11 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import art, content, llm
+from . import appctl, art, content, llm
 from .adventure import AdventureRun
 from .session import SessionManager
 
@@ -460,11 +460,21 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Static art (generated images; the dir is created up front so the mount holds
-# before the first generation) + static client (mounted last so /api/* wins)
+# Static art: locally generated images (user data) shadow published art shipped
+# in the tracked content dir, under one /art URL space — a promoted encounter's
+# image references resolve on every install. + static client (mounted last so
+# /api/* wins)
 # --------------------------------------------------------------------------- #
-art.ART_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/art", StaticFiles(directory=str(art.ART_DIR)), name="art")
+app.include_router(appctl.router)
+
+
+@app.get(art.ART_URL_PREFIX + "/{image_path:path}")
+def serve_art(image_path: str) -> FileResponse:
+    for base in (art.ART_DIR, art.CONTENT_ART_DIR):
+        p = (base / image_path).resolve()
+        if p.is_relative_to(base.resolve()) and p.is_file():
+            return FileResponse(p)
+    raise HTTPException(status_code=404, detail="no such image")
 
 
 _PLACEHOLDER = """<!doctype html><html><head><meta charset="utf-8">

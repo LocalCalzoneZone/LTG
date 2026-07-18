@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LTG — Deck Builder</title>
-  <link rel="stylesheet" href="/styles.css?v=10" />
+  <link rel="stylesheet" href="/styles.css?v=12" />
 </head>
 <body>
   <header class="topbar">
@@ -17,6 +17,7 @@
       <button id="btn-import-custom">Import Custom Cards</button>
       <button id="btn-save">Save</button>
       <button id="btn-export-engine" class="primary">Export engine loadout</button>
+      <button id="btn-quit" title="Stop the deckbuilder and close">Quit</button>
     </div>
   </header>
 
@@ -165,8 +166,20 @@
     <div class="detail-card" id="flavor-card"></div>
   </div>
 
+  <div id="quit-overlay" class="overlay hidden">
+    <div class="detail-card">
+      <h3>Quit</h3>
+      <div class="meta">This stops the deckbuilder server (the terminal window
+        closes too). Anything not saved with <b>Save</b> is lost.</div>
+      <div class="detail-actions">
+        <button id="quit-cancel">Cancel</button>
+        <button class="primary" id="quit-go">Quit</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/app.js?v=11"></script>
+  <script src="/app.js?v=13"></script>
 </body>
 </html>

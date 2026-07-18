@@ -1,0 +1,6 @@
+# Normalize line endings: LF in the repo, and force the Windows launchers to
+# check out with CRLF so cmd.exe parses them reliably on any git config.
+* text=auto
+*.bat text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf
