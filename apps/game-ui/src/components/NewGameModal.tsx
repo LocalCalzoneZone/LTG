@@ -219,7 +219,7 @@ export function NewGameModal({ onClose, onStarted }: {
                           : "border-b border-transparent text-mist hover:text-parch"
                       }`}
                     >
-                      {t === "encounters" ? "Encounters · one fight" : "Adventures · three acts"}
+                      {t === "encounters" ? "Encounter" : "Adventure"}
                     </button>
                   ))}
                 </div>
@@ -242,7 +242,7 @@ export function NewGameModal({ onClose, onStarted }: {
                           ? { kind: "encounter", id: GENERATE_ENC }
                           : { kind: "adventure", id: GENERATE_ADV })}
                       />
-                      <span className="font-normal text-parch">
+                      <span className="caps-label text-[11px] tracking-[0.1em] text-parch">
                         {tab === "encounters" ? "Generate new encounter" : "Generate new adventure"}
                       </span>
                     </div>
