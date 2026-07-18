@@ -162,7 +162,10 @@ export function NewGameModal({ onClose, onStarted }: {
               {/* Left — characters: full-height portraits, scrollable */}
               <section className="flex min-h-0 flex-col">
                 <h3 className={SECTION}>Characters · {picked.length} selected</h3>
-                <div className="scroll-thin grid min-h-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto pr-1">
+                {/* auto-rows-max: rows size to the tile's content — without it
+                    the browser stretch-distributes the container height and
+                    squashes the portraits into clipped slivers. */}
+                <div className="scroll-thin grid min-h-0 flex-1 auto-rows-max grid-cols-2 content-start gap-2 overflow-y-auto pr-1">
                   {opts.characters.map((c) => {
                     const on = picked.includes(c.id);
                     return (
@@ -175,11 +178,13 @@ export function NewGameModal({ onClose, onStarted }: {
                             : "border-line bg-white/[0.02] hover:border-line2"
                         }`}
                       >
-                        <div className="aspect-[3/4] w-full bg-ink-0">
+                        {/* Full art, uncropped: the image keeps its own aspect
+                            ratio (cards vary in height rather than clipping). */}
+                        <div className="w-full bg-ink-0">
                           {c.portrait ? (
-                            <img src={c.portrait} alt={c.name} className="h-full w-full object-cover object-top" />
+                            <img src={c.portrait} alt={c.name} className="h-auto w-full" />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center text-dimmed">
+                            <div className="flex aspect-[3/4] w-full items-center justify-center text-dimmed">
                               <IconSigil size={30} />
                             </div>
                           )}
