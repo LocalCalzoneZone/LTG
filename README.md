@@ -64,6 +64,7 @@ Explorer (Windows).
 
 | Command | Launcher | Port | What it is |
 |---|---|---|---|
+| `ltg-start` | `LTG-Start.command` / `.bat` | 8020 + 8000 | **The whole table:** game + deckbuilder in one window; in-app Quit stops both |
 | `ltg-game` | `LTG-Game.command` / `.bat` | 8020 | **The game.** React client, multiplayer seats, LLM generation |
 | `ltg-deckbuilder` | `LTG-Deckbuilder.command` / `.bat` | 8000 | Authoring: import MTG cards, translate, build characters |
 | `ltg-autoplay-tester` | `LTG-Autoplay-Tester.command` / `.bat` | 8030 | The playtest lab: probes, gauntlets, balance verdicts |

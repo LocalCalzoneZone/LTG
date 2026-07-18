@@ -47,8 +47,9 @@ Inside the **LTG** folder:
 
 | Double-click | To get |
 |---|---|
-| **LTG-Game.bat** | The game itself |
-| **LTG-Deckbuilder.bat** | The character / deck editor |
+| **LTG-Start.bat** | **Everything — use this one.** The game opens in your browser, and the character editor runs alongside it |
+| **LTG-Game.bat** | Just the game |
+| **LTG-Deckbuilder.bat** | Just the character / deck editor |
 
 - The **first** launch sets everything up and takes a few minutes — that's
   normal. After that it's seconds.
@@ -59,10 +60,9 @@ Inside the **LTG** folder:
 - If the browser doesn't open on its own: the game is at
   <http://localhost:8020>, the deckbuilder at <http://localhost:8000>.
 
-**Quitting:** in the game, use **Options → Settings → Quit LTG**. In the
-deckbuilder, use the **Quit** button in the top bar. Both stop the app
-completely (the black window closes too), so nothing keeps running in the
-background.
+**Quitting:** click **Quit** (next to New Game in the game, or in the
+deckbuilder's top bar). It stops BOTH apps completely — the black window
+closes too — so nothing keeps running in the background.
 
 ---
 
@@ -79,7 +79,7 @@ touch them — and they're small enough to send over any chat.
 
 ### Edit a character (the good path)
 
-1. Start **both** apps: LTG-Game and LTG-Deckbuilder.
+1. Start with **LTG-Start** (it runs the game and the editor together).
 2. In the game: **Options → Characters** → find the character → **Edit**.
    The deckbuilder opens with that character loaded.
 3. Make your changes (cards, stats, portrait…).

@@ -542,6 +542,48 @@ def _validate_objective(raw_obj: Any, enemies: List[Dict[str, Any]],
     return raw
 
 
+def _art_file_exists(url: str) -> bool:
+    """Whether an /art/ reference's file is still on disk (user art or published
+    content art). Non-/art/ references (data URLs etc.) count as existing."""
+    if not url.startswith("/art/"):
+        return True
+    rel = url[len("/art/"):]
+    return ((LOADOUTS_DIR / "art" / rel).is_file()
+            or (CONTENT_DIR / "art" / rel).is_file())
+
+
+def _carry_art_refs(cleaned: Dict[str, Any], eid: str) -> None:
+    """Never let a save orphan persisted art. The editor posts its own state,
+    which can predate art generated since it loaded (the queue persists images
+    server-side, one file save per image) — so a missing/empty image ref
+    inherits the stored one, provided its file still exists. Deliberate removal
+    is safe: the art DELETE route deletes the file before it saves, so a
+    dangling stored ref is never carried."""
+    prev = _encounter_registry().get(eid)
+    if prev is None:
+        return
+
+    def key(e: Dict[str, Any]) -> str:
+        return str(e.get("id") or _slug(str(e.get("name", ""))))
+
+    if not cleaned.get("scene_image"):
+        old = str(prev.get("scene_image") or "")
+        if old and _art_file_exists(old):
+            cleaned["scene_image"] = old
+    prev_by = {key(e): e for e in prev.get("enemies", []) if isinstance(e, dict)}
+    for e in cleaned.get("enemies", []):
+        if isinstance(e, dict) and not e.get("image"):
+            img = str((prev_by.get(key(e)) or {}).get("image") or "")
+            if img and _art_file_exists(img):
+                e["image"] = img
+    prev_toks = prev.get("tokens") or {}
+    for k, t in (cleaned.get("tokens") or {}).items():
+        if isinstance(t, dict) and not t.get("image"):
+            img = str((prev_toks.get(k) or {}).get("image") or "")
+            if img and _art_file_exists(img):
+                t["image"] = img
+
+
 def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> Dict[str, Any]:
     """Validate + persist an encounter, returning its meta.
 
@@ -550,6 +592,7 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
     a user file, or shadowing a built-in / example). Saving un-hides the id."""
     cleaned = _validate_encounter(raw)
     eid = encounter_id or _slug(cleaned["name"]) or "encounter"
+    _carry_art_refs(cleaned, eid)
     # An adventure act edited through this path must keep its adventure valid
     # (Act III boss constraints, §D10-4.1) — checked before anything persists.
     _check_act_edit(eid, cleaned)

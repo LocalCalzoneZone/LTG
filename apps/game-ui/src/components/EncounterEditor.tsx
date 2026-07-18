@@ -181,11 +181,21 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
                 disabled={artDisabled}
                 disabledTitle={artDisabledTitle}
                 onImage={async () => {
-                  // Progress landed server-side: refresh the backdrop preview.
+                  // Progress landed server-side: fold the new art into the edit
+                  // state (backdrop AND enemy images, matched by id) so a later
+                  // save round-trips it instead of wiping the references.
                   if (!initial?.id) return;
                   try {
                     const fresh = await fetchEncounter(initial.id);
-                    setSceneImage(fresh.scene_image ?? "");
+                    setSceneImage((cur) => fresh.scene_image || cur);
+                    const imgs = new Map(
+                      fresh.enemies.map((e) => [e.id, e.image] as const),
+                    );
+                    setEnemies((es) => es.map((e) =>
+                      !e.image && e.id && imgs.get(e.id)
+                        ? { ...e, image: imgs.get(e.id) }
+                        : e,
+                    ));
                   } catch { /* transient — the next image retries */ }
                 }}
               />

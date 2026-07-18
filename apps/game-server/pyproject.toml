@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 ltg-game = "ltg_game_server.launch:main"
+ltg-start = "ltg_game_server.launch_all:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

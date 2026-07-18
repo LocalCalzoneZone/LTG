@@ -2219,10 +2219,11 @@ init();
   $("#quit-cancel").onclick = () => overlay.classList.add("hidden");
   overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add("hidden"); };
   $("#quit-go").onclick = async () => {
-    try { await api("POST", "/api/quit"); } catch (e) { /* server is dying — expected */ }
+    // scope=all: the server also asks its sibling game server to quit.
+    try { await api("POST", "/api/quit?scope=all"); } catch (e) { /* server is dying — expected */ }
     document.body.innerHTML =
-      '<div class="closed-screen"><h1>LTG · Deckbuilder</h1>' +
-      "<p>The deckbuilder has shut down. You can close this tab.</p></div>";
+      '<div class="closed-screen"><h1>LTG</h1>' +
+      "<p>The deckbuilder and game have shut down. You can close this tab.</p></div>";
     window.close(); // usually blocked for user-opened tabs; the message covers it
   };
 }
