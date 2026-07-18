@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { quitApp } from "../lib/api";
 
-/** The top-ribbon Quit button: confirm modal → /api/quit (scope "all" — the
- * server also stops the deckbuilder) → a full-screen shut-down notice. Ends
- * the session for every connected player: it is the host's control. */
-export function QuitControl() {
+/** The Quit button (top ribbon; also the game-over screen via
+ * `buttonClassName`): confirm modal → /api/quit (scope "all" — the server
+ * also stops the deckbuilder) → a full-screen shut-down notice. Ends the
+ * session for every connected player: it is the host's control. */
+export function QuitControl({ buttonClassName }: { buttonClassName?: string }) {
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -35,7 +36,8 @@ export function QuitControl() {
       <button
         onClick={() => setConfirming(true)}
         title="Quit — stops the game AND the deckbuilder"
-        className="caps-label ml-1 flex items-center gap-1.5 border border-line px-3 py-[5px] text-[10px] tracking-[0.16em] text-mist transition hover:border-blood/60 hover:text-blood"
+        className={buttonClassName ??
+          "caps-label ml-1 flex items-center gap-1.5 border border-line px-3 py-[5px] text-[10px] tracking-[0.16em] text-mist transition hover:border-blood/60 hover:text-blood"}
       >
         Quit
       </button>

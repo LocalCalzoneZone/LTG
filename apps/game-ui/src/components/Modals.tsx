@@ -5,6 +5,7 @@ import { SPLASH_HOLD_MS, useAfterHold } from "../lib/hooks";
 import { useGame } from "../lib/store";
 import type { LegalAction, StackRow } from "../lib/types";
 import { HandCard } from "./Hand";
+import { QuitControl } from "./QuitControl";
 
 function Backdrop({ children, onClose, wide = false }: {
   children: React.ReactNode; onClose: () => void; wide?: boolean;
@@ -354,6 +355,7 @@ export function GameOverOverlay({
           >
             New Game
           </button>
+          <QuitControl buttonClassName="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-blood/60 hover:text-blood" />
         </div>
       </div>
     </div>
