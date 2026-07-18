@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { applyUpdate, checkUpdate, quitApp, UpdateStatus } from "../lib/api";
+import { applyUpdate, checkUpdate, UpdateStatus } from "../lib/api";
 import { getHostAddress, inviteUrl, setHostAddress } from "../lib/settings";
 
 const field =
@@ -11,11 +11,8 @@ const GHOST_BTN =
 const SMALL_BTN =
   "caps-label border border-line px-2.5 py-1 text-[9px] tracking-[0.14em] text-mist transition " +
   "hover:border-line2 hover:text-parch";
-const DANGER_BTN =
-  "caps-label border border-blood/60 bg-blood/15 px-3 py-1 text-[9px] tracking-[0.14em] text-blood " +
-  "transition hover:bg-blood hover:text-parch";
-
-// Options → Settings: local game settings, self-update, and quit.
+// Options → Settings: local game settings and self-update (Quit lives in the
+// top ribbon, beside New Game).
 export function SettingsPanel() {
   const [host, setHost] = useState(getHostAddress());
 
@@ -55,7 +52,6 @@ export function SettingsPanel() {
       </section>
 
       <UpdateSection />
-      <QuitSection />
     </div>
   );
 }
@@ -105,8 +101,8 @@ function UpdateSection() {
 
       {phase === "updated" ? (
         <div className="max-w-[560px] text-[12px] font-light text-parch">
-          Updated. Quit (below) and relaunch LTG-Game to finish — the
-          deckbuilder picks the update up on its next launch too.
+          Updated. Quit (top right, beside New Game) and relaunch LTG-Start
+          to finish.
         </div>
       ) : (
         <>
@@ -148,63 +144,6 @@ function UpdateSection() {
           )}
         </>
       )}
-    </section>
-  );
-}
-
-// Quit: shuts the server down (ending the session for every connected player)
-// and blanks this tab, so nothing lingers in the background.
-function QuitSection() {
-  const [confirming, setConfirming] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const quit = async () => {
-    try {
-      await quitApp();
-    } catch {
-      /* server is dying — expected */
-    }
-    setDone(true);
-    window.close(); // usually blocked for user-opened tabs; the screen below covers it
-  };
-
-  if (done) {
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-ink-0">
-        <div className="caps-label text-[13px] tracking-[0.25em] text-brass">LTG</div>
-        <div className="text-[13px] font-light text-mist">
-          The game has shut down. You can close this tab.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <section className="border border-line bg-black/25 p-3">
-      <div className="caps-label mb-3 text-[10px] tracking-[0.25em] text-brass">
-        Quit
-      </div>
-      <div className="max-w-[560px] text-[11px] font-light text-dimmed">
-        Stops the game server (the terminal window closes too) — for everyone
-        connected to it.
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        {confirming ? (
-          <>
-            <span className="text-[11px] font-light text-mist">Really quit?</span>
-            <button className={DANGER_BTN} onClick={() => void quit()}>
-              Quit
-            </button>
-            <button className={SMALL_BTN} onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button className={SMALL_BTN} onClick={() => setConfirming(true)}>
-            Quit LTG
-          </button>
-        )}
-      </div>
     </section>
   );
 }

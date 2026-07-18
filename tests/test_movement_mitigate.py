@@ -1,6 +1,7 @@
-"""Design Update 02 — Movement (current/committed/pending_voluntary), the Mitigate
-reaction (self + ally interception), and the Haste keyword. Driven through the
-engine's legal_actions / apply_action contract."""
+"""Movement and Mitigate under LIVE movement (Design Update 15, superseding
+Update 02 §M-B): the single-position model, stack-action Moves, the melee lunge,
+and the Mitigate reaction (self + ally interception). The §L-3 redirect /
+interposition rules themselves are pinned in test_design_update_15.py."""
 
 from __future__ import annotations
 
@@ -14,9 +15,10 @@ def _filler(cid):
             "effects": [{"kind": "draw", "amount": 0}]}
 
 
-def _char(cid, row="front", power=2, hp=30, attack_mode="melee"):
+def _char(cid, row="front", power=2, hp=30, attack_mode="melee", keywords=None):
     return {"id": cid, "name": cid, "hp": hp, "power": power, "hand_size": 1,
             "identity": ["U"], "row": row, "attack_mode": attack_mode,
+            "keywords": keywords or [],
             "library": [_filler(cid + "_a"), _filler(cid + "_b")]}
 
 
@@ -51,7 +53,7 @@ def _drive_to_enemy_window(state):
 
 
 def _pass_all(state):
-    """Pass every remaining priority in the open window so the top attack resolves."""
+    """Pass every remaining priority in the open window so the top item resolves."""
     while state.stack:
         p = next((a for a in legal_actions(state) if a.kind == "pass"), None)
         if p is None:
@@ -60,35 +62,46 @@ def _pass_all(state):
     return state
 
 
-# --- movement sync points ----------------------------------------------------- #
-def test_voluntary_move_resolves_at_end_step():
+# --- live movement (§L-1 / §L-2) ---------------------------------------------- #
+def test_voluntary_move_resolves_live():
     st = _state([_char("p", row="front")], [_enemy("e", "p")])
     st = _do(st, kind="move", target_id="rear")
     p = st.party[0]
-    assert p.pending_voluntary == "rear" and p.row == "front"  # body has NOT moved yet
-    assert p.acted_mode == "move"                              # the proactive action is spent
-    # play out the turn; at End step the body catches up to the queued destination.
-    st = _drive_to_enemy_window(st)
-    st = _do(st, kind="pass")                                  # let the enemy hit resolve → End step
-    assert st.party[0].row == "rear"                           # current ← pending_voluntary
-    assert st.party[0].pending_voluntary is None and st.party[0].committed == "rear"
+    assert st.stack and st.stack[-1].kind == "move"           # a stack action (§L-2.2)
+    assert p.row == "front"                                   # not yet resolved
+    assert p.acted_mode == "move" and p.used_move             # action spent, once per turn
+    st = _pass_all(st)
+    assert st.party[0].row == "rear"                          # the body relocated LIVE
+    assert all(a.kind != "move" for a in legal_actions(st))   # no second move this turn
 
 
-def test_melee_attack_forces_committed_front():
+def test_melee_attack_lunges_to_front_at_declaration():
     st = _state([_char("p", row="rear")], [_enemy("e", "p", hp=20)])
     st = _do(st, kind="attack", target_id="e")                # melee swing
-    assert st.party[0].committed == "front"                   # §M-B.3 forced move
-    assert st.party[0].row == "rear"                          # body still where it stood
+    assert st.stack                                           # the swing is still pending
+    assert st.party[0].row == "front"                         # §L-2.1: the body lunged NOW
 
 
-def test_move_does_not_dodge_a_locked_intent():
-    # The enemy's intent locks onto the rear character at declaration; queueing a
-    # move afterward cannot break it (it still lands this turn).
+def test_move_cannot_dodge_a_ranged_intent():
+    # Ranged intents never redirect and never miss a mover (§L-3.2): the volley
+    # stays locked on its declared target wherever it stands.
     st = _state([_char("p", row="rear", hp=20)], [_enemy("e", "p", amount=3, mode="ranged")])
     st = _do(st, kind="move", target_id="front")              # try to slip away
+    st = _pass_all(st)
     st = _drive_to_enemy_window(st)
     st = _do(st, kind="pass")                                 # take the hit
     assert st.party[0].hp == 17                               # 3 landed — no dodge
+
+
+def test_move_without_interposer_is_followed():
+    # A melee intent follows its target when nobody covers them (§L-3.1): with no
+    # body left in front, the front-most row IS wherever the target now stands.
+    st = _state([_char("p", row="front", hp=20)], [_enemy("e", "p", amount=3)])
+    st = _do(st, kind="move", target_id="rear")               # running, not dodging
+    st = _pass_all(st)
+    st = _drive_to_enemy_window(st)
+    st = _do(st, kind="pass")
+    assert st.party[0].hp == 17                               # the swing followed
 
 
 # --- Mitigate (self) ---------------------------------------------------------- #
@@ -125,11 +138,11 @@ def _two_char_state(tank_row):
     return _state(party, [_enemy("e", "mage", amount=5, mode="ranged")])
 
 
-def test_mitigate_ally_redirects_and_forces_move():
+def test_mitigate_ally_redirects_and_dashes_live():
     st = _two_char_state(tank_row="mid")                      # mid is adjacent to rear
     st = _drive_to_enemy_window(st)
     st = _do(st, kind="mitigate", actor_id="tank", target_id="mage")
-    assert st.character("tank").committed == "rear"           # §M-A.6 forced move (at declaration)
+    assert st.character("tank").row == "rear"                 # §L-2.1: the dash is live
     st = _pass_all(st)                                        # mage passes too → the attack resolves
     assert st.character("mage").hp == 10                      # the hit was redirected away
     assert st.character("tank").hp == 30 - (5 - 2)            # tank took 5 − X(2) = 3
@@ -143,18 +156,26 @@ def test_mitigate_ally_blocked_by_adjacency():
 
 
 # --- Haste -------------------------------------------------------------------- #
-def test_haste_allows_act_and_free_move():
+def test_haste_allows_act_and_free_live_move():
     st = _state([_char("p", row="front", power=2, hp=30)], [_enemy("e", "p")])
     st.party[0].keywords["haste"] = "encounter"
     st = _do(st, kind="attack", target_id="e")               # spend the proactive action
-    st = _pass_all(st)                                        # resolve the attack → back to main phase
+    st = _pass_all(st)                                        # resolve the attack → main phase
     assert st.party[0].acted_mode == "attack"
     move = next((a for a in legal_actions(st) if a.kind == "move"), None)
     assert move is not None                                   # haste still offers a free move
     st = apply_action(st, next(a for a in legal_actions(st)
                                if a.kind == "move" and a.target_id == "rear"))[0]
     assert st.party[0].acted_mode == "attack"                # the free move did NOT cost the action
-    assert st.party[0].pending_voluntary == "rear"
-    st = _drive_to_enemy_window(st)
-    st = _do(st, kind="pass")
-    assert st.party[0].row == "rear"                          # resolved at End step
+    st = _pass_all(st)
+    assert st.party[0].row == "rear"                          # resolved LIVE, before the enemy step
+
+
+def test_no_move_while_own_action_is_unresolved():
+    # §L-2.2: with the attack still on the stack, even a hasted character cannot
+    # take the free move — the window offers reactions, never a Move.
+    st = _state([_char("p", row="front", power=2, hp=30)], [_enemy("e", "p")])
+    st.party[0].keywords["haste"] = "encounter"
+    st = _do(st, kind="attack", target_id="e")
+    assert st.stack
+    assert all(a.kind != "move" for a in legal_actions(st))

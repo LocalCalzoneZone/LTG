@@ -47,22 +47,26 @@ Inside the **LTG** folder:
 
 | Double-click | To get |
 |---|---|
-| **LTG-Game.bat** | The game itself |
-| **LTG-Deckbuilder.bat** | The character / deck editor |
+| **LTG-Start.bat** | **Everything — use this one.** The game opens in your browser, and the character editor runs alongside it |
+| **LTG-Game.bat** | Just the game |
+| **LTG-Deckbuilder.bat** | Just the character / deck editor |
 
 - The **first** launch sets everything up and takes a few minutes — that's
   normal. After that it's seconds.
 - A black window opens and stays open — **that window IS the app**. Your
-  browser then opens the game by itself. Closing the black window stops the
-  app.
+  browser then opens the game by itself (with LTG-Start, the character editor
+  runs quietly in the background — no extra tab; the game's Edit buttons
+  reach it). Closing the black window stops everything it started.
 - If Windows Firewall asks whether to allow it: click **Allow**.
 - If the browser doesn't open on its own: the game is at
   <http://localhost:8020>, the deckbuilder at <http://localhost:8000>.
 
-**Quitting:** in the game, use **Options → Settings → Quit LTG**. In the
-deckbuilder, use the **Quit** button in the top bar. Both stop the app
-completely (the black window closes too), so nothing keeps running in the
-background.
+**Quitting:** click **Quit** — it's next to **New Game** in the game's top
+bar, and in the deckbuilder's top bar. A confirmation pops up first, because
+quitting is all-or-nothing: it shuts down BOTH the game and the deckbuilder
+servers (the black window closes too, and anyone connected to your game is
+disconnected). Nothing keeps running in the background afterwards. Anything
+you haven't saved is lost, so **Save** first.
 
 ---
 
@@ -74,12 +78,13 @@ touch them — and they're small enough to send over any chat.
 ### Play a character someone sent you
 
 1. Save the `.json` file somewhere you can find it (e.g. Documents).
-2. Start **LTG-Game** → **Options → Characters** → **Import** → pick the file.
+2. Start **LTG-Start** → in the game: **Options → Characters** → **Import** →
+   pick the file.
 3. It's now in your roster for any New Game.
 
 ### Edit a character (the good path)
 
-1. Start **both** apps: LTG-Game and LTG-Deckbuilder.
+1. Start with **LTG-Start** (it runs the game and the editor together).
 2. In the game: **Options → Characters** → find the character → **Edit**.
    The deckbuilder opens with that character loaded.
 3. Make your changes (cards, stats, portrait…).
@@ -100,11 +105,12 @@ touch them — and they're small enough to send over any chat.
 
 When there's a new version:
 
-1. Start **LTG-Game** → **Options → Settings** → **Updates**.
+1. Start **LTG-Start** → in the game: **Options → Settings** → **Updates**.
 2. If it says updates are available, click **Update now** and wait — it can
    take a minute.
-3. **Quit** (same Settings page) and relaunch. That's it — one update covers
-   the game, the deckbuilder, and any new encounters or adventures.
+3. Click **Quit** (next to New Game) and relaunch **LTG-Start**. That's it —
+   one update covers the game, the deckbuilder, and any new encounters or
+   adventures.
 
 Your saved characters are never touched by an update.
 

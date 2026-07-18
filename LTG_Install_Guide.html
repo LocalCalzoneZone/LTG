@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LTG Install Guide</title>
+<style>
+  :root{
+    --ink0:#07090c; --ink1:#0b0e14; --ink2:#10131b; --ink3:#161a24;
+    --line:rgba(214,197,160,.13); --line2:rgba(214,197,160,.30);
+    --brass:#c9b37e; --brass-hi:#ecdcae;
+    --parch:#e8e4d8; --mist:#98a0ae; --dimmed:#59616e;
+    --tide:#82b4c9; --blood:#c25a50; --vigor:#84c793; --aether:#b39ddb; --spell:#8fb8d8;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--ink0); color:var(--parch);
+    font-family:-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    font-weight:300; line-height:1.65; font-size:15.5px;
+  }
+  .display, h1,h2,h3,h4, th, .tag{
+    font-family:Optima,Candara,"Gill Sans","Segoe UI",sans-serif;
+  }
+  .wrap{max-width:900px; margin:0 auto; padding:0 28px 120px}
+
+  /* ---------- masthead ---------- */
+  header{
+    border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(1200px 320px at 50% -80px, rgba(201,179,126,.10), transparent 70%),
+      var(--ink1);
+    padding:64px 28px 44px; text-align:center;
+  }
+  .diamond{width:9px;height:9px;border:1px solid rgba(201,179,126,.6);transform:rotate(45deg);display:inline-block;margin-bottom:22px}
+  h1{
+    margin:0; color:var(--brass-hi); font-weight:500;
+    letter-spacing:.32em; text-transform:uppercase; font-size:28px; text-indent:.32em;
+  }
+  .subtitle{color:var(--mist); letter-spacing:.2em; text-transform:uppercase; font-size:11px; margin-top:14px; text-indent:.2em}
+  .lede{max-width:640px;margin:26px auto 0;color:var(--mist);font-size:15px;text-align:center}
+  .lede b{color:var(--parch);font-weight:400}
+
+  /* ---------- headings ---------- */
+  h2{
+    color:var(--brass); font-weight:500; text-transform:uppercase;
+    letter-spacing:.28em; font-size:15px; margin:72px 0 6px;
+  }
+  h2 .num{color:var(--dimmed); margin-right:14px; letter-spacing:.1em}
+  h2::after{
+    content:""; display:block; height:1px; margin-top:10px;
+    background:linear-gradient(to right, var(--line2), var(--line) 45%, transparent);
+  }
+  h3{
+    color:var(--parch); font-weight:500; text-transform:uppercase;
+    letter-spacing:.18em; font-size:12.5px; margin:34px 0 8px;
+  }
+  h3 small{color:var(--dimmed);letter-spacing:.1em}
+  p{margin:12px 0}
+  b,strong{font-weight:500;color:var(--parch)}
+  em{color:var(--brass-hi);font-style:italic}
+  ul,ol{margin:10px 0 14px;padding-left:22px}
+  li{margin:6px 0}
+  li::marker{color:var(--dimmed)}
+
+  /* ---------- OS columns ---------- */
+  .oscols{display:grid; grid-template-columns:1fr 1fr; gap:0 36px; margin:18px 0}
+  .oscol{border-left:1px solid var(--line); padding-left:22px}
+  .oscol:first-child{border-left:none; padding-left:0}
+  .oslabel{
+    display:flex; align-items:center; gap:8px; margin-bottom:12px;
+    color:var(--brass); text-transform:uppercase; letter-spacing:.22em; font-size:11px; font-weight:500;
+  }
+  .oslabel .glyph{width:7px;height:7px;border:1px solid var(--brass);transform:rotate(45deg);display:inline-block}
+  @media (max-width:640px){
+    .oscols{grid-template-columns:1fr; gap:34px 0}
+    .oscol{border-left:none; padding-left:0; border-top:1px solid var(--line); padding-top:22px}
+    .oscol:first-child{border-top:none; padding-top:0}
+  }
+
+  /* ---------- tables ---------- */
+  .tbl-scroll{overflow-x:auto; margin:16px 0}
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th{
+    text-align:left; color:var(--brass); font-weight:500; text-transform:uppercase;
+    letter-spacing:.14em; font-size:10.5px; padding:8px 12px;
+    border-bottom:1px solid var(--line2);
+    white-space:nowrap;
+  }
+  td{padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  tr:last-child td{border-bottom:1px solid var(--line)}
+  td:first-child{white-space:nowrap}
+  .cw td:first-child{color:var(--brass-hi); font-family:ui-monospace,Menlo,monospace; font-size:12.5px}
+
+  /* ---------- chips & tags ---------- */
+  .tag{
+    display:inline-block; border:1px solid var(--line2); padding:1px 7px;
+    font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--spell); margin-left:6px; white-space:nowrap; transform:translateY(-1px);
+  }
+  .tag.brass{color:var(--brass)}
+  .tag.blood{color:var(--blood)}
+  .tag.vigor{color:var(--vigor)}
+  .tag.aether{color:var(--aether)}
+  code{
+    font-family:ui-monospace,Menlo,monospace; font-size:12.5px;
+    color:var(--brass-hi); background:var(--ink2);
+    border:1px solid var(--line); padding:1px 5px;
+  }
+
+  /* ---------- panels ---------- */
+  .panel{
+    position:relative; border:1px solid var(--line); background:rgba(0,0,0,.25);
+    padding:18px 22px; margin:22px 0;
+  }
+  .panel::before,.panel::after{
+    content:""; position:absolute; width:10px; height:10px; border-color:var(--brass); border-style:solid;
+  }
+  .panel::before{top:-1px; left:-1px; border-width:1px 0 0 1px}
+  .panel::after{bottom:-1px; right:-1px; border-width:0 1px 1px 0}
+  .panel .ptitle{
+    color:var(--brass); text-transform:uppercase; letter-spacing:.28em;
+    font-size:10.5px; margin:0 0 10px;
+    font-family:Optima,Candara,"Gill Sans","Segoe UI",sans-serif;
+  }
+  .panel p:last-child{margin-bottom:0}
+  .panel.warn{border-color:rgba(194,90,80,.35)}
+  .panel.warn::before,.panel.warn::after{border-color:var(--blood)}
+  .panel.warn .ptitle{color:var(--blood)}
+  .panel.tide{border-color:rgba(130,180,201,.3)}
+  .panel.tide::before,.panel.tide::after{border-color:var(--tide)}
+  .panel.tide .ptitle{color:var(--tide)}
+
+  /* ---------- TOC ---------- */
+  nav{margin-top:44px}
+  nav ol{
+    columns:2; column-gap:44px; list-style:none; padding:0; margin:0;
+    counter-reset:toc;
+  }
+  nav li{margin:0; padding:7px 0; border-bottom:1px solid var(--line); counter-increment:toc; break-inside:avoid}
+  nav a{
+    color:var(--parch); text-decoration:none; letter-spacing:.12em; text-transform:uppercase;
+    font-size:11.5px; font-family:Optima,Candara,"Gill Sans","Segoe UI",sans-serif;
+  }
+  nav a::before{content:counter(toc,upper-roman); display:inline-block; width:44px; color:var(--dimmed)}
+  nav a:hover{color:var(--brass-hi)}
+
+  /* ---------- misc ---------- */
+  .muted{color:var(--mist)}
+  hr{border:none;height:1px;background:var(--line);margin:34px 0}
+  .sig{color:var(--dimmed); text-align:center; letter-spacing:.3em; text-transform:uppercase; font-size:10px; margin-top:90px}
+  a{color:var(--tide)}
+  kbd{
+    font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--parch);
+    background:var(--ink2); border:1px solid var(--line2); padding:1px 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="diamond"></span>
+  <h1>Langelier Tactical Game</h1>
+  <div class="subtitle">Install Guide · Windows &amp; Mac</div>
+  <p class="lede">
+    Everything installs into <b>one folder</b>. You'll do the one-time setup
+    exactly once — after that, playing (or updating) is just double-clicking
+    a launcher.
+  </p>
+
+  <nav>
+    <ol>
+      <li><a href="#setup">One-Time Setup</a></li>
+      <li><a href="#starting">Starting the Game</a></li>
+      <li><a href="#characters">Characters</a></li>
+      <li><a href="#updating">Updating the Game</a></li>
+      <li><a href="#trouble">If Something Goes Wrong</a></li>
+    </ol>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <h2 id="setup"><span class="num">01</span>One-Time Setup</h2>
+  <p>Install two tools, then pull down the game itself. Follow the column for your machine.</p>
+
+  <h3>a. Install Python</h3>
+  <div class="oscols">
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Windows</div>
+      <ol>
+        <li>Go to <a href="https://www.python.org/downloads/">python.org/downloads</a> and click the big yellow
+          <b>Download Python</b> button.</li>
+        <li>Run the installer. On the <b>first screen</b>, tick the box that says
+          <b>"Add python.exe to PATH"</b> (bottom of the window) — this matters.</li>
+        <li>Click <b>Install Now</b> and let it finish.</li>
+      </ol>
+    </div>
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Mac</div>
+      <ol>
+        <li>Open <b>Terminal</b> (Spotlight → type <code>Terminal</code> → Enter).</li>
+        <li>Type <code>python3 --version</code> and press Enter.</li>
+        <li>If a version number prints, you already have Python — skip ahead.
+          If a dialog offers to install <b>Command Line Tools</b>, click
+          <b>Install</b> and wait for it to finish; this brings Python 3 with it.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>b. Install Git</h3>
+  <div class="oscols">
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Windows</div>
+      <ol>
+        <li>Go to <a href="https://git-scm.com/download/win">git-scm.com/download/win</a> — the download
+          starts automatically.</li>
+        <li>Run the installer. Every default is fine — just keep clicking
+          <b>Next</b>, then <b>Install</b>.</li>
+      </ol>
+    </div>
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Mac</div>
+      <ol>
+        <li>In the same Terminal window, type <code>git --version</code> and press Enter.</li>
+        <li>If it's not already installed, macOS will offer to install the
+          <b>Command Line Tools</b> — same prompt as Python above. Click
+          <b>Install</b> and wait.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>c. Download the game</h3>
+  <div class="oscols">
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Windows</div>
+      <ol>
+        <li>Open <b>File Explorer</b> and go to the folder you want the game to
+          live in (for example <b>Documents</b>).</li>
+        <li>Click in the address bar at the top, type <code>cmd</code>, and press
+          <b>Enter</b> — a black command window opens in that folder.</li>
+        <li>Copy-paste this line into it and press <b>Enter</b>:
+          <div class="tbl-scroll"><code>git clone https://github.com/LocalCalzoneZone/LTG.git</code></div>
+          A folder called <b>LTG</b> appears with the whole game inside.</li>
+      </ol>
+    </div>
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Mac</div>
+      <ol>
+        <li>In Terminal, navigate to where you want the game to live, for
+          example: <code>cd ~/Documents</code></li>
+        <li>Run:
+          <div class="tbl-scroll"><code>git clone https://github.com/LocalCalzoneZone/LTG.git</code></div>
+          A folder called <b>LTG</b> appears with the whole game inside.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="panel warn">
+    <p class="ptitle">Don't Use "Download ZIP"</p>
+    <p>GitHub's green <b>Code → Download ZIP</b> button gives you a copy that
+      can't receive updates. The <code>git clone</code> above is what makes the
+      in-game Update button work later.</p>
+  </div>
+
+  <hr>
+
+  <h2 id="starting"><span class="num">02</span>Starting the Game</h2>
+  <p>Inside the <b>LTG</b> folder:</p>
+
+  <div class="tbl-scroll">
+  <table class="cw">
+    <tr><th>Double-click</th><th>Windows</th><th>Mac</th><th>To get</th></tr>
+    <tr><td><b>Everything</b></td><td><code>LTG-Start.bat</code></td><td><code>LTG-Start.command</code></td><td><b>Use this one.</b> The game opens in your browser, and the character editor runs alongside it</td></tr>
+    <tr><td>Game</td><td><code>LTG-Game.bat</code></td><td><code>LTG-Game.command</code></td><td>Just the game</td></tr>
+    <tr><td>Deckbuilder</td><td><code>LTG-Deckbuilder.bat</code></td><td><code>LTG-Deckbuilder.command</code></td><td>Just the character / deck editor</td></tr>
+  </table>
+  </div>
+
+  <ul>
+    <li>The <b>first</b> launch sets everything up and takes a few minutes —
+      that's normal. After that it's seconds.</li>
+    <li>A dark window opens and stays open — <b>that window IS the app</b>.
+      Your browser then opens the game by itself. With <b>LTG-Start</b> the
+      character editor runs quietly in the background — no extra tab; the
+      game's Edit buttons reach it. Closing the window stops everything it
+      started.</li>
+    <li>If the browser doesn't open on its own: the game is at
+      <a href="http://localhost:8020">localhost:8020</a>, the deckbuilder at
+      <a href="http://localhost:8000">localhost:8000</a>.</li>
+  </ul>
+
+  <div class="oscols">
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Windows</div>
+      <p>If Windows Firewall asks whether to allow it: click <b>Allow</b>.</p>
+    </div>
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Mac</div>
+      <p>The first time you double-click a <code>.command</code> file, macOS
+        may warn it's from an unidentified developer. Right-click (or
+        Control-click) the file → <b>Open</b> → <b>Open</b> again in the
+        dialog. You only need to do this once per launcher.</p>
+    </div>
+  </div>
+
+  <p><b>Quitting:</b> click <b>Quit</b> — it sits next to <b>New Game</b> in
+    the game's top bar, and in the deckbuilder's top bar. A confirmation pops
+    up first, because quitting is all-or-nothing: it shuts down BOTH the game
+    and the deckbuilder servers (the terminal window closes too, and anyone
+    connected to your game is disconnected), so nothing keeps running in the
+    background. Anything you haven't saved is lost — <b>Save</b> first.</p>
+
+  <hr>
+
+  <h2 id="characters"><span class="num">03</span>Characters</h2>
+  <p>Characters are <code>.json</code> files. They live only on your computer —
+    updates never touch them — and they're small enough to send over any chat.
+    This works the same on Windows and Mac.</p>
+
+  <h3>Play a character someone sent you</h3>
+  <ol>
+    <li>Save the <code>.json</code> file somewhere you can find it (e.g.
+      Documents).</li>
+    <li>Start <b>LTG-Start</b> → in the game: <b>Options → Characters</b> →
+      <b>Import</b> → pick the file.</li>
+    <li>It's now in your roster for any New Game.</li>
+  </ol>
+
+  <h3>Edit a character <small>(the good path)</small></h3>
+  <ol>
+    <li>Start with <b>LTG-Start</b> (it runs the game and the editor
+      together).</li>
+    <li>In the game: <b>Options → Characters</b> → find the character →
+      <b>Edit</b>. The deckbuilder opens with that character loaded.</li>
+    <li>Make your changes (cards, stats, portrait…).</li>
+    <li>Click <b>Update Game Character</b> (top right). Done — the game uses
+      the new version from the next New Game onward.</li>
+  </ol>
+
+  <h3>Send a character to someone</h3>
+  <ol>
+    <li>Open the character in the <b>Deckbuilder</b> (via the Edit path above,
+      or its <b>Load</b> button and picking a <code>.json</code> file).</li>
+    <li>Click <b>Save</b> in the top bar and choose where to put the
+      <code>.json</code> file.</li>
+    <li>Send that file (email, chat, whatever). They import it with the
+      <b>Import</b> button in their game.</li>
+  </ol>
+
+  <hr>
+
+  <h2 id="updating"><span class="num">04</span>Updating the Game</h2>
+  <p>Same steps on both platforms — when there's a new version:</p>
+  <ol>
+    <li>Start <b>LTG-Start</b> → in the game: <b>Options → Settings</b> →
+      <b>Updates</b>.</li>
+    <li>If it says updates are available, click <b>Update now</b> and wait —
+      it can take a minute.</li>
+    <li>Click <b>Quit</b> (next to New Game) and relaunch <b>LTG-Start</b>.
+      That's it — one update covers the game, the deckbuilder, and any new
+      encounters or adventures.</li>
+  </ol>
+  <p>Your saved characters are never touched by an update.</p>
+
+  <hr>
+
+  <h2 id="trouble"><span class="num">05</span>If Something Goes Wrong</h2>
+
+  <div class="oscols">
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Windows</div>
+      <ul>
+        <li><b>The launcher window flashes an error about Python</b> — Python
+          probably isn't on PATH. Re-run the Python installer, tick
+          <b>Add python.exe to PATH</b>, then delete the <code>.venv</code>
+          folder inside LTG and double-click the launcher again.</li>
+        <li><b>Windows Firewall keeps re-asking</b> — click <b>Allow</b>
+          again; it only needs to happen once per launcher, but a Windows
+          update can occasionally reset it.</li>
+      </ul>
+    </div>
+    <div class="oscol">
+      <div class="oslabel"><span class="glyph"></span>Mac</div>
+      <ul>
+        <li><b>"Cannot be opened because it is from an unidentified
+          developer"</b> — right-click the <code>.command</code> file →
+          <b>Open</b> → <b>Open</b> again. See <a href="#starting">Starting
+          the Game</a> above.</li>
+        <li><b>Nothing happens when you double-click</b> — open Terminal,
+          <code>cd</code> into the LTG folder, and run
+          <code>./LTG-Start.command</code> directly to see the error text.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="panel tide">
+    <p class="ptitle">Applies to both platforms</p>
+    <ul style="margin-bottom:0">
+      <li><b>An update said "delete the .venv folder"</b> — do exactly that:
+        close the app, delete the folder called <code>.venv</code> inside
+        LTG, and double-click the launcher. It rebuilds itself.</li>
+      <li><b>The game page won't load</b> — check that the terminal window is
+        still open, then try <a href="http://localhost:8020">localhost:8020</a>
+        in your browser.</li>
+      <li><b>Anything else</b> — screenshot the terminal window and send it to
+        your game admin.</li>
+    </ul>
+  </div>
+
+  <p class="sig">Langelier Tactical Game</p>
+
+</div>
+</body>
+</html>

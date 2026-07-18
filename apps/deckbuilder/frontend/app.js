@@ -1323,8 +1323,10 @@ function effectRowHtml(e, i, card, depth = 0) {
     // A stance is always continuous — a recurring stance is rejected (§D9-2.2).
     && !(e.kind === "stance" && p.name === "trigger")
   ).map((p) => {
-    if (p.name === "target" && p.control === "action_target")
-      return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
+    if (p.name === "target" && p.control === "action_target") {
+      const who = (e.target?.side || p.default?.side) === "any" ? "a stack action (either side)" : "an enemy action";
+      return `<span class="param"><label class="inline">target <span class="tgt-summary">${who}${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
+    }
     if (p.control === "target") {
       const label = p.name === "other" ? "vs" : p.name;  // fight's 2nd target reads "vs"
       return `<span class="param"><label class="inline">${label}</label> ${targetControlHtml(i, e[p.name], card, p.name)}</span>`;
@@ -2219,10 +2221,11 @@ init();
   $("#quit-cancel").onclick = () => overlay.classList.add("hidden");
   overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add("hidden"); };
   $("#quit-go").onclick = async () => {
-    try { await api("POST", "/api/quit"); } catch (e) { /* server is dying — expected */ }
+    // scope=all: the server also asks its sibling game server to quit.
+    try { await api("POST", "/api/quit?scope=all"); } catch (e) { /* server is dying — expected */ }
     document.body.innerHTML =
-      '<div class="closed-screen"><h1>LTG · Deckbuilder</h1>' +
-      "<p>The deckbuilder has shut down. You can close this tab.</p></div>";
+      '<div class="closed-screen"><h1>LTG</h1>' +
+      "<p>The deckbuilder and game have shut down. You can close this tab.</p></div>";
     window.close(); // usually blocked for user-opened tabs; the message covers it
   };
 }

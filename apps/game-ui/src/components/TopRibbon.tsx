@@ -3,6 +3,7 @@ import { roman } from "../lib/format";
 import { inviteUrl } from "../lib/settings";
 import { useGame } from "../lib/store";
 import { IconGear, IconLink, IconPlus } from "./Icons";
+import { QuitControl } from "./QuitControl";
 
 // The turn tracker, keyed off the engine's raw phase ids (serialize.py
 // _PHASE_LABEL vocabulary). Intents are not broadcast to players, so the
@@ -161,6 +162,7 @@ export function TopRibbon({ onNewGame, onOptions }: {
           <IconPlus size={10} />
           New Game
         </button>
+        <QuitControl />
       </div>
     </div>
   );

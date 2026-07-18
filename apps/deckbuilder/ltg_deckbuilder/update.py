@@ -5,11 +5,16 @@ keeps the routes so either running app can drive an update."""
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict
 
 from fastapi import APIRouter
 
 from ltg_core import selfupdate
+
+# Where the sibling game server answers for the all-apps quit (LTG-Start runs
+# both on their defaults; override for a non-standard port).
+GAME_PORT = int(os.environ.get("LTG_GAME_PORT", "8020"))
 
 router = APIRouter(prefix="/api")
 
@@ -25,8 +30,11 @@ def apply() -> Dict[str, Any]:
 
 
 @router.post("/quit")
-def quit_app() -> Dict[str, Any]:
-    """Shut the server down (the topbar Quit button). Responds first; the
-    process exits moments later."""
+def quit_app(scope: str = "all") -> Dict[str, Any]:
+    """Shut down (the topbar Quit button). Quitting is for the PAIR: scope
+    "all" also asks the game server to quit; "self" (what the sibling sends)
+    stops the bounce. Responds first; the process exits moments later."""
+    if scope == "all":
+        selfupdate.quit_sibling(GAME_PORT)
     selfupdate.schedule_exit()
     return {"ok": True}

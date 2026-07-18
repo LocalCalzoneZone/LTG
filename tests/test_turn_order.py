@@ -67,6 +67,8 @@ def test_turn_order_survives_repositioning():
     st = state_from_dict(_spec([_char("a", row="rear"), _char("b", row="front")]))
     assert _pick(st, kind="end_turn").actor_id == "a"     # a's main phase first
     st, _ = apply_action(st, _pick(st, kind="move", actor_id="a", target_id="front"))
+    while st.stack:  # the Move is a stack action now (§L-2.2): pass it through
+        st, _ = apply_action(st, _pick(st, kind="pass"))
     st, _ = apply_action(st, _pick(st, kind="end_turn", actor_id="a"))
     assert _pick(st, kind="end_turn").actor_id == "b"     # then b, as rolled
     # Turn 2: same order again, despite a's new row.

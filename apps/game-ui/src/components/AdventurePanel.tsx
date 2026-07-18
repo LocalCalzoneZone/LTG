@@ -14,6 +14,7 @@ import type {
 } from "../lib/types";
 import { roman } from "../lib/format";
 import { ArtQueueButton } from "./ArtQueueButton";
+import { DifficultyTag } from "./DifficultyTag";
 import { IconEdit, IconX } from "./Icons";
 
 const DIFFICULTIES = ["easy", "standard", "hard"];
@@ -136,7 +137,10 @@ export function AdventurePanel({ onEditAct }: {
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-            <span className={label}>Adventure name</span>
+            <span className="flex items-center gap-2">
+              <span className={label}>Adventure name</span>
+              <DifficultyTag difficulty={editing.difficulty} />
+            </span>
             <input className={field} value={editing.name}
                    onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
           </label>
@@ -287,6 +291,7 @@ export function AdventurePanel({ onEditAct }: {
                 <span className="caps-label truncate text-[11px] tracking-[0.1em] text-parch">
                   {a.name}
                 </span>
+                <DifficultyTag difficulty={a.difficulty} />
                 {a.flavor && (
                   <span className="truncate text-xs font-light italic text-mist">{a.flavor}</span>
                 )}

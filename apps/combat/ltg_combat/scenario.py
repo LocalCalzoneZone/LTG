@@ -30,6 +30,8 @@ from .state import CharacterState, Component, EnemyState, GameState, Objective
 # same schema a card's effects use, so an enemy adds no new resolution vocabulary.
 _VERBS = TypeAdapter(List[Effect])
 
+_ROWS = {"front", "mid", "rear"}  # legal battlefield rows (§L-5 target_row values)
+
 
 def _check_enemy_verbs(verbs) -> None:
     """Enemy-side legality (Design Update 09): `stance` is player-only (§D9-2.3),
@@ -88,6 +90,9 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
                  or spec.get("trigger") == "on_enrage")
     verbs = list(_VERBS.validate_python(spec.get("verbs", [])))
     _check_enemy_verbs(verbs)
+    if spec.get("target_row") is not None and spec["target_row"] not in _ROWS:
+        raise ValueError(f"component '{spec.get('id', '?')}': target_row must be "
+                         f"one of {sorted(_ROWS)}, got {spec['target_row']!r}")
     return Component(
         id=spec["id"], archetype=spec.get("archetype", ""),
         timing="reactive" if is_enrage else spec.get("timing", "proactive"),
@@ -102,10 +107,16 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
         target_rule=spec.get("target_rule", "valuation"),
         telegraph=spec.get("telegraph", ""),
         move_home=bool(spec.get("move_home", False)),
+        # §L-5: a positional component aims its intent at a ROW, not a combatant.
+        target_row=spec.get("target_row"),
         phase=spec.get("phase"),
         # "spell" marks a thematically magical component (Fireball, Meteor …):
-        # it stacks as kind "spell", so spell counters (Negate) answer it.
-        action_type=("spell" if spec.get("action_type") == "spell" else "ability"),
+        # it stacks as kind "spell", so spell counters (Negate) answer it. An
+        # "attack"-classed positional swipe (§L-5) stacks as an attack, so
+        # Mitigate and attack counters answer it.
+        action_type=("spell" if spec.get("action_type") == "spell"
+                     else "attack" if spec.get("action_type") == "attack"
+                     else "ability"),
         # A channelled component starts an EnemyChannel instead of firing once.
         channel=bool(spec.get("channel", False)))
 
@@ -400,7 +411,7 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             archetype=p.get("archetype", ""), max_hp=int(p["hp"]), hp=int(p["hp"]),
             power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
-            row=p.get("row", "front"), committed=p.get("row", "front"),
+            row=p.get("row", "front"),
             attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
             # Keywords bought at creation (§P-3) — permanent for the encounter.
             keywords=_keyword_dict(p.get("keywords")),
@@ -434,6 +445,10 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
         # (Design Update 04: `chassis` stats + `components`). For the latter the default
         # priority-90 attack is synthesized from its Power, targeted by valuation.
         intent_template = dict(e["intent"]) if "intent" in e else _default_attack_template(e)
+        if intent_template.get("target_row") is not None \
+                and intent_template["target_row"] not in _ROWS:
+            raise ValueError(f"{e['name']}: intent target_row must be one of "
+                             f"{sorted(_ROWS)}, got {intent_template['target_row']!r}")
         attack_mode = e.get("attack_mode", e.get("intent", {}).get("mode", "melee"))
         components = [_component_from_dict(c) for c in e.get("components", [])]
         _check_ultimate_answer_guardrail(e["name"], bool(e.get("is_boss", False)),
@@ -443,7 +458,7 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
             # Attack power defaults to the intent's damage when not given explicitly.
             power=int(e.get("power", e.get("intent", {}).get("amount", 0))),
-            row=row, committed=row, home_row=e.get("home_row", row),
+            row=row, home_row=e.get("home_row", row),
             intent_template=intent_template,
             ranged_template=dict(e.get("ranged_intent", {})),
             attack_mode=attack_mode,

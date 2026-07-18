@@ -116,16 +116,16 @@ def _evasive(prio=20):
                      move_home=True, target_rule="self", telegraph="Reposition")
 
 
-def test_evasive_repositions_to_home_row_at_end_step():
+def test_evasive_repositions_to_home_row():
     def setup(s):
         e = s.enemies[0]
-        e.row = e.committed = "front"     # shoved up front
+        e.row = "front"                   # shoved up front
         e.home_row = "mid"                # wants to be at mid
         e.components.append(_evasive())
     st = _state([_char("p")], [_enemy("e")], tweak=setup)
     assert _declared_intent_name(st) == "Reposition"   # the Move outranks the attack
-    st = _drive(st)                                     # execute + play to End step
-    assert st.enemies[0].row == "mid"                  # the body caught up to the queued Move
+    st = _drive(st)                                     # execute the Move (live, §L-2.3)
+    assert st.enemies[0].row == "mid"                  # the body moved as it executed
 
 
 def test_evasive_skips_when_already_home():
@@ -133,7 +133,7 @@ def test_evasive_skips_when_already_home():
     # default attack declares instead (first-match-wins keeps scanning).
     def setup(s):
         e = s.enemies[0]
-        e.row = e.committed = e.home_row = "mid"
+        e.row = e.home_row = "mid"
         e.components.append(_evasive())
     st = _state([_char("p")], [_enemy("e")], tweak=setup)
     assert _declared_intent_name(st) == "Hit"

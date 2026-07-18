@@ -184,12 +184,15 @@ function renderEnemies() {
     head.append(el("span", "unit-name", e.name), el("span", "unit-sub", sub));
     box.append(head, hpbar(e.hp, e.max_hp, true));
 
+    // A positional intent (§L-5) aims at a row, not a name — render the ground.
+    const aim = (it) => it.target_row ? `the ${it.target_row} row`
+                                      : (it.target_name || "—");
     const intent = el("div", "intent" + (e.intent ? "" : " none"));
     if (e.in_hand) {
       intent.textContent = "bounced — redeploys next turn";
     } else if (e.intent) {
       const dmg = e.intent.amount != null ? ` (${e.intent.amount})` : "";
-      intent.textContent = `▶ ${e.intent.name}${dmg} → ${e.intent.target_name || "—"}`;
+      intent.textContent = `▶ ${e.intent.name}${dmg} → ${aim(e.intent)}`;
     } else {
       intent.textContent = "no intent declared";
     }
@@ -197,7 +200,7 @@ function renderEnemies() {
     if (e.intent2) {  // boss fury (§D9-4): the second declared intent
       const dmg2 = e.intent2.amount != null ? ` (${e.intent2.amount})` : "";
       box.append(el("div", "intent",
-        `▶▶ ${e.intent2.name}${dmg2} → ${e.intent2.target_name || "—"}`));
+        `▶▶ ${e.intent2.name}${dmg2} → ${aim(e.intent2)}`));
     }
 
     const tags = el("div", "tags");
@@ -229,14 +232,11 @@ function renderEnemies() {
   });
 }
 
-// Position readout (Update 02 §M-B): current row, plus the committed row (⊕) when it
-// differs and a queued voluntary move (→) when one is pending.
+// Position readout (Update 15 §L-1): the single live row — moves resolve live,
+// so what you see is where the body is.
 function posLabel(c) {
   const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-  let s = cap(c.row);
-  if (c.committed && c.committed !== c.row) s += ` ⊕${cap(c.committed)}`;
-  if (c.pending_voluntary) s += ` →${cap(c.pending_voluntary)}`;
-  return s;
+  return cap(c.row);
 }
 
 function renderParty() {
@@ -248,8 +248,8 @@ function renderParty() {
     const head = el("div", "unit-head");
     const left = el("span", "unit-name", (c.id === STATE.acting_id ? "▶ " : "") + c.name);
     const sub = el("span", "unit-sub", `${c.archetype} · ${posLabel(c)}`);
-    sub.title = "Position — current row (what intents/the wall hit). ⊕ = committed row "
-              + "(reach/Mitigate adjacency). → = a queued move that resolves at End step.";
+    sub.title = "Position — the live row (moves resolve live; intents, reach and "
+              + "Mitigate adjacency all read it).";
     head.append(left, sub);
     box.append(head, hpbar(c.hp, c.max_hp, false));
 

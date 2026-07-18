@@ -431,3 +431,38 @@ def test_art_style_settings_roundtrip(loadouts):
     assert llm.public_settings()["art_style"] == llm.DEFAULT_ART_STYLE
     on_disk = json.loads(llm.SETTINGS_PATH.read_text())
     assert on_disk["art_style"] == ""
+
+
+# --------------------------------------------------------------------------- #
+# Stale-editor saves must not orphan persisted art (content._carry_art_refs):
+# the editor posts its own state, which can predate queue-generated art — a
+# missing image ref inherits the stored one while its file exists, and
+# deliberate removal (art.remove deletes the file first) stays removed.
+# --------------------------------------------------------------------------- #
+def test_stale_save_keeps_generated_art(loadouts, encounter, mock_openrouter):
+    _set_key()
+    art.generate(encounter, "scene")
+    art.generate(encounter, "enemy", "ghoul")
+    content.save_encounter(dict(ENC), encounter)   # ENC carries no image refs
+    enc = content.encounter_detail(encounter)
+    assert enc["scene_image"].startswith("/art/")
+    ghoul = next(e for e in enc["enemies"] if e["id"] == "ghoul")
+    assert ghoul["image"].startswith("/art/")
+
+
+def test_token_art_survives_stale_save(loadouts, encounter, mock_openrouter):
+    _set_key()
+    art.generate(encounter, "enemy", "husk")       # token defs are slots too
+    content.save_encounter(dict(ENC), encounter)
+    enc = content.encounter_detail(encounter)
+    assert enc["tokens"]["husk"]["image"].startswith("/art/")
+
+
+def test_removed_art_stays_removed_after_stale_save(loadouts, encounter, mock_openrouter):
+    _set_key()
+    art.generate(encounter, "enemy", "ghoul")
+    art.remove(encounter, "enemy", "ghoul")
+    content.save_encounter(dict(ENC), encounter)
+    ghoul = next(e for e in content.encounter_detail(encounter)["enemies"]
+                 if e["id"] == "ghoul")
+    assert not ghoul.get("image")

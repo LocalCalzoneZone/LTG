@@ -20,6 +20,10 @@ const SMALL_BTN =
  * adventure block: act victory splash → level-up screen (gated on every seat's
  * confirmation) → narrative splash over the next act's scene → combat. The
  * narrative splash also opens Act I (its narration is the adventure's opening).
+ *
+ * Every screen here sits BELOW the 42px top ribbon (top-[42px], z-20 — under
+ * the z-40 modals): players must be able to Copy Link, claim seats, and reach
+ * Options/Quit during splashes, e.g. inviting an ally before Act I begins.
  */
 export function AdventureFlow() {
   const snapshot = useGame((s) => s.snapshot);
@@ -74,7 +78,7 @@ function ActVictorySplash({ act, actName, onContinue }: {
   onContinue: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-[2px]">
+    <div className="fixed inset-x-0 bottom-0 top-[42px] z-20 flex items-center justify-center bg-black/70 backdrop-blur-[2px]">
       <div className="panel-ticks border border-line2 bg-ink-2/95 px-12 py-9 text-center shadow-2xl">
         <div className="flex items-center justify-center gap-5">
           <span className="h-px w-16 bg-gradient-to-r from-transparent to-vigor/70" />
@@ -105,7 +109,7 @@ function NarrativeSplash({ adventure, sceneImage, onContinue }: {
   onContinue: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-0">
+    <div className="fixed inset-x-0 bottom-0 top-[42px] z-20 flex items-center justify-center bg-ink-0">
       {sceneImage && (
         <img
           src={sceneImage}
@@ -180,7 +184,7 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
   const active = mine.find((r) => !r.confirmed) ?? null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
+    <div className="fixed inset-x-0 bottom-0 top-[42px] z-20 flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
       <div className="panel-ticks flex max-h-[90vh] w-[min(94vw,880px)] flex-col border border-line2 bg-ink-2 shadow-2xl">
         <div className="flex items-center gap-3 border-b border-line px-5 py-3">
           <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">

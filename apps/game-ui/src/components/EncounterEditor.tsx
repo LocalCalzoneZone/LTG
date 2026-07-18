@@ -4,6 +4,7 @@ import { roman } from "../lib/format";
 import type { ComponentSpec, EncounterDetail, EnemySpec, Row } from "../lib/types";
 import { ArtControls } from "./ArtControls";
 import { ArtQueueButton } from "./ArtQueueButton";
+import { DifficultyTag } from "./DifficultyTag";
 
 // Mirrors the server's _slug (ltg_combat.scenario): how an enemy without an
 // explicit id resolves for art calls.
@@ -167,7 +168,10 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
       {/* Name + scene */}
       <div className="flex flex-wrap gap-3">
         <label className="flex min-w-[220px] flex-1 flex-col gap-1">
-          <span className={label}>Encounter name</span>
+          <span className="flex items-center gap-2">
+            <span className={label}>Encounter name</span>
+            <DifficultyTag difficulty={initial?.difficulty} />
+          </span>
           <input className={field} value={name} onChange={(e) => setName(e.target.value)}
                  placeholder="e.g. Bandit Ambush" />
         </label>
@@ -181,11 +185,21 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
                 disabled={artDisabled}
                 disabledTitle={artDisabledTitle}
                 onImage={async () => {
-                  // Progress landed server-side: refresh the backdrop preview.
+                  // Progress landed server-side: fold the new art into the edit
+                  // state (backdrop AND enemy images, matched by id) so a later
+                  // save round-trips it instead of wiping the references.
                   if (!initial?.id) return;
                   try {
                     const fresh = await fetchEncounter(initial.id);
-                    setSceneImage(fresh.scene_image ?? "");
+                    setSceneImage((cur) => fresh.scene_image || cur);
+                    const imgs = new Map(
+                      fresh.enemies.map((e) => [e.id, e.image] as const),
+                    );
+                    setEnemies((es) => es.map((e) =>
+                      !e.image && e.id && imgs.get(e.id)
+                        ? { ...e, image: imgs.get(e.id) }
+                        : e,
+                    ));
                   } catch { /* transient — the next image retries */ }
                 }}
               />

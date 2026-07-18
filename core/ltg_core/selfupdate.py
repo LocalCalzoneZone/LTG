@@ -109,3 +109,18 @@ def schedule_exit(delay: float = 0.4) -> None:
     apps write synchronously per-request, and the launcher window closes on a
     clean 0."""
     threading.Timer(delay, os._exit, args=(0,)).start()
+
+
+def quit_sibling(port: int, timeout: float = 2.0) -> bool:
+    """Ask the sibling app on localhost:`port` to quit (scope=self, so it never
+    bounces back). Quitting is all-or-nothing for the pair — the Quit button
+    says it closes the Game AND the Deckbuilder. Returns whether the sibling
+    acknowledged; a sibling that isn't running is simply not there to quit."""
+    import urllib.request
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/quit?scope=self", method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout):
+            return True
+    except OSError:
+        return False
