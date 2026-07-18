@@ -378,6 +378,8 @@ def _value(v) -> str:
             return "X"
         if v.ref == "party_size":
             return "the party size"
+        if v.ref == "enemy_count":
+            return "the number of enemies"
         if v.ref == "caster_power":
             return "your Power"
         if v.ref == "caster_hp":
@@ -532,6 +534,17 @@ _FILTER_PHRASE = {
     "triggered": "an enemy triggered ability",
     "attack": "an enemy attack",
     "activated": "an enemy activated ability",
+}
+
+
+# Redirect filter → player-facing phrase (either side's action, unlike a counter's).
+_REDIRECT_PHRASE = {
+    "action": "a targeted action (spell or ability)",
+    "spell": "a targeted spell",
+    "ability": "a targeted ability (including attacks)",
+    "triggered": "a targeted triggered ability",
+    "attack": "a targeted attack",
+    "activated": "a targeted activated ability",
 }
 
 
@@ -920,6 +933,8 @@ RENDERERS = {
     "amplify": _render_amplify,
     "copy_spell": lambda e: ("Copy a spell on the stack — you assign the copy's "
                              "target as it resolves."),
+    "redirect": lambda e: (f"Redirect {_REDIRECT_PHRASE.get(e.filter, str(e.filter))} "
+                           f"on the stack to {_tgt(e.new_target)}."),
     "double_next": _render_double_next,
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)

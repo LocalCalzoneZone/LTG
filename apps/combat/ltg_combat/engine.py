@@ -453,7 +453,9 @@ def _fire_event(st: GameState, event: str, actor,
                              target_id=ch.target_id)
             for eff in fired:
                 _resolve_effect(st, item, eff,
-                                {"party_size": len(st.party), "caster_obj": holder})
+                                {"party_size": len(st.party),
+                                 "enemy_count": len(st.living_enemies()),
+                                 "caster_obj": holder})
     finally:
         st.event_depth -= 1
 
@@ -1787,9 +1789,10 @@ def _reaction_target(st: GameState, e: EnemyState, comp: Component, ctx: dict):
 
 def _reaction_counters_stack(comp: Component) -> bool:
     """A reaction whose verbs include `counter` (or `copy_spell` — an enemy
-    spell-mirror) answers the STACK TOP itself (§F-3.2): its target is the
-    action under answer, not a combatant."""
-    return any(getattr(v, "kind", None) in ("counter", "copy_spell")
+    spell-mirror — or `redirect`, which turns the action back on its caster)
+    answers the STACK TOP itself (§F-3.2): its target is the action under
+    answer, not a combatant."""
+    return any(getattr(v, "kind", None) in ("counter", "copy_spell", "redirect")
                for v in comp.verbs)
 
 
@@ -2234,7 +2237,7 @@ def _channel_ctx(st: GameState, holder, ch) -> dict:
     x = getattr(ch, "x", 0)
     return {"capacity": getattr(holder, "capacity", 0), "x": x,
             "casting_cost": _cost_total(card, x), "party_size": len(st.party),
-            "caster_obj": holder}
+            "enemy_count": len(st.living_enemies()), "caster_obj": holder}
 
 
 def _new_ctx(st: GameState, item: StackItem) -> dict:
@@ -2247,6 +2250,7 @@ def _new_ctx(st: GameState, item: StackItem) -> dict:
     ctx["x"] = item.x
     ctx["casting_cost"] = _cost_total(item.card, item.x)
     ctx["party_size"] = len(st.party)
+    ctx["enemy_count"] = len(st.living_enemies())
     ctx["caster_obj"] = st.combatant(item.source_id)
     # `is_dead` (§D9-1.3) reads the target's state AS RESOLUTION BEGINS, so an
     # earlier effect in the same resolution (exile consuming the corpse) doesn't
@@ -2618,7 +2622,8 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
         # temp layers reset every end step, so any drift clears at End.
         holder = st.combatant(holder_id) if holder_id is not None else None
         ctx = {"capacity": getattr(holder, "capacity", 0), "x": x,
-               "party_size": len(st.party), "caster_obj": holder,
+               "party_size": len(st.party),
+               "enemy_count": len(st.living_enemies()), "caster_obj": holder,
                "target_obj": target}
         power = _value(effect.power, ctx)
         toughness = _value(effect.toughness, ctx)
@@ -2904,7 +2909,7 @@ def _do_choose_target(st: GameState, action: Action) -> None:
 # Effects that act on the source or a stack item, not on the resolved `target`
 # (a None target is legitimate for them); every other effect needs a target to land on.
 _TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge",
-                         "copy_spell"})
+                         "copy_spell", "redirect"})
 
 
 def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
@@ -3179,6 +3184,8 @@ def _value(amount, ctx: dict) -> int:
             return int(ctx.get("casting_cost", 0) or 0)
         if amount.ref == "party_size":
             return int(ctx.get("party_size", 0) or 0)
+        if amount.ref == "enemy_count":
+            return int(ctx.get("enemy_count", 0) or 0)
         if amount.ref in ("caster_power", "caster_hp"):
             return _live_stat(ctx.get("caster_obj"), amount.ref.split("_", 1)[1])
         if amount.ref in ("target_power", "target_hp"):
@@ -3843,6 +3850,49 @@ def _r_copy_spell(st, item, effect, target, ctx):
         _raise_next_trigger_pick(st)
 
 
+def _r_redirect(st, item, effect, target, ctx):
+    # Retarget a TARGETED action on the stack (either side's): the named stack
+    # item keeps its shape and owner but lands on a new chosen target. Only
+    # single-target actions are offered at cast; a relentless enemy's intents
+    # never redirect (§L-6.2), so its swings are never offered — both are
+    # re-checked here in case the stack changed under the redirect.
+    tid = _site_target(item, ctx, effect, getattr(effect, "target", None))
+    uid = _parse_uid(tid)
+    victim = next((s for s in st.stack if s.uid == uid), None) if uid is not None else None
+    if (victim is None or victim.target_id is None
+            or len(victim.targets or ()) > 1
+            or not _filter_matches(effect.filter, victim)):
+        _log(st, "redirect_fizzle", f"{item.label} has nothing to redirect.",
+             kind="redirect")
+        return
+    if _has_kw(st.enemy(victim.source_id), "relentless"):
+        _log(st, "redirect_fizzle", f"{item.label} can't turn {victim.label} — "
+             f"a relentless intent pursues its declared target.", kind="redirect")
+        return
+    nd = effect.new_target
+    if getattr(nd, "mode", None) == TargetMode.self_:
+        new_tid = item.source_id          # "to yourself" — the Bodyguard shape
+    else:
+        new_tid = _site_id(item, ctx, nd, ("eff_other", id(effect)))
+    if new_tid is None and item.source_side == "enemy":
+        # An enemy redirector makes no interactive pick: it MIRRORS — the action
+        # turns back on its own caster ("your own blade turns in your hand").
+        new_tid = victim.source_id
+    new_obj = st.combatant(new_tid) if new_tid is not None else None
+    if new_obj is None or not _legal_target(new_obj):
+        _log(st, "redirect_fizzle", f"{item.label}'s redirect fizzles (no legal "
+             f"new target).", kind="redirect")
+        return
+    old = st.combatant(victim.target_id)
+    victim.target_id = new_tid
+    if victim.targets:
+        victim.targets = (new_tid,)
+    _log(st, "redirect", f"{item.label} turns {victim.label} — it now strikes "
+         f"{new_obj.name}" + (f" instead of {old.name}" if old is not None else "")
+         + ".", label=victim.label, uid=victim.uid,
+         new_target=_tid(new_obj))
+
+
 def _r_double_next(st, item, effect, target, ctx):
     # The other spell multiplier: tag the target so their next matching action
     # resolves twice (consumed in _resolve_top via _queue_echo).
@@ -4156,6 +4206,7 @@ RESOLVERS = {
     "protection": _r_protection,
     "amplify": _r_amplify,
     "copy_spell": _r_copy_spell,
+    "redirect": _r_redirect,
     "double_next": _r_double_next,
     "draw": _r_draw,
     "scry": _r_scry,
@@ -5264,7 +5315,8 @@ def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
                     filt = side.split(":", 1)[1]
                     opts = [(f"#{s.uid}", s.label) for s in st.stack
                             if (any_side or s.source_side == "enemy")
-                            and _filter_matches(filt, s)]
+                            and _filter_matches(filt, s)
+                            and (kind != "redirect" or _stack_redirectable(st, s))]
                 else:
                     opts = _pick_options(st, side, targeted, kind, state)
                 per_site.append(opts)
@@ -5331,6 +5383,14 @@ def _iter_leaf(effects):
             yield from _iter_leaf(e.effects)
         elif e.kind != "modal":
             yield e
+
+
+def _stack_redirectable(st: GameState, s) -> bool:
+    """True when a stack item may be turned by a `redirect`: it has ONE chosen
+    target to reassign (untargeted / multi-site actions have nothing a single
+    pick can rebind), and its source is not relentless (§L-6.2)."""
+    return (s.target_id is not None and len(s.targets or ()) <= 1
+            and not _has_kw(st.enemy(s.source_id), "relentless"))
 
 
 def _counter_filter(effects) -> Optional[str]:
@@ -5440,6 +5500,13 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     if any(e.kind == "copy_spell" for e in _iter_leaf(effects)):
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if _filter_matches("spell", s)]
+    # A redirect with an UNCHOSEN new target (e.g. "to yourself" — the Bodyguard
+    # shape) has one site: the stack action to turn. A chosen new target makes
+    # it a two-site card, handled by the multi-site path above this one.
+    red = next((e for e in _iter_leaf(effects) if e.kind == "redirect"), None)
+    if red is not None:
+        return [(f"#{s.uid}", s.label) for s in st.stack
+                if _filter_matches(red.filter, s) and _stack_redirectable(st, s)]
     side, targeted, kind, state = None, False, None, None
     # Triggered effects pick their targets when the trigger fires, not at cast
     # (mirrors the _target_sites exclusion). Nested effects never carry triggers,
@@ -5519,6 +5586,17 @@ def _target_sites(effects, card: Card):
             # A copy's target is a spell on the stack, either side's ("stack_any").
             sites.append((("eff", id(e)), "stack_any:spell", True, "copy_spell", None))
             continue
+        if e.kind == "redirect":
+            # A redirect is TWO sites: the stack action to turn (either side's,
+            # single-target only — enumeration filters by kind "redirect") and
+            # the chosen creature it now lands on.
+            sites.append((("eff", id(e)), f"stack_any:{e.filter}", True, "redirect", None))
+            # A self new_target ("to yourself" — Bodyguard) is not a pick: it
+            # resolves from the caster, leaving the stack action the only site.
+            nd = getattr(e, "new_target", None)
+            if getattr(nd, "mode", None) not in (TargetMode.self_, TargetMode.all):
+                add(nd, ("eff_other", id(e)), "redirect", forced=True)
+            continue
         if e.kind == "fight":
             # Fight's CHOSEN sides are cast-time picks even when authored
             # untargeted, keyed apart (`other` vs the primary) so each binds
@@ -5570,6 +5648,7 @@ def _effect_site_label(e) -> Optional[str]:
         "revive": "revive",
         "lose_life": "drain",
         "copy_spell": "copy",
+        "redirect": "redirect",
         "amplify": "prime",
         "double_next": "double",
     }.get(k)
@@ -5585,6 +5664,8 @@ def _site_label(key, effects, card: Card) -> Optional[str]:
             return None
         if e.kind == "fight":
             return "fight" if kind == "eff" else "fight against"
+        if e.kind == "redirect":
+            return "redirect" if kind == "eff" else "redirect to"
         return _effect_site_label(e)
     if kind == "slot":  # a shared slot — describe it by the first effect that uses it
         for e in effects:

@@ -1323,8 +1323,10 @@ function effectRowHtml(e, i, card, depth = 0) {
     // A stance is always continuous — a recurring stance is rejected (§D9-2.2).
     && !(e.kind === "stance" && p.name === "trigger")
   ).map((p) => {
-    if (p.name === "target" && p.control === "action_target")
-      return `<span class="param"><label class="inline">target <span class="tgt-summary">an enemy action${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
+    if (p.name === "target" && p.control === "action_target") {
+      const who = (e.target?.side || p.default?.side) === "any" ? "a stack action (either side)" : "an enemy action";
+      return `<span class="param"><label class="inline">target <span class="tgt-summary">${who}${e.filter && e.filter !== "action" ? " · " + e.filter : ""}</span></label></span>`;
+    }
     if (p.control === "target") {
       const label = p.name === "other" ? "vs" : p.name;  // fight's 2nd target reads "vs"
       return `<span class="param"><label class="inline">${label}</label> ${targetControlHtml(i, e[p.name], card, p.name)}</span>`;

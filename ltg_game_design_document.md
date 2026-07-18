@@ -293,7 +293,7 @@ Cards and abilities are ordered lists of **effect primitives**. The cardinal rul
 
 Current primitives (each takes a target descriptor and, where relevant, a duration of `end_of_turn` / `while_channeled` / `encounter`; numeric values may be constants or dynamic references such as "the destroyed target's Level"):
 
-`deal_damage`, `heal`, `lose_life`, `destroy`, `exile`, `bounce`, `counter` (filtered), `strip_intent`, `stun`, `pump`, `wound`, `counters`, `prevent`, `protection`, `draw`, `scry`, `create_token`, `taunt`, `disable`, `revive`, `ramp`, `add_mana`, `grant_keyword`, `remove_keyword`.
+`deal_damage`, `heal`, `lose_life`, `destroy`, `exile`, `bounce`, `counter` (filtered), `redirect` (turn a targeted stack action — spell, ability, or attack — onto a new target; relentless intents never redirect), `strip_intent`, `stun`, `pump`, `wound`, `counters`, `prevent`, `protection`, `draw`, `scry`, `create_token`, `taunt`, `disable`, `revive`, `ramp`, `add_mana`, `grant_keyword`, `remove_keyword`.
 
 The set is **extensible** but deliberately small. The engine implements one handler per primitive.
 
