@@ -405,3 +405,14 @@ label.inline.mini { font-size: 11px; gap: 3px; }
   main.layout { grid-template-columns: 1fr; }
   .right-top { grid-template-columns: 1fr; }
 }
+
+/* Quit: the shutdown screen left behind after the server exits */
+.closed-screen {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+}
+.closed-screen h1 {
+  margin: 0; font: 400 14px var(--display); color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.22em;
+}
+.closed-screen p { margin: 0; color: var(--muted); }

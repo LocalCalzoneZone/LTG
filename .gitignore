@@ -8,6 +8,10 @@ loadouts/
 *.egg-info/
 build/
 dist/
+# …but the built game client SHIPS in git: a standalone install (no Node)
+# serves it straight from the checkout, and updates arrive via git pull.
+!apps/game-ui/dist/
+!apps/game-ui/dist/**
 # Node / client build
 node_modules/
 # Autoplay Tester run artifacts (gauntlets stay tracked; runs/verdicts are local)

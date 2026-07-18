@@ -32,12 +32,22 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Where imported loadouts are saved (Deckbuilder's own loadouts dir, so an imported
 # character persists and is shared with the Deckbuilder). Scanned first below.
+# Gitignored: this is per-install user data, never shared through the repo.
 LOADOUTS_DIR = REPO_ROOT / "apps" / "deckbuilder" / "loadouts"
 
+# Curated shared content (encounters, adventures, and their art) — git-TRACKED,
+# so every install gets it via clone/pull. Runtime never writes here; content is
+# promoted from LOADOUTS_DIR by scripts/publish_content.py. Edits/deletes on
+# another install shadow/hide (source "example" semantics), keeping its checkout
+# clean so `git pull` always fast-forwards.
+CONTENT_DIR = REPO_ROOT / "content"
+
 # Directories scanned for loadout / encounter JSON, in priority order. The first
-# file to claim a given id wins (so a curated loadouts dir can shadow examples).
+# file to claim a given id wins (so a user's loadouts dir can shadow curated
+# content, which in turn shadows the bundled examples).
 _SCAN_DIRS = [
     LOADOUTS_DIR,
+    CONTENT_DIR,
     REPO_ROOT / "examples",
 ]
 

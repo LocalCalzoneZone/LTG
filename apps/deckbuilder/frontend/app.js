@@ -2207,3 +2207,22 @@ init();
   const editParam = new URLSearchParams(location.search).get("edit");
   if (editParam) enterEditMode(editParam);
 }
+
+// --------------------------------------------------------------------------
+// Quit (topbar): stops the server (POST /api/quit in update.py) and blanks the
+// tab. Updates moved to the game's Options -> Settings; the /api/update routes
+// stay live here for it.
+// --------------------------------------------------------------------------
+{
+  const overlay = $("#quit-overlay");
+  $("#btn-quit").onclick = () => overlay.classList.remove("hidden");
+  $("#quit-cancel").onclick = () => overlay.classList.add("hidden");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add("hidden"); };
+  $("#quit-go").onclick = async () => {
+    try { await api("POST", "/api/quit"); } catch (e) { /* server is dying — expected */ }
+    document.body.innerHTML =
+      '<div class="closed-screen"><h1>LTG · Deckbuilder</h1>' +
+      "<p>The deckbuilder has shut down. You can close this tab.</p></div>";
+    window.close(); // usually blocked for user-opened tabs; the message covers it
+  };
+}

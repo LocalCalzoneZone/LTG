@@ -1,0 +1,209 @@
+{
+  "name": "Ambush on the Blackpine Road",
+  "scene": "A rutted forest road choked with fallen firs deliberately dragged across it, the canopy so thick the noon light comes down green and dim. Ropes and rusted bells are strung between trunks, and a toppled merchant cart still smolders where the ambush began.",
+  "scene_image": "/art/ambush_on_the_blackpine_road/scene-d3571fef.png",
+  "enemies": [
+    {
+      "id": "road_cutthroat",
+      "name": "Road Cutthroat",
+      "flavor": "A cheap frontline blade that surges when a hero drops.",
+      "description": "A lean rogue in mismatched leathers and a mud-caked hood, one eye milk-white, gripping a notched shortsword and a rusty parrying dagger.",
+      "hp": 4,
+      "power": 2,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "pile_on",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Pile On \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/ambush_on_the_blackpine_road/road_cutthroat-19bafaf9.png"
+    },
+    {
+      "id": "crossbow_lurker",
+      "name": "Crossbow Lurker",
+      "flavor": "Snipes the softest hero from the treeline.",
+      "description": "A wiry archer perched low behind a log, wrapped in bark-brown cloth and fern fronds, leveling a heavy crank crossbow with quarrels clenched in their teeth.",
+      "hp": 4,
+      "power": 2,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "aimed_shot",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Aimed Shot \u2014 deal 3",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/ambush_on_the_blackpine_road/crossbow_lurker-767e2204.png"
+    },
+    {
+      "id": "knife_dancer",
+      "name": "Knife Dancer",
+      "flavor": "A poisoner who flits in, coats a blade, and slips back to the trees.",
+      "description": "A quick, grinning bandit in a patchwork half-cloak, twin thin knives dripping green, moving in short darting steps between the tree trunks.",
+      "hp": 3,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "venom_slash",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Venom Slash \u2014 poison a hero (-0/-1 each Upkeep until healed)",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "slip_away",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 40,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Slip Away"
+        }
+      ],
+      "image": "/art/ambush_on_the_blackpine_road/knife_dancer-6a7b2084.png"
+    },
+    {
+      "id": "bandit_chief",
+      "name": "Bandit Chief Vosk",
+      "flavor": "Bellows a rallying war-cry that pumps the whole gang until you break him.",
+      "description": "A barrel-chested brigand in a scavenged breastplate and a wolf-pelt mantle, greying beard braided with coins, roaring orders while dragging a two-handed cleaver.",
+      "hp": 11,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "warcry",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "War-Cry \u2014 a held rally: the whole gang fights at +1/+1 while it holds",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "cleave",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Wide Cleave \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/ambush_on_the_blackpine_road/bandit_chief-c43e0e3e.png"
+    }
+  ],
+  "tokens": {},
+  "layouts": {
+    "1": [
+      "road_cutthroat",
+      "crossbow_lurker"
+    ],
+    "2": [
+      "road_cutthroat",
+      "road_cutthroat",
+      "crossbow_lurker",
+      "knife_dancer"
+    ],
+    "3": [
+      "bandit_chief",
+      "road_cutthroat",
+      "road_cutthroat",
+      "crossbow_lurker",
+      "knife_dancer",
+      "knife_dancer"
+    ],
+    "4": [
+      "bandit_chief",
+      "road_cutthroat",
+      "road_cutthroat",
+      "road_cutthroat",
+      "crossbow_lurker",
+      "crossbow_lurker",
+      "knife_dancer",
+      "knife_dancer"
+    ]
+  }
+}

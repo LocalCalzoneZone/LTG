@@ -1,0 +1,48 @@
+{
+  "name": "The Mud Courtyard",
+  "scene": "A churned courtyard under a bruised sky, training pells leaning like drunks, banners reduced to grey rags.",
+  "scene_image": "",
+  "enemies": [
+    {
+      "id": "straw_knight",
+      "name": "Straw Knight",
+      "hp": 2,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "power": 1,
+      "description": "A straw knight in tarnished mail, hunched and wary."
+    }
+  ],
+  "tokens": {},
+  "layouts": {
+    "1": [
+      "straw_knight",
+      "straw_knight"
+    ],
+    "2": [
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight"
+    ],
+    "3": [
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight"
+    ],
+    "4": [
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight",
+      "straw_knight"
+    ]
+  }
+}

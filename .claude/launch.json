@@ -26,6 +26,18 @@
       "port": 8012
     },
     {
+      "name": "deckbuilder-alt",
+      "runtimeExecutable": ".venv/bin/ltg-deckbuilder",
+      "runtimeArgs": [
+        "--no-browser",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8013"
+      ],
+      "port": 8013
+    },
+    {
       "name": "game",
       "runtimeExecutable": ".venv/bin/ltg-game",
       "runtimeArgs": [

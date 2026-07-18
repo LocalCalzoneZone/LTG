@@ -1,0 +1,217 @@
+{
+  "name": "The Fungal Hollow",
+  "scene": "A sunless cavern where luminescent mushrooms pulse in sickly blues and greens, their spores drifting like slow snow. Roots of a long-dead tree pierce the ceiling, and a carpet of glowing mycelium webs the floor, throbbing as if breathing.",
+  "scene_image": "/art/the_fungal_hollow/scene-eed43dce.png",
+  "enemies": [
+    {
+      "id": "spore_husk",
+      "name": "Spore Husk",
+      "flavor": "A shambling wall that bursts spores when struck.",
+      "description": "A humanoid mound of rotted bark and pale fungus, cap-mushrooms sprouting from its shoulders, leaking green dust with every lurching step.",
+      "hp": 6,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "spore_burst",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Spore Burst \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_fungal_hollow/spore_husk-0f46398a.png"
+    },
+    {
+      "id": "myco_shaman",
+      "name": "Myconid Shaman",
+      "flavor": "Channels a spore-cloud rite that wilts the party every turn.",
+      "description": "A tall, stalk-legged myconid with a broad domed cap of violet gills, waving frond-like arms that trail a shimmering haze of poisonous motes.",
+      "hp": 18,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "spore_rite",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Spore Rite \u2014 a held cloud: 2 damage every turn and the party fights at -1/-0",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "regrow",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "wounded_ally",
+          "telegraph": "Regrow \u2014 heal the most wounded ally 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_fungal_hollow/myco_shaman-7fe04554.png"
+    },
+    {
+      "id": "cap_stalker",
+      "name": "Cap Stalker",
+      "flavor": "A darting harasser that saps a hero's turn.",
+      "description": "A crouched, spindly creature with a mottled cap pulled low like a hood, long hooked arms, scuttling sideways on splayed root-toes.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "numbing_touch",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 28,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Numbing Touch \u2014 stun a hero (loses a turn)",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "slink",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Slink into the spores"
+        }
+      ],
+      "image": "/art/the_fungal_hollow/cap_stalker-72800102.png"
+    },
+    {
+      "id": "spore_launcher",
+      "name": "Sporeback Launcher",
+      "flavor": "Lobs bursting caps from the back rank.",
+      "description": "A bloated fungal beast with a cratered dorsal cap that periodically coughs out glowing spore-pods, its stubby legs anchored in the mycelium mat.",
+      "hp": 6,
+      "power": 2,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "spore_volley",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 32,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Spore Volley \u2014 deal 3",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_fungal_hollow/spore_launcher-6ff5f6b1.png"
+    }
+  ],
+  "tokens": {},
+  "layouts": {
+    "1": [
+      "spore_husk",
+      "cap_stalker"
+    ],
+    "2": [
+      "spore_husk",
+      "spore_husk",
+      "cap_stalker",
+      "spore_launcher"
+    ],
+    "3": [
+      "spore_husk",
+      "spore_husk",
+      "myco_shaman",
+      "cap_stalker",
+      "spore_launcher",
+      "spore_launcher"
+    ],
+    "4": [
+      "spore_husk",
+      "spore_husk",
+      "spore_husk",
+      "myco_shaman",
+      "cap_stalker",
+      "cap_stalker",
+      "spore_launcher",
+      "spore_launcher"
+    ]
+  }
+}

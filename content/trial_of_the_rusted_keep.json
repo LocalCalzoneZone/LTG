@@ -1,0 +1,19 @@
+{
+  "kind": "adventure",
+  "name": "Trial of the Rusted Keep",
+  "flavor": "A quick sparring run \u2014 three rooms, paper-thin foes. (Playtest fixture.)",
+  "acts": [
+    {
+      "narration": "You push through the splintered gate. Beyond, straw dummies in rusted mail shamble forward \u2014 the keep is testing you.",
+      "encounter_id": "trial_of_the_rusted_keep__act1"
+    },
+    {
+      "narration": "You cross the mud where a garrison once drilled. More dummies rise, moving quicker now, blades notched but earnest.",
+      "encounter_id": "trial_of_the_rusted_keep__act2"
+    },
+    {
+      "narration": "You step into the rusted hall. On the dais, the old tourney armour drags itself upright and levels a bent lance at you.",
+      "encounter_id": "trial_of_the_rusted_keep__act3"
+    }
+  ]
+}

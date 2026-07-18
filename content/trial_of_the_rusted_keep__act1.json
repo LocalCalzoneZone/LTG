@@ -1,0 +1,48 @@
+{
+  "name": "The Splintered Gate",
+  "scene": "A rain-rotted palisade gate hangs off one hinge; torchlight gutters in the puddles between broken cart wheels.",
+  "scene_image": "",
+  "enemies": [
+    {
+      "id": "straw_guard",
+      "name": "Straw Guard",
+      "hp": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "power": 1,
+      "description": "A straw guard in tarnished mail, hunched and wary."
+    }
+  ],
+  "tokens": {},
+  "layouts": {
+    "1": [
+      "straw_guard",
+      "straw_guard"
+    ],
+    "2": [
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard"
+    ],
+    "3": [
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard"
+    ],
+    "4": [
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard",
+      "straw_guard"
+    ]
+  }
+}
