@@ -180,14 +180,11 @@ class CharacterState:
     mana_colors: List[str] = field(default_factory=list)  # one per capacity slot
     pool: List[str] = field(default_factory=list)        # spendable mana this turn
     channels: List[Channel] = field(default_factory=list)
-    # Position model (Design Update 02 §M-B). `row` is the *current* (physical) row —
-    # what intents and the melee wall read; it changes only at End step. `committed`
-    # is what this character's OWN actions/reactions read (Mitigate adjacency); forced
-    # moves write it immediately. `pending_voluntary` holds a chosen Move's destination,
-    # resolved into `row` at End step (it grants no reach mid-turn).
+    # Position (Design Update 15 §L-1): the single live row. Moves resolve live —
+    # action-bound moves (melee lunge, ally-Mitigate dash) write it as the action
+    # hits the stack; a voluntary Move writes it when its stack item resolves.
+    # Everything (reach, Mitigate adjacency, the wall, intents) reads this value.
     row: str = "front"
-    committed: str = "front"
-    pending_voluntary: Optional[str] = None
 
     # Unified HP model (Design Update R-7): damage reduces `hp` directly; `temp_mod`
     # is the net of end-of-turn pump (+) / wound (−) modifiers and expires at End.
@@ -364,6 +361,13 @@ class Intent:
     target_id: Optional[str]  # combatant the intent points at (resolved at declare)
     kind: str = "action"    # "action" | "move" (Move declares a destination row)
     move_to: Optional[str] = None  # destination row for a Move intent (§F-7.3)
+    # The attack mode this intent was declared with (melee | ranged), for a basic
+    # attack — read by the §L-3 re-check (only melee intents redirect). None for
+    # component telegraphs / Moves.
+    attack_mode: Optional[str] = None
+    # A POSITIONAL intent (§L-5): aimed at a row, not a combatant. `target_id` is
+    # None; occupancy is read at resolution, so vacating the row dodges it.
+    target_row: Optional[str] = None
     source_component: Optional[str] = None  # component that declared it (cooldown bookkeeping)
     # The basic attack's BASE Power (pre-bonus), for a default-attack intent. The
     # damage it actually deals is `max(0, attack_power + enemy.power_bonus)`, computed
@@ -423,6 +427,12 @@ class Component:
     target_rule: str = "valuation"       # self | lowest_hp_ally | valuation | channeling_player | ...
     telegraph: str = ""                  # intent text shown in the Intents list (proactive)
     move_home: bool = False              # a repositioning rule (Evasive/§F-7.3) declares a Move
+    # A positional component (§L-5): its intent aims at this ROW, not a combatant
+    # (no target pick, taunt ignored, declares even into an empty row). Its verbs
+    # should carry row-scoped targets ({"mode": "all", "side": "ally", "rows":
+    # [<row>]}) so resolution reads occupancy live. action_type "attack" makes the
+    # swipe Mitigate-answerable.
+    target_row: Optional[str] = None
     # Boss phase gate (§F-9): None = always; "pre_enrage" = only before the boss
     # enrages; "post_enrage" = only after. Meaningless (ignored) on non-bosses.
     phase: Optional[str] = None
@@ -453,13 +463,9 @@ class EnemyState:
     power: int = 0
     row: str = "front"
     attack_mode: str = "melee"  # melee | ranged (R-1) — enemy attacks are classified too
-    # Position model, mirroring the character (Design Update 04 §F-2 / Update 02 §M-B):
-    # `row` is the current physical row (what intents/the melee wall read; changes only
-    # at End step); `committed` is what this enemy's own actions read; `pending_voluntary`
-    # holds a declared Move's destination, resolved into `row` at End step. `home_row`
+    # Position (Design Update 15 §L-1 / §L-2.3): the single live row — a Move
+    # intent relocates the body when it executes in the Enemy step. `home_row`
     # is the spawn/redeploy row its Move behavior regresses toward.
-    committed: str = "front"
-    pending_voluntary: Optional[str] = None
     home_row: str = "front"
     intent: Optional[Intent] = None
     # Boss fury (§D9-4): after enrage a boss declares TWO intents per round; the
@@ -591,6 +597,10 @@ class StackItem:
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
     x: int = 0                  # the X chosen at cast (0 for a non-X card)
     attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
+    # A positional intent's row (§L-5): the item strikes every character standing
+    # in this row when it RESOLVES (target_id stays None). Read by Mitigate
+    # legality (a struck character may answer) and the whiff log.
+    target_row: Optional[str] = None
     # Base (pre-bonus) Power of a basic attack. The damage it deals is recomputed at
     # RESOLUTION as max(0, attack_power + source.power_bonus) — so a wound/anthem landing
     # while the swing sits on the stack changes what lands (R-7). None for spells/abilities.

@@ -634,13 +634,13 @@ def _shove(cid="shove", direction="back", side="enemy"):
                    "target": {"mode": "chosen", "side": side, "targeted": True}}])
 
 
-def test_forced_move_is_immediate_current_and_committed():
+def test_forced_move_is_immediate():
     st = _state([_char("p", hand=1, library=[_shove()])],
                 [_enemy("bruiser", hp=10)])
     st = _do(st, "cast", card_id="shove", target_id="bruiser")
     st = _do(st, "pass")
     b = st.enemy("bruiser")
-    assert b.row == "mid" and b.committed == "mid"   # the body moves NOW
+    assert b.row == "mid"                            # the body moves NOW (§L-1)
 
 
 def test_shoving_the_wall_opens_melee_reach_this_turn():
@@ -651,7 +651,7 @@ def test_shoving_the_wall_opens_melee_reach_this_turn():
     assert not _has(st, "attack", target_id="artillery")
     st = _do(st, "cast", card_id="shove", target_id="wall")
     st = _do(st, "pass")
-    st.enemy("wall").row = st.enemy("wall").committed = "rear"  # push it all the way
+    st.enemy("wall").row = "rear"                    # push it all the way
     assert _has(st, "attack", target_id="artillery")            # the wall is open
 
 
@@ -696,7 +696,7 @@ def test_enemy_hooker_drags_a_hero_to_the_front():
                 tweak=lambda s: s.enemy("hooker").components.append(hooker))
     st = _drive_turn(st)
     mage = st.character("mage")
-    assert mage.row == "front" and mage.committed == "front"
+    assert mage.row == "front"
 
 
 # ========================================================================== #

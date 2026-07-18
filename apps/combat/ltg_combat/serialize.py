@@ -97,6 +97,8 @@ def intent_category(intent) -> str:
         return "threat"
     if getattr(intent, "kind", "action") == "move":
         return "manoeuvre"
+    if getattr(intent, "target_row", None):
+        return "row assault"    # §L-5 positional intent: aimed at a row outright
     kinds = [getattr(e, "kind", None) for e in intent.effects]
     if "charge" in kinds:
         return "gathering"
@@ -130,7 +132,9 @@ def _veiled_entry(state: GameState, enemy, intent, status: str, reveal: str,
     category = intent_category(intent) if intent is not None else "none"
     target_id = intent.target_id if intent is not None else None
     target_name = _name_of(state, target_id)
-    line = _veiled_line(enemy, category, target_id, target_name, status, slot)
+    target_row = getattr(intent, "target_row", None) if intent is not None else None
+    line = _veiled_line(enemy, category, target_id, target_name, status, slot,
+                        target_row=target_row)
     return {
         "enemy_id": enemy.id,
         "creature_id": enemy.id,          # legacy key the client already reads
@@ -142,6 +146,9 @@ def _veiled_entry(state: GameState, enemy, intent, status: str, reveal: str,
         "status": status,                 # declared|stripped|stunned|executed|fizzled
         "reveal": reveal,
         "slot": slot,                     # 1, or 2 for a boss-fury second intent (§D9-4)
+        # A positional intent's row (§L-5): aimed at ground, not a name — the
+        # client renders the row highlight from this (target_id stays None).
+        "target_row": getattr(intent, "target_row", None) if intent is not None else None,
     }
 
 
@@ -174,7 +181,7 @@ def veiled_intents(state: GameState, enemy) -> List[Dict[str, Any]]:
 
 
 def _veiled_line(enemy, category: str, target_id, target_name,
-                 status: str, slot: int = 1) -> str:
+                 status: str, slot: int = 1, target_row=None) -> str:
     """The generic template line (§D8-1.2). Presentation only."""
     name = enemy.name
     if status == "stunned":
@@ -185,12 +192,16 @@ def _veiled_line(enemy, category: str, target_id, target_name,
     if category == "threat":
         return f"{name} threatens {tname}."
     if category == "spellcraft":
+        if target_row is not None:  # a positional spell names its ground (§L-5)
+            return f"{name} begins casting a spell at the {target_row} of your party."
         if target_id is not None:
             return f"{name} begins casting a spell at {tname}."
         return f"{name} begins casting a spell."
     if category == "party assault":
         return f"{name} prepares an assault on your whole party."
     if category == "row assault":
+        if target_row is not None:  # §L-5: the telegraph IS the floor circle
+            return f"{name} prepares an assault on the {target_row} of your party."
         return f"{name} prepares an assault on a row of your party."
     if category == "gathering":
         return f"{name} gathers its power."
@@ -287,8 +298,6 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "level": char.level,
         "capacity": char.capacity,
         "row": char.row,
-        "committed": char.committed,
-        "pending_voluntary": char.pending_voluntary,
         "mitigate_value": _mitigate_value(char),
         "temp_mod": char.temp_mod,
         "prevent_pool": char.prevent_pool,
@@ -383,6 +392,7 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
             "amount": enemy.intent.attack_damage(enemy.power_bonus),
             "target_id": enemy.intent.target_id,
             "target_name": _name_of(state, enemy.intent.target_id),
+            "target_row": enemy.intent.target_row,  # §L-5 positional aim
         }
     intent2 = None
     if enemy.intent2 is not None:  # boss fury (§D9-4): the second declared intent
@@ -391,6 +401,7 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
             "amount": enemy.intent2.attack_damage(enemy.power_bonus),
             "target_id": enemy.intent2.target_id,
             "target_name": _name_of(state, enemy.intent2.target_id),
+            "target_row": enemy.intent2.target_row,  # §L-5 positional aim
         }
     return {
         "id": enemy.id,

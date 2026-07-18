@@ -175,6 +175,14 @@ def t_all(side: str, exclude_self: bool = False) -> TargetDescriptor:
     return TargetDescriptor(mode=TargetMode.all, side=Side(side), exclude_self=exclude_self)
 
 
+def t_row(side: str, row: str) -> TargetDescriptor:
+    """A row-scoped 'all' target — the footprint of a positional intent (§L-5)
+    or any §D9-3.2 row shape: everything on `side` standing in `row`, read at
+    resolution. Untargeted, so hexproof does not shelter from it (ground effects
+    hit the ground)."""
+    return TargetDescriptor(mode=TargetMode.all, side=Side(side), rows=[Row(row)])
+
+
 # --------------------------------------------------------------------------- #
 # Action classification (the stack vocabulary)
 # --------------------------------------------------------------------------- #
@@ -343,12 +351,12 @@ StatValue = Union[int, Ref]
 # rule. Retired keywords are kept here but can't be granted.
 # --------------------------------------------------------------------------- #
 KEYWORDS = {
-    "flying": {"display": "Flying", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1)", "grantable": True, "params": []},
+    "flying": {"display": "Flying", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1); transparent to the melee wall — it never shields allies and cannot interpose (L-4)", "grantable": True, "params": []},
     "reach": {"display": "Reach", "gloss": "its melee may strike flyers, and pins an enemy melee-flyer to rows not behind it (R-1)", "grantable": True, "params": []},
     "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
     "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
-    "haste": {"display": "Haste", "gloss": "may take its proactive action and also make a free voluntary move this turn (the move still resolves at End step)", "grantable": True, "params": []},
+    "haste": {"display": "Haste", "gloss": "may take its proactive action and also make a free voluntary move this turn — live, though never while its own action is unresolved (L-6.1)", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
@@ -356,6 +364,8 @@ KEYWORDS = {
     "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
     "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
     "protection": {"display": "Protection", "gloss": "prevents the next spell or attack", "grantable": True, "params": ["from"]},
+    # Enemy-only (§L-6.2) — authored on enemy JSON, never granted by player cards.
+    "relentless": {"display": "Relentless", "gloss": "its intents never redirect — they pursue the declared target wherever it stands (L-6.2); enemy-only", "grantable": False, "params": []},
     # Retired — not grantable.
     "menace": {"display": "Menace", "gloss": "", "grantable": False, "params": []},
     "ward": {"display": "Ward", "gloss": "", "grantable": False, "params": []},
@@ -1357,9 +1367,11 @@ MAX_POWER_BOUGHT = 2  # per level (T5-14 / T-60)
 MAX_KEYWORDS = 1     # §P-3 one keyword at creation                  T5-06
 
 # Buyable keyword costs (§P-3, T5-07..13). The set is deliberately narrow.
+# Haste 15 → 20 (Update 15 §L-6.1): the free move is live now — act, then
+# genuinely be somewhere else — vigilance-tier turn economy.
 CREATION_KEYWORD_COST = {
     "reach": 5, "trample": 10, "first_strike": 15, "lifelink": 15,
-    "haste": 15, "vigilance": 20, "flying": 25,
+    "haste": 20, "vigilance": 20, "flying": 25,
 }
 # Hard-stop at creation (§P-3, D8-2.5): may exist on enemies / via gear later,
 # never bought — infect reaches a hero only by being granted.

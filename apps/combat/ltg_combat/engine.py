@@ -42,6 +42,7 @@ from ltg_core.schema import (
     Timing,
     slot_name,
     t_chosen,
+    t_row,
 )
 
 from .state import (
@@ -263,9 +264,6 @@ def _begin_turn(st: GameState) -> None:
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
-        c.committed = c.row  # Update 02 §M-B.5: begin the turn committed to where you stand
-    for e in st.enemies:
-        e.committed = e.row  # enemies use the same position model (§F-2)
     for pending in list(st.pending_ramp):
         char = st.character(pending["char"])
         if char is not None:
@@ -307,8 +305,6 @@ def _tick_stirring(st: GameState) -> None:
         e.intent = e.intent2 = None
         e.in_hand = e.exiled = False
         e.row = corpse.row
-        e.committed = corpse.row
-        e.pending_voluntary = None
         for kw, dur in list(e.keywords.items()):
             if dur not in ("", "permanent", "encounter"):
                 del e.keywords[kw]
@@ -580,7 +576,7 @@ def _deploy_reserve(st: GameState, eid: str) -> Optional[str]:
     if e is None:
         return None
     e.reserve = False
-    e.row = e.committed = e.home_row
+    e.row = e.home_row
     return e.name
 
 
@@ -753,6 +749,27 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
         e.intent = None
         _log(st, "pacified", f"{e.name} can't attack and declares nothing.", enemy=e.id)
         return
+    row = tmpl.get("target_row")
+    if row is not None:
+        # A positional attack template (§L-5): the enemy's basic swing is aimed
+        # at a ROW, not a name — no target pick, no reach requirement (an empty
+        # row is a legal aim; the whiff is the dodge working). `attack_power`
+        # carries the base so a wound landing after declaration still blunts
+        # what lands on every body in the row (R-7).
+        base = int(tmpl.get("amount", e.power))
+        name = tmpl.get("name", f"{e.name} Attack")
+        kind = "attack" if tmpl.get("intent_type", "attack") == "attack" \
+            else tmpl.get("action_type", "ability")
+        e.intent = Intent(name=name, action_type=kind,
+                          effects=[DealDamage(amount=base, target=t_row("ally", row))],
+                          target_id=None, target_row=row, attack_power=base,
+                          attack_mode=tmpl.get("mode", e.attack_mode))
+        e.round_intent = e.intent
+        e.round_intent_status = "declared"
+        _log(st, "intent_declared",
+             f"{e.name} declares {name} ({base} dmg) aimed at your {row} row.",
+             enemy=e.id, intent=name, amount=base, target_row=row)
+        return
     target, mode, amount, name = _choose_enemy_attack(st, e)
     if target is None:
         dest = _move_toward_reach(st, e)  # §F-7.3: step toward reach instead of idling
@@ -777,7 +794,7 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
     src_tmpl = tmpl if mode == tmpl.get("mode", "melee") else e.ranged_template
     base = int(src_tmpl.get("amount", 0))
     e.intent = Intent(name=name, action_type=kind, effects=effects, target_id=target.id,
-                      attack_power=base)
+                      attack_power=base, attack_mode=mode)
     e.round_intent = e.intent
     e.round_intent_status = "declared"
     _log(st, "intent_declared",
@@ -904,7 +921,7 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
         cands = [c for c in st.corpses if not c.is_boss and c.stirring <= 0]
         if not cands:
             return None
-        return sorted(cands, key=lambda c: (abs(_row_rank(c.row) - _row_rank(e.committed)),
+        return sorted(cands, key=lambda c: (abs(_row_rank(c.row) - _row_rank(e.row)),
                                             _row_rank(c.row), c.level, c.name))[0]
     if rule == "channeling_player":
         return _lowest_hp([c for c in st.living_party() if c.channels])
@@ -1039,6 +1056,33 @@ def _rank_valuation(cands: List, dmg: int):
     return sorted(cands, key=lambda c: (_role_rank(c), c.effective_hp, _row_rank(c.row), c.name))[0]
 
 
+def _row_scope_verbs(verbs, row: str):
+    """Normalise a positional component's verbs onto the row footprint (§L-5):
+    every hostile verb lands on ALL characters in the named row (a `t_row`
+    all-mode target, read at resolution — that is what makes the swipe
+    dodgeable), while self-aimed verbs (a rider like "and gains +1/+1") keep
+    their target. Verbs already row-scoped by the author pass through unchanged;
+    conditional bodies are normalised recursively."""
+    scope = t_row("ally", row)
+    out = []
+    for v in verbs:
+        desc = getattr(v, "target", None)
+        if desc is None and not hasattr(v, "target"):
+            if getattr(v, "kind", None) == "conditional":
+                v = v.model_copy(update={
+                    "effects": _row_scope_verbs(v.effects, row)})
+            out.append(v)
+            continue
+        mode = getattr(desc, "mode", None)
+        if mode == TargetMode.self_:
+            out.append(v)                     # a self rider stays a self rider
+        elif mode == TargetMode.all and getattr(desc, "rows", None):
+            out.append(v)                     # author already scoped it
+        else:
+            out.append(v.model_copy(update={"target": scope}))
+    return out
+
+
 def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Optional[Intent]:
     """Build this component's intent if it is eligible and has a target; else None (the
     priority pass moves on). Movement/repositioning rules are declared in §F-7.3."""
@@ -1046,9 +1090,21 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
         return None
     if comp.move_home:  # an Evasive/repositioning rule declares a Move (§F-7.3)
         dest = _reposition_row(st, e, comp)
-        if dest is None or dest == e.committed:
+        if dest is None or dest == e.row:
             return None  # already where it wants to be — skip to the next rule
         return _move_intent(comp.telegraph or "Reposition", dest, comp.id)
+    if comp.target_row is not None:
+        # A POSITIONAL intent (§L-5): aimed at a row, not a combatant — no target
+        # pick, taunt ignored, and it declares even into an empty row (players may
+        # yet move; the whiff is the dodge working). action_type "attack" keeps
+        # the swipe Mitigate-answerable on the stack. Verbs are normalised onto
+        # the row footprint so the author needn't hand-write the scope.
+        name = comp.telegraph or comp.archetype or "Ability"
+        kind = comp.action_type if comp.action_type in ("attack", "spell") else "ability"
+        return Intent(name=name, action_type=kind,
+                      effects=_row_scope_verbs(comp.verbs, comp.target_row),
+                      target_id=None, target_row=comp.target_row,
+                      source_component=comp.id)
     if _swarm_at_cap(st, e, comp):
         return None  # already at the per-creator token cap — skip (attack instead, §F-4)
     target = _component_target(st, e, comp)
@@ -1067,8 +1123,9 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
 # Enemy movement (Design Update 04 §F-7.3; position model per §F-2 / Update 02)
 # --------------------------------------------------------------------------- #
 def _move_intent(name: str, dest: str, comp_id: Optional[str]) -> Intent:
-    """A Move intent: no stack action, no reaction window — it queues a destination row
-    that resolves at End step. Its "target" is the row, carried on `move_to`."""
+    """A Move intent: no stack action, no reaction window — the body relocates LIVE
+    when the intent executes in the Enemy step (§L-2.3). Its "target" is the row,
+    carried on `move_to`."""
     return Intent(name=name, action_type="ability", effects=[], target_id=None,
                   kind="move", move_to=dest, source_component=comp_id)
 
@@ -1076,7 +1133,7 @@ def _move_intent(name: str, dest: str, comp_id: Optional[str]) -> Intent:
 def _reposition_row(st: GameState, e: EnemyState, comp: Component) -> Optional[str]:
     """Where a repositioning rule sends the enemy — its home row (Evasive retreats to
     the safe row it lives on, §F-2/§F-8 Bloodbat). Returns None if already home."""
-    return e.home_row if e.home_row != e.committed else None
+    return e.home_row if e.home_row != e.row else None
 
 
 def _move_toward_reach(st: GameState, e: EnemyState) -> Optional[str]:
@@ -1088,7 +1145,77 @@ def _move_toward_reach(st: GameState, e: EnemyState) -> Optional[str]:
         return None
     front = min(_row_rank(c.row) for c in party)
     dest = next((r for r, rank in _ROW_RANK.items() if rank == front), "front")
-    return dest if dest != e.committed else None
+    return dest if dest != e.row else None
+
+
+def _redirectable(e: EnemyState, intent: Optional[Intent]) -> bool:
+    """§L-3: only a nominal MELEE basic-attack intent re-targets — from an attacker
+    that is neither flying (its melee ignores the wall going in, so nothing can
+    interpose) nor relentless (it pursues the declared target, §L-6.2). Ranged
+    intents, component telegraphs, Moves and positional intents never redirect."""
+    if intent is None or intent.kind != "action" or intent.action_type != "attack":
+        return False
+    if intent.target_id is None or intent.target_row is not None:
+        return False
+    mode = intent.attack_mode or e.attack_mode
+    return (mode == "melee" and not _has_kw(e, "flying")
+            and not _has_kw(e, "relentless"))
+
+
+def _recheck_intents(st: GameState) -> None:
+    """The canonical §L-3 re-check, run after EVERY occupancy change (a resolved
+    Move, a melee lunge, an ally-Mitigate dash, a forced-move effect, an enemy
+    Move intent). A nominal melee intent whose target is no longer in the
+    attacker's legally-reachable (front-most grounded) row redirects onto that
+    row's best target by the same §F-7.2 valuation that declared it — so dodging
+    works only by interposition: with no body in front, the front-most row is
+    wherever the target now stands and the intent simply follows. A reachable
+    taunter still pins the sword. A dead target is left in place (fizzle at
+    execution, as ever); ally-token intents re-check symmetrically."""
+    for e in st.living_enemies():
+        for intent in (e.intent, e.intent2):
+            if not _redirectable(e, intent):
+                continue
+            cur = st.character(intent.target_id)
+            if cur is None or not cur.alive:
+                continue  # death is fizzle-at-execution, never redirect
+            legal = _reachable_targets(e, st.living_party())
+            if not legal or cur in legal:
+                continue  # still reachable (or nothing is): the intent holds
+            new = None
+            if e.taunted_by is not None:  # taunt binds the sword while reachable
+                new = next((c for c in legal if c.id == e.taunted_by), None)
+            if new is None:
+                new = _rank_valuation(legal, intent.attack_damage(e.power_bonus) or 0)
+            if new is None or new.id == intent.target_id:
+                continue
+            was = cur.id
+            intent.target_id = new.id
+            _log(st, "intent_redirect",
+                 f"{e.name}'s {intent.name} redirects — {cur.name} is covered; "
+                 f"it now falls on {new.name}.",
+                 enemy=e.id, intent=intent.name, target=new.id, was=was)
+    for t in st.living_tokens():
+        intent = t.intent
+        if (intent is None or intent.action_type != "attack"
+                or intent.target_id is None
+                or getattr(t, "attack_mode", "melee") != "melee"
+                or _has_kw(t, "flying")):
+            continue
+        cur = st.enemy(intent.target_id)
+        if cur is None or not cur.alive:
+            continue
+        legal = _reachable_targets(t, st.living_enemies())
+        if not legal or cur in legal:
+            continue
+        new = _closest_enemy(legal) if t.controlled_by is not None else _lowest_hp(legal)
+        if new is None or new.id == intent.target_id:
+            continue
+        was = cur.id
+        intent.target_id = new.id
+        _log(st, "intent_redirect",
+             f"{t.name}'s attack redirects — {cur.name} is covered; it now "
+             f"falls on {new.name}.", token=t.id, target=new.id, was=was)
 
 
 def _attack_amount(e: EnemyState, tmpl: dict) -> int:
@@ -1244,12 +1371,33 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         return
     if intent.source_component is not None:
         _start_cooldown(st, enemy, intent.source_component)
-    if intent.kind == "move":  # a Move queues a destination row, resolved at End step
-        enemy.pending_voluntary = intent.move_to
+    if intent.kind == "move":  # a Move relocates the body LIVE as it executes (§L-2.3)
+        enemy.row = intent.move_to
         _set_intent_status(enemy, intent, "executed")
-        _log(st, "enemy_move",
-             f"{enemy.name} will move to {intent.move_to} (resolves at End step).",
+        _log(st, "enemy_move", f"{enemy.name} moves to {intent.move_to}.",
              enemy=enemy.id, destination=intent.move_to)
+        _recheck_intents(st)
+        return
+    if intent.target_row is not None:
+        # A POSITIONAL intent (§L-5) aims at ground, never a name: no target
+        # legality to check, taunt ignored. Occupancy is read when the item
+        # RESOLVES — vacating the row in time is the dodge working.
+        _push(st, StackItem(kind=intent.action_type, source_id=enemy.id,
+                            source_side="enemy", label=intent.name,
+                            effects=intent.effects, target_id=None,
+                            target_row=intent.target_row,
+                            attack_mode=enemy.attack_mode,
+                            attack_power=intent.attack_power,
+                            component_id=intent.source_component))
+        _set_intent_status(enemy, intent, "executed")
+        st.priority = None  # open a fresh reaction window (party order, set in _advance)
+        st.passes = 0
+        _log(st, "intent_execute",
+             f"{enemy.name} executes {intent.name} (aimed at the "
+             f"{intent.target_row} row).",
+             enemy=enemy.id, label=intent.name, row=intent.target_row)
+        if intent.action_type == "attack":
+            _fire_event(st, "attack", enemy)
         return
     if intent.target_id is None:
         _set_intent_status(enemy, intent, "fizzled")
@@ -1263,6 +1411,15 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     if target is None or not _legal_target(target):
         _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no legal target.",
              enemy=enemy.id, label=intent.name)
+        _set_intent_status(enemy, intent, "fizzled")
+        return
+    # §L-3.1(3): a redirectable melee swing whose target is unreachable with no
+    # legal interposer left (an all-flying line, say) has nothing to land on.
+    # Every occupancy change re-ran the re-check, so this is the true final state.
+    if _redirectable(enemy, intent) and target not in _reachable_targets(
+            enemy, st.living_party()):
+        _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no path to "
+             f"{target.name}.", enemy=enemy.id, label=intent.name)
         _set_intent_status(enemy, intent, "fizzled")
         return
     # Carry the base attack Power so the damage is recomputed from the enemy's CURRENT
@@ -1323,19 +1480,11 @@ def _end_step(st: GameState) -> None:
     for c in st.party:
         c.temp_mod = c.power_bonus = c.prevent_pool = 0
         c.prevent_tags = []
-        # Update 02 §M-B.5: the body catches up — a queued voluntary move wins, else
-        # wherever forced commitments left `committed`. Then clear the voluntary slot.
-        c.row = c.pending_voluntary if c.pending_voluntary is not None else c.committed
-        c.pending_voluntary = None
         _expire_keywords(c)
     for e in st.enemies:
         e.temp_mod = e.prevent_pool = e.power_bonus = 0
         e.prevent_tags = []
         e.taunted_by = None
-        # The body catches up to a queued Move (§F-7.3 / Update 02 §M-B.5), else stays
-        # where it committed. Then clear the voluntary slot.
-        e.row = e.pending_voluntary if e.pending_voluntary is not None else e.committed
-        e.pending_voluntary = None
         _expire_keywords(e)
     for t in st.tokens:
         t.temp_mod = t.power_bonus = t.prevent_pool = 0
@@ -1694,8 +1843,15 @@ def _do_attack(st: GameState, action: Action) -> None:
         _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
     actor.acted_mode = "attack"
     actor.used_attack = True
-    if actor.attack_mode == "melee":  # Update 02 §M-B.3: stepping up commits you to Front
-        actor.committed = "front"
+    if actor.attack_mode == "melee" and actor.row != "front":
+        # §L-2.1: the lunge — a melee swing physically closes to Front the moment
+        # the attack hits the stack, before the reaction window opens. The body is
+        # really there: reactions may strike it, and the re-check can pull a
+        # pending melee intent onto the attacker (Update 15, Example 4).
+        actor.row = "front"
+        _log(st, "lunge", f"{actor.name} advances to the front row (melee lunge).",
+             character=actor.id, row="front")
+        _recheck_intents(st)
     hits = 2 if _has_kw(actor, "double_strike") else 1  # double strike: strikes twice
     effects = [DealDamage(amount=actor.current_power, target=t_chosen("enemy", targeted=True))
                for _ in range(hits)]
@@ -1779,35 +1935,42 @@ def _mitigate_value(combatant) -> int:
 
 
 def _do_move(st: GameState, action: Action) -> None:
-    """The voluntary Move: queue a destination row (Update 02 §M-B.4). It writes the
-    `pending_voluntary` slot only — it grants no reach and the body relocates at End
-    step. Costs the proactive action unless the mover has haste (then it is free)."""
+    """The voluntary Move (§L-2.2): a stack action, taken on your turn with the
+    stack clear, resolving LIVE — the body relocates at resolution and the §L-3
+    re-check runs. Reactable but uncounterable (no counter filter matches kind
+    "move" — you cannot counter footwork). Costs the proactive action unless the
+    mover has haste (then it is free); once per turn either way."""
     actor = st.character(action.actor_id)
-    actor.pending_voluntary = action.target_id  # the chosen destination row
     if not _has_kw(actor, "haste"):
         if actor.acted_mode is None:
             _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
         actor.acted_mode = "move"
-    st.priority = None
-    _log(st, "move", f"{actor.name} will move to {action.target_id} (resolves at End step).",
+    actor.used_move = True
+    _push(st, StackItem(kind="move", source_id=actor.id, source_side="party",
+                        label=f"Move to {action.target_id}", effects=[],
+                        target_id=action.target_id))
+    _open_window(st, actor.id, reactive=False)
+    _log(st, "move_declared", f"{actor.name} moves to the {action.target_id} row.",
          character=actor.id, destination=action.target_id)
 
 
 def _do_mitigate(st: GameState, action: Action) -> None:
     """The free, once-per-turn defensive reaction (Update 02 §M-A): record the
-    declared Mitigate on the answered attack (applied per hit at resolution). In ally
-    mode it forces the mitigator's committed position onto the protected ally's row."""
+    declared Mitigate on the answered attack (applied per hit at resolution). In
+    ally mode the dash is an action-bound move (§L-2.1): the mitigator physically
+    relocates to the protected ally's row as the reaction is declared."""
     actor = st.character(action.actor_id)
     actor.used_mitigate = True
     top = st.stack[-1]
     top.mitigate_by = actor.id
     top.mitigate_for = action.target_id
-    if action.target_id != actor.id:  # ally mode: interceding pulls you off position (§M-A.6)
+    if action.target_id != actor.id:  # ally mode: the dash pulls you off position (§M-A.6)
         ally = st.character(action.target_id)
-        if ally is not None:
-            actor.committed = ally.row
+        if ally is not None and actor.row != ally.row:
+            actor.row = ally.row
+            _recheck_intents(st)
         _log(st, "mitigate", f"{actor.name} mitigates for {ally.name if ally else action.target_id} "
-             f"(X={_mitigate_value(actor)}, moves to {actor.committed}).", character=actor.id,
+             f"(X={_mitigate_value(actor)}, moves to {actor.row}).", character=actor.id,
              target=action.target_id, value=_mitigate_value(actor))
     else:
         _log(st, "mitigate", f"{actor.name} mitigates (X={_mitigate_value(actor)}).",
@@ -1987,6 +2150,14 @@ def _resolve_top(st: GameState) -> StackItem:
     post-resolution reaction context — §F-7.4)."""
     item = st.stack.pop()
     _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
+    if item.kind == "move":  # a voluntary Move resolves: the body relocates NOW (§L-2.2)
+        mover = st.combatant(item.source_id)
+        if mover is not None and getattr(mover, "alive", True) and item.target_id:
+            mover.row = item.target_id
+            _log(st, "move", f"{mover.name} is now in the {item.target_id} row.",
+                 character=item.source_id, row=item.target_id)
+            _recheck_intents(st)
+        return item
     # A channeled card CAST doesn't run its effects once — it becomes a held
     # channel. The cast (kind "spell") starts it, and so does a channeled SKILL
     # (kind "activated" with `starts_channel` — the skill-stance path). Other
@@ -2010,6 +2181,13 @@ def _resolve_top(st: GameState) -> StackItem:
     if item.starts_channel:
         _start_enemy_channel(st, item)
         return item
+    if item.target_row is not None and not any(
+            c.row == item.target_row
+            for c in list(st.living_party()) + list(st.living_tokens())):
+        # A positional strike into a vacated row (§L-5): a clean whiff — the
+        # row-scoped effects below resolve over an empty set. The dodge worked.
+        _log(st, "whiff", f"{item.label} strikes the empty {item.target_row} row — "
+             "nobody was standing there.", label=item.label, row=item.target_row)
     ctx = _new_ctx(st, item)
     _resolve_effect_list(st, item, item.effects, ctx)
     return item
@@ -3367,7 +3545,7 @@ def _create_enemy_tokens(st: GameState, item: StackItem, effect) -> None:
             id=f"{effect.token_id}_{st.token_seq}",
             name=tdef.get("name", effect.token_id.replace("_", " ").title()),
             max_hp=hp, hp=hp, level=level, power=power,
-            row=row, committed=row, home_row=row, attack_mode=mode,
+            row=row, home_row=row, attack_mode=mode,
             intent_template={"name": "Strike", "amount": power, "action_type": "ability",
                              "intent_type": "attack", "targeting": "lowest_hp_party",
                              "mode": mode},
@@ -3433,9 +3611,7 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
     enemy.in_hand = True
     enemy.intent = None                       # pending intent reset — declares fresh on redeploy
     enemy.intent2 = None
-    enemy.pending_voluntary = None            # a queued Move is dropped; it re-enters at its row
     _break_enemy_channels(st, enemy, "channeler bounced")  # off-field = concentration gone
-    enemy.committed = enemy.row
     # Shed temporary modifiers (the pump/wound layers would expire at End anyway, R-7).
     enemy.temp_mod = enemy.prevent_pool = enemy.power_bonus = 0
     enemy.prevent_tags = []
@@ -3715,11 +3891,9 @@ _MOVE_TO_RANK = {"to_front": 0, "to_mid": 1, "to_rear": 2}
 
 
 def _r_move(st, item, effect, target, ctx):
-    """Forced movement (§D9-3.1): the shove is physical and immediate — it writes
-    the target's CURRENT and COMMITTED rows the moment it resolves. This is the
-    one exception to Update 02's End-Step rule (voluntary movement stays pending;
-    a forced move happens NOW, opening the wall this turn). It never invalidates
-    a declared intent — intents lock at declaration and re-check nothing."""
+    """Forced movement (§D9-3.1): the shove is physical and immediate. Under live
+    movement (§L-2) every move works this way, and the §L-3 re-check runs on it —
+    a push/pull can bend a pending melee intent by re-shaping the wall."""
     if isinstance(target, Corpse):
         _log(st, "fizzle", f"{item.label}'s move fizzles — corpses sit where they "
              "fell.", kind="move")
@@ -3735,11 +3909,9 @@ def _r_move(st, item, effect, target, ctx):
              f"it holds the {dest} row.", target=_tid(target), direction=d)
         return
     target.row = dest
-    if hasattr(target, "committed"):
-        target.committed = dest
-    _log(st, "forced_move", f"{target.name} is forced to the {dest} row "
-         f"(immediately — current and committed).",
+    _log(st, "forced_move", f"{target.name} is forced to the {dest} row.",
          target=_tid(target), row=dest, direction=d)
+    _recheck_intents(st)
 
 
 def _effect_desc(item: StackItem, effect):
@@ -3849,7 +4021,7 @@ def _raise_corpse(st: GameState, item: StackItem, corpse: Corpse,
         tok = EnemyState(
             id=f"{corpse.id}_undead{st.token_seq}", name=f"{corpse.name} (risen)",
             max_hp=hp, hp=hp, level=corpse.level, power=corpse.power,
-            row=corpse.row, committed=corpse.row, home_row=corpse.row,
+            row=corpse.row, home_row=corpse.row,
             attack_mode=corpse.attack_mode,
             intent_template={"name": "Undead Strike", "amount": corpse.power,
                              "action_type": "ability", "intent_type": "attack",
@@ -3891,7 +4063,6 @@ def _end_control(st: GameState, tok: TokenState, reason: str) -> None:
     enemy.max_hp = tok.max_hp
     enemy.power = tok.power
     enemy.row = tok.row
-    enemy.committed = tok.row
     enemy.temp_mod = enemy.power_bonus = enemy.prevent_pool = 0
     enemy.prevent_tags = []
     enemy.poison_effects, enemy.poison_counters = tok.poison_effects, tok.poison_counters
@@ -4653,9 +4824,11 @@ def _check_end(st: GameState) -> None:
                      target=e.id)
         st.result = "victory"
         _log(st, "win", "All enemies defeated — the party wins.", result="victory")
+        st.stack.clear()  # the fight is over: unresolved actions are moot
     elif not st.living_party():
         st.result = "defeat"
         _log(st, "loss", "The party is incapacitated — defeat.", result="defeat")
+        st.stack.clear()  # the fight is over: unresolved actions are moot
 
 
 # --------------------------------------------------------------------------- #
@@ -4696,7 +4869,16 @@ def _reachable_targets(attacker, defenders: List, mode: Optional[str] = None) ->
             limit = min(reach_rows)
             return [d for d in defenders if _row_rank(d.row) <= limit]
         return list(defenders)
-    front = min(_row_rank(d.row) for d in defenders)  # front-most occupied row
+    # §L-4: flyers are TRANSPARENT to the melee wall — the front-most row is
+    # computed over grounded bodies only (the attacker runs straight beneath a
+    # flyer). A flyer standing in that row is still strikable by reach.
+    grounded = [d for d in defenders if "flying" not in getattr(d, "keywords", {})]
+    if not grounded:  # an all-flying line holds no ground: only reach can strike
+        if "reach" not in akw:
+            return []
+        front = min(_row_rank(d.row) for d in defenders)
+        return [d for d in defenders if _row_rank(d.row) == front]
+    front = min(_row_rank(d.row) for d in grounded)  # front-most GROUNDED row
     cands = [d for d in defenders if _row_rank(d.row) == front]
     if "reach" not in akw:  # ground melee without reach can't hit flyers
         cands = [d for d in cands if "flying" not in getattr(d, "keywords", {})]
@@ -4880,11 +5062,13 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
             actions.append(Action("defend", actor.id, label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
         elif dslot != "removed":
             actions += _stance_actions(st, actor, "defend", dslot)
-    # Move (Update 02 §M-B.4): the proactive Move costs the action; haste makes one
-    # voluntary move free (offered alongside the normal action). Once per turn.
+    # Move (§L-2.2): a live stack action, offered only in the main phase (the
+    # stack is clear here by construction — never mid-window, never while your
+    # own action is unresolved). Costs the action; haste makes one voluntary move
+    # free (offered alongside the normal action). Once per turn.
     # A stance-removed Move is total — neither the action nor the haste free move.
     if mslot == "unchanged":
-        if actor.pending_voluntary is None and (mode is None or _has_kw(actor, "haste")):
+        if not actor.used_move and (mode is None or _has_kw(actor, "haste")):
             free = " (free, haste)" if _has_kw(actor, "haste") else ""
             for row in ("front", "mid", "rear"):
                 if row != actor.row:
@@ -4940,8 +5124,9 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
                                         f"Power {actor.current_power}){dbl}"))
     top = st.stack[-1]
     # Mitigate (Update 02 §M-A): once per turn, answers an enemy attack-type action.
-    # Self mode if it targets the actor; ally mode for an ally it targets that is in
-    # an adjacent row to the actor's COMMITTED position (§M-A.5, §M-B.2).
+    # Self mode if it targets the actor (or, for a positional swipe, if the actor
+    # stands in the struck row — §L-5); ally mode for a struck ally in a row
+    # adjacent to the actor's live position (§M-A.5 under §L-1).
     # Under a stance (§D9-2.3): 'removed' guards nobody, including yourself; a
     # replacement stays a once-per-turn reaction in the same window, its authored
     # effects resolving instead of the reduction — and what it can ANSWER follows
@@ -4953,12 +5138,14 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     if not actor.used_mitigate and top.source_side == "enemy":
         if mit_slot == "unchanged":
             if top.kind == "attack":
-                if top.target_id == actor.id:
+                struck = (lambda c: top.target_id == c.id
+                          or (top.target_id is None and top.target_row == c.row))
+                if struck(actor):
                     actions.append(Action("mitigate", actor.id, target_id=actor.id,
                                           label=f"Mitigate self (−{x} per hit)"))
                 for ally in st.living_party():
-                    if (ally.id != actor.id and top.target_id == ally.id
-                            and abs(_row_rank(actor.committed) - _row_rank(ally.row)) <= 1):
+                    if (ally.id != actor.id and struck(ally)
+                            and abs(_row_rank(actor.row) - _row_rank(ally.row)) <= 1):
                         actions.append(Action("mitigate", actor.id, target_id=ally.id,
                                               label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
         elif mit_slot != "removed":

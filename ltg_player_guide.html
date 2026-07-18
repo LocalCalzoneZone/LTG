@@ -197,22 +197,30 @@ a live resource, not a one-time setup.</p>
   <p>Melee attacks can only strike the <b>front-most occupied row</b> of a side.
   A character standing in front therefore shields everyone behind them from melee,
   for free. <b>Ranged</b> and <b>flying</b> attacks ignore the wall and reach any row.
-  Everything positional in LTG flows from this split: the wall answers melee for
-  nothing, so the threats that matter are the ones the wall can't stop.</p>
+  Flyers are <b>transparent</b> to the wall: they neither form it nor hide behind
+  their own bodies — ground melee runs straight beneath them to the first grounded
+  row. Everything positional in LTG flows from this split: the wall answers melee
+  for nothing, so the threats that matter are the ones the wall can't stop.</p>
 </div>
 
-<p>One more law worth learning early: <b>you can never dodge a declared attack</b>.
-Enemy intents lock their target when declared, and bodies physically relocate only at
-the end of the round. Moving is about <em>next</em> round — where you'll stand when the
-next set of intents is declared — never about slipping the current one.</p>
+<p>One law worth learning early: <b>movement never deletes an attack — it can only
+change who takes it</b>. Movement is <em>live</em>: your body relocates the moment a
+move resolves, and every pending melee intent immediately re-checks the board. Step
+behind a teammate and the swing meant for you <b>redirects onto whoever now holds
+the line</b>; step back with nobody covering you and it simply follows — the
+front-most row is wherever you're standing. Dodging is <em>interposition</em>: it
+needs a body willing to eat the hit. Ranged and flying intents never redirect at
+all — they stay locked on their declared target, which is exactly why Mitigate
+exists. And it cuts both ways: a rear-row tank can march to the front <em>into</em>
+a pending swing and take it off the caster's back.</p>
 
-<p>The rows themselves can be redrawn, though. <b>Shove effects</b> (§XII) move a body
-between rows the instant they resolve, and both sides have them. A shove never cancels
-a declared attack — the attacker lunges regardless — but forcing the enemy's front-liner
-back mid-turn opens their wall <em>right now</em>, putting the backline in your melee's
-reach; and an enemy hook that drags your caster to the front row makes next round's
-intents very interested in them. Where everyone stands is a negotiation held every
-round.</p>
+<p>The rows can be redrawn by force, too. <b>Shove effects</b> (§XII) move a body
+between rows the instant they resolve, and both sides have them — and because
+movement is live, a shove re-checks pending intents like any other move. Forcing
+the enemy's front-liner back mid-turn opens their wall <em>right now</em>, putting
+the backline in your melee's reach; an enemy hook that drags your caster to the
+front makes this round's swings and next round's intents very interested in them.
+Where everyone stands is a negotiation held every round.</p>
 
 <!-- ================================================================ -->
 <h2 id="round"><span class="num">II</span>The Round, Turn by Turn</h2>
@@ -225,7 +233,7 @@ round.</p>
   <tr><td class="phase">2 · Enemy Intents</td><td>Each enemy <b>declares</b> what it will do this round — you see a veiled telegraph line (§VII) naming its <em>kind</em> of move and its target, before you act.</td></tr>
   <tr><td class="phase">3 · Player Actions</td><td>Each of your characters takes their turn, in a fixed initiative order rolled once at the start of the fight.</td></tr>
   <tr><td class="phase">4 · Enemy Actions</td><td>Each enemy executes its declared intent. The action goes on the stack — you can respond (§VI).</td></tr>
-  <tr><td class="phase">5 · End Step</td><td>Until-end-of-turn effects expire (temporary HP and pumps fade), and all pending movement resolves.</td></tr>
+  <tr><td class="phase">5 · End Step</td><td>Until-end-of-turn effects expire (temporary HP and pumps fade).</td></tr>
 </table></div>
 
 <p><b>Victory</b> when every enemy is dead or exiled. <b>Defeat</b> when your whole
@@ -242,7 +250,7 @@ fight mid-round.</p>
   <tr><td class="phase">Attack</td><td>Your basic attack — damage equal to your <b>Power</b> — or an attack a card grants. Afterwards you may still act at instant speed, but cast no sorceries.</td></tr>
   <tr><td class="phase">Cast</td><td>Cast <b>sorcery</b>-speed spells — as many as your mana allows. No attack this turn.</td></tr>
   <tr><td class="phase">Defend</td><td>Your defensive stance: gain <b>+3 temporary HP</b> until end of turn.</td></tr>
-  <tr><td class="phase">Move</td><td>Reposition to any row. Free of mana; takes effect at End Step.</td></tr>
+  <tr><td class="phase">Move</td><td>Reposition to any row. Free of mana; resolves <b>live</b> (it goes on the stack, and pending melee intents re-check when you arrive). Cannot be countered.</td></tr>
 </table></div>
 
 <p><b>Free, at any time, on anyone's turn:</b> casting <b>instants</b> (limited only
@@ -363,8 +371,11 @@ effects re-check legality when they resolve and <b>fizzle</b> if the target is g
 <h2 id="intents"><span class="num">VII</span>Reading the Enemy</h2>
 
 <p>During the Enemy Intents step, each enemy telegraphs a <b>veiled</b> line: the
-<em>kind</em> of move and its locked target — never the name, the numbers, or the
-text. You'll see lines like:</p>
+<em>kind</em> of move and its current target — never the name, the numbers, or the
+text. (A melee target can still change mid-round: live movement redirects a swing
+onto whoever interposes, and the line updates the moment it happens — unless the
+enemy is <b>relentless</b>, whose intents pursue their declared target anywhere.)
+You'll see lines like:</p>
 
 <ul>
   <li><em>"The Spore Husk threatens Soren."</em> — a hostile physical move at one hero</li>
@@ -551,7 +562,7 @@ abilities use. Learn these and you can read any card in the game.</p>
   <tr><td>exile</td><td>Remove permanently — no corpse, no death trigger. Also burns corpses.</td><td>Path to Exile</td></tr>
   <tr><td>bounce</td><td>Knock a minion off the field; it returns a round later, still wounded. Buys tempo, never the win.</td><td>Unsummon</td></tr>
   <tr><td>control</td><td>An enemy fights for you, for a duration: mind control on the living, raise-dead on a corpse (§X). Never bosses.</td><td>Act of Treason / Animate Dead</td></tr>
-  <tr><td>move</td><td>Shove a creature between rows — forward, back, or to a named row. Immediate, on either side; a declared attack still lands (§I).</td><td>— (few analogues)</td></tr>
+  <tr><td>move</td><td>Shove a creature between rows — forward, back, or to a named row. Immediate, on either side; pending melee intents re-check when the body lands (§I).</td><td>— (few analogues)</td></tr>
   <tr><td>counter</td><td>Cancel an action on the stack, by filter (§VI).</td><td>Negate / Cancel</td></tr>
   <tr><td>strip_intent</td><td>Delete an enemy's declared intent — and see what it was.</td><td>targeted discard</td></tr>
   <tr><td>stun</td><td>The enemy skips its next intent.</td><td>tap down</td></tr>
@@ -692,7 +703,7 @@ baseline and buys upward:</p>
   <tr><td class="phase">+1 mana capacity</td><td>15 pts</td><td>your turn-1 mana; the curve-up builds on it</td></tr>
   <tr><td class="phase">+1 starting card</td><td>15 pts</td><td>opening-hand size</td></tr>
   <tr><td class="phase">+1 Power</td><td>10 pts</td><td>max +2 bought at creation (melee caps at 4, ranged at 3); the cap grows with adventure levels (§XVII)</td></tr>
-  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 15 · vigilance 20 · flying 25</td></tr>
+  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 20 · vigilance 20 · flying 25</td></tr>
 </table></div>
 
 <p><b>Guardrails:</b> HP ≥ 8, mana ≥ 1, cards ≥ 1, one attack mode, at most one

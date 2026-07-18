@@ -291,10 +291,11 @@ on the fallen (kill-priority incarnate), a riser or two. Exile and control are
 the party's trump cards against it — that tension is the design.
 
 ## Forced movement & row blasts (Design Update 09 §D9-3)
-The `move` verb shoves a creature between rows, IMMEDIATELY (current and
-committed): `{"kind": "move", "direction": "forward" | "back" | "to_front" |
-"to_mid" | "to_rear", "target": {"mode": "chosen", "side": "ally",
-"targeted": true}}`. It never cancels a declared intent — it is positional
+The `move` verb shoves a creature between rows, IMMEDIATELY: `{"kind": "move",
+"direction": "forward" | "back" | "to_front" | "to_mid" | "to_rear", "target":
+{"mode": "chosen", "side": "ally", "targeted": true}}`. Movement re-checks
+pending melee intents (Update 15 §L-3): a shove can re-shape the wall and
+redirect a swing, but it never cancels an intent outright — it is positional
 play, not a soft stun. Blessed patterns:
 - The HOOKER (Debilitate variant): `move` a hero `"to_front"`, cooldown 2 —
   drags the caster into the wall's reach; pairs with a front-row biter.
@@ -308,6 +309,30 @@ Row-scoped damage shapes (use them for area attacks):
   chosen target. Only the pick is targeted; the splash is incidental.
 Magnitude schedule by scope (T-55): single target = L+1 · a whole row = L per
 creature · blast / party-wide = ceil(L/2)+1 — wider is always shallower.
+
+## Positional intents — attacks aimed at a ROW (Design Update 15 §L-5)
+Put `"target_row": "front" | "mid" | "rear"` on a proactive component and its
+intent aims at GROUND, not a name: no target pick, taunt is ignored, and it
+declares even into an empty row. The telegraph names the row ("…prepares an
+assault on the front of your party") and occupancy is read when the strike
+RESOLVES — so the party dodges it by not standing there, at the price of their
+proactive actions. This is the raid-boss pattern: the glowing floor circle.
+- Verbs are auto-scoped onto the row: whatever ally-side target you write
+  (chosen or all) is normalised to the row footprint `{"mode": "all", "side":
+  "ally", "rows": [<the row>]}` — writing the footprint yourself is equally
+  fine. Self-riders stay put (a self `counters` stays on the enemy).
+- `"action_type": "attack"` makes the swipe answerable by Mitigate and attack
+  counters — use it for physical cleaves; "spell" for arcane barrages
+  (counterable by Negate-style answers).
+- Price per the T-55 row schedule (a whole row = L per creature); a positional
+  swipe that whiffs on an empty row still taxed the party's turn economy —
+  that is the design, not a bug.
+- Give it `cooldown 2` (or make it the windup detonation): every-turn row
+  nukes force a scatter-every-turn treadmill instead of a decision. Tune the
+  number so a tank CAN choose to stand in it behind Defend/Mitigate.
+- The chassis basic attack can be positional too: a legacy `intent` template
+  with `"target_row"` aims the basic swing at that row every turn (rare —
+  prefer a component with a cooldown).
 
 ## The windup (charge — Design Update 08 §D8-2.4)
 The most dramatic pattern you have besides a channel: a GATHERER visibly fills a
