@@ -288,6 +288,7 @@ def _encounter_registry() -> Dict[str, Dict[str, Any]]:
             "name": raw.get("name", eid),
             "scene": str(raw.get("scene") or ""),
             "scene_image": str(raw.get("scene_image") or ""),
+            "difficulty": str(raw.get("difficulty") or ""),
             "enemies": copy.deepcopy(raw["enemies"]),
             "tokens": copy.deepcopy(raw.get("tokens", {})),
             "layouts": copy.deepcopy(raw.get("layouts", {})) if isinstance(raw.get("layouts"), dict) else {},
@@ -303,6 +304,7 @@ def _encounter_meta(eid: str, scen: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": eid,
         "name": scen["name"],
+        "difficulty": scen.get("difficulty", ""),  # "made at" flag ("" = unstamped)
         "enemy_names": [e.get("name", "?") for e in scen["enemies"]],
         "enemy_count": len(scen["enemies"]),
         # Party sizes this encounter carries dedicated layouts for ([] == fixed
@@ -350,6 +352,7 @@ def encounter_detail(encounter_id: str) -> Optional[Dict[str, Any]]:
         "name": scen["name"],
         "scene": scen.get("scene", ""),
         "scene_image": scen.get("scene_image", ""),
+        "difficulty": scen.get("difficulty", ""),
         "enemies": copy.deepcopy(scen["enemies"]),
         "tokens": copy.deepcopy(scen["tokens"]),
         "layouts": copy.deepcopy(scen.get("layouts", {})),
@@ -404,6 +407,10 @@ def _validate_encounter(raw: Dict[str, Any]) -> Dict[str, Any]:
         "enemies": copy.deepcopy(enemies),
         "tokens": copy.deepcopy(raw.get("tokens", {})) if isinstance(raw.get("tokens"), dict) else {},
     }
+    # The difficulty the content was MADE at (llm.py stamps generation; absent
+    # for hand-authored work). A display flag only — never a rules input.
+    if str(raw.get("difficulty") or "").strip():
+        cleaned["difficulty"] = str(raw["difficulty"]).strip()
     # Parse the objective's kind first — a `waves` objective moves the
     # mini-boss coverage rule from the layouts (wave 1) to the final wave.
     objective_raw = raw.get("objective")
@@ -593,6 +600,11 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
     cleaned = _validate_encounter(raw)
     eid = encounter_id or _slug(cleaned["name"]) or "encounter"
     _carry_art_refs(cleaned, eid)
+    # "Made at" survives edits from clients that don't round-trip the field.
+    if not cleaned.get("difficulty"):
+        prev = _encounter_registry().get(eid)
+        if prev and prev.get("difficulty"):
+            cleaned["difficulty"] = prev["difficulty"]
     # An adventure act edited through this path must keep its adventure valid
     # (Act III boss constraints, §D10-4.1) — checked before anything persists.
     _check_act_edit(eid, cleaned)
@@ -648,6 +660,7 @@ def _adventure_registry() -> Dict[str, Dict[str, Any]]:
         reg[path.stem] = {
             "name": str(raw.get("name") or path.stem),
             "flavor": str(raw.get("flavor") or ""),
+            "difficulty": str(raw.get("difficulty") or ""),
             "acts": copy.deepcopy(acts),
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
             "path": path,
@@ -676,6 +689,7 @@ def _adventure_meta(aid: str, adv: Dict[str, Any]) -> Dict[str, Any]:
         "id": aid,
         "name": adv["name"],
         "flavor": adv["flavor"],
+        "difficulty": adv.get("difficulty", ""),  # "made at" flag ("" = unstamped)
         "act_names": act_names,
         "deletable": True,
         "editable": True,
@@ -703,7 +717,7 @@ def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
         acts.append({"narration": str(act.get("narration") or ""),
                      "encounter_id": eid, **enc})
     return {"id": adventure_id, "name": adv["name"], "flavor": adv["flavor"],
-            "acts": acts}
+            "difficulty": adv.get("difficulty", ""), "acts": acts}
 
 
 def _act_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
@@ -839,6 +853,8 @@ def save_adventure(raw: Dict[str, Any],
         act_entries.append({"narration": narration, "encounter_id": eid})
     wrapper = {"kind": "adventure", "name": name,
                "flavor": str(raw.get("flavor") or ""), "acts": act_entries}
+    if str(raw.get("difficulty") or "").strip():  # "made at" flag (llm.py stamps it)
+        wrapper["difficulty"] = str(raw["difficulty"]).strip()
     (LOADOUTS_DIR / f"{aid}.json").write_text(json.dumps(wrapper, indent=2))
     hidden = _adv_hidden()
     if aid in hidden:
@@ -867,6 +883,8 @@ def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, A
                 raise ValueError("every act needs a non-empty narration")
             act["narration"] = str(text)
     wrapper = {"kind": "adventure", "name": name, "flavor": flavor, "acts": acts}
+    if adv.get("difficulty"):  # the "made at" flag rides through info edits
+        wrapper["difficulty"] = adv["difficulty"]
     LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
     (LOADOUTS_DIR / f"{adventure_id}.json").write_text(json.dumps(wrapper, indent=2))
     fresh = _adventure_registry().get(adventure_id)

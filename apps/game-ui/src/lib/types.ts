@@ -422,6 +422,8 @@ export interface CharacterOption {
 export interface EncounterOption {
   id: string;
   name: string;
+  // The difficulty it was generated at ("" / absent for hand-authored).
+  difficulty?: string;
   enemy_names: string[];
   enemy_count: number;
   // Party sizes with a dedicated layout (e.g. [1,2,3,4]); [] == fixed roster.
@@ -489,6 +491,8 @@ export interface EncounterDetail {
   scene?: string;
   // Generated battle-backdrop URL (art.py); per-enemy images ride the enemy dicts.
   scene_image?: string;
+  // The difficulty it was generated at ("" / absent for hand-authored).
+  difficulty?: string;
   enemies: EnemySpec[];
   tokens: Record<string, unknown>;
   // Per-party-size rosters: {"1": [enemy ids...], ..., "4": [...]} (repeats clone).
@@ -500,6 +504,8 @@ export interface AdventureOption {
   id: string;
   name: string;
   flavor: string;
+  // The difficulty it was generated at ("" / absent for hand-authored).
+  difficulty?: string;
   act_names: string[];
   deletable: boolean;
   editable: boolean;
@@ -513,6 +519,8 @@ export interface AdventureDetail {
   id: string;
   name: string;
   flavor: string;
+  // The difficulty it was generated at ("" / absent for hand-authored).
+  difficulty?: string;
   acts: AdventureActDetail[];
 }
 // "Generate all art" queue progress (polled).

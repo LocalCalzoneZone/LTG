@@ -1170,6 +1170,9 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
             encounter = _normalize(_extract_json(reply))
             _scale_hp(encounter, difficulty)  # floor enemy HP so they aren't one-shot
             _check_layouts(encounter)         # scaling layouts for parties of 1–4
+            # Stamp the generation difficulty — a display flag the pickers and
+            # editors show ("made at hard"), never a rules input.
+            encounter["difficulty"] = difficulty
             # Art/narration data is required: the scene and every enemy's look.
             problems = []
             if not encounter["scene"]:
@@ -1414,10 +1417,12 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                 except ValueError as exc:
                     raise ValueError(f"act {i}: {exc}") from exc
                 enc["narration"] = str(act.get("narration") or "").strip()
+                enc["difficulty"] = difficulty  # display flag (see generate_encounter)
                 cleaned_acts.append(enc)
             adventure = {
                 "name": str(raw.get("name") or "Generated Adventure"),
                 "flavor": str(raw.get("flavor") or "").strip(),
+                "difficulty": difficulty,
                 "acts": cleaned_acts,
             }
             # Same gate authored content takes: per-act engine validation plus

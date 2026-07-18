@@ -8,6 +8,7 @@ import {
 } from "../lib/api";
 import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
 import { AdventurePanel } from "./AdventurePanel";
+import { DifficultyTag } from "./DifficultyTag";
 import { EncounterEditor } from "./EncounterEditor";
 import { LlmSettingsPanel } from "./LlmSettingsPanel";
 import { SettingsPanel } from "./SettingsPanel";
@@ -306,7 +307,10 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
             {encounters.map((e) => (
               <div key={e.id} className="relative flex items-center gap-3 border border-line bg-white/[0.02] p-3">
                 <div className="min-w-0 flex-1">
-                  <div className="caps-label truncate text-[11px] tracking-[0.1em] text-parch">{e.name}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="caps-label truncate text-[11px] tracking-[0.1em] text-parch">{e.name}</span>
+                    <DifficultyTag difficulty={e.difficulty} />
+                  </div>
                   <div className="truncate text-xs font-light text-mist">
                     {e.enemy_count} {e.enemy_count === 1 ? "enemy" : "enemies"}
                     {e.scales && e.scales.length > 0 &&

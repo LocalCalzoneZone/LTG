@@ -6,6 +6,7 @@ import {
   generateEncounter,
 } from "../lib/api";
 import type { SetupOptions } from "../lib/types";
+import { DifficultyTag } from "./DifficultyTag";
 import { ManaIcon } from "./Pips";
 import { IconSigil, IconX } from "./Icons";
 
@@ -232,6 +233,7 @@ export function NewGameModal({ onClose, onStarted }: {
                           onChange={() => setPick({ kind: "encounter", id: e.id })}
                         />
                         <span className="truncate font-normal text-parch">{e.name}</span>
+                        <DifficultyTag difficulty={e.difficulty} />
                         {e.scales && e.scales.length > 0 && (
                           <span className="caps-label ml-auto shrink-0 text-[9px] tracking-[0.1em] text-brass">
                             scales {Math.min(...e.scales)}–{Math.max(...e.scales)}
@@ -291,6 +293,7 @@ export function NewGameModal({ onClose, onStarted }: {
                           onChange={() => setPick({ kind: "adventure", id: a.id })}
                         />
                         <span className="truncate font-normal text-parch">{a.name}</span>
+                        <DifficultyTag difficulty={a.difficulty} />
                       </div>
                       {a.flavor && (
                         <div className="truncate pl-6 text-xs font-light italic text-mist">{a.flavor}</div>

@@ -4,6 +4,7 @@ import { roman } from "../lib/format";
 import type { ComponentSpec, EncounterDetail, EnemySpec, Row } from "../lib/types";
 import { ArtControls } from "./ArtControls";
 import { ArtQueueButton } from "./ArtQueueButton";
+import { DifficultyTag } from "./DifficultyTag";
 
 // Mirrors the server's _slug (ltg_combat.scenario): how an enemy without an
 // explicit id resolves for art calls.
@@ -167,7 +168,10 @@ export function EncounterEditor({ initial, onSaved, onCancel }: {
       {/* Name + scene */}
       <div className="flex flex-wrap gap-3">
         <label className="flex min-w-[220px] flex-1 flex-col gap-1">
-          <span className={label}>Encounter name</span>
+          <span className="flex items-center gap-2">
+            <span className={label}>Encounter name</span>
+            <DifficultyTag difficulty={initial?.difficulty} />
+          </span>
           <input className={field} value={name} onChange={(e) => setName(e.target.value)}
                  placeholder="e.g. Bandit Ambush" />
         </label>
