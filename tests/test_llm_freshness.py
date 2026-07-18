@@ -32,10 +32,13 @@ def test_instructions_offer_a_breadth_of_theme_examples():
 
 
 def _fake_library(monkeypatch, encounters, adventures):
+    # encounters/adventures may be bare names (str) or full metas (dict).
+    def meta(n, extra):
+        return n if isinstance(n, dict) else {"name": n, **extra}
     monkeypatch.setattr(llm.content, "list_encounters",
-                        lambda: [{"name": n} for n in encounters])
+                        lambda: [meta(n, {"enemy_names": []}) for n in encounters])
     monkeypatch.setattr(llm.content, "list_adventures",
-                        lambda: [{"name": n} for n in adventures])
+                        lambda: [meta(n, {"flavor": ""}) for n in adventures])
 
 
 def test_request_blocks_name_the_existing_titles(monkeypatch):
@@ -47,8 +50,25 @@ def test_request_blocks_name_the_existing_titles(monkeypatch):
         assert "The Drowned Choir" in block
         assert "The Fungal Hollow" in block
         assert "The Drowned Cathedral of Vael" in block
-        assert "already owns" in block
+        assert "owns" in block
         assert "something NEW" in block
+
+
+def test_request_blocks_pass_enemies_and_call_out_recurring_motifs(monkeypatch):
+    """The library block ships each owner's ENEMY roster (so motifs are visible,
+    not just abstract titles) and names words that recur across it — the fix for
+    the model landing on 'glass'/'drowned' over and over."""
+    _fake_library(monkeypatch,
+                  [{"name": "The Drowned Watch",
+                    "enemy_names": ["Drowned Keeper", "Tide-Caller"]},
+                   {"name": "The Glassblower's Menagerie",
+                    "enemy_names": ["Glass Wisp", "Drowned Reaver"]}],
+                  [])
+    block = llm._request_block(_PARTY, "standard", "")
+    assert "Drowned Keeper" in block and "Glass Wisp" in block   # enemies shipped
+    assert "drowned" in block                                    # recurs (2 texts)
+    # A one-off word is NOT flagged as recurring.
+    assert "keeper" not in block.split("recur", 1)[-1]
 
 
 def test_request_blocks_stay_clean_with_an_empty_library(monkeypatch):

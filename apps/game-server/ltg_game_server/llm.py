@@ -886,27 +886,85 @@ def _signature_rolls(k: int) -> List[str]:
     return random.sample(SIGNATURE_POOL, k=min(k, len(SIGNATURE_POOL)))
 
 
-def _library_lines() -> List[str]:
-    """Prompt lines naming every encounter/adventure the player already owns.
+# Structural / filler words AND generic creature-role words stripped before
+# hunting for recurring motifs, so the callout surfaces SETTING/MOOD nouns
+# ("glass", "drowned") rather than "the" or roles like "shaman"/"stalker" that
+# recur in any theme.
+_MOTIF_STOPWORDS = frozenset("""
+the of and or to in on at for with from by into over under a an
+new act one two three first second third final lord king queen chief
+captain keeper warden guard guardian sentinel watcher knight soldier
+road watch hollow keep hall gate camp war run fight trial menagerie
+caller shaman priest priestess stalker lurker dancer cutthroat reaver
+matriarch dervish screecher hatchling wailer artisan bellows acolyte
+cultist zealot herald hound brute golem drone spawn thrall
+""".split())
 
-    Both generators append these so the model designs AWAY from the existing
-    library — without them, models converge on the same few moods and the
-    player collects five variations of one idea."""
-    encounters = [str(e.get("name") or "") for e in content.list_encounters()]
-    adventures = [str(a.get("name") or "") for a in content.list_adventures()]
+
+def _recurring_motifs() -> List[str]:
+    """Evocative words that recur ACROSS the owned library — the motifs the
+    model keeps retreading (glass, drowned, spore…). Words are stemmed to a
+    5-char prefix so "Glassblower"/"Glass Wisp" and "Drowned Keeper"/"Drowned
+    Reaver" collapse together; a stem is a motif when it appears in ≥2 distinct
+    names/enemies/flavor strings. Used to name them explicitly as things to
+    avoid — a title list alone lets the model miss the pattern."""
+    texts: List[str] = []
+    for e in content.list_encounters():
+        texts.append(str(e.get("name") or ""))
+        texts.extend(str(n) for n in (e.get("enemy_names") or []))
+    for a in content.list_adventures():
+        texts += [str(a.get("name") or ""), str(a.get("flavor") or "")]
+        texts += [str(n) for n in (a.get("act_names") or [])]
+
+    stem_texts: Dict[str, set] = {}   # 5-char stem -> {text indices it appears in}
+    stem_words: Dict[str, List[str]] = {}  # 5-char stem -> full words seen
+    for i, t in enumerate(texts):
+        for w in re.findall(r"[a-z]{4,}", t.lower()):
+            if w in _MOTIF_STOPWORDS:
+                continue
+            stem = w[:5]
+            stem_texts.setdefault(stem, set()).add(i)
+            stem_words.setdefault(stem, []).append(w)
+    motifs = [min(stem_words[s], key=len)  # display the shortest word for the stem
+              for s, idxs in stem_texts.items() if len(idxs) >= 2]
+    return sorted(set(motifs))
+
+
+def _library_lines() -> List[str]:
+    """Prompt lines describing the encounters/adventures the player already owns
+    — names PLUS their enemies / flavor, so the model sees the actual motifs,
+    not just abstract titles — and an explicit steer away from them.
+
+    Both generators append these. Without them, models converge on the same few
+    moods and the player collects five variations of one idea (glass this,
+    drowned that)."""
+    encs = content.list_encounters()
+    advs = content.list_adventures()
     lines: List[str] = []
-    if any(encounters):
-        lines.append("- The player already owns these encounters: "
-                     + "; ".join(n for n in encounters if n) + ".")
-    if any(adventures):
-        lines.append("- The player already owns these adventures: "
-                     + "; ".join(n for n in adventures if n) + ".")
-    if lines:
-        lines.append(
-            "- They are generating because they want something NEW. Choose a "
-            "theme, location, and faction clearly distinct from every title "
-            "above — no sequels, no re-skins; and if several titles share a "
-            "mood, steer far away from that mood entirely.")
+    if encs:
+        lines.append("- Encounters the player ALREADY owns (name — its enemies):")
+        for e in encs:
+            names = ", ".join(str(n) for n in (e.get("enemy_names") or []))
+            lines.append(f'  * {e.get("name")}' + (f" — {names}" if names else ""))
+    if advs:
+        lines.append("- Adventures the player ALREADY owns (name — flavor):")
+        for a in advs:
+            fl = str(a.get("flavor") or "").strip()
+            lines.append(f'  * {a.get("name")}' + (f" — {fl}" if fl else ""))
+    if not lines:
+        return lines
+
+    steer = (
+        "- They are generating because they want something NEW. Common fantasy "
+        "tropes and archetypes are welcome — this need not be strange or avant-"
+        "garde — but the specific SETTING, FACTION, and central MOTIF must read "
+        "as clearly distinct from every entry above: no sequels, no re-skins, "
+        "and if several entries share a mood, steer away from that mood entirely.")
+    motifs = _recurring_motifs()
+    if motifs:
+        steer += (" These motifs ALREADY recur across the library — do not build "
+                  "this one around any of them again: " + ", ".join(motifs) + ".")
+    lines.append(steer)
     return lines
 
 
