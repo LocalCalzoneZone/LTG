@@ -165,7 +165,7 @@ export function NewGameModal({ onClose, onStarted }: {
                 {/* auto-rows-max: rows size to the tile's content — without it
                     the browser stretch-distributes the container height and
                     squashes the portraits into clipped slivers. */}
-                <div className="scroll-thin grid min-h-0 flex-1 auto-rows-max grid-cols-2 content-start gap-2 overflow-y-auto pr-1">
+                <div className="scroll-thin grid min-h-0 flex-1 auto-rows-max grid-cols-3 content-start gap-2 overflow-y-auto pr-1">
                   {opts.characters.map((c) => {
                     const on = picked.includes(c.id);
                     return (
@@ -178,13 +178,13 @@ export function NewGameModal({ onClose, onStarted }: {
                             : "border-line bg-white/[0.02] hover:border-line2"
                         }`}
                       >
-                        {/* Full art, uncropped: the image keeps its own aspect
-                            ratio (cards vary in height rather than clipping). */}
-                        <div className="w-full bg-ink-0">
+                        {/* Uniform tiles: every portrait fills the same 3:4
+                            frame (object-cover crops the overflow). */}
+                        <div className="aspect-[3/4] w-full bg-ink-0">
                           {c.portrait ? (
-                            <img src={c.portrait} alt={c.name} className="h-auto w-full" />
+                            <img src={c.portrait} alt={c.name} className="h-full w-full object-cover object-top" />
                           ) : (
-                            <div className="flex aspect-[3/4] w-full items-center justify-center text-dimmed">
+                            <div className="flex h-full w-full items-center justify-center text-dimmed">
                               <IconSigil size={30} />
                             </div>
                           )}
