@@ -111,7 +111,7 @@ def test_baseline_gauntlet_loads_and_hashes(baseline):
     again = gauntlets.load_gauntlet("baseline-1")
     assert again["hash"] == baseline["hash"]
     assert baseline["id"] in {g["id"] for g in gauntlets.list_gauntlets()}
-    assert gauntlets.baseline_gauntlet_id() == "baseline-1"
+    assert gauntlets.baseline_gauntlet_id() == "baseline-2"
 
 
 def test_every_fixture_builds_and_plays_at_every_size(baseline, soren):
@@ -216,7 +216,7 @@ def test_card_probe_flags_the_broken_card_and_is_deterministic(soren):
     # A 9-damage 1-mana nuke shifts the duel's breaking point several rungs.
     assert v1["flag"] == "OVER"
     assert v1["marginal"]["delta_pp"] > probes.OVER_PP
-    assert v1["policy_version"] == "greedy-1.1.0"
+    assert v1["policy_version"] == "greedy-1.2.0"
     assert v1["screening_only"] is True      # quick-tier preset
     assert [r["lever"] for r in v1["ladder"]][:2] == [
         "cost +1 generic", "cost +2 generic"]
@@ -256,7 +256,7 @@ def test_heroic_probe_ultimate(baseline, soren):
 # ========================================================================== #
 # §D13-1.4 — the character probe
 # ========================================================================== #
-def test_character_probe_percentile_and_spend_audit(baseline, soren):
+def test_character_probe_percentile_heroics_and_spend_audit(baseline, soren):
     g = _small(baseline, 2)
     g["adventure"] = baseline["adventure"]
     roster = [soren, baseline["sparring_partner"]]
@@ -264,10 +264,28 @@ def test_character_probe_percentile_and_spend_audit(baseline, soren):
     assert v["kind"] == "character"
     assert set(v["roster_rates"]) == {"soren", "sparring_partner"}
     assert v["percentile"] is not None
-    assert v["attribution"]["solo"]["damage_dealt"] >= 0
+    # Attribution carries denominators so waste reads as a share.
+    solo = v["attribution"]["solo"]
+    assert {"damage_dealt", "mana_granted", "mana_wasted", "cards_cast",
+            "dead_in_hand"} <= set(solo)
+    assert v["deck_size"] == len(soren["cards"])
+    # The heroics are ISOLATED inside the character run: with-vs-without
+    # paired marginals plus usage counts.
+    assert set(v["heroics"]) <= {"skill", "ultimate"}
+    for h in v["heroics"].values():
+        assert {"marginal", "games_cast", "games", "exercised"} <= set(h)
+        assert h["marginal"]["n"] > 0
+    # The spend audit runs across a pressure ladder and self-reports when it
+    # produced no signal.
     assert set(v["spend_audit"]) == {"balanced", "greedy-hp", "greedy-power",
                                      "greedy-mana"}
-    assert v["duo_cells"] is not None        # the frozen partner cell ran
+    assert isinstance(v["spend_audit_meta"]["no_signal"], bool)
+    # The support-fair standings: solo/duo splits + the two-ally floor.
+    assert set(v["roster_solo"]) == set(v["roster_rates"])
+    assert "ally_baseline" in v and "contribution" in v
+    # Never-cast cards are named in the recommendation's caveat.
+    if any(s["games_cast"] == 0 for s in v["screening"]):
+        assert "never plays" in v["recommendation"]
 
 
 # ========================================================================== #
@@ -333,12 +351,12 @@ def test_api_surface_smoke():
     assert roster and {"id", "name", "cards", "last_verdict"} <= set(roster[0])
 
     g = client.get("/api/gauntlets").json()
-    assert g["baseline"] == "baseline-1"
-    detail = client.get("/api/gauntlets/baseline-1").json()
+    assert g["baseline"] == "baseline-2"
+    detail = client.get("/api/gauntlets/baseline-2").json()
     assert len(detail["encounters"]) == 8 and detail["has_partner"]
 
     est = client.post("/api/probes/estimate", json={
-        "kind": "card", "gauntlet_id": "baseline-1", "preset": "quick",
+        "kind": "card", "gauntlet_id": "baseline-2", "preset": "quick",
         "character_id": roster[0]["id"],
         "card_id": roster[0]["cards"][0]["id"]}).json()
     assert est["games"] > 0 and est["est_minutes"] >= 0

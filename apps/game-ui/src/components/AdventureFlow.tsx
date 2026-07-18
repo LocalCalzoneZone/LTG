@@ -150,7 +150,6 @@ type Draft = {
   starting_mana: Color[];
   starting_cards: number;
   power_bought: number;
-  keyword: string | null;
 };
 
 function draftFrom(b: BuildView): Draft {
@@ -159,18 +158,16 @@ function draftFrom(b: BuildView): Draft {
     starting_mana: [...b.starting_mana],
     starting_cards: b.starting_cards,
     power_bought: b.power_bought,
-    keyword: b.keyword,
   };
 }
 
 function draftCost(d: Draft, base: BuildView, prices: BuildPrices): number {
-  let pts =
+  return (
     ((d.hp - base.hp) / 2) * prices.hp_step +
     (d.starting_mana.length - base.starting_mana.length) * prices.mana +
     (d.starting_cards - base.starting_cards) * prices.card +
-    (d.power_bought - base.power_bought) * prices.power;
-  if (d.keyword && !base.keyword) pts += prices.keywords[d.keyword] ?? 0;
-  return pts;
+    (d.power_bought - base.power_bought) * prices.power
+  );
 }
 
 function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
@@ -285,7 +282,6 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
 }) {
   const base = row.build!;
   const [draft, setDraft] = useState<Draft>(() => draftFrom(base));
-  const [showKeywords, setShowKeywords] = useState(false);
   useEffect(() => setDraft(draftFrom(base)), [row.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const available = row.available ?? pointsPerLevel;
@@ -420,46 +416,22 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
           </span>
         </div>
 
-        {/* Keyword: one, total, ever */}
+        {/* Keyword: character creation only — shown, never bought here */}
         <div className="flex items-start gap-3 py-2">
           <span className="caps-label w-32 shrink-0 pt-1 text-[10px] tracking-[0.18em] text-mist">
             Keyword
           </span>
           {base.keyword ? (
             <span className="caps-label border border-line px-2.5 py-1 text-[10px] tracking-[0.14em] text-parch">
-              {base.keyword.replace("_", " ")} · owned
+              {base.keyword.replace("_", " ")}
             </span>
           ) : (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                onClick={() => { patch({ keyword: null }); setShowKeywords((v) => !v); }}
-                className={`caps-label border px-2.5 py-1 text-[9px] tracking-[0.14em] transition ${
-                  draft.keyword == null
-                    ? "border-brass bg-brass/15 text-brass"
-                    : "border-line text-mist hover:text-parch"
-                }`}
-              >
-                None
-              </button>
-              {(showKeywords || draft.keyword != null) &&
-                Object.entries(prices.keywords).map(([kw, cost]) => (
-                  <button
-                    key={kw}
-                    onClick={() => patch({ keyword: kw })}
-                    disabled={draft.keyword !== kw && remaining < cost}
-                    className={`caps-label border px-2.5 py-1 text-[9px] tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-30 ${
-                      draft.keyword === kw
-                        ? "border-brass bg-brass/15 text-brass"
-                        : "border-line text-mist hover:text-parch"
-                    }`}
-                  >
-                    {kw.replace("_", " ")} · {cost}
-                  </button>
-                ))}
-            </div>
+            <span className="caps-label border border-line/60 px-2.5 py-1 text-[10px] tracking-[0.14em] text-dimmed">
+              None
+            </span>
           )}
           <span className="ml-auto shrink-0 pt-1 text-xs font-light text-dimmed">
-            one per character, ever
+            set at character creation
           </span>
         </div>
 
@@ -471,7 +443,6 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
                 starting_mana: draft.starting_mana,
                 starting_cards: draft.starting_cards,
                 power_bought: draft.power_bought,
-                keyword: draft.keyword,
               })}
             disabled={remaining < 0}
             className={`chamfer-x caps-label flex-1 py-2.5 text-[11px] tracking-[0.3em] transition ${

@@ -32,7 +32,7 @@
       },
       "timing": "instant",
       "original_text": "",
-      "translated_text": "Prevent combat damage to an ally.",
+      "translated_text": "Prevent all combat damage (attacks & abilities) this turn to an ally.",
       "effects": [
         {
           "trigger": null,
@@ -208,7 +208,7 @@
       },
       "timing": "sorcery",
       "original_text": "",
-      "translated_text": "Yourself gains +0 attack and +3 temp HP this turn.",
+      "translated_text": "You gain +0 attack and +3 temp HP this turn.",
       "effects": [
         {
           "trigger": null,

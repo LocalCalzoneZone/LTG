@@ -421,8 +421,9 @@ async function renderVerdictDetail(el, id) {
       <td class="num">${deltaSpan(r.delta_pp)}</td>
       <td class="num dim">± ${r.ci95_pp}</td>
       <td>${r.in_band ? `<span class="chip vigor">in band</span>` : `<span class="chip blood">still over</span>`}</td></tr>`).join("");
-  const screening = (v.screening || []).slice(0, 12).map((s) => `
-    <tr><td>${esc(s.name)}</td>
+  const neverCast = (v.screening || []).filter((s) => s.games_cast === 0);
+  const screening = (v.screening || []).map((s) => `
+    <tr><td>${esc(s.name)}${s.games_cast === 0 ? ' <span class="chip aether">never cast</span>' : ""}</td>
       <td class="num">${s.games_seen}</td><td class="num">${s.games_cast}</td>
       <td class="num">${s.win_when_cast != null ? (100 * s.win_when_cast).toFixed(0) + "%" : "—"}</td>
       <td class="num">${s.win_when_held != null ? (100 * s.win_when_held).toFixed(0) + "%" : "—"}</td>
@@ -431,9 +432,34 @@ async function renderVerdictDetail(el, id) {
     <tr><td class="dim">${esc(c.content)}</td><td class="dim">${esc(c.difficulty)}</td>
       <td class="num dim">${c.size}</td><td class="num">${(100 * c.win_rate).toFixed(0)}%</td>
       <td class="num dim">${c.mean_rounds}</td></tr>`).join("");
+  const pct = (x) => (x == null ? "—" : (100 * x).toFixed(0) + "%");
   const roster = v.roster_rates ? Object.entries(v.roster_rates).map(([k, r]) => `
     <tr><td>${esc(k)}${k === v.subject.character_id ? ' <span class="chip brass">subject</span>' : ""}</td>
-      <td class="num">${(100 * r).toFixed(0)}%</td></tr>`).join("") : "";
+      <td class="num">${pct((v.roster_solo || {})[k])}</td>
+      <td class="num">${pct((v.roster_duo || {})[k])}</td>
+      <td class="num"><b>${pct(r)}</b></td></tr>`).join("")
+    + (v.ally_baseline != null ? `
+    <tr><td class="dim">two Training Allies (the warm-body floor)</td>
+      <td class="num dim">—</td><td class="num dim">—</td>
+      <td class="num dim">${pct(v.ally_baseline)}</td></tr>` : "") : "";
+  const heroics = v.heroics ? Object.entries(v.heroics).map(([slot, h]) => `
+    <tr><td><b>${esc(h.name)}</b> <span class="dim">(${esc(slot)})</span>
+        ${!h.exercised ? ' <span class="chip aether">never used</span>' : ""}</td>
+      <td class="num">${(100 * h.marginal.win_a).toFixed(0)}%</td>
+      <td class="num">${(100 * h.marginal.win_b).toFixed(0)}%</td>
+      <td class="num">${deltaSpan(h.marginal.delta_pp)} <span class="dim">± ${h.marginal.ci95_pp}</span></td>
+      <td class="num">${h.games_cast}/${h.games}</td>
+      <td class="num">${h.dependence != null ? (100 * h.dependence).toFixed(0) + "% of wins" : "—"}</td></tr>`).join("") : "";
+  const attrRow = (label, a, deck) => a ? `
+    <tr><td>${esc(label)}</td>
+      <td class="num">${a.damage_dealt}</td><td class="num">${a.healing_done}</td>
+      <td class="num">${a.mana_wasted} <span class="dim">of ${a.mana_granted}</span></td>
+      <td class="num">${a.cards_cast}</td>
+      <td class="num">${a.dead_in_hand} <span class="dim">of ${deck}</span></td></tr>` : "";
+  const attribution = v.attribution ? (
+    attrRow("solo", v.attribution.solo, v.deck_size || "?") +
+    attrRow("duo (with the sparring partner)", v.attribution.duo, v.deck_size || "?")) : "";
+  const spendNoSignal = v.spend_audit_meta && v.spend_audit_meta.no_signal;
   const spend = v.spend_audit ? Object.entries(v.spend_audit).map(([k, r]) => `
     <tr><td>${esc(k)}</td><td class="num">${(100 * r).toFixed(0)}%</td></tr>`).join("") : "";
   const features = (v.features || []).map((f) => `
@@ -458,17 +484,47 @@ async function renderVerdictDetail(el, id) {
         (± ${m.ci95_pp} at 95%, n ${m.n} paired cells; win ${(100 * m.win_a).toFixed(0)}% vs ${(100 * m.win_b).toFixed(0)}% ablated)
         ${v.z_vs_deck != null ? ` · z vs deck <b>${v.z_vs_deck}</b>` : ""}
         ${v.ultimate_dependence != null ? ` · ${(100 * v.ultimate_dependence).toFixed(0)}% of wins route through the ultimate` : ""}
-        ${v.percentile != null ? ` · roster percentile <b>${v.percentile}</b>` : ""}</div>` : ""}
+        ${v.percentile != null ? ` · roster percentile <b>${v.percentile}</b>` : ""}
+        ${v.contribution != null ? ` · adds <b>${v.contribution >= 0 ? "+" : ""}${(100 * v.contribution).toFixed(0)}pp</b> over the two-ally floor` : ""}</div>` : ""}
       <div class="stamp">Context: gauntlet <b>${esc(v.gauntlet.name)}</b> (hash ${esc(v.gauntlet.hash)}) ·
         policy <b>${esc(v.policy_version)}</b> · preset <b>${esc(v.preset)}</b> · ${esc(v.created)}</div>
 
       ${ladder ? `<div class="panel-title" style="margin-top:18px">The lever ladder</div>
+        <div class="caption">Each row re-runs the whole matrix with ONE change to the card;
+        the first rung that lands in band becomes the recommendation.</div>
         <table><tr><th>Lever</th><th class="num">Δ vs filler</th><th class="num">CI</th><th>Band</th></tr>${ladder}</table>` : ""}
 
-      ${roster ? `<div class="panel-title" style="margin-top:18px">Roster (identical solo cells)</div>
-        <table><tr><th>Character</th><th class="num">Win rate</th></tr>${roster}</table>` : ""}
+      ${roster ? `<div class="panel-title" style="margin-top:18px">Roster standings</div>
+        <div class="caption">Every character ran the IDENTICAL cells — alone, and beside the
+        same vanilla <b>Training Ally</b> (a zero-card body with basic actions only), so
+        ally-directed support value has somewhere to land for everyone. The combined column is
+        the league table the percentile comes from; the two-ally row is the warm-body floor a
+        character's contribution is measured against.</div>
+        <table><tr><th>Character</th><th class="num">Solo</th><th class="num">Duo (with ally)</th>
+          <th class="num">Combined</th></tr>${roster}</table>` : ""}
 
-      ${spend ? `<div class="panel-title" style="margin-top:18px">Spend-plan audit (the gauntlet run)</div>
+      ${heroics ? `<div class="panel-title" style="margin-top:18px">Skill &amp; Ultimate — isolated</div>
+        <div class="caption">The same solo cells replayed WITHOUT each heroic, on paired seeds:
+        "with − without" is what the heroic is worth by itself. "Used" counts games the bot
+        actually fired it; an unused heroic is unmeasured, not worthless.</div>
+        <table><tr><th>Heroic</th><th class="num">Win with</th><th class="num">Win without</th>
+          <th class="num">Worth</th><th class="num">Used</th><th class="num">Ultimate dependence</th></tr>${heroics}</table>` : ""}
+
+      ${attribution ? `<div class="panel-title" style="margin-top:18px">Where the games went</div>
+        <div class="caption">Per-game averages. High "mana wasted" and "cards unplayed" mean the
+        kit is not getting CAST — a castability/curve problem (or the bot's blind spot), not a
+        numbers problem; buffing card text will not move it.</div>
+        <table><tr><th>Cell</th><th class="num">Damage dealt</th><th class="num">Healing</th>
+          <th class="num">Mana wasted</th><th class="num">Cards cast</th><th class="num">Cards unplayed</th></tr>
+          ${attribution}</table>` : ""}
+
+      ${spend ? `<div class="panel-title" style="margin-top:18px">Spend-plan audit</div>
+        <div class="caption">The character replays the gauntlet's three-act adventure under each
+        LEVEL-UP SPEND PLAN (where the 30 points go between acts: balanced / all-HP / all-Power /
+        all-mana), across a pressure ladder. Flat rows = the points prices are fair for this
+        character; one dominant plan implicates the PRICE TABLE, not the character.</div>
+        ${spendNoSignal ? `<div class="stale-band">No signal — the rates saturated or came out flat
+          on this gauntlet; ignore this table for now.</div>` : ""}
         <table><tr><th>Plan</th><th class="num">Win rate</th></tr>${spend}</table>` : ""}
 
       ${features ? `<div class="panel-title" style="margin-top:18px">Generation-vocabulary attribution</div>
@@ -476,11 +532,20 @@ async function renderVerdictDetail(el, id) {
       ${(v.proposals || []).length ? `<div class="panel-title" style="margin-top:18px">Proposed register deltas (apply by hand)</div>
         <div class="copyblock">${esc(v.proposals.join("\n\n"))}</div>` : ""}
 
-      ${screening ? `<div class="panel-title" style="margin-top:18px">Deck screening — cast vs held (confounded; a ranking signal only)</div>
+      ${screening ? `<div class="panel-title" style="margin-top:18px">Deck screening — all ${(v.screening || []).length} cards</div>
+        <div class="caption">"Seen" = games the card was in hand; "Cast" = games the bot played it.
+        The cast-vs-held split is a cheap, confounded ranking signal for which cards deserve a
+        full card probe — not a verdict.
+        ${neverCast.length ? ` <b>${neverCast.length} card(s) were NEVER CAST by the bot</b> —
+        their value is invisible to every number on this page; that is the bot's vocabulary,
+        not proof the cards are bad.` : ""}</div>
         <table><tr><th>Card</th><th class="num">Seen</th><th class="num">Cast</th>
           <th class="num">Win when cast</th><th class="num">Win when held</th><th class="num">Split</th></tr>${screening}</table>` : ""}
 
       ${cells ? `<div class="panel-title" style="margin-top:18px">Cells (as-is variant)</div>
+        <div class="caption">Raw win rates per fixture × pressure rung. "standard@1.3" means
+        enemy HP and Power ×1.3 — the ladder that turns deterministic fights into a measurable
+        breaking point. ×1.0 rows are the game as shipped.</div>
         <table><tr><th>Content</th><th>Pressure</th><th class="num">Size</th><th class="num">Win</th><th class="num">Rounds</th></tr>${cells}</table>` : ""}
 
       <div class="footer-note">${esc(v.footer || "")}</div>

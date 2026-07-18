@@ -163,11 +163,12 @@ def _estimate(body: ProbeBody) -> Dict[str, Any]:
              * preset["seeds"])
     variants = {"card": 2 + (20 if preset["loo_sweep"] else 0) + 4,
                 "skill": 2, "ultimate": 2,
-                "character": max(2, len(game_content.list_characters())) + 1,
+                # roster sweep + duo + the two heroic ablations
+                "character": max(2, len(game_content.list_characters())) + 3,
                 "enemy_schema": 1}.get(body.kind, 2)
     games = cells * variants
     if body.kind == "character" and g["adventure"]:
-        games += max(10, preset["seeds"] // 4) * 4
+        games += max(3, preset["seeds"] // 8) * 4 * 4  # plans × pressure rungs
     return {"games": games, "est_minutes": round(games / 230 / 60, 1),
             "cells": cells, "variants": variants}
 

@@ -1,0 +1,108 @@
+{
+  "name": "Fixture II \u2014 The Mendicant Shrine",
+  "enemies": [
+    {
+      "id": "warden",
+      "name": "Shrine Warden",
+      "hp": 6,
+      "level": 2,
+      "power": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    },
+    {
+      "id": "mendicant",
+      "name": "Mendicant",
+      "hp": 5,
+      "level": 3,
+      "power": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "mend",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Quiet Mending \u2014 heal the most wounded ally 4"
+        },
+        {
+          "id": "scourge",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "trigger": "on_hero_healed",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Scourge of Mercy \u2014 deal 2 to the healer"
+        }
+      ]
+    },
+    {
+      "id": "thorn",
+      "name": "Thorn Acolyte",
+      "hp": 3,
+      "level": 1,
+      "power": 1,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "ranged"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "warden",
+      "mendicant"
+    ],
+    "2": [
+      "warden",
+      "warden",
+      "mendicant",
+      "thorn"
+    ],
+    "3": [
+      "warden",
+      "warden",
+      "mendicant",
+      "mendicant",
+      "thorn",
+      "thorn"
+    ],
+    "4": [
+      "warden",
+      "warden",
+      "warden",
+      "mendicant",
+      "mendicant",
+      "thorn",
+      "thorn",
+      "thorn"
+    ]
+  }
+}

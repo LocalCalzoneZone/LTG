@@ -1,6 +1,6 @@
 # Langelier Tactical Game (LTG) — Design Update 13: The Autoplay Tester — Probes, Gauntlets, and Verdicts
 
-**Status:** IMPLEMENTED 2026-07-16 (`apps/autoplay-tester/`, `tests/test_autoplay_tester.py`). The four structural decisions (§D13-7) were made by the designer 2026-07-16. Two amendments landed during implementation and are canonical: the **pressure ladder** (§D13-1.1a) replaced flat paired seeds as the probe instrument, and **`greedy-1.1.0` + the NOT-EXERCISED guard** (§D13-1.1b) replaced the launch measuring stick after it proved to play only 2 of 20 cards of a real deck. T-74/T-76 are calibrated to both (§D13-5).
+**Status:** IMPLEMENTED 2026-07-16 (`apps/autoplay-tester/`, `tests/test_autoplay_tester.py`). The four structural decisions (§D13-7) were made by the designer 2026-07-16. Two amendments landed during implementation and are canonical: the **pressure ladder** (§D13-1.1a) replaced flat paired seeds as the probe instrument, and **`greedy-1.1.0` → `greedy-1.2.0` + the NOT-EXERCISED guard** (§D13-1.1b) replaced the launch measuring stick after real decks exposed its vocabulary gaps — first damage play, then support play. T-74/T-76/T-77 are calibrated to the final stick (§D13-5).
 
 **Purpose.** One new app: the **Autoplay Tester** — a standalone playtest-lab UI over the §D12-3 harness that turns "is this card/skill/character/enemy fair?" into a measured verdict with a recommended lever. It owns three ideas:
 
@@ -31,12 +31,12 @@ A **probe** is one question about one subject, answered by paired runs over a ga
 ### D13-1.1 The paired-ablation spine
 
 - Every comparison is **A/B on identical seeds**: variant A and variant B play the same seed list, so each pair shares its shuffle and initiative. Paired design removes most run-to-run variance — card-sized effects (a few win-rate points) resolve at hundreds of seeds instead of thousands.
-- The measuring stick is the harness greedy policy (**`greedy-1.1.0`** — see §D13-1.1b), `balanced` spend, seeds `0..N-1`. Every verdict records the full context (gauntlet hash, policy version, matrix) and is comparable only within it.
+- The measuring stick is the harness greedy policy (**`greedy-1.2.0`** — see §D13-1.1b), `balanced` spend, seeds `0..N-1`. Every verdict records the full context (gauntlet hash, policy version, matrix) and is comparable only within it.
 - **Presets:** `quick` is the bench **default** (decided 2026-07-16) — a ~1-minute while-you-wait read; `thorough` is one click away, adds the full leave-one-out deck sweep, and is the bar for a verdict you'd act on. A quick verdict renders with a "screening only" sub-band so the two are never confused. The UI shows the estimated run count and time before launch.
 
 ### D13-1.1a The pressure ladder *(implementation amendment, canonical)*
 
-Playtest of the probe spine surfaced a property flat seed-sampling cannot handle: with a deterministic engine and fixed policies, a given (fixture × size × difficulty) cell sits hard against 0% or 100% — shuffle order barely moves outcomes, so paired deltas read zero everywhere. The instrument that works is the **pressure ladder**: every cell runs at each enemy HP+Power multiplier in **0.5–1.6, step 0.1** (T-77), and a probe measures each fight's **breaking point** — the rung where victory tips to defeat — rather than a win rate at one point. A card's marginal contribution is then a threshold shift ("how much harder a fight can this card win"), which registers at 0.1-multiplier resolution. Seeds stay deliberately few (the variance lives across rungs, not shuffles): `quick` = 8 seeds × 12 rungs, `thorough` = 24 seeds × 12 rungs + the deck sweep. ×1.0 is the game as shipped; the other rungs are instruments, not content.
+Playtest of the probe spine surfaced a property flat seed-sampling cannot handle: with a deterministic engine and fixed policies, a given (fixture × size × difficulty) cell sits hard against 0% or 100% — shuffle order barely moves outcomes, so paired deltas read zero everywhere. The instrument that works is the **pressure ladder**: every cell runs at each enemy HP+Power multiplier in **×0.5–×2.2, step 0.1** (T-77), and a probe measures each fight's **breaking point** — the rung where victory tips to defeat — rather than a win rate at one point. A card's marginal contribution is then a threshold shift ("how much harder a fight can this card win"), which registers at 0.1-multiplier resolution. Seeds stay deliberately few (the variance lives across rungs, not shuffles): `quick` = 8 seeds × 18 rungs, `thorough` = 24 seeds × 18 rungs + the deck sweep. ×1.0 is the game as shipped; the other rungs are instruments, not content.
 - **The combo-blindness tag.** greedy never sequences amplify→spike lines (§D12-7). Any subject whose effects include `amplify`, `double_next`, `copy_spell`, or `stance` is stamped **COMBO-BLIND** in its verdict: the harness can convict such a card of being overpowered (if it wins games even under a policy that plays it badly, it is), but can never acquit it of being weak. The report says so in those words.
 
 ### D13-1.1b `greedy-1.1.0` and the honest-verdict guard *(implementation amendment, canonical)*
@@ -45,6 +45,12 @@ Measured against a real deck, the §D12-3.3 launch ladder (`greedy-1.0.0`) cast 
 
 - **`greedy-1.1.0` supersedes the launch ladder** and is vocabulary-complete while staying fixed, scripted, and deterministic: it compares the multi-cast damage line against the basic attack instead of always preferring casts, primes an attack turn with instant self-pumps, uses the Skill (damage at kill-order; utility on round 2), starts channels early (round ≤ 3), treats destroy/bounce as removal for finishing and channel-breaking, answers windows with kill-the-attacker (first strike) and counterspells against big actions or channel starts, and sinks leftover mana in a fixed utility order (heal-the-wounded → wound → poison → draw → scry → permanent counters → regen). Under it the reference deck plays 13 of 20 cards and per-cell seed variance is real. It remains deliberately blunt: no amplify/double_next sequencing, no interception, no lookahead.
 - **The NOT-EXERCISED guard:** a card/heroic probe whose subject was cast in **zero** as-is games verdicts `NOT EXERCISED` — never IN_BAND. No measurement without exercise; the flag names the policy vocabulary as the gap.
+
+**`greedy-1.2.0` — the support pass** (driven by a real bard kit 1.1.0 could not play, and by the designer's ruling that the Tester should PLAY a character properly rather than report on its own bad play): channels start on any turn while fewer than two are held; pumps and one-shot combo primers fire on ALLIES ahead of the team's best unspent swing; a downed ally is revived on sight; window saves fire on big hits (≥ 4), not only lethal; the mana sink learns strip_intent / grant_keyword / prevent / protection / remove_keyword; **stance-replaced main abilities are played in their slots** (a held stance had silenced the bot entirely — the round-cap stall that exposed it); and a stance Skill that would DOWNGRADE the basic attack is never fired proactively. Under 1.2.0 the reference bard casts 18 of 20 cards and wins solo fights it always lost.
+
+**The Training Ally & the support-fair standings** (designer decision): every character probe runs its cells solo AND beside a frozen vanilla ally (zero cards, basic actions only, shipped in the gauntlet), for every roster member identically — plus a **two-ally floor** batch, so a character's *contribution over a warm body* is a first-class number. Support value finally has somewhere to land, like-for-like.
+
+**Saturation honesty:** when a probe's as-is win rate exceeds 85% (or falls under 15%), breaking points sit outside the pressure ladder and every delta compresses — the verdict carries a SATURATION WARNING and treats magnitudes as floors. The ladder widened to ×0.5–×2.2 (T-77) for headroom; the z-vs-deck read demoted to advisory context (near the ceiling it under-fires).
 
 Recalibrating the policy is a **stick move**: every T-74 band recalibrates with it, and verdicts from different policy versions never compare (the reader stamps and refuses silently-mixed diffs).
 
@@ -67,13 +73,15 @@ Same spine, different variants:
 - **Skill:** loadout-as-is vs. loadout with the Skill removed (the slot is optional in the schema). Marginal contribution + the lever ladder where applicable (Skills carry real mana costs; timing is already fixed by Update 11's ruling).
 - **Ultimate:** as-is vs. removed, **plus the gauge instruments** the harness already records: `ultimate_round`, `gauge_full_round`, and the share of wins in which the ultimate was cast. An Ultimate is flagged when the with/without delta exceeds the T-74 band *or* when >T-75 (default 60%) of wins route through casting it — a build that only wins through its limit break is a balance smell even if the aggregate win rate looks fair. Levers for ultimates are magnitude-side only (there is no cost to raise; the gauge is the cost), so the report recommends `amount −N` or an effect-count trim.
 
-### D13-1.4 The character probe
+### D13-1.4 The character probe *(amended after first designer playtest, 2026-07-17)*
 
 *Question: is this whole character above or below the roster's curve?*
 
 - **Roster percentile:** the character solo and paired with a fixed reference partner, over the gauntlet, vs. every other loadout the registry can see under identical cells. The verdict places the character's win rate in the roster distribution and flags outliers by the same band logic.
 - **Attribution:** damage share, healing share, mana wasted, cards dead-in-hand — the "where does the win come from" table, plus the top-3 card probe screening so the report says *which part* of the kit carries them.
-- **Points-buy audit:** the spend-plan matrix (already in the harness) run on this character — `greedy-hp` vs `greedy-power` vs `greedy-mana` vs `balanced` across acts. If one plan dominates across the board the *price table* is implicated, not the character; the report then recommends a §P-2 register delta (e.g. "Power at 10/pt underpriced for this chassis — winrate/point slope +2.1 pp vs +0.4 pp for HP") rather than a character nerf.
+- **Heroics, isolated (first-playtest amendment):** the character probe replays its own solo cells WITHOUT the Skill and WITHOUT the Ultimate, on paired seeds — with-vs-without win rates, usage counts (games the stick actually fired each), and the T-75 dependence read, all inside the one run. The separate heroic probes remain for lever work; the character verdict answers "what are they worth here" for free.
+- **Points-buy audit:** the spend-plan matrix (already in the harness) run on this character — `greedy-hp` vs `greedy-power` vs `greedy-mana` vs `balanced` across acts, **across a pressure ladder of the adventure** (first-playtest amendment: at ×1.0 alone the audit saturated at 0% and read nothing). The verdict self-reports `no_signal` when rates come out flat or saturated. If one plan dominates the *price table* is implicated, not the character.
+- **Readability rules (first-playtest amendment):** every verdict table carries a plain-language caption; the recommendation is written in full sentences with the character's own numbers inline; the deck screening shows ALL cards with never-cast rows marked (the §D13-1.1b guard's roster-level face); attribution ships denominators (mana wasted *of granted*, cards unplayed *of deck size*). A verdict a designer can't read unaided is a bug.
 
 ---
 
@@ -167,10 +175,10 @@ FastAPI on 8030. A **job queue** (probes are minutes-long): jobs run in a backgr
 | ID | value | sets |
 |---|---|---|
 | T-73 | `{1}` sorcery, deal 2, level 1 | the filler card the ablation spine substitutes |
-| T-74 | OVER > +4 pp and ≥ 2 SD; UNDER < −6 pp | probe flag bands, calibrated to the pressure ladder UNDER `greedy-1.1.0` (empirically: a reference deck reads −1.1 ± 2.3 pp — utility instants sit below the filler because vanilla damage is genuinely playable — while a deliberately broken card reads +8.6 pp, 4.2 SD out). Recalibrate on every policy version bump |
+| T-74 | OVER > +4 pp; UNDER < −4 pp (z advisory) | probe flag bands under `greedy-1.2.0`/baseline-2 (reference deck: +1.7 ± 1.9 pp). A deck's legitimate carries can flag OVER too — the lever ladder separates "strong, priceable" from "broken effect". Recalibrate on every policy version bump |
 | T-75 | 60% | ultimate dependence flag: share of wins routed through the ultimate |
 | T-76 | quick = 8 seeds × ladder / thorough = 24 × ladder + LOO sweep | probe presets |
-| T-77 | ×0.5–×1.6, step 0.1 (enemy HP + Power) | the pressure ladder (§D13-1.1a) |
+| T-77 | ×0.5–×2.2, step 0.1 (enemy HP + Power) | the pressure ladder (§D13-1.1a); widened for strong-deck headroom — widen again if any probe saturates past 85% |
 
 ---
 

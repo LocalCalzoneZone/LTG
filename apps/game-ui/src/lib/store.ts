@@ -135,6 +135,15 @@ interface StoreState {
   // The root stack uid the current Pass All commitment is bound to (null when
   // no commitment is live). A different root in a new snapshot ends it.
   passAllRootUid: number | null;
+  // Idempotency guard for the Pass All auto-submit: the signature of the last
+  // game state we already auto-passed. The server re-broadcasts state for
+  // reasons that DON'T advance the game (art refresh, a reconnect, a seat
+  // change), and each such duplicate would otherwise fire a second pass for a
+  // window already passed — the stale index racing the real one into an
+  // "action index out of range" rejection (which also cancels the commitment).
+  // Keyed off the snapshot's log high-water seq, which only moves on a real
+  // state change, so a genuine next window still auto-passes.
+  _lastAutoPassKey: string | null;
   error: string | null;
   gameOver: string | null;
 
@@ -204,6 +213,7 @@ export const useGame = create<StoreState>((set, get) => ({
   inspectId: null,
   passAllFor: [],
   passAllRootUid: null,
+  _lastAutoPassKey: null,
   error: null,
   gameOver: null,
   fx: [],
@@ -215,6 +225,7 @@ export const useGame = create<StoreState>((set, get) => ({
     get().socket?.close();
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
     set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
+          passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null,
           fx: [], departures: {}, lastLogSeq: null, _stackModes: {} });
   },
 
@@ -282,12 +293,24 @@ export const useGame = create<StoreState>((set, get) => ({
           // in the same enemy step, which the holder may still First Strike.
           const rootUid = snap.stack.length ? snap.stack[0].uid : null;
           if (rootUid === null || rootUid !== get().passAllRootUid) {
-            set({ passAllFor: [], passAllRootUid: null }); // episode ended
+            set({ passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null }); // episode ended
           } else {
             const pass = snap.legal_actions.find(
               (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
             );
-            if (pass) get().submitIndex(pass.index);
+            // Only auto-pass ONCE per real state. A re-broadcast of an
+            // already-passed window (art refresh / reconnect / seat change)
+            // carries the same log high-water seq; firing again would submit a
+            // now-stale index (→ "action index out of range"). A genuine next
+            // window advances the log, so its key differs and the pass fires.
+            const stateSeq = snap.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
+            if (pass) {
+              const key = `${rootUid}@${stateSeq}#${pass.index}`;
+              if (get()._lastAutoPassKey !== key) {
+                set({ _lastAutoPassKey: key });
+                get().submitIndex(pass.index);
+              }
+            }
             // else: a non-committed character (or another client) holds
             // priority, or a forced choice is open — wait for the player.
           }
@@ -311,7 +334,7 @@ export const useGame = create<StoreState>((set, get) => ({
           break;
         }
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [], passAllRootUid: null });
+        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null });
         break;
     }
   },
@@ -495,7 +518,11 @@ export const useGame = create<StoreState>((set, get) => ({
     }
     // Bind the commitment to the episode it was armed against (the root item).
     const rootUid = snap!.stack.length ? snap!.stack[0].uid : null;
+    // Record this window as already-passed so a re-broadcast of the SAME state
+    // (before the server processes this submit) can't fire a duplicate pass.
+    const stateSeq = snap!.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
     set({ passAllFor: [...armed, pass.actor_id], passAllRootUid: rootUid,
+          _lastAutoPassKey: `${rootUid}@${stateSeq}#${pass.index}`,
           armed: null, chooseModeFor: null });
     get().submitIndex(pass.index);
   },

@@ -1,0 +1,26 @@
+{
+  "name": "baseline-2",
+  "created": "2026-07-17",
+  "frozen": true,
+  "notes": "baseline-2 = baseline-1's eight fixtures + the Training Ally (a zero-card vanilla body for duo cells, \u00a7D13-1.4 amendment). Minted rather than edited in place; baseline-1 remains for verdict history.",
+  "encounters": [
+    "01_cutthroat_alley.json",
+    "02_mendicant_shrine.json",
+    "03_bonefire_rite.json",
+    "04_lash_wardens.json",
+    "05_brood_nest.json",
+    "06_rusted_sentinel.json",
+    "07_last_palisade.json",
+    "08_summoning_circle.json"
+  ],
+  "adventure": {
+    "name": "The Gauntlet Run",
+    "act_files": [
+      "01_cutthroat_alley.json",
+      "02_mendicant_shrine.json",
+      "06_rusted_sentinel.json"
+    ]
+  },
+  "sparring_partner": "sparring_partner.json",
+  "training_ally": "training_ally.json"
+}

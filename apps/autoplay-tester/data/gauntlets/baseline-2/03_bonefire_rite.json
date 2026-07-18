@@ -1,0 +1,124 @@
+{
+  "name": "Fixture III \u2014 The Bonefire Rite",
+  "enemies": [
+    {
+      "id": "ritekeeper",
+      "name": "Ritekeeper",
+      "hp": 8,
+      "level": 3,
+      "power": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "bonefire",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ],
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "channel": true,
+          "action_type": "spell",
+          "telegraph": "The Bonefire \u2014 2 damage each turn; the party fights at -1/-0"
+        }
+      ]
+    },
+    {
+      "id": "shieldbearer",
+      "name": "Shieldbearer",
+      "hp": 6,
+      "level": 2,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "interpose",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ],
+          "trigger": "on_targeted",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "ritekeeper",
+          "telegraph": "Interpose \u2014 shield the Ritekeeper"
+        }
+      ]
+    },
+    {
+      "id": "husk",
+      "name": "Bone Husk",
+      "hp": 2,
+      "level": 1,
+      "power": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee"
+    }
+  ],
+  "layouts": {
+    "1": [
+      "ritekeeper",
+      "husk"
+    ],
+    "2": [
+      "ritekeeper",
+      "shieldbearer",
+      "husk",
+      "husk"
+    ],
+    "3": [
+      "ritekeeper",
+      "shieldbearer",
+      "husk",
+      "husk",
+      "husk",
+      "husk"
+    ],
+    "4": [
+      "ritekeeper",
+      "shieldbearer",
+      "shieldbearer",
+      "husk",
+      "husk",
+      "husk",
+      "husk",
+      "husk"
+    ]
+  }
+}

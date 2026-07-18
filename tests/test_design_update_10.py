@@ -212,18 +212,22 @@ def test_level_up_locks_previous_purchases():
     assert spent == 15 and new["starting_mana"] == ["U", "B", "B"]
 
 
-def test_level_up_keyword_one_total_ever():
+def test_level_up_keyword_is_creation_only():
     old = _fresh_char()
-    # Buying the single keyword at a level-up is legal…
-    new, spent = validate_level_up(old, {"keyword": "reach"}, 2, 30)
-    assert new["keyword"] == "reach" and spent == 5
-    # …but a second (changing it) never is.
+    # Keywords cannot be bought at a level-up — creation only.
+    with pytest.raises(ValueError, match="character creation only"):
+        validate_level_up(old, {"keyword": "reach"}, 2, 30)
+    # A creation keyword rides along untouched…
     owned = {**old, "keyword": "reach"}
-    with pytest.raises(ValueError, match="locked"):
+    new, spent = validate_level_up(owned, {"keyword": "reach"}, 2, 30)
+    assert new["keyword"] == "reach" and spent == 0
+    new, spent = validate_level_up(owned, {}, 2, 30)
+    assert new["keyword"] == "reach" and spent == 0
+    # …but changing or dropping it never validates.
+    with pytest.raises(ValueError, match="character creation only"):
         validate_level_up(owned, {"keyword": "flying"}, 2, 30)
-    # The creation ban list applies unchanged.
-    with pytest.raises(ValueError, match="cannot be bought"):
-        validate_level_up(old, {"keyword": "hexproof"}, 2, 30)
+    with pytest.raises(ValueError, match="character creation only"):
+        validate_level_up(owned, {"keyword": None}, 2, 30)
 
 
 def test_level_up_power_cap_scales_with_level():

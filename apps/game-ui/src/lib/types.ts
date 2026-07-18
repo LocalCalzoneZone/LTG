@@ -321,8 +321,6 @@ export interface BuildPrices {
   card: number; // per +1 starting card
   power: number; // per +1 bought Power
   power_cap_per_level: number; // bought Power ≤ this × level (T-60)
-  keywords: Record<string, number>; // buyable keyword -> cost
-  banned_keywords: string[];
 }
 
 // A character's points-buy build as the level-up screen edits it.

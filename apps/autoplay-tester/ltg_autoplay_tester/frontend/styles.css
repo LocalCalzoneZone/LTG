@@ -163,6 +163,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--brass); }
 }
 .footer-note { color: var(--dimmed); font-size: 11px; margin-top: 14px;
   border-top: 1px solid var(--line); padding-top: 10px; }
+.caption { color: var(--mist); font-size: 12px; margin: -4px 0 10px;
+  max-width: 72em; line-height: 1.55; }
+.caption b { color: var(--parch); font-weight: 600; }
 .empty { color: var(--dimmed); font-style: italic; padding: 18px 0; text-align: center; }
 .clickable { cursor: pointer; }
 .delta-pos { color: var(--blood); }

@@ -841,7 +841,7 @@ def test_report_flags_t72_outliers_and_diff_is_zero_on_itself():
     if not 0.30 <= cell["win_rate"] <= 0.85:
         assert any("win rate" in f for f in cell["flags"])
     text = render_report(agg)
-    assert "greedy-1.1.0" in text and "deltas" in text
+    assert "greedy-1.2.0" in text and "deltas" in text
     d = diff_reports(agg, agg)
     assert "+0%" in d and "MEASURING" not in d
     # A moved measuring stick is loudly flagged.

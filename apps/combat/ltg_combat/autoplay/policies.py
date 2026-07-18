@@ -63,6 +63,23 @@ def _has_kind(card, kind: str) -> bool:
     return any(getattr(e, "kind", None) == kind for e in iter_effects(card.effects))
 
 
+def _stance_attack_downgrade(card, current_power: int) -> bool:
+    """True when casting this stance would REPLACE the basic attack with a
+    weaker swing — the bot must not lobotomise its own damage (a stance's
+    reactive value is beyond the stick's vocabulary; convict, never acquit)."""
+    for e in iter_effects(card.effects):
+        if getattr(e, "kind", None) != "stance":
+            continue
+        repl = getattr(e, "attack", "unchanged")
+        if isinstance(repl, str):
+            return repl == "removed"
+        dmg = sum(x.amount for x in getattr(repl, "effects", [])
+                  if getattr(x, "kind", None) == "deal_damage"
+                  and isinstance(getattr(x, "amount", None), int))
+        return dmg < current_power
+    return False
+
+
 def _constant_pump_power(card) -> int:
     """Constant positive `pump` power (the pre-swing prime read)."""
     return sum(e.power for e in iter_effects(card.effects)
@@ -72,7 +89,9 @@ def _constant_pump_power(card) -> int:
 
 # The utility mana-sink order (greedy-1.1.0 rule 9): the first castable kind
 # wins. Fixed and dumb by design — an ordering, not an optimiser.
-_SINK_ORDER = ("heal", "wound", "poison", "draw", "scry", "counters", "regen")
+_SINK_ORDER = ("heal", "pump", "wound", "poison", "strip_intent", "draw",
+               "scry", "counters", "grant_keyword", "prevent", "protection",
+               "regen", "remove_keyword")
 
 
 def _sink_rank(card) -> Optional[int]:
@@ -204,7 +223,7 @@ class RandomPolicy(Policy):
 
 
 class GreedyPolicy(Policy):
-    """The fixed-priority heuristic — VOCABULARY-COMPLETE as of 1.1.0.
+    """The fixed-priority heuristic — vocabulary-complete for SUPPORT as of 1.2.0.
 
     The 1.0.0 launch ladder only ever cast constant-damage spells and
     reactive saves; measured against a real deck it played 2 of 20 cards,
@@ -225,12 +244,19 @@ class GreedyPolicy(Policy):
      10. attack · 11. the utility mana sink (heal the wounded → wound →
          poison → draw → scry → permanent counters → regen) · 12. Defend.
 
-    Still deliberately blunt — no amplify/double_next sequencing, no
+    1.2.0 (the support pass, driven by a real bard kit the 1.1.x stick
+    could not play): channels start on ANY turn while fewer than two are held;
+    pumps and one-shot combo primers (amplify/double_next) fire on ALLIES
+    ahead of the team's best unspent attack, not only on self; a downed ally
+    is revived the moment a revive is castable; window saves trigger on big
+    hits (>= 4), not only lethal ones; and the mana sink learns the rest of
+    the support verbs (strip_intent, grant_keyword, prevent, protection,
+    remove_keyword). Still deliberately blunt — no multi-turn setups, no
     interception, no lookahead. It is the measuring stick, not an opponent;
     bump the version whenever a rule changes."""
 
     name = "greedy"
-    version = "greedy-1.1.0"
+    version = "greedy-1.2.0"
 
     # -- entry ---------------------------------------------------------------- #
     def choose(self, state: GameState, legal: List[Action],
@@ -256,15 +282,21 @@ class GreedyPolicy(Policy):
             vid, dmg = _incoming_damage(state, item)
             if vid is not None and dmg > 0:
                 threats[vid] = threats.get(vid, 0) + dmg
+        # Save the doomed first; failing that, shield a BIG hit (>= 4).
         doomed = [vid for vid, dmg in threats.items()
                   if (state.character(vid) is not None
                       and state.character(vid).effective_hp <= dmg)]
-        if doomed:
-            victim = sorted(doomed)[0]
+        big = [vid for vid, dmg in threats.items()
+               if dmg >= 4 and vid not in doomed
+               and state.character(vid) is not None]
+        for victim in (sorted(doomed) + sorted(big))[:1] if (doomed or big) else []:
             for a in by_kind.get("mitigate", []):
                 if a.target_id == victim:
                     return a
-            saves = []
+            for a in by_kind.get("stance_ability", []):
+                if a.card_id == "mitigate" and a.target_id in (victim, None):
+                    return a
+            saves = []  # a heal/prevent aimed at the victim
             for a in by_kind.get("cast", []):
                 card = _card_in_hand(state, a.actor_id, a.card_id)
                 if card is None or a.target_id != victim:
@@ -329,14 +361,24 @@ class GreedyPolicy(Policy):
         for a in by_kind.get("attack", []):
             attack_dmg[a.target_id] = actor.current_power if actor else 0
         attack_best = max(attack_dmg.values()) if attack_dmg else 0
+        # Stance-replaced main abilities (§D9-2.3) arrive as kind
+        # "stance_ability" with card_id = the slot they replace. A held stance
+        # must not silence the bot: the replaced Attack plays in the attack
+        # slot, the replaced Defend in the defend slot.
+        stance_by_slot: Dict[str, List[Action]] = {}
+        for a in by_kind.get("stance_ability", []):
+            stance_by_slot.setdefault(a.card_id or "", []).append(a)
 
         # Classify every offered cast once.
-        cast_dmg, destroys, bounces, pumps, channels, sinks = [], [], [], [], [], []
+        party_ids = {c.id: c for c in state.living_party()}
+        cast_dmg, destroys, bounces, channels, sinks = [], [], [], [], []
+        pumps, revives = [], []
         for a in by_kind.get("cast", []):
             card = _card_in_hand(state, a.actor_id, a.card_id)
             if card is None:
                 continue
             cost = _cast_cost(card, a.x or 0)
+            timing = str(getattr(card.timing, "value", card.timing))
             dmg = _constant_damage(card)
             if dmg > 0 and a.target_id in enemies:
                 cast_dmg.append((a, dmg, cost))
@@ -344,12 +386,23 @@ class GreedyPolicy(Policy):
                 destroys.append((a, cost))
             if _has_kind(card, "bounce") and a.target_id in enemies:
                 bounces.append((a, cost))
-            if (str(getattr(card.timing, "value", card.timing)) == "instant"
-                    and _constant_pump_power(card) > 0
-                    and a.target_id == a.actor_id):
-                pumps.append((a, cost))
-            if str(getattr(card.timing, "value", card.timing)) == "channeled":
+            # Pre-swing primes: instant pumps AND one-shot combo primers
+            # (amplify/double_next), aimed at ANY party member with an unspent
+            # attack — the support play the 1.1.x stick could not make.
+            is_primer = _has_kind(card, "amplify") or _has_kind(card, "double_next")
+            if (timing == "instant"
+                    and (is_primer or _constant_pump_power(card) > 0)
+                    and a.target_id in party_ids
+                    and not party_ids[a.target_id].used_attack):
+                pumps.append((a, cost,
+                              -party_ids[a.target_id].current_power,
+                              a.target_id != a.actor_id))
+            if timing == "channeled":
                 channels.append((a, cost))
+            if _has_kind(card, "revive"):
+                downed = any(not c.alive for c in state.party)
+                if downed:
+                    revives.append((a, cost))
             srank = _sink_rank(card)
             if srank is not None:
                 sinks.append((a, card, srank, cost))
@@ -392,6 +445,10 @@ class GreedyPolicy(Policy):
         if finishers:
             return sorted(finishers, key=lambda f: f[:2])[0][2]
 
+        # 2b. Stand a downed ally back up the moment it is possible.
+        if revives:
+            return sorted(revives, key=lambda t: (t[1], t[0].card_id or ""))[0][0]
+
         # 3. The Ultimate on a full gauge, when a target exists.
         ults = by_kind.get("use_ultimate", [])
         if ults and enemies:
@@ -407,7 +464,9 @@ class GreedyPolicy(Policy):
                 if aimed:
                     return sorted(aimed,
                                   key=lambda a: rank.get(a.target_id, 99))[0]
-            elif skill_dmg == 0 and state.turn >= 2:
+            elif (skill_dmg == 0 and state.turn >= 2
+                  and not _stance_attack_downgrade(actor.skill,
+                                                   actor.current_power)):
                 return sorted(skills, key=lambda a: (a.target_id or "",
                                                      a.label))[0]
 
@@ -453,13 +512,17 @@ class GreedyPolicy(Policy):
             if nxt is not None:
                 return nxt
 
-        # 7. Start a channel early: the held investment (round <= 3).
-        if channels and state.turn <= 3:
+        # 7. Start a channel whenever affordable, holding at most two —
+        # a support kit IS its held auras; three-plus locks out the mana base.
+        if channels and actor is not None and len(actor.channels) < 2:
             return sorted(channels, key=lambda t: (t[1], t[0].card_id or ""))[0][0]
 
-        # 8. Prime the swing: an instant self-pump ahead of an attack turn.
-        if (pumps and attack_dmg and enemies and line_total <= attack_best):
-            return sorted(pumps, key=lambda t: (t[1], t[0].card_id or ""))[0][0]
+        # 8. Prime the swing: an instant pump/combo-primer onto the
+        # strongest party member whose attack is still unspent (self included),
+        # ahead of an attack-shaped turn.
+        if pumps and enemies and (attack_dmg or any(not t[3] for t in pumps)):
+            return sorted(pumps, key=lambda t: (t[2], t[1],
+                                                t[0].card_id or ""))[0][0]
 
         # 9/10. The better proactive line: the multi-cast damage line when it
         # out-damages the basic attack; otherwise attack (kill-priority).
@@ -468,6 +531,10 @@ class GreedyPolicy(Policy):
         if attack_dmg:
             eid = sorted(attack_dmg, key=lambda i: rank.get(i, 99))[0]
             return by_kind_attack(by_kind, eid)
+        if enemies and stance_by_slot.get("attack"):
+            return sorted(stance_by_slot["attack"],
+                          key=lambda a: (rank.get(a.target_id, 99),
+                                         a.target_id or "", a.label))[0]
         if line_first is not None:
             return line_first
 
@@ -489,9 +556,12 @@ class GreedyPolicy(Policy):
         if sink_cands:
             return sorted(sink_cands, key=lambda s: s[:4])[0][4]
 
-        # 12. Defend, else yield the turn.
+        # 12. Defend (the stance-replaced form included), else yield the turn.
         if "defend" in by_kind:
             return by_kind["defend"][0]
+        if stance_by_slot.get("defend"):
+            return sorted(stance_by_slot["defend"],
+                          key=lambda a: (a.target_id or "", a.label))[0]
         nxt = self._pass_like(by_kind)
         if nxt is not None:
             return nxt

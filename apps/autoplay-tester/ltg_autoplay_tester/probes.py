@@ -41,16 +41,22 @@ FILLER_CARD: Dict[str, Any] = {
 }
 
 # T-74: flag bands on the paired win-rate delta (percentage points), CALIBRATED
-# TO THE PRESSURE-LADDER INSTRUMENT UNDER greedy-1.1.0 (empirically, baseline-1
-# + a reference deck: the deck's cards read −1.1 ± 2.3 pp — utility instants
-# sit below the filler because a vanilla damage common is genuinely playable
-# in the 1.1.0 stick's hands — while a deliberately broken card reads +8.6 pp,
-# 4.2 SD out). OVER at +4 pp ≈ 2+ SD above the reference pack and a breaking-
-# point shift on most fights; UNDER at −6 pp ≈ 2 SD below it. Recalibrate BOTH
-# whenever the policy version bumps.
+# TO THE PRESSURE-LADDER INSTRUMENT UNDER greedy-1.2.0 / baseline-2 (reference
+# deck: normal cards +1.7 ± 1.9 pp). OVER at +4 pp = the card is carrying —
+# note that a deck's legitimate best cards can flag too; the lever ladder is
+# what separates "strong card, priceable" from "broken effect". The z-vs-deck
+# read is ADVISORY context, not a gate: near the win-rate ceiling every delta
+# compresses and z under-fires (see the ceiling warning below). Recalibrate on
+# every policy-version bump.
 OVER_PP = 4.0
-UNDER_PP = -6.0
-OVER_Z = 2.0          # thorough only: SDs above the deck's own distribution
+UNDER_PP = -4.0
+OVER_Z = 2.0          # advisory: SDs above the deck's own distribution
+
+# Ceiling/floor compression: when the as-is variant wins more than CEILING (or
+# fewer than FLOOR) of its cells, breaking points sit outside the ladder and
+# paired deltas are squashed — the verdict carries a saturation warning.
+CEILING = 0.85
+FLOOR = 0.15
 
 # T-75: ultimate dependence — share of wins routed through casting it.
 ULT_DEPENDENCE = 0.60
@@ -64,7 +70,11 @@ ULT_DEPENDENCE = 0.60
 # much harder a fight can this card win" means. ×1.0 is the game as shipped;
 # the other rungs are instruments, not content. Seeds stay few by design: the
 # variance lives across rungs, not shuffles.
-PRESSURE_LADDER = tuple(round(0.5 + 0.1 * i, 1) for i in range(12))  # 0.5–1.6
+# 0.5–2.2: the top rungs exist so STRONG decks still break inside the
+# instrument — a breaking point above the ladder reads as ceiling compression
+# and hides card deltas (observed when greedy-1.2.0 lifted the reference deck
+# past ×1.6). Widen again if a deck ever wins > ~85% of a probe's cells.
+PRESSURE_LADDER = tuple(round(0.5 + 0.1 * i, 1) for i in range(18))  # 0.5–2.2
 
 # T-76: presets. `quick` is the bench default (a screening read); `thorough`
 # is the bar for a verdict you'd act on and adds the leave-one-out deck sweep.
@@ -352,6 +362,15 @@ def screening_table(records: List[Dict[str, Any]], character_id: str,
 # --------------------------------------------------------------------------- #
 # The probes
 # --------------------------------------------------------------------------- #
+def probe_party(loadout: Dict[str, Any],
+                gauntlet: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The subject plus the gauntlet's vanilla Training Ally (falling back to
+    the sparring partner) — so size-2 cells exist and ally-directed support
+    value has the SAME plain body to land on for every subject."""
+    ally = gauntlet.get("training_ally") or gauntlet.get("sparring_partner")
+    return [loadout] + ([ally] if ally else [])
+
+
 def _base_verdict(kind: str, subject: Dict[str, Any], preset_name: str,
                   preset: Dict[str, Any], gauntlet: Dict[str, Any]) -> Dict[str, Any]:
     policy = make_policy(POLICY, SPEND)
@@ -391,7 +410,8 @@ def probe_card(loadout: Dict[str, Any], card_id: str,
                 variants.append((f"loo:{other['id']}",
                                  ablate_card(loadout, other["id"])))
 
-    cell_count = len(_cell_tasks([loadout], gauntlet, preset))
+    cell_count = len(_cell_tasks(probe_party(loadout, gauntlet), gauntlet,
+                                 preset))
     total = cell_count * (len(variants) + 4)  # ladder headroom for the bar
     done = [0]
 
@@ -403,7 +423,7 @@ def probe_card(loadout: Dict[str, Any], card_id: str,
 
     runs: Dict[str, List[Dict[str, Any]]] = {}
     for label, lo in variants:
-        tasks = _cell_tasks([lo], gauntlet, preset)
+        tasks = _cell_tasks(probe_party(lo, gauntlet), gauntlet, preset)
         runs[label] = _run_batch(tasks, jobs, _prog(label))
         done[0] += len(tasks)
 
@@ -429,18 +449,18 @@ def probe_card(loadout: Dict[str, Any], card_id: str,
     subject_row = next((s for s in screening if s["card_id"] == card_id), None)
     exercised = bool(subject_row and subject_row["games_cast"] > 0)
 
-    over = exercised and marginal["delta_pp"] > OVER_PP \
-        and (z is None or z >= OVER_Z)
+    over = exercised and marginal["delta_pp"] > OVER_PP
     under = exercised and marginal["delta_pp"] < UNDER_PP
     flag = ("NOT_EXERCISED" if not exercised
             else "OVER" if over else "UNDER" if under else "IN_BAND")
+    saturated = (marginal["win_a"] > CEILING or marginal["win_a"] < FLOOR)
 
     # The lever ladder (OVER only): each rung vs the SAME ablated baseline.
     ladder: List[Dict[str, Any]] = []
     recommendation = None
     if over:
         for lever, lo in lever_variants(loadout, card_id):
-            tasks = _cell_tasks([lo], gauntlet, preset)
+            tasks = _cell_tasks(probe_party(lo, gauntlet), gauntlet, preset)
             recs = _run_batch(tasks, jobs, _prog(lever))
             done[0] += len(tasks)
             stats = paired_stats(recs, runs["ablated"])
@@ -483,10 +503,17 @@ def probe_card(loadout: Dict[str, Any], card_id: str,
         "card", {"character_id": cid, "card_id": card_id,
                  "card_name": card.get("name", card_id)},
         preset_name, preset, gauntlet)
+    if saturated:
+        recommendation += (
+            f" SATURATION WARNING: the deck wins {marginal['win_a']:.0%} of "
+            "these cells — breaking points sit at the edge of the pressure "
+            "ladder and every delta is compressed; treat magnitudes here as "
+            "floors, and consider a harder gauntlet for this deck.")
     verdict.update({
         "flag": flag,
         "combo_blind": combo_blind,
         "exercised": exercised,
+        "saturated": saturated,
         "marginal": marginal,
         "z_vs_deck": round(z, 2) if z is not None else None,
         "deck_marginals": {k: round(v, 2) for k, v in deck_marginals.items()},
@@ -512,7 +539,7 @@ def probe_heroic(loadout: Dict[str, Any], slot: str,
         raise ValueError(f"{cid} has no {slot} to probe")
     combo_blind = _card_is_combo(heroic)
 
-    tasks_a = _cell_tasks([loadout], gauntlet, preset)
+    tasks_a = _cell_tasks(probe_party(loadout, gauntlet), gauntlet, preset)
     total = len(tasks_a) * 2
     done = [0]
 
@@ -525,7 +552,8 @@ def probe_heroic(loadout: Dict[str, Any], slot: str,
     runs_a = _run_batch(tasks_a, jobs, _prog("as-is"))
     done[0] += len(tasks_a)
     without = remove_heroic(loadout, slot)
-    runs_b = _run_batch(_cell_tasks([without], gauntlet, preset),
+    runs_b = _run_batch(_cell_tasks(probe_party(without, gauntlet), gauntlet,
+                                    preset),
                         jobs, _prog(f"without {slot}"))
     marginal = paired_stats(runs_a, runs_b)
 
@@ -600,20 +628,27 @@ def probe_character(loadout: Dict[str, Any],
                     jobs: int = 1,
                     progress: Optional[Callable[[int, int, str], None]] = None
                     ) -> Dict[str, Any]:
-    """The §D13-1.4 character probe: roster percentile on identical solo cells,
-    a duo cell with the gauntlet's frozen sparring partner, attribution, and
-    the spend-plan audit over the gauntlet's adventure."""
+    """The §D13-1.4 character probe (support-fair form): every roster member
+    runs the IDENTICAL solo + duo cells beside the gauntlet's vanilla Training
+    Ally, so ally-directed kits have the same plain body to support; an
+    ally-pair baseline (two vanillas) anchors what a character ADDS over a
+    warm body. Heroics are isolated with-vs-without on the same paired cells;
+    the spend-plan audit runs across a pressure ladder of the adventure."""
     preset = PRESETS[preset_name]
-    solo = {**preset, "sizes": [1]}
     cid = character_id_of(loadout)
+    char = loadout.get("character") or {}
+    deck_size = len(loadout.get("cards", []))
+    ally = gauntlet.get("training_ally") or gauntlet.get("sparring_partner")
 
     others = [lo for lo in roster if character_id_of(lo) != cid]
-    partner = gauntlet.get("sparring_partner")
-    n_batches = 1 + len(others) + (1 if partner else 0)
-    cell_count = len(_cell_tasks([loadout], gauntlet, solo))
-    adv_seeds = max(10, preset["seeds"] // 4)
+    heroic_slots = [s for s in ("skill", "ultimate") if char.get(s)]
+    cell_count = len(_cell_tasks(probe_party(loadout, gauntlet), gauntlet,
+                                 preset))
+    audit_pressures = (0.6, 0.8, 1.0, 1.2)
+    audit_seeds = max(3, preset["seeds"] // 8)
+    n_batches = (1 + len(others) + (1 if ally else 0) + len(heroic_slots))
     total = cell_count * n_batches + (
-        adv_seeds * 4 if gauntlet.get("adventure") else 0)
+        audit_seeds * len(audit_pressures) * 4 if gauntlet.get("adventure") else 0)
     done = [0]
 
     def _prog(label):
@@ -622,20 +657,43 @@ def probe_character(loadout: Dict[str, Any],
                 progress(done[0] + i, total, label)
         return cb
 
-    # Roster percentile: everyone runs the identical solo cells.
-    solo_runs = _run_batch(_cell_tasks([loadout], gauntlet, solo),
-                           jobs, _prog(cid))
+    def _win_rate(records, size=None):
+        pool = [r for r in records if size is None or r.get("size") == size]
+        if not pool:
+            return None
+        return sum(1 for r in pool if r["result"] == "victory") / len(pool)
+
+    # Roster standings: everyone runs the identical solo+duo cells.
+    subject_runs = _run_batch(
+        _cell_tasks(probe_party(loadout, gauntlet), gauntlet, preset),
+        jobs, _prog(cid))
     done[0] += cell_count
-    roster_rates: Dict[str, float] = {
-        cid: sum(1 for r in solo_runs if r["result"] == "victory")
-        / max(1, len(solo_runs))}
+    roster_runs: Dict[str, List[Dict[str, Any]]] = {cid: subject_runs}
     for other in others:
         oid = character_id_of(other)
-        recs = _run_batch(_cell_tasks([other], gauntlet, solo),
-                          jobs, _prog(oid))
+        roster_runs[oid] = _run_batch(
+            _cell_tasks(probe_party(other, gauntlet), gauntlet, preset),
+            jobs, _prog(oid))
         done[0] += cell_count
-        roster_rates[oid] = (sum(1 for r in recs if r["result"] == "victory")
-                             / max(1, len(recs)))
+    roster_rates = {k: round(_win_rate(recs), 4)
+                    for k, recs in roster_runs.items()}
+    roster_solo = {k: (round(_win_rate(recs, 1), 4)
+                       if _win_rate(recs, 1) is not None else None)
+                   for k, recs in roster_runs.items()}
+    roster_duo = {k: (round(_win_rate(recs, 2), 4)
+                      if _win_rate(recs, 2) is not None else None)
+                  for k, recs in roster_runs.items()}
+
+    # The ally-pair floor: two vanillas on the same cells — what "just a warm
+    # body" achieves. A character's CONTRIBUTION is their rate minus this.
+    ally_baseline = None
+    if ally:
+        pair_runs = _run_batch(
+            _cell_tasks([ally, ally], gauntlet, preset), jobs,
+            _prog("ally pair"))
+        done[0] += len(pair_runs)
+        ally_baseline = round(_win_rate(pair_runs) or 0.0, 4)
+
     below = sum(1 for k, v in roster_rates.items()
                 if k != cid and v < roster_rates[cid])
     ties = sum(1 for k, v in roster_rates.items()
@@ -643,87 +701,182 @@ def probe_character(loadout: Dict[str, Any],
     percentile = (round(100 * (below + 0.5 * ties) / (len(roster_rates) - 1))
                   if len(roster_rates) > 1 else None)
 
-    # The duo cell with the frozen sparring partner.
-    duo_cells = None
-    duo_runs: List[Dict[str, Any]] = []
-    if partner:
-        duo = {**preset, "sizes": [2]}
-        duo_runs = _run_batch(_cell_tasks([loadout, partner], gauntlet, duo),
-                              jobs, _prog("duo"))
-        done[0] += len(duo_runs)
-        duo_cells = aggregate(duo_runs)["cells"]
+    # The heroics, ISOLATED: with-vs-without on the same paired cells.
+    heroics: Dict[str, Any] = {}
+    for slot in heroic_slots:
+        heroic = char[slot]
+        without = remove_heroic(loadout, slot)
+        recs = _run_batch(
+            _cell_tasks(probe_party(without, gauntlet), gauntlet, preset),
+            jobs, _prog(f"without {slot}"))
+        done[0] += cell_count
+        stats = paired_stats(subject_runs, recs)
+        if slot == "ultimate":
+            casts = sum(1 for r in subject_runs
+                        if (r.get("characters") or {}).get(cid, {})
+                        .get("ultimate_round") is not None)
+            wins = [r for r in subject_runs if r.get("result") == "victory"]
+            through = [r for r in wins
+                       if (r.get("characters") or {}).get(cid, {})
+                       .get("ultimate_round") is not None]
+            dependence = (round(len(through) / len(wins), 4) if wins else None)
+        else:
+            casts = sum(1 for r in subject_runs
+                        if (r.get("characters") or {}).get(cid, {})
+                        .get("card_events", {}).get(heroic.get("id"),
+                                                    [0, 0])[1] > 0)
+            dependence = None
+        heroics[slot] = {
+            "name": heroic.get("name", slot),
+            "marginal": stats,
+            "games_cast": casts,
+            "games": len(subject_runs),
+            "dependence": dependence,
+            "exercised": casts > 0,
+        }
 
-    # Attribution: where does the win come from.
-    def _attr(records):
-        totals = {"damage_dealt": 0, "healing_done": 0, "mana_wasted": 0,
-                  "dead_in_hand": 0}
+    # Attribution: where the games went, split solo vs duo, WITH denominators.
+    def _attr(records, size):
+        keys = ("damage_dealt", "healing_done", "mana_granted", "mana_wasted",
+                "cards_cast", "dead_in_hand")
+        totals = {k: 0 for k in keys}
         n = 0
         for r in records:
+            if r.get("size") != size:
+                continue
             m = (r.get("characters") or {}).get(cid)
             if m:
                 n += 1
-                for k in totals:
+                for k in keys:
                     totals[k] += m.get(k, 0)
-        return {k: round(v / n, 2) if n else 0 for k, v in totals.items()}
+        return ({k: round(v / n, 2) for k, v in totals.items()} if n else None)
 
-    # The spend-plan audit over the gauntlet's adventure (§D13-1.4).
+    # The spend-plan audit, across a pressure ladder of the adventure.
     spend_audit = None
+    spend_audit_meta = None
     if gauntlet.get("adventure"):
         spend_audit = {}
         for plan in ("balanced", "greedy-hp", "greedy-power", "greedy-mana"):
             policy = make_policy(POLICY, plan)
-            wins = 0
-            for seed in range(adv_seeds):
-                rec = run_adventure(gauntlet["adventure"], [loadout], policy,
-                                    seed)
-                wins += 1 if rec["result"] == "victory" else 0
-                done[0] += 1
-                if progress:
-                    progress(done[0], total, f"spend:{plan}")
-            spend_audit[plan] = round(wins / adv_seeds, 4)
+            wins = runs = 0
+            for mult in audit_pressures:
+                adv = {
+                    "name": gauntlet["adventure"].get("name", "adventure"),
+                    "acts": [_apply_pressure(a, mult)
+                             for a in gauntlet["adventure"]["acts"]],
+                }
+                for seed in range(audit_seeds):
+                    rec = run_adventure(adv, [loadout], policy, seed)
+                    runs += 1
+                    wins += 1 if rec["result"] == "victory" else 0
+                    done[0] += 1
+                    if progress:
+                        progress(done[0], total, f"spend:{plan}@{mult:g}")
+            spend_audit[plan] = round(wins / max(1, runs), 4)
+        rates = list(spend_audit.values())
+        spend_audit_meta = {
+            "pressures": list(audit_pressures),
+            "runs_per_plan": audit_seeds * len(audit_pressures),
+            "no_signal": (max(rates) - min(rates) < 0.08
+                          or max(rates) < 0.05 or min(rates) > 0.95),
+        }
 
-    rates = sorted(roster_rates.items(), key=lambda kv: -kv[1])
+    rates_sorted = sorted(roster_rates.items(), key=lambda kv: -kv[1])
     spread = (max(roster_rates.values()) - min(roster_rates.values())
               if roster_rates else 0)
     outlier_high = percentile is not None and percentile >= 90 and spread > 0.10
     outlier_low = percentile is not None and percentile <= 10 and spread > 0.10
     flag = "OVER" if outlier_high else ("UNDER" if outlier_low else "IN_BAND")
 
-    plan_note = ""
-    if spend_audit:
+    # The recommendation, in plain words with the character's own numbers.
+    attr_solo = _attr(subject_runs, 1)
+    attr_duo = _attr(subject_runs, 2)
+    attr = attr_solo or attr_duo or {}
+    solo_screening = screening_table(subject_runs, cid, loadout)
+    never_cast = [s["name"] for s in solo_screening if s["games_cast"] == 0]
+    granted = (attr.get("mana_granted") or 1)
+    waste_share = (attr.get("mana_wasted") or 0) / granted
+    dead_share = (attr.get("dead_in_hand") or 0) / max(1, deck_size)
+    castability_problem = waste_share >= 0.4 or dead_share >= 0.6
+    win_pct = f"{roster_rates[cid]:.0%}"
+    contribution = (round(roster_rates[cid] - ally_baseline, 4)
+                    if ally_baseline is not None else None)
+    parts = []
+    if flag == "OVER":
+        parts.append(
+            f"{cid} tops the roster ({win_pct} across identical solo+duo "
+            f"cells, {percentile}th percentile). Before touching the stat "
+            "line, probe the top screening cards — a character is usually "
+            "carried by one or two of them.")
+    elif flag == "UNDER":
+        parts.append(
+            f"{cid} finished last on the shared cells ({win_pct} vs "
+            f"{rates_sorted[0][0]}'s {rates_sorted[0][1]:.0%}).")
+        if contribution is not None:
+            parts.append(
+                f"Beside the vanilla Training Ally, {cid} "
+                + (f"adds {contribution:+.0%} over the two-vanilla baseline "
+                   f"({ally_baseline:.0%})."
+                   if contribution > 0 else
+                   f"adds NOTHING over the two-vanilla baseline "
+                   f"({ally_baseline:.0%} with two warm bodies vs "
+                   f"{roster_rates[cid]:.0%} with {cid} in the pair).")
+                )
+        if castability_problem:
+            parts.append(
+                f"The games say WHY: {cid} left "
+                f"{attr.get('dead_in_hand', 0):.0f} of {deck_size} cards "
+                f"unplayed and wasted {attr.get('mana_wasted', 0):.0f} of "
+                f"{attr.get('mana_granted', 0):.0f} mana per game — the kit "
+                "is not getting CAST, so buffing card numbers would change "
+                "nothing. Look at costs and card types first.")
+        else:
+            parts.append(
+                "Resource use looks normal (mana and cards are being spent), "
+                "so the kit is being played and still losing — magnitudes are "
+                "a fair lever here.")
+    else:
+        parts.append(f"{cid} is inside the roster's band ({win_pct}, "
+                     f"{percentile}th percentile). No change needed.")
+    if never_cast:
+        parts.append(
+            f"CAVEAT: the {POLICY} stick never plays {len(never_cast)} of the "
+            f"{deck_size} cards ({', '.join(never_cast[:4])}"
+            + ("…" if len(never_cast) > 4 else "") + ") — their value is "
+            "INVISIBLE to this probe; part of any low reading is the bot's "
+            "vocabulary, not the character.")
+    if spend_audit_meta and spend_audit_meta["no_signal"]:
+        parts.append("The spend audit produced no signal on this gauntlet "
+                     "(rates saturated/flat) — ignore that table.")
+    elif spend_audit:
         ordered = sorted(spend_audit.items(), key=lambda kv: -kv[1])
         if ordered[0][1] - ordered[-1][1] > 0.15:
-            plan_note = (f" Spend audit: {ordered[0][0]} dominates "
-                         f"({ordered[0][1]:.0%} vs {ordered[-1][1]:.0%} for "
-                         f"{ordered[-1][0]}) — that implicates the points-buy "
-                         "price table, not this character.")
-    if flag == "OVER":
-        recommendation = (f"{cid} sits at the {percentile}th roster percentile "
-                          "— probe the top cards from the screening table "
-                          "before touching the stat line." + plan_note)
-    elif flag == "UNDER":
-        recommendation = (f"{cid} sits at the {percentile}th roster percentile "
-                          "— check mana_wasted and dead_in_hand before buffing "
-                          "cards." + plan_note)
-    else:
-        recommendation = (f"{cid} is within the roster's band"
-                          + (f" ({percentile}th percentile)."
-                             if percentile is not None else ".") + plan_note)
+            parts.append(
+                f"Spend audit: {ordered[0][0]} dominates ({ordered[0][1]:.0%} "
+                f"vs {ordered[-1][1]:.0%} for {ordered[-1][0]}) — that "
+                "implicates the points-buy price table, not this character.")
+    recommendation = " ".join(parts)
 
     verdict = _base_verdict("character", {"character_id": cid},
                             preset_name, preset, gauntlet)
     verdict.update({
         "flag": flag,
         "combo_blind": any(_card_is_combo(c) for c in loadout.get("cards", [])),
-        "roster_rates": {k: round(v, 4) for k, v in rates},
+        "roster_rates": {k: v for k, v in rates_sorted},
+        "roster_solo": roster_solo,
+        "roster_duo": roster_duo,
+        "ally_baseline": ally_baseline,
+        "contribution": contribution,
         "percentile": percentile,
-        "attribution": {"solo": _attr(solo_runs),
-                        "duo": _attr(duo_runs) if duo_runs else None},
+        "heroics": heroics,
+        "attribution": {"solo": attr_solo, "duo": attr_duo},
+        "deck_size": deck_size,
         "spend_audit": spend_audit,
+        "spend_audit_meta": spend_audit_meta,
         "ladder": [],
         "recommendation": recommendation,
-        "screening": screening_table(solo_runs, cid, loadout),
-        "cells": aggregate(solo_runs)["cells"],
-        "duo_cells": duo_cells,
+        "screening": solo_screening,
+        "cells": aggregate(subject_runs)["cells"],
+        "duo_cells": None,
     })
     return verdict

@@ -40,8 +40,9 @@ def gauntlet_hash(gdir: Path, manifest: Dict[str, Any]) -> str:
     h = hashlib.sha256()
     h.update(json.dumps(manifest, sort_keys=True).encode("utf-8"))
     names = list(manifest.get("encounters", []))
-    if manifest.get("sparring_partner"):
-        names.append(manifest["sparring_partner"])
+    for key in ("sparring_partner", "training_ally"):
+        if manifest.get(key):
+            names.append(manifest[key])
     for name in sorted(names):
         p = gdir / name
         if p.exists():
@@ -97,6 +98,9 @@ def load_gauntlet(gauntlet_id: str) -> Dict[str, Any]:
     partner = None
     if manifest.get("sparring_partner"):
         partner = _read(gdir / manifest["sparring_partner"])
+    ally = None
+    if manifest.get("training_ally"):
+        ally = _read(gdir / manifest["training_ally"])
     return {
         "id": gauntlet_id,
         "name": manifest.get("name", gauntlet_id),
@@ -106,6 +110,10 @@ def load_gauntlet(gauntlet_id: str) -> Dict[str, Any]:
         "encounters": encounters,
         "adventure": adventure,
         "sparring_partner": partner,
+        # The vanilla ally (§D13-2.1 amendment): basic actions only, zero
+        # cards — the body support kits get to support, and the same body
+        # for everyone, so ally-directed value is measured like-for-like.
+        "training_ally": ally,
         "manifest": manifest,
         "dir": str(gdir),
     }

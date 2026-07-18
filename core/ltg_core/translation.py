@@ -283,6 +283,11 @@ def translate(oracle_text: str, ctx: dict) -> List[Effect]:
 # instead of leaking the raw slot ref.
 _RENDER_TARGETS = contextvars.ContextVar("ltg_render_targets", default={})
 
+# Whether the render in progress is for a channeled card — fallback renderers
+# reached from the channeled paths read this so chosen targets keep the definite
+# "the chosen enemy" voice instead of reverting to "an enemy".
+_RENDER_CHANNELED = contextvars.ContextVar("ltg_render_channeled", default=False)
+
 
 # Noun by side for `chosen` targets; the article/another is added by describe().
 _SIDE_NOUN = {Side.ally: "ally", Side.enemy: "enemy", Side.any: "target"}
@@ -360,7 +365,9 @@ def _plural(target, targets=None) -> bool:
 
 
 def _tgt(t) -> str:
-    return describe_target(t)
+    # Resolve through the active render's slot table so a "$T1" ref never leaks
+    # into card text, even from renderers reached via fallback paths.
+    return _subject(t, _RENDER_TARGETS.get(), _RENDER_CHANNELED.get())
 
 
 def _value(v) -> str:
@@ -396,6 +403,55 @@ def _is_capacity(v) -> bool:
     return isinstance(v, Ref) and v.ref == "mana_capacity"
 
 
+def _is_phrase_ref(v) -> bool:
+    """True for Refs that render as a wordy phrase ("your Power") rather than a
+    number-like token ("X") — those read as "damage equal to …", never "… damage"."""
+    return isinstance(v, Ref) and v.ref != "x"
+
+
+def _amount_phrase(v, unit: str) -> str:
+    """'4 damage' / 'X damage' / 'damage equal to your Power'."""
+    if _is_phrase_ref(v):
+        return f"{unit} equal to {_value(v)}"
+    return f"{_value(v)} {unit}"
+
+
+def _stat_pair(power, toughness, atk_word: str, hp_word: str, sign: str = "+") -> str:
+    """'+3 attack and +2 temp HP' — or, when the amounts are wordy references,
+    'attack and temp HP equal to your Power' rather than '+your Power attack'."""
+    joiner = "equal to" if sign == "+" else "reduced by"
+    if (_is_phrase_ref(power) and _is_phrase_ref(toughness)
+            and power.ref == toughness.ref):
+        return f"{atk_word} and {hp_word} {joiner} {_value(power)}"
+
+    def one(v, word):
+        if _is_phrase_ref(v):
+            return f"{word} {joiner} {_value(v)}"
+        return f"{sign}{_value(v)} {word}"
+
+    return f"{one(power, atk_word)} and {one(toughness, hp_word)}"
+
+
+def _slash_pair(power, toughness, atk_word: str, hp_word: str, sign: str = "+") -> str:
+    """The compact '+2/+2' form, falling back to words when a ref is involved."""
+    if _is_phrase_ref(power) or _is_phrase_ref(toughness):
+        return _stat_pair(power, toughness, atk_word, hp_word, sign)
+    return f"{sign}{_value(power)}/{sign}{_value(toughness)}"
+
+
+def _subject_conj(target, base: str, third: str, channeled: bool | None = None):
+    """(subject, agreeing verb) — ('you', 'gain'), ('all allies', 'gain'),
+    ('an ally', 'gains'). A self target reads as the subject 'you', never the
+    object 'yourself' ("Yourself gains Haste" → "You gain Haste")."""
+    targets = _RENDER_TARGETS.get()
+    if channeled is None:
+        channeled = _RENDER_CHANNELED.get()
+    subj = _subject(target, targets, channeled)
+    if subj == "yourself":
+        return "you", base
+    return subj, base if _plural(target, targets) else third
+
+
 def _duration_suffix(e) -> str:
     dur = getattr(e, "duration", None)
     if dur == Duration.this_turn:
@@ -418,7 +474,8 @@ def _render_lose_life(e) -> str:
         body = f"{e.amount} HP"
     if _is_self(e.target):
         return f"Lose {body}."
-    return f"{_tgt(e.target).capitalize()} loses {body}."
+    subj, verb = _subject_conj(e.target, "lose", "loses")
+    return f"{subj.capitalize()} {verb} {body}."
 
 
 _COLOR_WORD = {"W": "white", "U": "blue", "B": "black", "R": "red", "G": "green"}
@@ -688,18 +745,18 @@ def _render_conditional(e) -> str:
 
 # Power/toughness convention: power → "attack", toughness → "temp HP" (buff) / "HP" (debuff).
 def _render_pump(e) -> str:
-    verb = "gain" if _plural(e.target) else "gains"
-    return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)} attack and +{_value(e.toughness)} temp HP{_duration_suffix(e)}."
+    subj, verb = _subject_conj(e.target, "gain", "gains")
+    return f"{subj.capitalize()} {verb} {_stat_pair(e.power, e.toughness, 'attack', 'temp HP')}{_duration_suffix(e)}."
 
 
 def _render_wound(e) -> str:
-    verb = "have" if _plural(e.target) else "has"
-    return f"{_subject(e.target).capitalize()} {verb} -{_value(e.power)} attack and -{_value(e.toughness)} HP{_duration_suffix(e)}."
+    subj, verb = _subject_conj(e.target, "have", "has")
+    return f"{subj.capitalize()} {verb} {_stat_pair(e.power, e.toughness, 'attack', 'HP', sign='-')}{_duration_suffix(e)}."
 
 
 def _render_counters(e) -> str:
-    verb = "gain" if _plural(e.target) else "gains"
-    return f"{_subject(e.target).capitalize()} {verb} +{_value(e.power)}/+{_value(e.toughness)}{_duration_suffix(e) or ' for the encounter'}."
+    subj, verb = _subject_conj(e.target, "gain", "gains")
+    return f"{subj.capitalize()} {verb} {_slash_pair(e.power, e.toughness, 'attack', 'HP')}{_duration_suffix(e) or ' for the encounter'}."
 
 
 def _affliction_suffix(e) -> str:
@@ -731,6 +788,24 @@ def _render_control(e) -> str:
     # Control takes the living and the dead alike (§D9-1.4) — say so on the card.
     return (f"Gain control of {_tgt(e.target)} or a corpse {_control_span(e)} — a "
             f"living enemy fights for you; a corpse rises as an undead ally at half HP.")
+
+
+def _render_strip_intent(e) -> str:
+    subj = _subject(e.target, _RENDER_TARGETS.get(), True)
+    if subj == "yourself":
+        return "Remove your telegraphed intent."
+    if _plural(e.target, _RENDER_TARGETS.get()):
+        return f"Remove the telegraphed intent of {subj}."
+    return f"Remove {subj}'s telegraphed intent."
+
+
+def _render_stun(e) -> str:
+    subj = _subject(e.target, _RENDER_TARGETS.get(), True)
+    if subj == "yourself":
+        return "You skip your next intent."
+    if _plural(e.target, _RENDER_TARGETS.get()):
+        return f"{subj.capitalize()} skip their next intent."
+    return f"{subj.capitalize()} skips its next intent."
 
 
 _MOVE_DIR_PHRASE = {
@@ -765,11 +840,13 @@ def _amplify_boost(e) -> str:
 
 
 def _amplify_subject(e) -> str:
-    """Possessive subject: 'Your next …' for a self target, else the target's."""
+    """Possessive subject: 'Your next …' for a self target, else the target's
+    ("an enemy's", "all allies'" — plural nouns take the bare apostrophe)."""
     desc = _resolve(e.target, _RENDER_TARGETS.get())
     if getattr(desc, "mode", None) == TargetMode.self_ or desc is None:
         return "your"
-    return f"{_tgt(e.target)}'s"
+    noun = _tgt(e.target)
+    return f"{noun}'" if noun.endswith("s") else f"{noun}'s"
 
 
 def _render_amplify(e) -> str:
@@ -805,14 +882,24 @@ def _render_stance(e) -> str:
     return "Stance (while channeled) — " + " · ".join(parts)
 
 
+def _render_grant_keyword(e) -> str:
+    subj, verb = _subject_conj(e.target, "gain", "gains")
+    return f"{subj.capitalize()} {verb} {_keyword_phrase(e.keywords, e.params)}{_grant_duration(e)}."
+
+
+def _render_remove_keyword(e) -> str:
+    subj, verb = _subject_conj(e.target, "lose", "loses")
+    return f"{subj.capitalize()} {verb} {_keyword_phrase(e.keywords, e.params)}."
+
+
 RENDERERS = {
     "deal_damage": lambda e: (
         f"Deal 1 damage to {_tgt(e.target)} for each point of mana capacity."
-        if _is_capacity(e.amount) else f"Deal {_value(e.amount)} damage to {_tgt(e.target)}."
+        if _is_capacity(e.amount) else f"Deal {_amount_phrase(e.amount, 'damage')} to {_tgt(e.target)}."
     ),
     "heal": lambda e: (
         f"Restore 1 HP to {_tgt(e.target)} for each point of mana capacity."
-        if _is_capacity(e.amount) else f"Restore {_value(e.amount)} HP to {_tgt(e.target)}."
+        if _is_capacity(e.amount) else f"Restore {_amount_phrase(e.amount, 'HP')} to {_tgt(e.target)}."
     ),
     "lose_life": lambda e: _render_lose_life(e),
     "poison": _render_poison,
@@ -823,8 +910,8 @@ RENDERERS = {
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",
     "fight": lambda e: f"{_tgt(e.target).capitalize()} fights {_tgt(e.other)}.",
     "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
-    "strip_intent": lambda e: f"Remove {_subject(e.target, None, True)}'s telegraphed intent.",
-    "stun": lambda e: f"{_subject(e.target, None, True).capitalize()} skips its next intent.",
+    "strip_intent": _render_strip_intent,
+    "stun": _render_stun,
     "pump": _render_pump,
     "wound": _render_wound,
     "counters": _render_counters,
@@ -836,6 +923,7 @@ RENDERERS = {
     "double_next": _render_double_next,
     "draw": lambda e: (
         "Draw a card for each point of mana capacity." if _is_capacity(e.amount)
+        else f"Draw cards equal to {_value(e.amount)}." if _is_phrase_ref(e.amount)
         else f"Draw {_value(e.amount)} card(s)."
     ),
     "scry": lambda e: (
@@ -851,14 +939,8 @@ RENDERERS = {
     "stance": _render_stance,
     "ramp": _render_ramp,
     "add_mana": _render_add_mana,
-    "grant_keyword": lambda e: (
-        f"{_subject(e.target).capitalize()} {'gain' if _plural(e.target) else 'gains'} "
-        f"{_keyword_phrase(e.keywords, e.params)}{_grant_duration(e)}."
-    ),
-    "remove_keyword": lambda e: (
-        f"{_subject(e.target).capitalize()} {'lose' if _plural(e.target) else 'loses'} "
-        f"{_keyword_phrase(e.keywords, e.params)}."
-    ),
+    "grant_keyword": _render_grant_keyword,
+    "remove_keyword": _render_remove_keyword,
     "modal": _render_modal,
     "conditional": _render_conditional,
 }
@@ -873,15 +955,22 @@ def _render_one(e) -> str:
 _CLAUSE = {
     "draw": lambda e: f"draw {_value(e.amount)}",
     "scry": lambda e: f"scry {_value(e.amount)}",
-    "heal": lambda e: f"heal {_value(e.amount)}",
-    "deal_damage": lambda e: f"take {_value(e.amount)} damage",
+    "heal": lambda e: (
+        f"heal HP equal to {_value(e.amount)}" if _is_phrase_ref(e.amount)
+        else f"heal {_value(e.amount)}"
+    ),
+    "deal_damage": lambda e: f"take {_amount_phrase(e.amount, 'damage')}",
     "lose_life": lambda e: (
         f"lose HP equal to {_value(e.amount)}"
         if isinstance(e.amount, Ref)
         else f"lose {e.amount} HP"
     ),
-    "pump": lambda e: f"gain +{_value(e.power)}/+{_value(e.toughness)} this turn",
-    "wound": lambda e: f"suffer -{_value(e.power)}/-{_value(e.toughness)} this turn",
+    "pump": lambda e: f"gain {_slash_pair(e.power, e.toughness, 'attack', 'temp HP')} this turn",
+    "wound": lambda e: f"suffer {_slash_pair(e.power, e.toughness, 'attack', 'HP', sign='-')} this turn",
+    "poison": lambda e: (f"are poisoned: {_value(e.amount)} −0/−1 counter(s) now and "
+                         f"at each Upkeep{_affliction_suffix(e)} (any healing cures it)"),
+    "regen": lambda e: (f"regenerate: {_value(e.amount)} +0/+1 counter(s) now and "
+                        f"at each Upkeep{_affliction_suffix(e)} (broken by damage)"),
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
     "bounce": lambda e: "are returned to hand",
@@ -897,7 +986,11 @@ _CLAUSE = {
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
     "protection": lambda e: f"gain protection ({e.scope})",
-    "counters": lambda e: f"gain +{_value(e.power)}/+{_value(e.toughness)} counters",
+    "counters": lambda e: (
+        f"gain {_stat_pair(e.power, e.toughness, 'attack', 'HP')}"
+        if _is_phrase_ref(e.power) or _is_phrase_ref(e.toughness)
+        else f"gain +{_value(e.power)}/+{_value(e.toughness)} counters"
+    ),
     "prevent": lambda e: (
         "can't attack" if e.parameter == "attack"
         else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
@@ -927,9 +1020,11 @@ def render_effects(effects: List[Effect], targets=None, channeled: bool = False)
     targets = targets or {}
     # Publish the slot table so nested modal/conditional renders inherit it.
     token = _RENDER_TARGETS.set(targets)
+    ctoken = _RENDER_CHANNELED.set(channeled)
     try:
         return _render_effects(effects, targets, channeled)
     finally:
+        _RENDER_CHANNELED.reset(ctoken)
         _RENDER_TARGETS.reset(token)
 
 
@@ -989,17 +1084,17 @@ def _channeled_body(e, targets) -> str:
     """An ongoing (continuous) effect's body — lowercase subject, no period."""
     k = e.kind
     if k in ("pump", "counters"):
-        verb = "gain" if _plural(e.target, targets) else "gains"
-        return f"{_subject(e.target, targets, True)} {verb} +{_value(e.power)} attack and +{_value(e.toughness)} temp HP"
+        subj, verb = _subject_conj(e.target, "gain", "gains", channeled=True)
+        return f"{subj} {verb} {_stat_pair(e.power, e.toughness, 'attack', 'temp HP')}"
     if k == "wound":
-        verb = "have" if _plural(e.target, targets) else "has"
-        return f"{_subject(e.target, targets, True)} {verb} -{_value(e.power)} attack and -{_value(e.toughness)} HP"
+        subj, verb = _subject_conj(e.target, "have", "has", channeled=True)
+        return f"{subj} {verb} {_stat_pair(e.power, e.toughness, 'attack', 'HP', sign='-')}"
     if k == "grant_keyword":
-        verb = "have" if _plural(e.target, targets) else "has"
-        return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
+        subj, verb = _subject_conj(e.target, "have", "has", channeled=True)
+        return f"{subj} {verb} {_keyword_phrase(e.keywords, e.params)}"
     if k == "remove_keyword":
-        verb = "lose" if _plural(e.target, targets) else "loses"
-        return f"{_subject(e.target, targets, True)} {verb} {_keyword_phrase(e.keywords, e.params)}"
+        subj, verb = _subject_conj(e.target, "lose", "loses", channeled=True)
+        return f"{subj} {verb} {_keyword_phrase(e.keywords, e.params)}"
     if k == "taunt":
         return f"{_subject(e.target, targets, True)} must target you"
     if k == "prevent":
@@ -1011,7 +1106,8 @@ def _channeled_body(e, targets) -> str:
     if k == "protection":
         return f"{_subject(e.target, targets, True)} has protection"
     if k == "stun":
-        return f"{_subject(e.target, targets, True)} is stunned"
+        subj, verb = _subject_conj(e.target, "are", "is", channeled=True)
+        return f"{subj} {verb} stunned"
     if k == "exile":
         return f"exile {_subject(e.target, targets, True)}"
     if k == "fight":
@@ -1035,9 +1131,9 @@ def _upkeep_clause(e, targets) -> str:
     if k == "scry":
         return f"scry {_value(e.amount)}"
     if k == "heal":
-        return f"restore {_value(e.amount)} HP to {_subject(e.target, targets, True)}"
+        return f"restore {_amount_phrase(e.amount, 'HP')} to {_subject(e.target, targets, True)}"
     if k == "deal_damage":
-        return f"deal {_value(e.amount)} damage to {_subject(e.target, targets, True)}"
+        return f"deal {_amount_phrase(e.amount, 'damage')} to {_subject(e.target, targets, True)}"
     return _lc_first(_render_one(e).rstrip("."))
 
 
@@ -1111,8 +1207,10 @@ def channel_break_clause(effects, targets=None) -> str:
     a held channel with what ending it will do."""
     targets = targets or {}
     token = _RENDER_TARGETS.set(targets)
+    ctoken = _RENDER_CHANNELED.set(True)
     try:
         group = [e for e in effects if getattr(e, "trigger", None) == "channel_break"]
         return _join_and([_upkeep_clause(e, targets) for e in group])
     finally:
+        _RENDER_CHANNELED.reset(ctoken)
         _RENDER_TARGETS.reset(token)

@@ -17,12 +17,10 @@ import random
 from typing import Any, Dict, List, Optional
 
 from ltg_core.schema import (
-    BANNED_CREATION_KEYWORDS,
     COST_CARD,
     COST_HP_STEP,
     COST_MANA,
     COST_POWER,
-    CREATION_KEYWORD_COST,
     Character,
     LEVEL_UP_POINTS,
     MAX_POWER_BOUGHT,
@@ -54,8 +52,6 @@ def price_table() -> Dict[str, Any]:
         "card": COST_CARD,              # per +1 starting card
         "power": COST_POWER,            # per +1 bought Power
         "power_cap_per_level": MAX_POWER_BOUGHT,   # T-60: bought Power ≤ 2 × level
-        "keywords": dict(CREATION_KEYWORD_COST),   # buyable set (§P-3)
-        "banned_keywords": sorted(BANNED_CREATION_KEYWORDS),
     }
 
 
@@ -65,10 +61,11 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
 
     ``old_raw`` is the entering character dict (the loadout's ``character``);
     ``patch`` the client's proposed build fields (hp, starting_mana,
-    starting_cards, power_bought, keyword); ``available`` the spendable points
+    starting_cards, power_bought); ``available`` the spendable points
     (banked + the 30 grant). Returns ``(new_character_dict, points_spent)`` or
     raises ValueError with a human message. Everything not in the points-buy
-    (colours, attack mode, row, cards, heroics) is locked to the old build.
+    (colours, attack mode, row, cards, heroics, the keyword — keywords are
+    character-creation only) is locked to the old build.
     """
     old = Character.model_validate(old_raw)
 
@@ -88,6 +85,9 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
     mana = [str(c) for c in mana]
     keyword = patch.get("keyword", old.keyword)
     keyword = str(keyword) if keyword else None
+    if keyword != old.keyword:
+        raise ValueError("keywords come from character creation only — they "
+                         "cannot be bought or changed at level-up")
 
     # The locked baseline (§D10-3.1): nothing bought earlier can be sold back.
     if hp < old.hp:
@@ -106,8 +106,6 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
         raise ValueError(
             f"new mana capacity must lock within the colour identity "
             f"({'/'.join(sorted(identity))}) — got {', '.join(off_colour)}")
-    if old.keyword is not None and keyword != old.keyword:
-        raise ValueError("the keyword is locked — one per character, ever")
 
     new_raw = {**old.model_dump(mode="json"),
                "hp": hp, "starting_mana": mana,
@@ -115,7 +113,7 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
                "keyword": keyword, "level": new_level}
     try:
         # The schema enforces the rest: HP parity, the T-60 Power cap
-        # (2 × level), keyword legality, and the level budget (70 + 30/level).
+        # (2 × level), and the level budget (70 + 30/level).
         new = Character.model_validate(new_raw)
     except Exception as exc:
         raise ValueError(str(exc)) from exc
