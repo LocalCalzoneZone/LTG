@@ -8,6 +8,7 @@ import {
 } from "../lib/api";
 import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
 import { AdventurePanel } from "./AdventurePanel";
+import { ArtQueueButton } from "./ArtQueueButton";
 import { DifficultyTag } from "./DifficultyTag";
 import { EncounterEditor } from "./EncounterEditor";
 import { LlmSettingsPanel } from "./LlmSettingsPanel";
@@ -318,6 +319,7 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
                     {" · "}{e.enemy_names.join(", ")}
                   </div>
                 </div>
+                <ArtQueueButton target={{ encounterId: e.id }} subject="this encounter" />
                 {encConfirmId === e.id ? (
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-light">Remove?</span>

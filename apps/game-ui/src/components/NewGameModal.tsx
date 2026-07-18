@@ -71,6 +71,7 @@ export function NewGameModal({ onClose, onStarted }: {
   const [opts, setOpts] = useState<SetupOptions | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [pick, setPick] = useState<Pick>(null);
+  const [tab, setTab] = useState<"encounters" | "adventures">("encounters");
   const [difficulty, setDifficulty] = useState("standard");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -85,6 +86,17 @@ export function NewGameModal({ onClose, onStarted }: {
       })
       .catch((e) => setErr(String(e)));
   }, []);
+
+  // Switching tabs re-anchors the selection to that tab's first card (or its
+  // generate row) so the Start button always reflects what's on screen.
+  const switchTab = (t: "encounters" | "adventures") => {
+    setTab(t);
+    if (t === "encounters") {
+      setPick({ kind: "encounter", id: opts?.encounters[0]?.id ?? GENERATE_ENC });
+    } else {
+      setPick({ kind: "adventure", id: opts?.adventures[0]?.id ?? GENERATE_ADV });
+    }
+  };
 
   const toggle = (id: string) =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -146,7 +158,7 @@ export function NewGameModal({ onClose, onStarted }: {
 
         {opts && (
           <>
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
               {/* Left — characters: full-height portraits, scrollable */}
               <section className="flex min-h-0 flex-col">
                 <h3 className={SECTION}>Characters · {picked.length} selected</h3>
@@ -188,13 +200,29 @@ export function NewGameModal({ onClose, onStarted }: {
                 </div>
               </section>
 
-              {/* Middle — encounters (one fight) */}
+              {/* Right — the opposition: Encounters | Adventures, tabbed for
+                  full-width title cards (Options-list typography, no truncation) */}
               <section className="flex min-h-0 flex-col">
-                <h3 className={SECTION}>Encounters</h3>
-                <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
+                <div className="mb-2 flex items-center gap-4">
+                  {(["encounters", "adventures"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => switchTab(t)}
+                      className={`caps-label pb-1 text-[11px] tracking-[0.2em] transition ${
+                        tab === t
+                          ? "border-b border-brass text-brass-hi"
+                          : "border-b border-transparent text-mist hover:text-parch"
+                      }`}
+                    >
+                      {t === "encounters" ? "Encounters · one fight" : "Adventures · three acts"}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
                   <label
-                    className={`flex cursor-pointer flex-col gap-2 border p-2 transition ${
-                      encPicked === GENERATE_ENC
+                    className={`flex cursor-pointer flex-col gap-2 border p-3 transition ${
+                      (tab === "encounters" ? encPicked === GENERATE_ENC : advPicked === GENERATE_ADV)
                         ? "border-aether/70 bg-aether/10"
                         : "border-line bg-white/[0.02] hover:border-line2"
                     }`}
@@ -204,21 +232,25 @@ export function NewGameModal({ onClose, onStarted }: {
                         type="radio"
                         name="target"
                         className="accent-[#b39ddb]"
-                        checked={encPicked === GENERATE_ENC}
-                        onChange={() => setPick({ kind: "encounter", id: GENERATE_ENC })}
+                        checked={tab === "encounters" ? encPicked === GENERATE_ENC : advPicked === GENERATE_ADV}
+                        onChange={() => setPick(tab === "encounters"
+                          ? { kind: "encounter", id: GENERATE_ENC }
+                          : { kind: "adventure", id: GENERATE_ADV })}
                       />
-                      <span className="font-normal text-parch">Generate new encounter</span>
+                      <span className="font-normal text-parch">
+                        {tab === "encounters" ? "Generate new encounter" : "Generate new adventure"}
+                      </span>
                     </div>
-                    {encPicked === GENERATE_ENC && (
+                    {(tab === "encounters" ? encPicked === GENERATE_ENC : advPicked === GENERATE_ADV) && (
                       <DifficultyNote difficulty={difficulty} setDifficulty={setDifficulty}
                                       note={note} setNote={setNote} accent="aether" />
                     )}
                   </label>
 
-                  {opts.encounters.map((e) => (
+                  {tab === "encounters" && opts.encounters.map((e) => (
                     <label
                       key={e.id}
-                      className={`flex cursor-pointer flex-col gap-0.5 border p-2 transition ${
+                      className={`flex cursor-pointer flex-col gap-1 border p-3 transition ${
                         encPicked === e.id
                           ? "border-brass bg-brass/10"
                           : "border-line bg-white/[0.02] hover:border-line2"
@@ -232,7 +264,7 @@ export function NewGameModal({ onClose, onStarted }: {
                           checked={encPicked === e.id}
                           onChange={() => setPick({ kind: "encounter", id: e.id })}
                         />
-                        <span className="truncate font-normal text-parch">{e.name}</span>
+                        <span className="caps-label text-[11px] tracking-[0.1em] text-parch">{e.name}</span>
                         <DifficultyTag difficulty={e.difficulty} />
                         {e.scales && e.scales.length > 0 && (
                           <span className="caps-label ml-auto shrink-0 text-[9px] tracking-[0.1em] text-brass">
@@ -240,45 +272,17 @@ export function NewGameModal({ onClose, onStarted }: {
                           </span>
                         )}
                       </div>
-                      <div className="truncate pl-6 text-xs font-light text-mist">
-                        {e.enemy_names.join(", ")}
+                      <div className="pl-6 text-xs font-light text-mist">
+                        {e.enemy_count} {e.enemy_count === 1 ? "enemy" : "enemies"}
+                        {" · "}{e.enemy_names.join(", ")}
                       </div>
                     </label>
                   ))}
-                </div>
-              </section>
 
-              {/* Right — adventures (the three-act run) */}
-              <section className="flex min-h-0 flex-col">
-                <h3 className={SECTION}>Adventures · three acts</h3>
-                <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
-                  <label
-                    className={`flex cursor-pointer flex-col gap-2 border p-2 transition ${
-                      advPicked === GENERATE_ADV
-                        ? "border-aether/70 bg-aether/10"
-                        : "border-line bg-white/[0.02] hover:border-line2"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="target"
-                        className="accent-[#b39ddb]"
-                        checked={advPicked === GENERATE_ADV}
-                        onChange={() => setPick({ kind: "adventure", id: GENERATE_ADV })}
-                      />
-                      <span className="font-normal text-parch">Generate new adventure</span>
-                    </div>
-                    {advPicked === GENERATE_ADV && (
-                      <DifficultyNote difficulty={difficulty} setDifficulty={setDifficulty}
-                                      note={note} setNote={setNote} accent="aether" />
-                    )}
-                  </label>
-
-                  {opts.adventures.map((a) => (
+                  {tab === "adventures" && opts.adventures.map((a) => (
                     <label
                       key={a.id}
-                      className={`flex cursor-pointer flex-col gap-0.5 border p-2 transition ${
+                      className={`flex cursor-pointer flex-col gap-1 border p-3 transition ${
                         advPicked === a.id
                           ? "border-brass bg-brass/10"
                           : "border-line bg-white/[0.02] hover:border-line2"
@@ -292,18 +296,22 @@ export function NewGameModal({ onClose, onStarted }: {
                           checked={advPicked === a.id}
                           onChange={() => setPick({ kind: "adventure", id: a.id })}
                         />
-                        <span className="truncate font-normal text-parch">{a.name}</span>
+                        <span className="caps-label text-[11px] tracking-[0.1em] text-parch">{a.name}</span>
                         <DifficultyTag difficulty={a.difficulty} />
                       </div>
                       {a.flavor && (
-                        <div className="truncate pl-6 text-xs font-light italic text-mist">{a.flavor}</div>
+                        <div className="pl-6 text-xs font-light italic text-mist">{a.flavor}</div>
                       )}
-                      <div className="truncate pl-6 text-[11px] font-light text-dimmed">
-                        {a.act_names.map((n, i) => `${["I", "II", "III"][i] ?? i + 1}. ${n}`).join(" · ")}
+                      <div className="flex flex-col gap-0.5 pl-6">
+                        {a.act_names.map((n, i) => (
+                          <span key={i} className="text-[11px] font-light text-dimmed">
+                            {["I", "II", "III"][i] ?? i + 1}. {n}
+                          </span>
+                        ))}
                       </div>
                     </label>
                   ))}
-                  {opts.adventures.length === 0 && (
+                  {tab === "adventures" && opts.adventures.length === 0 && (
                     <div className="px-1 py-2 text-xs font-light text-dimmed">
                       No adventures yet — generate one above, or author one in Options.
                     </div>
