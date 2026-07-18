@@ -328,6 +328,9 @@ REF_VALUES = {
     "caster_hp": "your current HP (the caster's, at resolution)",
     "target_power": "the target's Power",
     "target_hp": "the target's current HP",
+    # The number of living enemy creatures on the battlefield, read at
+    # RESOLUTION (a kill earlier in the same card changes what later effects see).
+    "enemy_count": "the number of enemies on the battlefield",
     # Retroactive combo refs: the size of the last blow that CONNECTED with the
     # named combatant (post-prevention/mitigation), 0 if never hit. "Heal an
     # amount equal to the last damage you took."
@@ -656,6 +659,23 @@ class CopySpell(EffectBase):
     target: ActionTarget = Field(default_factory=lambda: ActionTarget(side=Side.any))
 
 
+class Redirect(EffectBase):
+    """Retarget a TARGETED action on the stack — a spell, ability, or attack
+    aimed at a single chosen target — assigning it a new target of the
+    redirector's choice. Untargeted actions (self buffs, whole-side effects)
+    have nothing to redirect, and a relentless enemy's intents never redirect
+    (§L-6.2). Instant-speed by nature: there must be an action on the stack."""
+
+    kind: Literal["redirect"] = "redirect"
+    # The stack action to retarget — EITHER side's (turn the ogre's swing, or
+    # re-aim an ally's misdirected bolt).
+    target: ActionTarget = Field(default_factory=lambda: ActionTarget(side=Side.any))
+    filter: FilterNode = "action"
+    # The action's new destination, chosen when the redirect is cast.
+    new_target: TargetOrSlot = Field(
+        default_factory=lambda: t_chosen("any", targeted=True))
+
+
 class DoubleNext(EffectBase):
     """The other spell multiplier: the target combatant's next matching action
     RESOLVES TWICE ("the next spell you resolve, resolves twice"). `filter` is a
@@ -886,6 +906,7 @@ LEAF_EFFECT_CLASSES = [
     Protection,
     Amplify,
     CopySpell,
+    Redirect,
     DoubleNext,
     Draw,
     Scry,
