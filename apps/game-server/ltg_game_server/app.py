@@ -460,17 +460,16 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Static art: locally generated images (user data) shadow published art shipped
-# in the tracked content dir, under one /art URL space — a promoted encounter's
-# image references resolve on every install. + static client (mounted last so
-# /api/* wins)
+# Static art: served from the tracked content dir, with the legacy loadouts art
+# dir as a read-only fallback (pre-split installs), under one /art URL space. +
+# static client (mounted last so /api/* wins)
 # --------------------------------------------------------------------------- #
 app.include_router(appctl.router)
 
 
 @app.get(art.ART_URL_PREFIX + "/{image_path:path}")
 def serve_art(image_path: str) -> FileResponse:
-    for base in (art.ART_DIR, art.CONTENT_ART_DIR):
+    for base in (art.ART_DIR, art.LEGACY_ART_DIR):
         p = (base / image_path).resolve()
         if p.is_relative_to(base.resolve()) and p.is_file():
             return FileResponse(p)

@@ -1,0 +1,251 @@
+{
+  "name": "The Mirage Choir of Suhail",
+  "scene": "A caravanserai swallowed by dunes at high noon, its tiled courtyard cracked and half-drowned in golden sand. Heat-shimmer coils above the broken fountain, and a wailing wind carries the false song of things that were never travelers \u2014 figures of light and mirage circling the dry well.",
+  "scene_image": "/art/the_mirage_choir_of_suhail/scene-a8caace8.png",
+  "enemies": [
+    {
+      "id": "mirage_wailer",
+      "name": "Mirage Wailer",
+      "flavor": "Holds a shimmering song that saps the whole party \u2014 silence it or wilt.",
+      "description": "A translucent human shape woven from heat-haze and drifting sand, its edges rippling like a reflection on water, mouth an endless open ring of shivering light.",
+      "hp": 8,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "wailing_mirage",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Wailing Mirage \u2014 a held song: the party fights at -1/-1 while it sings",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "heat_lash",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "action_type": "spell",
+          "condition": {
+            "kind": "self_channeling",
+            "op": "<",
+            "value": 1
+          },
+          "target_rule": "valuation",
+          "telegraph": "Heat Lash \u2014 deal 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_mirage_choir_of_suhail/mirage_wailer-9823be74.png"
+    },
+    {
+      "id": "glass_dervish",
+      "name": "Glass Dervish",
+      "flavor": "A whirling mirage that guards the song, striking whoever wounds its kin.",
+      "description": "A spinning column of sand and shards of desert glass, vaguely armed with two curved scimitars of fused silica that hum as it turns.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "veil_ward",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Veil of Sand \u2014 shield an ally from the next blow",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "glass_riposte",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Glass Riposte \u2014 deal 4 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_mirage_choir_of_suhail/glass_dervish-732ce1e4.png"
+    },
+    {
+      "id": "sun_shade",
+      "name": "Sun-Shade Stalker",
+      "flavor": "An assassin of light that hunts the party's strongest arm.",
+      "description": "A tall, faceless silhouette of pure shadow cast on nothing, edged in blinding white as if lit from behind by a sun no one can see, moving in silent glides.",
+      "hp": 2,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "cut_the_arm",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Cut the Sword-Arm \u2014 deal 3 to the mightiest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shimmer_step",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Shimmer-Step"
+        }
+      ],
+      "image": "/art/the_mirage_choir_of_suhail/sun_shade-53cd4f55.png"
+    },
+    {
+      "id": "ritual_echo",
+      "name": "Ritual Echo",
+      "flavor": "A sniper that snaps at whoever tries to break the choir's song.",
+      "description": "A small, hovering knot of mirrored sand-motes shaped like a listening ear, glinting and twitching toward any sound.",
+      "hp": 2,
+      "power": 1,
+      "level": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "break_the_breaker",
+          "archetype": "Punish",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "action_type": "spell",
+          "telegraph": "Discordant Echo \u2014 deal 2 to a ritual-caster",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "scatter",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 30,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Scatter to the Wind"
+        }
+      ],
+      "image": "/art/the_mirage_choir_of_suhail/ritual_echo-8159c888.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "easy",
+  "layouts": {
+    "1": [
+      "glass_dervish",
+      "sun_shade"
+    ],
+    "2": [
+      "mirage_wailer",
+      "glass_dervish",
+      "sun_shade",
+      "ritual_echo"
+    ],
+    "3": [
+      "mirage_wailer",
+      "glass_dervish",
+      "glass_dervish",
+      "sun_shade",
+      "ritual_echo",
+      "ritual_echo"
+    ],
+    "4": [
+      "mirage_wailer",
+      "glass_dervish",
+      "glass_dervish",
+      "sun_shade",
+      "sun_shade",
+      "ritual_echo",
+      "ritual_echo",
+      "ritual_echo"
+    ]
+  }
+}

@@ -60,7 +60,7 @@ def _encounter(name="Scene Test Zzz", scene=_SCENE, desc=True):
 # --------------------------------------------------------------------------- #
 def test_scene_and_descriptions_persist_and_serve():
     meta = content.save_encounter(_encounter())
-    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    path = content.CONTENT_DIR / f"{meta['id']}.json"
     try:
         on_disk = json.loads(path.read_text())
         assert on_disk["scene"] == _SCENE
@@ -76,7 +76,7 @@ def test_editor_shaped_save_round_trips_scene():
     """The editor posts {name, scene, enemies, tokens} with enemies spread from the
     loaded detail — scene and descriptions must survive an edit-save cycle."""
     meta = content.save_encounter(_encounter())
-    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    path = content.CONTENT_DIR / f"{meta['id']}.json"
     try:
         detail = content.encounter_detail(meta["id"])
         edited = {"name": detail["name"], "scene": detail.get("scene", ""),
@@ -114,7 +114,7 @@ def test_generation_repairs_missing_scene_and_descriptions(monkeypatch):
     monkeypatch.setattr(llm, "load_settings",
                         lambda: {**llm._default_settings(), "api_key": "sk"})
     meta = llm.generate_encounter(["soren", "ys"], "standard", "")
-    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    path = content.CONTENT_DIR / f"{meta['id']}.json"
     try:
         assert len(calls) == 2                             # rejected, then repaired
         assert '"scene"' in calls[1] and '"description"' in calls[1]

@@ -1,0 +1,397 @@
+{
+  "name": "The Ironwatch Cordon",
+  "scene": "A cobbled market square at mid afternoon, with empty stalls and carts. Sunny, breezy, with wispy clouds and a blue sky.",
+  "scene_image": "/art/the_ironwatch_cordon/scene-fd3a5224.png",
+  "enemies": [
+    {
+      "id": "lord_commander_vasque",
+      "name": "Lord-Commander Vasque",
+      "flavor": "A duellist-captain: parries blades, calls the guard to fall on your carry, erupts when cornered.",
+      "description": "A broad-shouldered veteran in blackened plate chased with silver watch-sigils, a crimson officer's sash cinched at the waist, greying beard braided with brass rings, wielding a longsword and a shield.",
+      "hp": 39,
+      "power": 3,
+      "level": 6,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "reach"
+      ],
+      "image": "/art/the_ironwatch_cordon/lord_commander_vasque-990ff217.png",
+      "components": [
+        {
+          "id": "press_the_carry",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Mark the Ringleader \u2014 taunt the deadliest hero",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "riposte",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "cooldown": 3,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Officer's Parry \u2014 turn aside the blow",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "attack"
+            }
+          ]
+        },
+        {
+          "id": "scatter_them",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 18,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Break Their Line \u2014 halberd sweep across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hold_the_square",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "HOLD THE SQUARE \u2014 Vasque roars the cordon tight: +3/+2 forever, a plaza-wide blast, and the guard surges",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "grant_keyword",
+              "keywords": [
+                "trample"
+              ],
+              "duration": "encounter",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shieldwall_serjeant",
+      "name": "Shieldwall Serjeant",
+      "flavor": "A wall that drags heroes into halberd range and punishes those who hack at it.",
+      "description": "A stout soldier behind a battered kite shield emblazoned with the watch's tower, iron nasal-helm dented, hobnailed boots planted wide on the stone.",
+      "hp": 12,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "image": "/art/the_ironwatch_cordon/shieldwall_serjeant-8910fb17.png",
+      "components": [
+        {
+          "id": "halberd_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Halberd Hook \u2014 drag a hero to the front line",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shield_bash",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Shield Bash \u2014 deal 3 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "whistle_serjeant",
+      "name": "Whistle-Serjeant",
+      "flavor": "Rallies the cordon with a held muster-call and stuns a hero to blow the whistle.",
+      "description": "A lean human officer in a cloak with a brass whistle at their lips, one gauntleted hand raised in signal, a rally-banner strapped across their back streaming out orders.",
+      "hp": 12,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "image": "/art/the_ironwatch_cordon/whistle_serjeant-456edeaf.png",
+      "components": [
+        {
+          "id": "muster_call",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Muster Call \u2014 a sustained rally: the whole cordon fights at +1/+1 while it holds",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "shrill_command",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 28,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Shrill Command \u2014 stun a hero",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crossbow_watchman",
+      "name": "Crossbow Watchman",
+      "flavor": "A backline sniper that reads the room and shoots whoever is casting.",
+      "description": "A wiry human guard in a studded jerkin and tabard, one knee braced on an overturned crate, sighting down a cranked steel crossbow with a quiver of bolts across the chest.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "image": "/art/the_ironwatch_cordon/crossbow_watchman-58d2c536.png",
+      "components": [
+        {
+          "id": "interrupt_shot",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 22,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "telegraph": "Interrupt Shot \u2014 bolt to the hero mid-cast for 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "covering_fire",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 26,
+          "target_rule": "trigger_source",
+          "telegraph": "Covering Fire \u2014 deal 3 to whoever struck a fellow guard",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "truncheon_bailiff",
+      "name": "Truncheon Bailiff",
+      "flavor": "A skirmisher that clubs the hardest-hitting hero senseless.",
+      "description": "A burly human enforcer in a leather coat and half-tabard, brass knuckle-guards on a lead-cored truncheon, a manacle-chain jingling at the belt as they stalk between the carts.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "image": "/art/the_ironwatch_cordon/truncheon_bailiff-664440e3.png",
+      "components": [
+        {
+          "id": "crack_the_arm",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 29,
+          "cooldown": 3,
+          "target_rule": "highest_threat",
+          "telegraph": "Crack the Arm \u2014 wound the strongest hero -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "subdue",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Subdue \u2014 stun the hero who came for me",
+          "once_per_encounter": true,
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tokens": {},
+  "difficulty": "hard",
+  "layouts": {
+    "1": [
+      "lord_commander_vasque",
+      "shieldwall_serjeant"
+    ],
+    "2": [
+      "lord_commander_vasque",
+      "shieldwall_serjeant",
+      "crossbow_watchman",
+      "truncheon_bailiff"
+    ],
+    "3": [
+      "lord_commander_vasque",
+      "shieldwall_serjeant",
+      "whistle_serjeant",
+      "crossbow_watchman",
+      "truncheon_bailiff",
+      "truncheon_bailiff"
+    ],
+    "4": [
+      "lord_commander_vasque",
+      "shieldwall_serjeant",
+      "shieldwall_serjeant",
+      "whistle_serjeant",
+      "crossbow_watchman",
+      "crossbow_watchman",
+      "truncheon_bailiff",
+      "truncheon_bailiff"
+    ]
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "name": "The Silken Threshold",
+  "scene": "A crystal-mine entrance choked with pale spider-silk: broken lantern-poles wound in cocoons, cart-rails swallowed by webbing, and a thin dawn light filtering silver through the strands. Frost-glitter of crushed quartz coats the floor.",
+  "scene_image": "/art/the_loom_of_the_widow_weavers__act1/scene-27b178ca.png",
+  "enemies": [
+    {
+      "id": "silk_scuttler",
+      "name": "Silk Scuttler",
+      "flavor": "A quick biter that grows fangs if you dawdle past turn 3.",
+      "description": "A dog-sized spider of dusty grey, its abdomen marked with a pale hourglass, legs tipped in barbed silk-hooks that click on the quartz floor.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "quickbite",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Reflex Bite \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "gorged_fangs",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "condition": {
+            "kind": "turn",
+            "op": ">=",
+            "value": 3
+          },
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Gorged Fangs \u2014 deal 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act1/silk_scuttler-dcf47704.png"
+    },
+    {
+      "id": "web_flinger",
+      "name": "Web-Flinger",
+      "flavor": "A back-row spitter that snares heroes once the fight drags on.",
+      "description": "A lean, long-legged spider clinging high on the tunnel wall, its bulbous spinnerets glistening, forelimbs raised to fling ropes of sticky silk.",
+      "hp": 2,
+      "power": 2,
+      "level": 1,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "snare",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Silk Snare \u2014 wound a hero -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "cocoon_shot",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "condition": {
+            "kind": "turn",
+            "op": ">=",
+            "value": 4
+          },
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Cocoon Shot \u2014 stun a hero (loses a turn)",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act1/web_flinger-7a11259f.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "easy",
+  "layouts": {
+    "1": [
+      "silk_scuttler",
+      "web_flinger"
+    ],
+    "2": [
+      "silk_scuttler",
+      "silk_scuttler",
+      "web_flinger",
+      "web_flinger"
+    ],
+    "3": [
+      "silk_scuttler",
+      "silk_scuttler",
+      "silk_scuttler",
+      "web_flinger",
+      "web_flinger",
+      "web_flinger"
+    ],
+    "4": [
+      "silk_scuttler",
+      "silk_scuttler",
+      "silk_scuttler",
+      "silk_scuttler",
+      "web_flinger",
+      "web_flinger",
+      "web_flinger",
+      "web_flinger"
+    ]
+  }
+}

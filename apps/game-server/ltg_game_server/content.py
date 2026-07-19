@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -30,24 +31,26 @@ from ltg_combat.state import GameState
 # Repo root: apps/game-server/ltg_game_server/content.py -> up 3 == repo root.
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Where imported loadouts are saved (Deckbuilder's own loadouts dir, so an imported
-# character persists and is shared with the Deckbuilder). Scanned first below.
-# Gitignored: this is per-install user data, never shared through the repo.
+# Gitignored per-install user data: characters (imported Deckbuilder loadouts),
+# LLM settings (with the API key), and the hidden-id files. NOT encounters or
+# adventures — those are shared content (CONTENT_DIR) so they reach every install
+# through git. Pre-split installs may still hold legacy encounter/art files here;
+# they are read (and superseded on the next save) but never written afresh.
 LOADOUTS_DIR = REPO_ROOT / "apps" / "deckbuilder" / "loadouts"
 
-# Curated shared content (encounters, adventures, and their art) — git-TRACKED,
-# so every install gets it via clone/pull. Runtime never writes here; content is
-# promoted from LOADOUTS_DIR by scripts/publish_content.py. Edits/deletes on
-# another install shadow/hide (source "example" semantics), keeping its checkout
-# clean so `git pull` always fast-forwards.
+# Shared, git-TRACKED content: encounters, adventures, and their art. This is
+# where the game WRITES them (generation and the editor alike) and where a
+# delete removes the file — so the tracked folder mirrors the live library and
+# a commit ships it to every install. Characters/settings stay in LOADOUTS_DIR.
 CONTENT_DIR = REPO_ROOT / "content"
 
-# Directories scanned for loadout / encounter JSON, in priority order. The first
-# file to claim a given id wins (so a user's loadouts dir can shadow curated
-# content, which in turn shadows the bundled examples).
+# Directories scanned for encounter / adventure / character JSON, in priority
+# order — the first file to claim an id wins. Shared content leads (it is the
+# write target); the legacy loadouts dir follows (pre-split leftovers, plus
+# where characters live); bundled examples are the last-resort fixtures.
 _SCAN_DIRS = [
-    LOADOUTS_DIR,
     CONTENT_DIR,
+    LOADOUTS_DIR,
     REPO_ROOT / "examples",
 ]
 
@@ -559,6 +562,26 @@ def _art_file_exists(url: str) -> bool:
             or (CONTENT_DIR / "art" / rel).is_file())
 
 
+def _write_content(filename: str, text: str) -> None:
+    """Persist an encounter/adventure JSON into the tracked content dir, dropping
+    any legacy same-name copy in the loadouts dir so it can't shadow the write
+    (the scan still lists loadouts, for pre-split installs)."""
+    CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    (CONTENT_DIR / filename).write_text(text)
+    (LOADOUTS_DIR / filename).unlink(missing_ok=True)
+
+
+def _remove_content_files(cid: str) -> None:
+    """Delete an encounter/act's JSON and its generated-art folder from wherever
+    they physically live (the tracked content dir and the legacy loadouts dir),
+    so a delete truly removes the piece rather than leaving a tracked orphan."""
+    for d in (CONTENT_DIR, LOADOUTS_DIR):
+        (d / f"{cid}.json").unlink(missing_ok=True)
+        art = d / "art" / cid
+        if art.is_dir():
+            shutil.rmtree(art, ignore_errors=True)
+
+
 def _carry_art_refs(cleaned: Dict[str, Any], eid: str) -> None:
     """Never let a save orphan persisted art. The editor posts its own state,
     which can predate art generated since it loaded (the queue persists images
@@ -608,8 +631,7 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
     # An adventure act edited through this path must keep its adventure valid
     # (Act III boss constraints, §D10-4.1) — checked before anything persists.
     _check_act_edit(eid, cleaned)
-    LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
-    (LOADOUTS_DIR / f"{eid}.json").write_text(json.dumps(cleaned, indent=2))
+    _write_content(f"{eid}.json", json.dumps(cleaned, indent=2))
     hidden = _enc_hidden()
     if eid in hidden:
         hidden.discard(eid)
@@ -619,12 +641,13 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
 
 
 def delete_encounter(encounter_id: str) -> None:
-    """Remove an encounter from the picker. A user file (in LOADOUTS_DIR) is deleted;
-    if the id still resolves from a built-in or bundled example afterwards it is hidden
-    so it stays gone. Raises ValueError on an unknown id."""
+    """Remove an encounter from the picker. Its shared-content file (and any
+    generated art) is deleted outright; if the id still resolves from a built-in
+    or a bundled example afterwards it is hidden so it stays gone. Raises
+    ValueError on an unknown id."""
     if encounter_id not in _encounter_registry():
         raise ValueError(f"unknown encounter: {encounter_id}")
-    (LOADOUTS_DIR / f"{encounter_id}.json").unlink(missing_ok=True)
+    _remove_content_files(encounter_id)
     # A built-in base or an examples/ fixture survives the file removal — hide it.
     if encounter_id in _encounter_registry():
         hidden = _enc_hidden()
@@ -845,17 +868,16 @@ def save_adventure(raw: Dict[str, Any],
     _validate_adventure(cleaned_acts, narrations)
 
     aid = adventure_id or _slug(name) or "adventure"
-    LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
     act_entries = []
     for i, (act, narration) in enumerate(zip(cleaned_acts, narrations), start=1):
         eid = act_encounter_id(aid, i)
-        (LOADOUTS_DIR / f"{eid}.json").write_text(json.dumps(act, indent=2))
+        _write_content(f"{eid}.json", json.dumps(act, indent=2))
         act_entries.append({"narration": narration, "encounter_id": eid})
     wrapper = {"kind": "adventure", "name": name,
                "flavor": str(raw.get("flavor") or ""), "acts": act_entries}
     if str(raw.get("difficulty") or "").strip():  # "made at" flag (llm.py stamps it)
         wrapper["difficulty"] = str(raw["difficulty"]).strip()
-    (LOADOUTS_DIR / f"{aid}.json").write_text(json.dumps(wrapper, indent=2))
+    _write_content(f"{aid}.json", json.dumps(wrapper, indent=2))
     hidden = _adv_hidden()
     if aid in hidden:
         hidden.discard(aid)
@@ -885,23 +907,22 @@ def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, A
     wrapper = {"kind": "adventure", "name": name, "flavor": flavor, "acts": acts}
     if adv.get("difficulty"):  # the "made at" flag rides through info edits
         wrapper["difficulty"] = adv["difficulty"]
-    LOADOUTS_DIR.mkdir(parents=True, exist_ok=True)
-    (LOADOUTS_DIR / f"{adventure_id}.json").write_text(json.dumps(wrapper, indent=2))
+    _write_content(f"{adventure_id}.json", json.dumps(wrapper, indent=2))
     fresh = _adventure_registry().get(adventure_id)
     return _adventure_meta(adventure_id, fresh)
 
 
 def delete_adventure(adventure_id: str) -> None:
-    """Remove an adventure and its act files. A bundled example that survives
-    the deletion is hidden instead (mirroring delete_encounter)."""
+    """Remove an adventure, its act files, and their art. A bundled example that
+    survives the deletion is hidden instead (mirroring delete_encounter)."""
     adv = _adventure_registry().get(adventure_id)
     if adv is None:
         raise ValueError(f"unknown adventure: {adventure_id}")
     for act in adv["acts"]:
         eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
         if eid:
-            (LOADOUTS_DIR / f"{eid}.json").unlink(missing_ok=True)
-    (LOADOUTS_DIR / f"{adventure_id}.json").unlink(missing_ok=True)
+            _remove_content_files(eid)
+    _remove_content_files(adventure_id)
     if adventure_id in _adventure_registry():
         hidden = _adv_hidden()
         hidden.add(adventure_id)

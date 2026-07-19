@@ -1,0 +1,20 @@
+{
+  "kind": "adventure",
+  "name": "The Frostmaze of Vaelryn",
+  "flavor": "Descend the ever-shifting ice-labyrinth to end the lich who built it.",
+  "acts": [
+    {
+      "narration": "You step through a fissure in the glacier and the cold takes your breath. The passage ahead branches and re-branches into corridors of blue-black ice, and in the frost-fog things flit \u2014 pale, silent, gone before you can name them. Somewhere far below, a slow pulse of green light beats like a buried heart.",
+      "encounter_id": "the_frostmaze_of_vaelryn__act1"
+    },
+    {
+      "narration": "The corridors widen into a vaulted gallery where the labyrinth's makers stand vigil \u2014 half-frozen dead in the livery of a court long dead. As your blades bite them, the ice sheathing them cracks, and something worse claws its way out from underneath. Nothing here dies willing.",
+      "encounter_id": "the_frostmaze_of_vaelryn__act2"
+    },
+    {
+      "narration": "The floor opens onto the labyrinth's heart: a frozen throne-cavern where the pulse of green light is a roar. Upon a dais of black ice sits Vaelryn, the lich who dreamed this maze, and at the sight of you he rises. The cold here is not cold \u2014 it is a hunger, and it has been waiting.",
+      "encounter_id": "the_frostmaze_of_vaelryn__act3"
+    }
+  ],
+  "difficulty": "hard"
+}

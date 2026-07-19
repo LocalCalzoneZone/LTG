@@ -63,19 +63,21 @@ def _adventure():
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path):
     """Keep every saved adventure/act/hidden file out of the developer's real
-    loadouts dir state: remember what exists, delete anything new afterwards."""
-    before = {p.name for p in content.LOADOUTS_DIR.glob("*.json")} \
-        if content.LOADOUTS_DIR.is_dir() else set()
+    content + loadouts state: remember what exists, delete anything new after."""
+    dirs = [content.CONTENT_DIR, content.LOADOUTS_DIR]
+    before = {d: ({p.name for p in d.glob("*.json")} if d.is_dir() else set())
+              for d in dirs}
     saved_hidden = {p: (p.read_text() if p.exists() else None)
                     for p in (content.HIDDEN_FILE, content.ENCOUNTER_HIDDEN_FILE,
                               content.ADVENTURE_HIDDEN_FILE)}
     try:
         yield
     finally:
-        if content.LOADOUTS_DIR.is_dir():
-            for p in content.LOADOUTS_DIR.glob("*.json"):
-                if p.name not in before:
-                    p.unlink(missing_ok=True)
+        for d in dirs:
+            if d.is_dir():
+                for p in d.glob("*.json"):
+                    if p.name not in before[d]:
+                        p.unlink(missing_ok=True)
         for p, original in saved_hidden.items():
             if original is None:
                 p.unlink(missing_ok=True)
@@ -92,9 +94,9 @@ def test_save_adventure_persists_wrapper_and_act_files():
     assert meta["name"] == "Test Keep"
     assert meta["act_names"] == ["The Gate", "The Courtyard", "The Throne Room"]
     # The wrapper and the three act encounter files exist.
-    assert (content.LOADOUTS_DIR / f"{aid}.json").exists()
+    assert (content.CONTENT_DIR / f"{aid}.json").exists()
     for n in (1, 2, 3):
-        assert (content.LOADOUTS_DIR / f"{aid}__act{n}.json").exists()
+        assert (content.CONTENT_DIR / f"{aid}__act{n}.json").exists()
     detail = content.adventure_detail(aid)
     assert [a["narration"] for a in detail["acts"]] != ["", "", ""]
     assert detail["acts"][2]["enemies"][1]["is_boss"] is True
@@ -168,7 +170,7 @@ def test_delete_adventure_removes_act_files():
     content.delete_adventure(aid)
     assert content.adventure_detail(aid) is None
     for n in (1, 2, 3):
-        assert not (content.LOADOUTS_DIR / f"{aid}__act{n}.json").exists()
+        assert not (content.CONTENT_DIR / f"{aid}__act{n}.json").exists()
 
 
 # --------------------------------------------------------------------------- #

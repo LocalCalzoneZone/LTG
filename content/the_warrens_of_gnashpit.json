@@ -1,0 +1,20 @@
+{
+  "kind": "adventure",
+  "name": "The Warrens of Gnashpit",
+  "flavor": "Break out of a goblin slave-prison dug into a living mountain \u2014 through the shouting jailers, the ambush warrens, and the drum-tyrant at the throat of the pit.",
+  "acts": [
+    {
+      "narration": "You come up out of the pit-cells with a stolen key and blood under your nails, into the guard-gallery where torchlight throbs to the beat of a war-drum. Goblins scramble along the catwalks, snatching up notched blades, and one of them lifts a bone-horn to its lips and begins to howl the muster-song. The gate to the deeper warren yawns ahead \u2014 reach it before the whole warren answers.",
+      "encounter_id": "the_warrens_of_gnashpit__act1"
+    },
+    {
+      "narration": "The gate slams behind you into a maze of ambush-warrens \u2014 narrow tunnels bored crooked through the stone, where the goblins do not stand and fight but wait. Blades flick from murder-holes. A scarred cutthroat drops from a ceiling-crack right onto Turin's shoulders. Somewhere ahead a whetstone sings against steel, patient and deliberate \u2014 something in here is hunting the one who hits hardest.",
+      "encounter_id": "the_warrens_of_gnashpit__act2"
+    },
+    {
+      "narration": "The last tunnel spills you out onto a ledge above the pit's throat \u2014 a vast cavern where a bonfire roars and the whole clan is gathered, drumming. On a dais of stacked skulls squats the Drum-Tyrant of Gnashpit, huge and grease-slick, hammering a rhythm that whips the swarm into froth. Between you and the sky-shaft is his entire howling court. There is no more sneaking. You break him here, or you die in the pit.",
+      "encounter_id": "the_warrens_of_gnashpit__act3"
+    }
+  ],
+  "difficulty": "standard"
+}

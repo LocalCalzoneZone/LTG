@@ -1,0 +1,273 @@
+{
+  "name": "The Salt-Wraith Tide-Riders",
+  "scene": "A wind-scoured tidal flat under a bruised evening sky, where the sea has withdrawn to a mirror-thin sheen over cracked mud and the bleached ribs of a wrecked galleon jut like a cage. Crusted salt-pillars glitter faintly, and a low keening rises from the pools as pale shapes gather between the wrecks.",
+  "scene_image": "/art/the_salt_wraith_tide_riders/scene-07f6e648.png",
+  "enemies": [
+    {
+      "id": "tide_caller",
+      "name": "Tide-Caller of the Salt",
+      "flavor": "Holds a keening rite that grinds the whole party down \u2014 break it or wither.",
+      "description": "A tall, translucent figure of hardened brine and drowned kelp, its face a smooth mask of salt-crystal, robes flowing like poured seawater that never quite touches the ground.",
+      "hp": 10,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "keening_rite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Keening Rite \u2014 a held wail: the whole party fights at -1/-1 while it sounds",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "undertow",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "condition": {
+            "kind": "self_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "channeling_player",
+          "action_type": "spell",
+          "telegraph": "Undertow \u2014 poison the hero trying to break the rite",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_salt_wraith_tide_riders/tide_caller-b50ffdb6.png"
+    },
+    {
+      "id": "brine_warden",
+      "name": "Brine Warden",
+      "flavor": "Bodyguards the rite; shields the caller when the party lunges for it.",
+      "description": "A hulking construct of packed wet sand and barnacle-crusted driftwood, a splintered ship's figurehead fused to its shoulders, dripping seawater with every heavy step.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "salt_ward",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Salt-Shell \u2014 shield a struck ally from the next blow",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "crushing_swing",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Crushing Swing \u2014 deal 3 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_salt_wraith_tide_riders/brine_warden-c628d140.png"
+    },
+    {
+      "id": "drag_hook_wraith",
+      "name": "Drag-Hook Wraith",
+      "flavor": "Hurls a barbed line and hauls a backliner into the wall's reach.",
+      "description": "A lean, ribbon-thin wraith of grey vapor and knotted netting, one arm ending in a coil of rusted grappling chain that trails salt as it whips through the air.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "drag_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Drag-Hook \u2014 haul a hero to the front line",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "barbed_recoil",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Barbed Recoil \u2014 deal 4 to whoever hunts it",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_salt_wraith_tide_riders/drag_hook_wraith-d2adc519.png"
+    },
+    {
+      "id": "salt_husk",
+      "name": "Salt-Husk Drowned",
+      "flavor": "Cheap front fodder that stings anyone who cuts it down among its kin.",
+      "description": "A shambling, waterlogged corpse encrusted in white salt-scale, kelp threaded through its ribs, jaw hanging slack and streaming brine.",
+      "hp": 4,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "salt_lash",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 1,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Salt-Lash \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "death_spray",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Death-Spray \u2014 poison a hero as it bursts",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_salt_wraith_tide_riders/salt_husk-4aa59d4d.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "brine_warden",
+      "salt_husk"
+    ],
+    "2": [
+      "tide_caller",
+      "brine_warden",
+      "salt_husk",
+      "salt_husk"
+    ],
+    "3": [
+      "tide_caller",
+      "brine_warden",
+      "drag_hook_wraith",
+      "salt_husk",
+      "salt_husk",
+      "salt_husk"
+    ],
+    "4": [
+      "tide_caller",
+      "brine_warden",
+      "brine_warden",
+      "drag_hook_wraith",
+      "salt_husk",
+      "salt_husk",
+      "salt_husk",
+      "salt_husk"
+    ]
+  }
+}

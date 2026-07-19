@@ -17,14 +17,20 @@ from ltg_game_server import art, content, llm
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def loadouts(tmp_path, monkeypatch):
+    # Encounters/art now write to the tracked content dir; loadouts holds the
+    # hidden-id + settings files. Isolate both under tmp_path.
     d = tmp_path / "loadouts"
+    c = tmp_path / "content"
     monkeypatch.setattr(content, "LOADOUTS_DIR", d)
-    monkeypatch.setattr(content, "_SCAN_DIRS", [d])
+    monkeypatch.setattr(content, "CONTENT_DIR", c)
+    monkeypatch.setattr(content, "_SCAN_DIRS", [c, d])
     monkeypatch.setattr(content, "HIDDEN_FILE", d / "hidden.json")
     monkeypatch.setattr(content, "ENCOUNTER_HIDDEN_FILE", d / "encounters_hidden.json")
+    monkeypatch.setattr(content, "ADVENTURE_HIDDEN_FILE", d / "adventures_hidden.json")
     monkeypatch.setattr(llm, "SETTINGS_PATH", d / "llm_settings.json")
-    monkeypatch.setattr(art, "ART_DIR", d / "art")
-    return d
+    monkeypatch.setattr(art, "ART_DIR", c / "art")
+    monkeypatch.setattr(art, "LEGACY_ART_DIR", d / "art")
+    return c
 
 
 ENC = {
