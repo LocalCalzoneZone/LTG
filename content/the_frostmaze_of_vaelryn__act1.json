@@ -1,0 +1,200 @@
+{
+  "name": "The Glimmering Corridors",
+  "scene": "A labyrinth of translucent ice-walls that seem to breathe and reset, corridors folding into corridors under a ceiling of frozen stars. Blue witch-light drifts in the fog, and everything is silent save the crackle of shifting ice.",
+  "scene_image": "/art/the_frostmaze_of_vaelryn__act1/scene-a33093dd.png",
+  "enemies": [
+    {
+      "id": "frost_wisp",
+      "name": "Frost-Wisp",
+      "flavor": "A flitting flyer only reach or ranged answers \u2014 it stings when hunted.",
+      "description": "A hand-span mote of pale-blue witch-fire trailing a comet-tail of frost, drifting and darting through the ice-fog with no fixed shape.",
+      "hp": 3,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [
+        "flying"
+      ],
+      "components": [
+        {
+          "id": "driftback",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Drift into the fog"
+        },
+        {
+          "id": "frostbite",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "action_type": "spell",
+          "telegraph": "Frostbite \u2014 wound the hunter -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act1/frost_wisp-ab30b879.png"
+    },
+    {
+      "id": "glimmer_shade",
+      "name": "Glimmering Shade",
+      "flavor": "A hexproof stalker slippery to spells; chips and slips home.",
+      "description": "A gaunt, translucent silhouette of frozen mist wearing the memory of ragged robes, edges smearing like breath on glass as it glides between walls.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [
+        "hexproof",
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "slipwall",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Slip through the ice"
+        },
+        {
+          "id": "chill_lance",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Chill Lance \u2014 deal 2",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act1/glimmer_shade-bf0cccb8.png"
+    },
+    {
+      "id": "rime_warden",
+      "name": "Rime Warden",
+      "flavor": "Holds a frost-aura ritual that chills the whole party \u2014 and blocks the hall.",
+      "description": "A broad-shouldered husk of a knight frozen inside a shell of accreted rime, hoarfrost streaming from its joints, a cracked longspear crusted white in its grip.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "biting_veil",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 22,
+          "target_rule": "self",
+          "telegraph": "Biting Veil \u2014 a held frost-aura: the whole party fights at -1/-0",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "halt",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Rime-Spike \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act1/rime_warden-9ae1afc1.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "hard",
+  "layouts": {
+    "1": [
+      "frost_wisp",
+      "rime_warden"
+    ],
+    "2": [
+      "frost_wisp",
+      "frost_wisp",
+      "glimmer_shade",
+      "rime_warden"
+    ],
+    "3": [
+      "frost_wisp",
+      "frost_wisp",
+      "glimmer_shade",
+      "glimmer_shade",
+      "rime_warden",
+      "rime_warden"
+    ],
+    "4": [
+      "frost_wisp",
+      "frost_wisp",
+      "frost_wisp",
+      "glimmer_shade",
+      "glimmer_shade",
+      "rime_warden",
+      "rime_warden",
+      "rime_warden"
+    ]
+  }
+}

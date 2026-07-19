@@ -1,0 +1,247 @@
+{
+  "name": "The Ambush-Warrens",
+  "scene": "A honeycomb of cramped tunnels lit by phosphor-fungus in cold blue smears, the walls pocked with murder-holes and false doors. Bones and gnawed chains litter the crawlspaces, and every shadow seems to hold a held breath.",
+  "scene_image": "/art/the_warrens_of_gnashpit__act2/scene-42886f8a.png",
+  "enemies": [
+    {
+      "id": "ceiling_cutthroat",
+      "name": "Ceiling Cutthroat",
+      "flavor": "Assassin's read \u2014 dives at the hardest-hitting hero.",
+      "description": "A sinewy goblin hanging upside-down from ceiling cracks, skin daubed with fungus-glow warpaint, two curved daggers clenched between its teeth and toes.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "marked_dive",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Marked Dive \u2014 deal 4 to the deadliest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "vanish",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Melt into the murder-hole"
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act2/ceiling_cutthroat-2e75929c.png"
+    },
+    {
+      "id": "whetstone_ritualist",
+      "name": "Whetstone Ritualist",
+      "flavor": "Holds a rite that bleeds a hero every turn and snipes casters.",
+      "description": "A hunched goblin shaman scraping a red-hot dagger along a spinning whetstone, sparks pooling into a hovering ember-sigil above its warped skull.",
+      "hp": 9,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "bleeding_edge",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Bleeding Edge \u2014 a held rite: 2 damage to a hero every turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "spark_lance",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "channeling_player",
+          "action_type": "spell",
+          "telegraph": "Spark-Lance \u2014 wound the ritual-breaker -2/-2",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act2/whetstone_ritualist-ea73ecb5.png"
+    },
+    {
+      "id": "hookmaster",
+      "name": "Warren Hookmaster",
+      "flavor": "Mini-boss: drags a hero into the wall, punishes the sword-arm, erupts when bloodied.",
+      "description": "A broad, scar-crossed goblin twice the size of its kin, one arm ending in a chain-and-hook, the other in a spiked buckler, its tusked grin filed to points and its hide studded with trophy-teeth.",
+      "hp": 22,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "chain_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Chain-Hook \u2014 drag the deadliest hero to the front",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "gutting_riposte",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Gutting Riposte \u2014 deal 4 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "warren_fury",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "WARREN-FURY \u2014 +3/+2 permanently, grant trample, and rake the front row for 3",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "grant_keyword",
+              "keywords": [
+                "trample"
+              ],
+              "duration": "encounter",
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act2/hookmaster-6e1171fe.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "hookmaster",
+      "ceiling_cutthroat"
+    ],
+    "2": [
+      "hookmaster",
+      "ceiling_cutthroat",
+      "whetstone_ritualist",
+      "ceiling_cutthroat"
+    ],
+    "3": [
+      "hookmaster",
+      "ceiling_cutthroat",
+      "ceiling_cutthroat",
+      "whetstone_ritualist",
+      "ceiling_cutthroat",
+      "whetstone_ritualist"
+    ],
+    "4": [
+      "hookmaster",
+      "ceiling_cutthroat",
+      "ceiling_cutthroat",
+      "ceiling_cutthroat",
+      "whetstone_ritualist",
+      "whetstone_ritualist",
+      "ceiling_cutthroat",
+      "whetstone_ritualist"
+    ]
+  }
+}

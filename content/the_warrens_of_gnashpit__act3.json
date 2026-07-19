@@ -1,0 +1,343 @@
+{
+  "name": "The Throat of the Pit",
+  "scene": "A cathedral-sized cavern lit by a central bonfire that throws a whirl of goblin shadows up the weeping walls; a shaft of pale daylight stabs down from a distant crack far overhead. A dais of mortared skulls holds a monstrous war-drum, its skin painted with generations of clan-marks.",
+  "scene_image": "/art/the_warrens_of_gnashpit__act3/scene-1de8c3e1.png",
+  "enemies": [
+    {
+      "id": "drum_tyrant",
+      "name": "Drum-Tyrant of Gnashpit",
+      "flavor": "Boss: channels a war-anthem, floods the pit with fodder, feeds on every death.",
+      "description": "A grotesquely swollen goblin chieftain, green flesh scarred into knotted armor, a crown of enemy skulls fused to its brow, hammering a cart-sized drum with fists wrapped in iron. When it rises the whole cavern shakes.",
+      "hp": 36,
+      "power": 4,
+      "level": 7,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "war_anthem",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "phase": "pre_enrage",
+          "action_type": "ability",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "self",
+          "telegraph": "War-Anthem \u2014 a held drumbeat: all goblins fight at +1/+1",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "call_the_pit",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "self",
+          "telegraph": "Call the Pit \u2014 spawn 2 Pit-Whelps",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "pit_whelp",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            }
+          ]
+        },
+        {
+          "id": "feast_on_the_fallen",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Feast on the Fallen \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "skull_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Skull-Sweep \u2014 4 to ALL heroes",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "gnashpit_rises",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "GNASHPIT RISES \u2014 +3/+3 permanently, a fresh Pit-Whelp wave, and 4 to all heroes",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "create_token",
+              "token_id": "pit_whelp",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act3/drum_tyrant-8d69a089.png"
+    },
+    {
+      "id": "pit_broodkeeper",
+      "name": "Pit-Broodkeeper",
+      "flavor": "Feeds the swarm and grows with every corpse \u2014 kill order matters.",
+      "description": "A pot-bellied goblin ringed with squirming egg-sacs, slick with birthing-fluid, cooing to a cluster of newly-hatched whelps clinging to its shoulders.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "spawn_whelps",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 24,
+          "target_rule": "self",
+          "telegraph": "Spawn Whelps (x2)",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "pit_whelp",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            }
+          ]
+        },
+        {
+          "id": "brood_rage",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Brood-Rage \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act3/pit_broodkeeper-56d490bb.png"
+    },
+    {
+      "id": "screamer_goblin",
+      "name": "Screamer Goblin",
+      "flavor": "Front fodder that avenges its dying kin.",
+      "description": "A gangly goblin painted white as bone, jaw dislocated wide for its endless shriek, wielding a stone axe far too heavy for its frame.",
+      "hp": 4,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "avenge",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 18,
+          "target_rule": "self",
+          "telegraph": "Avenge the Clan \u2014 +2/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reckless_hack",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Reckless Hack \u2014 deal 3 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act3/screamer_goblin-91407f5e.png"
+    },
+    {
+      "id": "deathmask_shaman",
+      "name": "Deathmask Shaman",
+      "flavor": "Heals the court and shields the tyrant's drum.",
+      "description": "A goblin priest in a rattling mask of stitched-together faces, robes hung with finger-bones, a censer of green smoke swaying from a chain.",
+      "hp": 8,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "green_mend",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Green Mend \u2014 heal the most wounded ally 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "bone_ward",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "cooldown": 3,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Bone-Ward \u2014 shield an ally from the next hit",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act3/deathmask_shaman-12c0d4dd.png"
+    }
+  ],
+  "tokens": {
+    "pit_whelp": {
+      "name": "Pit-Whelp",
+      "hp": 3,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_warrens_of_gnashpit__act3/pit_whelp-f35a5bd9.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "drum_tyrant",
+      "screamer_goblin"
+    ],
+    "2": [
+      "drum_tyrant",
+      "screamer_goblin",
+      "pit_broodkeeper",
+      "deathmask_shaman"
+    ],
+    "3": [
+      "drum_tyrant",
+      "screamer_goblin",
+      "screamer_goblin",
+      "pit_broodkeeper",
+      "deathmask_shaman",
+      "deathmask_shaman"
+    ],
+    "4": [
+      "drum_tyrant",
+      "screamer_goblin",
+      "screamer_goblin",
+      "screamer_goblin",
+      "pit_broodkeeper",
+      "pit_broodkeeper",
+      "deathmask_shaman",
+      "deathmask_shaman"
+    ]
+  }
+}

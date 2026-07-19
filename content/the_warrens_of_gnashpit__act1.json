@@ -1,0 +1,198 @@
+{
+  "name": "The Guard-Gallery",
+  "scene": "A low gallery of hewn rock rimed with soot, iron cages swinging empty on rusted chains, torch-brackets guttering greasy orange light. A carved war-drum the size of a cart squats against one wall, and a bone-horn's echo shivers the loose gravel underfoot.",
+  "scene_image": "/art/the_warrens_of_gnashpit__act1/scene-34b1ce47.png",
+  "enemies": [
+    {
+      "id": "jailer_grub",
+      "name": "Jailer-Grub",
+      "flavor": "Cheap front body; stings whoever cuts it down.",
+      "description": "A knee-high goblin in a hauberk of stitched leather scraps, warty green skin, a ring of jangling cell-keys at its belt and a notched cleaver in both fists.",
+      "hp": 4,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "scrap_bite",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Scrap-Bite \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "death_shriek",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "valuation",
+          "telegraph": "Dying Shriek \u2014 wound a hero -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act1/jailer_grub-6ae3659e.png"
+    },
+    {
+      "id": "horn_howler",
+      "name": "Horn-Howler",
+      "flavor": "Channels the muster-song, pumping the whole warband \u2014 silence it.",
+      "description": "A wiry goblin perched on a crate, cheeks bulging around a spiral bone-horn taller than itself, ear-rings of yellowed teeth rattling as it blows.",
+      "hp": 6,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "muster_song",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "ability",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Muster-Song \u2014 a held war-cry: all goblins fight at +1/+1",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rally_screech",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Rally-Screech \u2014 wound a hero -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act1/horn_howler-70d441e8.png"
+    },
+    {
+      "id": "catwalk_slinger",
+      "name": "Catwalk Slinger",
+      "flavor": "Rear pelter that chips and repositions.",
+      "description": "A lean goblin crouched on a rope catwalk, swinging a leather sling loaded with iron slag, a bandolier of jagged stones crossing its bare chest.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "slag_shot",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Slag-Shot \u2014 deal 3",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "scramble",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Scramble the catwalk"
+        }
+      ],
+      "image": "/art/the_warrens_of_gnashpit__act1/catwalk_slinger-3d1f3268.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "jailer_grub",
+      "horn_howler"
+    ],
+    "2": [
+      "jailer_grub",
+      "jailer_grub",
+      "horn_howler",
+      "catwalk_slinger"
+    ],
+    "3": [
+      "jailer_grub",
+      "jailer_grub",
+      "jailer_grub",
+      "horn_howler",
+      "catwalk_slinger",
+      "catwalk_slinger"
+    ],
+    "4": [
+      "jailer_grub",
+      "jailer_grub",
+      "jailer_grub",
+      "horn_howler",
+      "horn_howler",
+      "catwalk_slinger",
+      "catwalk_slinger",
+      "catwalk_slinger"
+    ]
+  }
+}

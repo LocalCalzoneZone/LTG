@@ -12,8 +12,10 @@ from ltg_game_server import content
 @pytest.fixture
 def loadouts(tmp_path, monkeypatch):
     d = tmp_path / "loadouts"
+    c = tmp_path / "content"
     monkeypatch.setattr(content, "LOADOUTS_DIR", d)
-    monkeypatch.setattr(content, "_SCAN_DIRS", [d])
+    monkeypatch.setattr(content, "CONTENT_DIR", c)
+    monkeypatch.setattr(content, "_SCAN_DIRS", [c, d])
     monkeypatch.setattr(content, "HIDDEN_FILE", d / "hidden.json")
     monkeypatch.setattr(content, "ENCOUNTER_HIDDEN_FILE", d / "encounters_hidden.json")
     return d

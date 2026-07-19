@@ -1,0 +1,266 @@
+{
+  "name": "The Gallery of Hollow Knights",
+  "scene": "A cathedral-vault of ice ribbed with pillars of frozen corpses, faded royal banners fused into the walls. The green heart-light is stronger now, throbbing up through cracks in the floor, and each pillar sheds meltwater tears.",
+  "scene_image": "/art/the_frostmaze_of_vaelryn__act2/scene-3403a826.png",
+  "enemies": [
+    {
+      "id": "hollow_knight",
+      "name": "Hollow Knight",
+      "flavor": "Fights measured \u2014 then shatters its ice-shell when bloodied and erupts.",
+      "description": "An armored corpse in verdigris-green plate rimed with frost, empty helm leaking pale vapor, dragging a two-handed frostblade that carves smoking gashes in the air.",
+      "hp": 12,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "cleave",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Frostblade Cleave \u2014 deal 3",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shatter_shell",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_self_below_50",
+          "once_per_encounter": true,
+          "priority": 12,
+          "target_rule": "self",
+          "telegraph": "SHATTER THE SHELL \u2014 +2/+1 permanently and a frost-burst hits all heroes for 2",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act2/hollow_knight-aa398470.png"
+    },
+    {
+      "id": "grave_chanter",
+      "name": "Grave-Chanter",
+      "flavor": "Mends the court from the rear; grows desperate and lashes out when nearly alone.",
+      "description": "A stooped, ice-blue revenant in tattered choir robes, jaw frozen open mid-hymn, a censer of blue frost-smoke swinging from a chain of finger-bones.",
+      "hp": 9,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "frost_mend",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "wounded_ally",
+          "action_type": "spell",
+          "telegraph": "Frost-Mend \u2014 heal the most wounded ally 4",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "last_hymn",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "condition": {
+            "kind": "ally_count",
+            "op": "<",
+            "value": 2
+          },
+          "priority": 18,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Dirge of the Alone \u2014 stun a hero (loses a turn)",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act2/grave_chanter-2cff1dcb.png"
+    },
+    {
+      "id": "crypt_captain",
+      "name": "Crypt-Captain Volgar",
+      "flavor": "MINI-BOSS: a hollow warlord who transforms when bloodied and holds a killing rite.",
+      "description": "A tall dead lord in blackened rime-plate crowned with a broken circlet of ice, a frost-mantle of frozen banners at his back, wielding a glaive whose edge weeps blue fire. His empty eyes burn with cold green light.",
+      "hp": 27,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "glaive_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Glaive Sweep \u2014 deal 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "funeral_rite",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "phase": "post_enrage",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Funeral Rite \u2014 a held rite: 3 damage to a hero every turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "volgar_wrath",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "COLD WRATH \u2014 +2/+2 permanently, gains trample, and the gallery freezes for 3 to all heroes",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "grant_keyword",
+              "keywords": [
+                "trample"
+              ],
+              "duration": "encounter",
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act2/crypt_captain-64f30417.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "hard",
+  "layouts": {
+    "1": [
+      "crypt_captain",
+      "hollow_knight"
+    ],
+    "2": [
+      "crypt_captain",
+      "hollow_knight",
+      "grave_chanter",
+      "hollow_knight"
+    ],
+    "3": [
+      "crypt_captain",
+      "hollow_knight",
+      "hollow_knight",
+      "grave_chanter",
+      "grave_chanter",
+      "hollow_knight"
+    ],
+    "4": [
+      "crypt_captain",
+      "hollow_knight",
+      "hollow_knight",
+      "hollow_knight",
+      "grave_chanter",
+      "grave_chanter",
+      "hollow_knight",
+      "hollow_knight"
+    ]
+  }
+}

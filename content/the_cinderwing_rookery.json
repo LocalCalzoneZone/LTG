@@ -1,0 +1,330 @@
+{
+  "name": "The Cinderwing Rookery",
+  "scene": "A wind-scoured mountain roost of red sandstone spires, threaded with rope-bridges of woven sinew and nests of ash and bone. Thermals shimmer up the cliff faces, and above the highest crag a great iron brazier belches embers into a sky the color of a bruise.",
+  "scene_image": "/art/the_cinderwing_rookery/scene-85e2b5db.png",
+  "enemies": [
+    {
+      "id": "cinder_hatchling",
+      "name": "Cinder Hatchling",
+      "flavor": "Expendable fledgling \u2014 dies cheap and feeds the matriarch's fury.",
+      "description": "A crow-sized reptilian chick, wings still half-feathered and half-scaled, embers glowing between its downy plumes as it hops and snaps.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "hatchling_bite",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Ember-Nip \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "death_flare",
+          "archetype": "Burst",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Death-Flare \u2014 deal 2 as it bursts",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_cinderwing_rookery/cinder_hatchling-b23cf111.png"
+    },
+    {
+      "id": "rookery_matriarch",
+      "name": "Rookery Matriarch",
+      "flavor": "Broods more hatchlings and grows enraged as her clutch dies \u2014 mind the kill order.",
+      "description": "A hunched, ash-grey drake the size of a warhorse, wings folded like a cloak, her long neck crowned with a ruff of smoking quills that she rattles when a chick falls.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "brood_clutch",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Brood the Clutch \u2014 spawn 2 Hatchlings",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "cinder_hatchling_tok",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            }
+          ]
+        },
+        {
+          "id": "grieving_fury",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Grieving Fury \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_cinderwing_rookery/rookery_matriarch-571f8623.png"
+    },
+    {
+      "id": "emberwind_screecher",
+      "name": "Emberwind Screecher",
+      "flavor": "A darting flyer that shrieks a wounding cry down onto a whole row.",
+      "description": "A lean, hawk-jawed wyrmling with translucent orange wings that leave trails of sparks, its throat glowing like a coal each time it screams.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [
+        "flying"
+      ],
+      "components": [
+        {
+          "id": "searing_screech",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_row": "front",
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Searing Screech \u2014 poison the front row",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "updraft",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Ride the Updraft"
+        }
+      ],
+      "image": "/art/the_cinderwing_rookery/emberwind_screecher-8175b196.png"
+    },
+    {
+      "id": "ashcaller_shaman",
+      "name": "Ashcaller Shaman",
+      "flavor": "Holds a rite that rains embers each turn and dims the party's blades.",
+      "description": "A robed reptilian mystic wrapped in feather-and-bone vestments, a censer of live coals swinging from its clawed hand, its eyes twin points of white fire.",
+      "hp": 10,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "ashfall_rite",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Ashfall Rite \u2014 a held ritual: 2 damage every turn and the party fights at -1/-0",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ward_the_rite",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "condition": {
+            "kind": "self_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "cooldown": 2,
+          "priority": 12,
+          "target_rule": "self",
+          "telegraph": "Cinder-Shroud \u2014 shield the next hit",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_cinderwing_rookery/ashcaller_shaman-ed668912.png"
+    },
+    {
+      "id": "pyre_serpent",
+      "name": "Pyre Serpent",
+      "flavor": "A coiling gatherer building toward a scorching eruption \u2014 break it before it fills.",
+      "description": "An enormous copper-scaled serpent coiled around a spire, heat rippling off its hide as its throat-sac swells brighter and brighter with gathered fire.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "gather_pyre",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 1,
+          "target_rule": "self",
+          "telegraph": "Gathering Fire \u2014 the serpent's throat swells",
+          "verbs": [
+            {
+              "kind": "charge",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "pyre_eruption",
+          "archetype": "Burst",
+          "timing": "reactive",
+          "trigger": "on_charge_full",
+          "charge_threshold": 3,
+          "priority": 10,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "PYRE ERUPTION \u2014 5 to a hero and their neighbors",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "blast"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_cinderwing_rookery/pyre_serpent-8aae9300.png"
+    }
+  ],
+  "tokens": {
+    "cinder_hatchling_tok": {
+      "name": "Cinder Hatchling",
+      "hp": 3,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_cinderwing_rookery/cinder_hatchling_tok-8a1124b3.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "rookery_matriarch",
+      "cinder_hatchling"
+    ],
+    "2": [
+      "rookery_matriarch",
+      "cinder_hatchling",
+      "cinder_hatchling",
+      "emberwind_screecher"
+    ],
+    "3": [
+      "rookery_matriarch",
+      "cinder_hatchling",
+      "cinder_hatchling",
+      "emberwind_screecher",
+      "pyre_serpent",
+      "ashcaller_shaman"
+    ],
+    "4": [
+      "rookery_matriarch",
+      "cinder_hatchling",
+      "cinder_hatchling",
+      "emberwind_screecher",
+      "emberwind_screecher",
+      "pyre_serpent",
+      "ashcaller_shaman",
+      "cinder_hatchling"
+    ]
+  }
+}

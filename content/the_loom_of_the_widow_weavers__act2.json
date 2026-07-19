@@ -1,0 +1,218 @@
+{
+  "name": "The Weaving Gallery",
+  "scene": "A cavernous mining gallery entirely draped in tiered white webbing, cocoons swinging from silk cables overhead. Shafts of crystal glow faint blue through the silk, and pale broodlings skitter along the strand-bridges between pillars.",
+  "scene_image": "/art/the_loom_of_the_widow_weavers__act2/scene-c59f1b23.png",
+  "enemies": [
+    {
+      "id": "brood_tender",
+      "name": "Brood-Tender",
+      "flavor": "A caster that mends its kin \u2014 and lashes out savagely once bloodied.",
+      "description": "A gaunt spider-thing with a humanoid torso rising from eight-legged bulk, pale chelicerae dripping, weaving glowing silk between clawed hands.",
+      "hp": 6,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "mend_silk",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "wounded_ally",
+          "telegraph": "Knit the Web \u2014 heal an ally 4",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "frenzied_weave",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "condition": {
+            "kind": "self_hp_pct",
+            "op": "<",
+            "value": 50
+          },
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Frenzied Weave \u2014 deal 4 to a hero and 4 to their row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "row"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act2/brood_tender-75a13272.png"
+    },
+    {
+      "id": "molting_lurker",
+      "name": "Molting Lurker",
+      "flavor": "A wall spider that sheds its skin and enrages when it can't rely on the pack.",
+      "description": "A broad, armored crawler the size of a cart, its carapace cracked and flaking, new black chitin gleaming wet beneath the peeling grey shell.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "carapace_slam",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Carapace Slam \u2014 deal 3 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "molt_frenzy",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_count_below",
+          "condition": {
+            "kind": "ally_count",
+            "op": "<",
+            "value": 2
+          },
+          "once_per_encounter": true,
+          "priority": 12,
+          "target_rule": "self",
+          "telegraph": "Desperate Molt \u2014 +2/+2 permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act2/molting_lurker-5fe62ca9.png"
+    },
+    {
+      "id": "venom_broodling",
+      "name": "Venom Broodling",
+      "flavor": "A small poisoner that spits harder the moment it's wounded.",
+      "description": "A knuckle-quick spiderling of translucent amber, venom-sacs glowing sickly green along its back, mandibles beaded with dripping toxin.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "toxic_spit",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Toxic Spit \u2014 poison a hero",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "death_spasm",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_self_below_50",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "valuation",
+          "telegraph": "Death-Spasm \u2014 poison a hero",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act2/venom_broodling-c87db980.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "easy",
+  "layouts": {
+    "1": [
+      "molting_lurker",
+      "venom_broodling"
+    ],
+    "2": [
+      "molting_lurker",
+      "brood_tender",
+      "venom_broodling",
+      "venom_broodling"
+    ],
+    "3": [
+      "molting_lurker",
+      "molting_lurker",
+      "brood_tender",
+      "venom_broodling",
+      "venom_broodling",
+      "venom_broodling"
+    ],
+    "4": [
+      "molting_lurker",
+      "molting_lurker",
+      "brood_tender",
+      "brood_tender",
+      "venom_broodling",
+      "venom_broodling",
+      "venom_broodling",
+      "venom_broodling"
+    ]
+  }
+}

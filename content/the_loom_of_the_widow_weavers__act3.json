@@ -1,0 +1,343 @@
+{
+  "name": "The Broodmatron's Loom",
+  "scene": "A cathedral-sized silken chamber at the mine's base, the floor a heaving carpet of egg-sacs glowing faint pink. Cocooned husks hang in rows like a larder, and a colossal pale spider-queen crouches on a throne of woven bone at the center, silk pouring from her spinnerets in luminous ropes.",
+  "scene_image": "/art/the_loom_of_the_widow_weavers__act3/scene-36f614cd.png",
+  "enemies": [
+    {
+      "id": "broodmatron",
+      "name": "The Broodmatron",
+      "flavor": "Unkillable until bloodied; she raises her fallen brood and erupts when torn open.",
+      "description": "A titan spider the size of a cottage, her swollen abdomen a translucent lantern of churning eggs, her forelimbs long as scythes and tipped in barbed bone. A crown of clustered black eyes glitters above dripping fangs, and silk sheds from her in a constant glowing veil.",
+      "hp": 30,
+      "power": 3,
+      "level": 6,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "is_boss": true,
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "raise_brood",
+          "archetype": "Necromancy",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "corpse",
+          "action_type": "spell",
+          "telegraph": "Raise the Brood \u2014 a fallen child stirs and rises",
+          "verbs": [
+            {
+              "kind": "control",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "silk_lance",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Silk Lance \u2014 deal 7 to the sword arm",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "web_deluge",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "action_type": "spell",
+          "telegraph": "Web Deluge \u2014 4 to ALL heroes",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "matrons_wrath",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "MATRON'S WRATH \u2014 +3/+3 permanently, the loom bursts for 3, and two broodlings hatch",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "create_token",
+              "token_id": "hatchling",
+              "count": 2,
+              "hp": 2,
+              "power": 1
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act3/broodmatron-417ec1c3.png"
+    },
+    {
+      "id": "husk_spinner",
+      "name": "Husk-Spinner",
+      "flavor": "A cheap front-row body that leaves a corpse for the Matron to raise.",
+      "description": "A withered husk of a spider-tender reanimated by silk, its shrunken body wound in white cord, limbs jerking on strings of luminous thread.",
+      "hp": 3,
+      "power": 2,
+      "level": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "clinging_bite",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Clinging Bite \u2014 deal 2 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "last_thread",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "valuation",
+          "telegraph": "Last Thread \u2014 wound a hero -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act3/husk_spinner-20fb8594.png"
+    },
+    {
+      "id": "carrion_widow",
+      "name": "Carrion Widow",
+      "flavor": "Devours its own dead in a blast \u2014 the party races to exile the corpses first.",
+      "description": "A glossy black spider veined with red, its fangs oversized and dripping, crouched greedily over the husks of its kin as if to feed.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "corpse_feast",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "corpse",
+          "telegraph": "Corpse Feast \u2014 devour a fallen kin and blast the front row",
+          "verbs": [
+            {
+              "kind": "exile",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "widow_venom",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Widow's Venom \u2014 poison a hero",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act3/carrion_widow-b71736bd.png"
+    },
+    {
+      "id": "loom_guard",
+      "name": "Loom-Guard",
+      "flavor": "A shielding bodyguard that throws its silk over the Broodmatron.",
+      "description": "A broad-backed sentinel spider armored in fused quartz-grit, its dense forelegs braced protectively, spinnerets weaving glowing barriers of thread.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "silk_ward",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Silk Ward \u2014 shield an ally from the next damage",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "guarding_snap",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Guarding Snap \u2014 taunt the attacker",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_loom_of_the_widow_weavers__act3/loom_guard-6a210145.png"
+    }
+  ],
+  "tokens": {
+    "hatchling": {
+      "name": "Broodling Hatchling",
+      "hp": 2,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_loom_of_the_widow_weavers__act3/hatchling-f25e3b6f.png"
+    }
+  },
+  "difficulty": "easy",
+  "layouts": {
+    "1": [
+      "broodmatron",
+      "husk_spinner"
+    ],
+    "2": [
+      "broodmatron",
+      "loom_guard",
+      "husk_spinner",
+      "husk_spinner"
+    ],
+    "3": [
+      "broodmatron",
+      "loom_guard",
+      "carrion_widow",
+      "husk_spinner",
+      "husk_spinner",
+      "husk_spinner"
+    ],
+    "4": [
+      "broodmatron",
+      "loom_guard",
+      "loom_guard",
+      "carrion_widow",
+      "carrion_widow",
+      "husk_spinner",
+      "husk_spinner",
+      "husk_spinner"
+    ]
+  }
+}

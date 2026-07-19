@@ -1,0 +1,20 @@
+{
+  "kind": "adventure",
+  "name": "The Loom of the Widow Weavers",
+  "flavor": "Descend a spider-haunted glass mine where webbing devours the light and the Broodmatron waits at its heart.",
+  "acts": [
+    {
+      "narration": "You duck beneath a curtain of grey silk stretched across the mine mouth. Threads hum in the wind like plucked strings, and somewhere below, the mountain breathes. The tunnel funnels you inward \u2014 no way back but through the web.",
+      "encounter_id": "the_loom_of_the_widow_weavers__act1"
+    },
+    {
+      "narration": "The tunnel opens into a vast hollowed gallery, its walls sheeted in silk so thick it muffles your footfalls. Half-wrapped shapes hang from the ceiling, twitching. The web-tenders turn toward you as one \u2014 and when you cut them, they do not die so much as change.",
+      "encounter_id": "the_loom_of_the_widow_weavers__act2"
+    },
+    {
+      "narration": "The last strand-bridge drops you into the heart of the loom \u2014 a pit-shrine where a bloated white shape squats over a lake of egg-silk. The husks of her drained tenders litter the floor, and as you enter, her many eyes brighten and the dead begin to stir. She will not let you waste her children.",
+      "encounter_id": "the_loom_of_the_widow_weavers__act3"
+    }
+  ],
+  "difficulty": "easy"
+}

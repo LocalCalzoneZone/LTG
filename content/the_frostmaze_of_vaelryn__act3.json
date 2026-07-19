@@ -1,0 +1,380 @@
+{
+  "name": "The Heart of the Frostmaze",
+  "scene": "A vast domed cavern of black glacial ice, the throne of Vaelryn suspended over a bottomless chasm of green necrotic flame. Frozen courtiers ring the dais like statues, and the whole vault sings a low, grinding note as the labyrinth turns above.",
+  "scene_image": "/art/the_frostmaze_of_vaelryn__act3/scene-076905f9.png",
+  "enemies": [
+    {
+      "id": "vaelryn",
+      "name": "Vaelryn, the Frostmaze Lich",
+      "flavor": "BOSS: an assassin's mind \u2014 snipes your carry and breaks your rituals; a killing rite after he turns.",
+      "description": "A withered giant of a lich in a robe of woven frost and gold-thread finery gone to rot, a crown of nine icicle spires fused to his skull. Green witch-fire burns in his eye-sockets and drips from his skeletal fingers, and he moves with the slow certainty of something that has already won a hundred times.",
+      "hp": 45,
+      "power": 3,
+      "level": 6,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "is_boss": true,
+      "keywords": [
+        "hexproof"
+      ],
+      "components": [
+        {
+          "id": "soul_frost",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 28,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "action_type": "spell",
+          "telegraph": "Soul-Frost Lance \u2014 deal 6 to the strongest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "silence_rite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "condition": {
+            "kind": "hero_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "priority": 16,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "action_type": "spell",
+          "telegraph": "Rimebind \u2014 stun the channeling hero and wound them -1/-1",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "deathmaze_rite",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "phase": "post_enrage",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "highest_threat",
+          "telegraph": "Deathmaze Rite \u2014 a held rite: 4 damage to the strongest hero every turn and the party fights at -1/-0",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "contempt",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "once_per_encounter": true,
+          "priority": 8,
+          "target_rule": "trigger_source",
+          "action_type": "spell",
+          "telegraph": "Tyrant's Contempt \u2014 counter the hero's ultimate",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        },
+        {
+          "id": "vaelryn_wrath",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "THE MAZE DEVOURS \u2014 +3/+3 permanently, the vault erupts for 4 to all heroes, and a killing frost snipes the carry for 5",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act3/vaelryn-ab5d5adc.png"
+    },
+    {
+      "id": "icebound_thane",
+      "name": "Icebound Thane",
+      "flavor": "A frozen champion that guards the lich and cuts down the sword arm.",
+      "description": "A massive dead warrior encased to the waist in a fused block of ice he drags with him, upper body free and wielding a frost-forged greataxe, breath steaming green.",
+      "hp": 15,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "headsman",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Headsman's Arc \u2014 deal 4 to the strongest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "guard_king",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Ward the Throne \u2014 taunt the attacker",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act3/icebound_thane-c8331020.png"
+    },
+    {
+      "id": "whisper_shade",
+      "name": "Whisper-Shade",
+      "flavor": "A sniper-spirit that breaks channels and stings the medic.",
+      "description": "A slender wraith of blue-white vapor with too-long fingers and a face like cracked ice, gliding just above the floor and mouthing silent words.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [
+        "flying"
+      ],
+      "components": [
+        {
+          "id": "mind_shard",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 26,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "action_type": "spell",
+          "telegraph": "Mind-Shard \u2014 deal 3 to the channeling hero (else the killable one)",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "punish_mend",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_healed",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "action_type": "spell",
+          "telegraph": "Bitter Whisper \u2014 deal 3 to whoever cast the heal",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act3/whisper_shade-1a955355.png"
+    },
+    {
+      "id": "frost_acolyte",
+      "name": "Frost-Acolyte",
+      "flavor": "Keeps the court frozen-solid; punishes careless spellcasting.",
+      "description": "A shrunken cowled figure kneeling in perpetual genuflection, skin lacquered with ice, cupping a shard of the lich's crown that glows sickly green.",
+      "hp": 9,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "mend",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "action_type": "spell",
+          "telegraph": "Rimeward \u2014 heal an ally 5",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "frost_hex",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 2,
+          "priority": 18,
+          "target_rule": "trigger_source",
+          "action_type": "spell",
+          "telegraph": "Frostbrand \u2014 wound the caster -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_frostmaze_of_vaelryn__act3/frost_acolyte-57d7e4a4.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "hard",
+  "layouts": {
+    "1": [
+      "vaelryn",
+      "icebound_thane"
+    ],
+    "2": [
+      "vaelryn",
+      "icebound_thane",
+      "whisper_shade",
+      "frost_acolyte"
+    ],
+    "3": [
+      "vaelryn",
+      "icebound_thane",
+      "icebound_thane",
+      "whisper_shade",
+      "whisper_shade",
+      "frost_acolyte"
+    ],
+    "4": [
+      "vaelryn",
+      "icebound_thane",
+      "icebound_thane",
+      "whisper_shade",
+      "whisper_shade",
+      "frost_acolyte",
+      "frost_acolyte",
+      "frost_acolyte"
+    ]
+  }
+}

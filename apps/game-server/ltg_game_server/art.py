@@ -39,12 +39,13 @@ COMFY_POLL_INTERVAL = 1.0
 # Pixel sizes injected for the %width%/%height% placeholders, per aspect.
 COMFY_SIZES = {"16:9": (1344, 768), "1:1": (1024, 1024)}
 
-# Generated images write here (gitignored user data, next to the loadouts).
-ART_DIR = content.LOADOUTS_DIR / "art"
-# Published art ships in the tracked content dir; served as a read-only
-# fallback under the same /art URLs (see app.py), so a promoted encounter's
-# image references keep working on every install.
-CONTENT_ART_DIR = content.CONTENT_DIR / "art"
+# Generated images write into the tracked content dir, beside the encounter /
+# adventure JSON they belong to, so a commit ships the art to every install.
+ART_DIR = content.CONTENT_DIR / "art"
+# Pre-split installs kept art in the gitignored loadouts dir; served as a
+# read-only fallback under the same /art URLs (see app.py) so legacy image
+# references keep resolving until the piece is regenerated.
+LEGACY_ART_DIR = content.LOADOUTS_DIR / "art"
 ART_URL_PREFIX = "/art"
 
 _DATA_URL_RE = re.compile(r"^data:image/(\w+);base64,(.+)$", re.DOTALL)

@@ -149,7 +149,7 @@ def test_generation_repairs_a_punching_bag(monkeypatch):
     monkeypatch.setattr(llm, "load_settings",
                         lambda: {**llm._default_settings(), "api_key": "sk"})
     meta = llm.generate_encounter(["soren", "ys"], "standard", "")
-    path = content.LOADOUTS_DIR / f"{meta['id']}.json"
+    path = content.CONTENT_DIR / f"{meta['id']}.json"
     try:
         assert len(calls) == 2                     # rejected, then repaired
         assert "punching bag" in calls[1]          # the error taught the fix

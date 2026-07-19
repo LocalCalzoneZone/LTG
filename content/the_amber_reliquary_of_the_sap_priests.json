@@ -1,0 +1,292 @@
+{
+  "name": "The Amber Reliquary of the Sap-Priests",
+  "scene": "Deep within an ancient forest, a colossal amber-veined oak has been hollowed into a temple, its walls of hardened golden resin trapping motes of glowing pollen and the frozen forms of long-dead beasts. Sunlight filters amber-gold through the translucent bark, and thick sap oozes down the pillars, hissing where it drips onto the root-tangled floor.",
+  "scene_image": "/art/the_amber_reliquary_of_the_sap_priests/scene-66edfc54.png",
+  "enemies": [
+    {
+      "id": "resin_warden",
+      "name": "Resin Warden",
+      "flavor": "A slow wall that hardens as it bleeds \u2014 and cracks open in a fury when nearly broken.",
+      "description": "A hulking figure of hardened amber the size of two men, its glassy golden body cracked and seeping sap, insects and leaves suspended forever inside its translucent limbs.",
+      "hp": 10,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "resin_set",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Harden Resin \u2014 regenerate until struck",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "amber_shatter",
+          "archetype": "Burst",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 12,
+          "target_rule": "self",
+          "condition": {
+            "kind": "self_hp_pct",
+            "op": "<",
+            "value": 40
+          },
+          "telegraph": "AMBER SHATTER \u2014 erupt for 3 across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            },
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 0,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_amber_reliquary_of_the_sap_priests/resin_warden-a8385d51.png"
+    },
+    {
+      "id": "sap_priest",
+      "name": "Sap-Priest",
+      "flavor": "Channels a golden rite that slowly encases the party \u2014 break it or be entombed.",
+      "description": "A robed acolyte draped in dripping resin-soaked vestments, face masked in a smooth amber death-mask, raising a censer that trails threads of luminous sap.",
+      "hp": 10,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "entombing_rite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Entombing Rite \u2014 a held ritual: 2 damage each turn and the party fights at -0/-1",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 0,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mend_sap",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "wounded_ally",
+          "telegraph": "Weeping Balm \u2014 heal the most wounded ally 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_amber_reliquary_of_the_sap_priests/sap_priest-000fb597.png"
+    },
+    {
+      "id": "amber_sentinel",
+      "name": "Amber Sentinel",
+      "flavor": "A rare guardian that snuffs one spell a fight \u2014 bait it before the rite.",
+      "description": "A slender, spear-armed construct of clear golden resin, its hollow chest holding a single suspended, ever-burning ember, moving in silent gliding steps.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [
+        "hexproof"
+      ],
+      "components": [
+        {
+          "id": "seal_word",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 3,
+          "priority": 15,
+          "action_type": "spell",
+          "target_rule": "trigger_source",
+          "telegraph": "Sealing Word \u2014 counter the spell",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        },
+        {
+          "id": "spear_jab",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Resin Lance \u2014 poison the sword arm",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_amber_reliquary_of_the_sap_priests/amber_sentinel-2744d67c.png"
+    },
+    {
+      "id": "pollen_mite",
+      "name": "Pollen Mite",
+      "flavor": "Frail fodder that turns venomous when the swarm thins.",
+      "description": "A dog-sized insect crusted in golden pollen, gossamer wings shimmering, mandibles dripping a faintly glowing amber ichor.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "nip",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Ichor Nip \u2014 deal 3 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "desperate_sting",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "condition": {
+            "kind": "ally_count",
+            "op": "<",
+            "value": 2
+          },
+          "priority": 22,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Frenzied Sting \u2014 poison a hero as the swarm dies",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_amber_reliquary_of_the_sap_priests/pollen_mite-b96026ef.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "resin_warden",
+      "pollen_mite"
+    ],
+    "2": [
+      "resin_warden",
+      "sap_priest",
+      "pollen_mite",
+      "pollen_mite"
+    ],
+    "3": [
+      "resin_warden",
+      "sap_priest",
+      "amber_sentinel",
+      "pollen_mite",
+      "pollen_mite",
+      "pollen_mite"
+    ],
+    "4": [
+      "resin_warden",
+      "resin_warden",
+      "sap_priest",
+      "amber_sentinel",
+      "pollen_mite",
+      "pollen_mite",
+      "pollen_mite",
+      "pollen_mite"
+    ]
+  }
+}

@@ -376,19 +376,22 @@ from ltg_game_server import content  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _isolate_content(tmp_path):
-    """Keep saved adventures/acts/hidden files out of the real loadouts dir."""
-    before = {p.name for p in content.LOADOUTS_DIR.glob("*.json")} \
-        if content.LOADOUTS_DIR.is_dir() else set()
+    """Keep saved encounters/adventures/acts/hidden files out of the real
+    content + loadouts state."""
+    dirs = [content.CONTENT_DIR, content.LOADOUTS_DIR]
+    before = {d: ({p.name for p in d.glob("*.json")} if d.is_dir() else set())
+              for d in dirs}
     saved_hidden = {p: (p.read_text() if p.exists() else None)
                     for p in (content.HIDDEN_FILE, content.ENCOUNTER_HIDDEN_FILE,
                               content.ADVENTURE_HIDDEN_FILE)}
     try:
         yield
     finally:
-        if content.LOADOUTS_DIR.is_dir():
-            for p in content.LOADOUTS_DIR.glob("*.json"):
-                if p.name not in before:
-                    p.unlink(missing_ok=True)
+        for d in dirs:
+            if d.is_dir():
+                for p in d.glob("*.json"):
+                    if p.name not in before[d]:
+                        p.unlink(missing_ok=True)
         for p, original in saved_hidden.items():
             if original is None:
                 p.unlink(missing_ok=True)

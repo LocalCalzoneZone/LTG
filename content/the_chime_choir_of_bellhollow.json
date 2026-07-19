@@ -1,0 +1,383 @@
+{
+  "name": "The Chime-Choir of Bellhollow",
+  "scene": "A canyon monastery of hanging bronze bells, thousands of them strung on rusted chains between red sandstone spires, humming and swaying in a hot dry wind. At the canyon's heart a great cracked bell hangs over a pit of glowing embers, its rim etched with singing runes; the ringing never stops.",
+  "scene_image": "/art/the_chime_choir_of_bellhollow/scene-c98eecee.png",
+  "enemies": [
+    {
+      "id": "grand_carillon",
+      "name": "The Grand Carillon",
+      "flavor": "A tolling colossus. Drags heroes into its shadow, cleaves the front, then erupts when its bell cracks.",
+      "description": "A towering figure cast from a single vast bronze bell, its body a fluted dome hung on chains, a molten clapper swinging where a heart should be; each step tolls a note that shivers the sand.",
+      "hp": 39,
+      "power": 3,
+      "level": 6,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "summoning_toll",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Summoning Toll \u2014 drag a hero to the front",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "bronze_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "self",
+          "action_type": "attack",
+          "target_row": "front",
+          "telegraph": "Bronze Sweep \u2014 a cleave across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "death_knell",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "self",
+          "action_type": "spell",
+          "telegraph": "Death Knell \u2014 a shattering peal, 4 to ALL heroes",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "cracked_bell",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "THE BELL CRACKS \u2014 +3/+3 forever, 4 to every hero, and it drags the whole front into its reach",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_chime_choir_of_bellhollow/grand_carillon-33a8efc5.png"
+    },
+    {
+      "id": "choirmaster_seraf",
+      "name": "Choirmaster Seraf",
+      "flavor": "Holds the Perfect Chord \u2014 an anthem that pumps the whole choir. Silence him or fight uphill.",
+      "description": "A gaunt cantor in bell-metal robes fringed with tiny tinkling chimes, a conductor's rod of fused tuning forks raised high, mouth frozen open in an endless silent note.",
+      "hp": 14,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "perfect_chord",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "self",
+          "telegraph": "The Perfect Chord \u2014 a held anthem: the whole choir sings at +1/+1",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "discordant_hush",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "condition": {
+            "kind": "self_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "target_rule": "channeling_player",
+          "action_type": "spell",
+          "telegraph": "Discordant Hush \u2014 stun a hero",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_chime_choir_of_bellhollow/choirmaster_seraf-7db701a0.png"
+    },
+    {
+      "id": "bell_warden",
+      "name": "Bell-Warden",
+      "flavor": "A front wall that rings when struck, wounding its attacker; guards the choir.",
+      "description": "A broad automaton plated in overlapping bell-shaped scutes, a domed helm without a face, wielding a striker-hammer nearly its own height.",
+      "hp": 12,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "resonant_guard",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Resonant Guard \u2014 the strike rings back, 4 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "warding_peal",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Warding Peal \u2014 shield a faltering ally from the next blow",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_chime_choir_of_bellhollow/bell_warden-298723c5.png"
+    },
+    {
+      "id": "chime_sprite",
+      "name": "Chime Sprite",
+      "flavor": "A darting flyer that shrills at whoever hunts it \u2014 cheap, but it stings.",
+      "description": "A palm-sized cluster of silver hand-bells lashed with wire into a fluttering thing, ringing shrilly as it darts on blurred bronze wings.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "keywords": [
+        "flying"
+      ],
+      "components": [
+        {
+          "id": "flit",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Flit through the chains"
+        },
+        {
+          "id": "shrill",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Shrill \u2014 wound the hunter -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_chime_choir_of_bellhollow/chime_sprite-42fb6f84.png"
+    },
+    {
+      "id": "knell_caller",
+      "name": "Knell-Caller",
+      "flavor": "A rear striker that tolls a death-note at the sword arm.",
+      "description": "A robed acolyte swinging a censer-bell on a long chain, its cowl deep and dark, each swing loosing a low unpleasant boom.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "death_note",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "action_type": "spell",
+          "telegraph": "Death-Note \u2014 4 to the sword arm",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "funeral_toll",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Funeral Toll \u2014 a grieving peal, 3 to a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_chime_choir_of_bellhollow/knell_caller-e811b500.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "hard",
+  "layouts": {
+    "1": [
+      "grand_carillon",
+      "chime_sprite"
+    ],
+    "2": [
+      "grand_carillon",
+      "bell_warden",
+      "chime_sprite",
+      "knell_caller"
+    ],
+    "3": [
+      "grand_carillon",
+      "choirmaster_seraf",
+      "bell_warden",
+      "chime_sprite",
+      "chime_sprite",
+      "knell_caller"
+    ],
+    "4": [
+      "grand_carillon",
+      "choirmaster_seraf",
+      "bell_warden",
+      "bell_warden",
+      "chime_sprite",
+      "chime_sprite",
+      "knell_caller",
+      "knell_caller"
+    ]
+  }
+}
