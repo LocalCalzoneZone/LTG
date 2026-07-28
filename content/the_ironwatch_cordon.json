@@ -1,7 +1,7 @@
 {
   "name": "The Ironwatch Cordon",
   "scene": "A cobbled market square at mid afternoon, with empty stalls and carts. Sunny, breezy, with wispy clouds and a blue sky.",
-  "scene_image": "/art/the_ironwatch_cordon/scene-fd3a5224.png",
+  "scene_image": "/art/the_ironwatch_cordon/scene-b7c39ac3.png",
   "enemies": [
     {
       "id": "lord_commander_vasque",
@@ -17,7 +17,7 @@
       "keywords": [
         "reach"
       ],
-      "image": "/art/the_ironwatch_cordon/lord_commander_vasque-990ff217.png",
+      "image": "/art/the_ironwatch_cordon/lord_commander_vasque-8e897ce4.png",
       "components": [
         {
           "id": "press_the_carry",
@@ -137,7 +137,7 @@
       "keywords": [
         "reach"
       ],
-      "image": "/art/the_ironwatch_cordon/shieldwall_serjeant-8910fb17.png",
+      "image": "/art/the_ironwatch_cordon/shieldwall_serjeant-624ab080.png",
       "components": [
         {
           "id": "halberd_hook",
@@ -258,7 +258,7 @@
       "row": "rear",
       "attack_mode": "ranged",
       "keywords": [],
-      "image": "/art/the_ironwatch_cordon/crossbow_watchman-58d2c536.png",
+      "image": "/art/the_ironwatch_cordon/crossbow_watchman-8daa0db3.png",
       "components": [
         {
           "id": "interrupt_shot",
@@ -315,7 +315,7 @@
       "home_row": "mid",
       "attack_mode": "melee",
       "keywords": [],
-      "image": "/art/the_ironwatch_cordon/truncheon_bailiff-664440e3.png",
+      "image": "/art/the_ironwatch_cordon/truncheon_bailiff-cc041497.png",
       "components": [
         {
           "id": "crack_the_arm",

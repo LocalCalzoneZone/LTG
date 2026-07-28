@@ -1,7 +1,7 @@
 {
   "name": "The Cinderwing Rookery",
   "scene": "A wind-scoured mountain roost of red sandstone spires, threaded with rope-bridges of woven sinew and nests of ash and bone. Thermals shimmer up the cliff faces, and above the highest crag a great iron brazier belches embers into a sky the color of a bruise.",
-  "scene_image": "/art/the_cinderwing_rookery/scene-85e2b5db.png",
+  "scene_image": "/art/the_cinderwing_rookery/scene-1ced3413.png",
   "enemies": [
     {
       "id": "cinder_hatchling",
@@ -13,6 +13,8 @@
       "level": 1,
       "row": "front",
       "attack_mode": "melee",
+      "image": "/art/the_cinderwing_rookery/cinder_hatchling-043b410f.png",
+      "keywords": [],
       "components": [
         {
           "id": "hatchling_bite",
@@ -56,8 +58,7 @@
             }
           ]
         }
-      ],
-      "image": "/art/the_cinderwing_rookery/cinder_hatchling-b23cf111.png"
+      ]
     },
     {
       "id": "rookery_matriarch",
@@ -69,6 +70,8 @@
       "level": 4,
       "row": "rear",
       "attack_mode": "ranged",
+      "image": "/art/the_cinderwing_rookery/rookery_matriarch-da39236f.png",
+      "keywords": [],
       "components": [
         {
           "id": "brood_clutch",
@@ -107,8 +110,7 @@
             }
           ]
         }
-      ],
-      "image": "/art/the_cinderwing_rookery/rookery_matriarch-571f8623.png"
+      ]
     },
     {
       "id": "emberwind_screecher",
@@ -124,6 +126,7 @@
       "keywords": [
         "flying"
       ],
+      "image": "/art/the_cinderwing_rookery/emberwind_screecher-42445d5d.png",
       "components": [
         {
           "id": "searing_screech",
@@ -156,10 +159,10 @@
           "priority": 20,
           "move_home": true,
           "target_rule": "self",
-          "telegraph": "Ride the Updraft"
+          "telegraph": "Ride the Updraft",
+          "verbs": []
         }
-      ],
-      "image": "/art/the_cinderwing_rookery/emberwind_screecher-8175b196.png"
+      ]
     },
     {
       "id": "ashcaller_shaman",
@@ -171,6 +174,8 @@
       "level": 5,
       "row": "rear",
       "attack_mode": "ranged",
+      "image": "/art/the_cinderwing_rookery/ashcaller_shaman-16382eb5.png",
+      "keywords": [],
       "components": [
         {
           "id": "ashfall_rite",
@@ -230,8 +235,7 @@
             }
           ]
         }
-      ],
-      "image": "/art/the_cinderwing_rookery/ashcaller_shaman-ed668912.png"
+      ]
     },
     {
       "id": "pyre_serpent",
@@ -243,6 +247,8 @@
       "level": 4,
       "row": "mid",
       "attack_mode": "ranged",
+      "image": "/art/the_cinderwing_rookery/pyre_serpent-687ce3a1.png",
+      "keywords": [],
       "components": [
         {
           "id": "gather_pyre",
@@ -282,8 +288,7 @@
             }
           ]
         }
-      ],
-      "image": "/art/the_cinderwing_rookery/pyre_serpent-8aae9300.png"
+      ]
     }
   ],
   "tokens": {
@@ -296,7 +301,6 @@
       "image": "/art/the_cinderwing_rookery/cinder_hatchling_tok-8a1124b3.png"
     }
   },
-  "difficulty": "standard",
   "layouts": {
     "1": [
       "rookery_matriarch",
@@ -326,5 +330,6 @@
       "ashcaller_shaman",
       "cinder_hatchling"
     ]
-  }
+  },
+  "difficulty": "standard"
 }

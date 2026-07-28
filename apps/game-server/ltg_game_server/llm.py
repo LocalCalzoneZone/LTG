@@ -54,14 +54,17 @@ ART_MODEL = "google/gemini-3.1-flash-lite-image"
 # Generation). It lives here with the rest of the settings machinery so the
 # "" == follow-the-default persistence trick (see save_settings) covers it too;
 # art.py composes it with per-image task framing + the encounter's own prose.
-DEFAULT_ART_STYLE = """A monumental dynamic illustration fusing heroic realism with
-high-end manhwa splash art. Hyper-realistic anatomy and meticulously rendered
-material textures meet a polished, porcelain-like finish. Powerful, iconic poses
-are rendered with dramatic foreshortening. Heroic directional lighting with strong
-rim light and volumetric bloom carves glowing, ethereal silhouettes against dark,
-atmospheric backdrops. Detailed, layered background; deep moody shadows against
-vibrant saturated accents; epic scale, high-fidelity radiant finish. No text, no
-lettering, no watermarks, no borders, no UI elements."""
+DEFAULT_ART_STYLE = """YOUR CONTEXT:
+
+You are a master visual artist specialising in romantic dark fantasy realism.
+
+MEDIUM: A masterpiece digital illustration. Wide cinematic lens, deep focus, natural optical falloff, fine grain, true lens character. Every material behaves under light exactly as its physical substance would.
+
+LIGHT: Your images use light sparingly but expertly. You utilize chiaroscuro across the full image.  Your images are steeped in deep shadows, but feature blazes of living and vivacious natural light. Your light adds to the heroism and drama - it sculpts forms, materials, and scenes like a chisel. Real falloff, true optical physics.
+
+MOOD & PALETTE: a moody, gothic intensity carried through deep tonal contrast and sharp specular highlight, brooding menace, and a bold, meticulously controlled darkness that feels equal parts seductive and dangerous.
+
+YOUR ARTWORK:"""
 
 # Encounter Level budget = 2 × party_size × avg_level × multiplier (Update 04 §F-6,
 # magnitudes bumped from playtest — the base fight ran too easy even at the old ×1.5
