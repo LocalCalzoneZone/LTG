@@ -375,8 +375,10 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
         item.needs_target = _trigger_pick_effect(item) is not None
     st.priority = None  # fresh window — re-seeded by _advance
     st.passes = 0
+    ch.fires = getattr(ch, "fires", 0) + 1
     _log(st, "channel_trigger",
-         f"{name}'s trigger goes on the stack.", source=holder.id, label=name)
+         f"{name}'s trigger goes on the stack.", source=holder.id, label=name,
+         card=getattr(card, "id", None))
     _raise_next_trigger_pick(st)
 
 
@@ -2924,7 +2926,10 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
                 _resolve_effect(st, item, sub, ctx)
         else:
             _log(st, "condition_false",
-                 f"{item.label}: condition not met — skipped.", kind="conditional")
+                 f"{item.label}: condition not met — skipped.", kind="conditional",
+                 source=item.source_id, card=item.card_id,
+                 cast_mode=item.cast_mode,
+                 condition=getattr(effect.condition, "kind", None))
         return
 
     handler = RESOLVERS.get(effect.kind)

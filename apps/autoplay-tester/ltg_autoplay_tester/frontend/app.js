@@ -468,6 +468,21 @@ async function renderVerdictDetail(el, id) {
       <td class="num dim">${f.delta_rounds >= 0 ? "+" : ""}${f.delta_rounds} r</td>
       <td class="num dim">${f.encounters_with}/${f.encounters_without}</td>
       <td class="dim">${esc(f.lever)}</td></tr>`).join("");
+  const autopsyChip = { "never-castable": "blood", declined: "aether",
+                        whiffing: "brass", ok: "vigor", unseen: "dim" };
+  const autopsy = (v.card_autopsy || []).map((r) => `
+    <tr><td>${esc(r.name)} <span class="chip ${autopsyChip[r.status] || "dim"}">${esc(r.status)}</span></td>
+      <td class="num">${r.castable_share != null ? (100 * r.castable_share).toFixed(0) + "%" : "—"}</td>
+      <td class="num">${r.casts}</td>
+      <td class="num">${r.condition_whiffs ? `${r.condition_whiffs}${r.whiff_share != null ? ` <span class="dim">(${(100 * r.whiff_share).toFixed(0)}% of casts)</span>` : ""}` : "—"}</td>
+      <td class="dim">${esc((r.cast_rules || []).join(", ") || "—")}</td></tr>`).join("");
+  const chanEcon = (v.channel_economy || []).map((r) => `
+    <tr><td>${esc(r.name)} <span class="chip dim">${r.trigger_engine ? "trigger engine" : "continuous"}</span></td>
+      <td class="num">${r.starts}</td>
+      <td class="num">${r.triggers_per_start != null ? r.triggers_per_start : "—"}</td>
+      <td class="num">${r.turns_held_per_start != null ? r.turns_held_per_start : "—"}</td>
+      <td class="num">${r.reserved_manaturns_per_game != null ? r.reserved_manaturns_per_game : "—"}</td>
+      <td class="num">${r.drops}</td></tr>`).join("");
 
   el.innerHTML = `
     <div class="panel">
@@ -531,6 +546,25 @@ async function renderVerdictDetail(el, id) {
         <table><tr><th>Feature</th><th class="num">Δ win</th><th class="num">Δ rounds</th><th class="num">with/without</th><th>Lever</th></tr>${features}</table>` : ""}
       ${(v.proposals || []).length ? `<div class="panel-title" style="margin-top:18px">Proposed register deltas (apply by hand)</div>
         <div class="copyblock">${esc(v.proposals.join("\n\n"))}</div>` : ""}
+
+      ${autopsy ? `<div class="panel-title" style="margin-top:18px">Card autopsy — why cards die in hand</div>
+        <div class="caption">Castable = the share of the holder's decision points where a cast of
+        this card was actually OFFERED (affordable and legal). <b>never-castable</b> = costs/colors
+        (or channel-reserved mana) gate it — a KIT problem; <b>declined</b> = castable moments
+        existed but the bot's ladder never chose one — invisible value, a STICK problem;
+        <b>whiffing</b> = cast, but its condition skipped — spent in the wrong mode. "Cast by
+        rules" names the policy-ladder rules that played it.</div>
+        <table><tr><th>Card</th><th class="num">Castable</th><th class="num">Casts</th>
+          <th class="num">Condition whiffs</th><th>Cast by rules</th></tr>${autopsy}</table>` : ""}
+
+      ${chanEcon ? `<div class="panel-title" style="margin-top:18px">Channel economy</div>
+        <div class="caption">A held channel RESERVES its mana out of every refresh. Triggers/start
+        is how often a trigger engine actually fired per hold — an engine at 0 across multi-turn
+        holds is paying reservation for nothing (the kit can't feed it); a continuous aura's value
+        is held, not fired, so its 0 convicts nothing.</div>
+        <table><tr><th>Channel</th><th class="num">Starts</th><th class="num">Triggers / start</th>
+          <th class="num">Turns held / start</th><th class="num">Reserved mana-turns / game</th>
+          <th class="num">Drops</th></tr>${chanEcon}</table>` : ""}
 
       ${screening ? `<div class="panel-title" style="margin-top:18px">Deck screening — all ${(v.screening || []).length} cards</div>
         <div class="caption">"Seen" = games the card was in hand; "Cast" = games the bot played it.

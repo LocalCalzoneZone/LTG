@@ -119,6 +119,8 @@ class EnemyChannel:
     holder_id: str = ""
     target_id: Optional[str] = None
     started_turn: int = 0
+    # Trigger-fire count, mirroring Channel.fires.
+    fires: int = 0
     # Row/blast splash victims pinned at first apply (see Channel.splash_ids).
     splash_ids: List[str] = field(default_factory=list)
 
@@ -144,6 +146,11 @@ class Channel:
     # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
     # value references on the channel's triggered effects.
     x: int = 0
+    # How many times this channel's triggered effects have fired (event and
+    # upkeep triggers both). A pure trigger-engine channel with fires == 0 after
+    # a couple of rounds is idle — the autoplay stick reads this to swap it out,
+    # and the Tester reports it as trigger economy.
+    fires: int = 0
     # Row/blast splash victims (§D9-3.2) pinned when the channel's continuous
     # effect first applied around its pick: the SAME creatures must be covered
     # for the channel's whole life — reasserted each end step and lifted when

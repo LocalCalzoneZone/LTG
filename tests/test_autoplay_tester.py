@@ -39,10 +39,15 @@ probes.PRESETS["test-fine"] = {
 
 
 def _synthetic_gauntlet():
-    """One plain duel whose breaking point sits inside the test ladder."""
+    """One plain duel whose breaking point sits inside the test ladder.
+
+    The golem is calibrated to the CURRENT greedy stick: strong enough that
+    the filler variant fails inside the ladder, weak enough that the nuke
+    variant clears rungs above it. A policy bump that strengthens play moves
+    the breaking point — recalibrate here (greedy-1.3.0: 10/2 → 14/3)."""
     fx = {"name": "Probe Target", "_file": "probe_target.json",
-          "enemies": [{"id": "golem", "name": "Golem", "hp": 10, "level": 2,
-                       "power": 2, "row": "front", "attack_mode": "melee"}]}
+          "enemies": [{"id": "golem", "name": "Golem", "hp": 14, "level": 2,
+                       "power": 3, "row": "front", "attack_mode": "melee"}]}
     return {"id": "synthetic", "name": "synthetic", "hash": "synthetic",
             "frozen": False, "generated": False, "encounters": [fx],
             "adventure": None, "sparring_partner": None}
@@ -216,7 +221,7 @@ def test_card_probe_flags_the_broken_card_and_is_deterministic(soren):
     # A 9-damage 1-mana nuke shifts the duel's breaking point several rungs.
     assert v1["flag"] == "OVER"
     assert v1["marginal"]["delta_pp"] > probes.OVER_PP
-    assert v1["policy_version"] == "greedy-1.2.0"
+    assert v1["policy_version"] == "greedy-1.4.0"
     assert v1["screening_only"] is True      # quick-tier preset
     assert [r["lever"] for r in v1["ladder"]][:2] == [
         "cost +1 generic", "cost +2 generic"]
@@ -283,9 +288,14 @@ def test_character_probe_percentile_heroics_and_spend_audit(baseline, soren):
     # The support-fair standings: solo/duo splits + the two-ally floor.
     assert set(v["roster_solo"]) == set(v["roster_rates"])
     assert "ally_baseline" in v and "contribution" in v
-    # Never-cast cards are named in the recommendation's caveat.
+    # The autopsy names WHY dead cards died, and a never-cast card lands in
+    # exactly one of its named causes in the recommendation.
+    assert {"card_autopsy", "channel_economy"} <= set(v)
+    assert {r["card_id"] for r in v["card_autopsy"]} == \
+        {c["id"] for c in soren["cards"]}
     if any(s["games_cast"] == 0 for s in v["screening"]):
-        assert "never plays" in v["recommendation"]
+        assert ("AUTOPSY:" in v["recommendation"]
+                or "CAVEAT:" in v["recommendation"])
 
 
 # ========================================================================== #
