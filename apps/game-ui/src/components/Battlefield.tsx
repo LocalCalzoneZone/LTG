@@ -1,25 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import type { CreatureView, GameSnapshot, Row, TokenView } from "../lib/types";
-import { DEPART_MS, type DepartKind } from "../lib/fx";
+import { DEPART_MS, type DepartKind, type FxEvent } from "../lib/fx";
+import { lungeVars, useFlip } from "../lib/motion";
+import { useSceneTint } from "../lib/sceneTint";
 import { armedTargetIdSet, useGame } from "../lib/store";
 import { ArtControls } from "./ArtControls";
 import { CharacterCard } from "./CharacterCard";
 import { CorpseMarker, CreatureCard, TokenCard } from "./CreatureCard";
 import { useScreenShake } from "./FxLayer";
+import { ProjectileLayer } from "./ProjectileLayer";
 
 const PLAYER_ROWS: Row[] = ["rear", "mid", "front"]; // left → right
 const CREATURE_ROWS: Row[] = ["front", "mid", "rear"]; // mirror: front faces centre
 const ROW_IDS = ["front", "mid", "rear"];
 
 type Dying =
-  | { kind: "creature"; view: CreatureView; depart: DepartKind }
-  | { kind: "token"; view: TokenView; depart: DepartKind };
+  | { kind: "creature"; view: CreatureView; depart: DepartKind; grand?: boolean }
+  | { kind: "token"; view: TokenView; depart: DepartKind; grand?: boolean };
 
 const DEPART_CLASS: Record<DepartKind, string> = {
   death: "anim-death", // hold, flash, drain to black-and-white, crumble
   exile: "anim-exile", // banished — white flare, implosion
   bounce: "anim-bounce", // returned / suspended — slips away upward
 };
+
+// A GRAND death — a boss, or the encounter's last creature — holds the stage
+// longer and gets the ceremonial treatment (fx-combat.css).
+const GRAND_DEATH_MS = 2400;
+
+const departClass = (d: Dying) =>
+  `${DEPART_CLASS[d.depart]}${d.grand ? " anim-death-grand" : ""}`;
 
 /** The just-departed: combatants present in the previous snapshot, gone from
  * this one for a reason the log named (death / exile / bounce, via the store's
@@ -48,7 +58,10 @@ function useDeparting(snapshot: GameSnapshot | null): Dying[] {
       const view = depart === "death"
         ? { ...entry.view, hp: { ...entry.view.hp, current: 0 } }
         : entry.view;
-      newly.push([id, { ...entry, view, depart } as Dying]);
+      const grand = depart === "death" && entry.kind === "creature"
+        && ((entry.view as CreatureView).is_boss
+            || snapshot.creatures.length === 0);
+      newly.push([id, { ...entry, view, depart, grand } as Dying]);
     }
     prev.current = now;
     if (!newly.length) return;
@@ -67,11 +80,80 @@ function useDeparting(snapshot: GameSnapshot | null): Dying[] {
           next.delete(id);
           return next;
         });
-      }, DEPART_MS[e.depart]);
+      }, e.grand ? GRAND_DEATH_MS : DEPART_MS[e.depart]);
     }
   }, [snapshot, departures]);
 
   return [...dying.values()];
+}
+
+/** Wraps a card for the motion layer: `data-fid` is the FLIP/aim anchor; a
+ * live "strike" fx lunges the whole card at its target; a landing hit gives
+ * the target a recoil punch. The wrapper (not the card) carries motion, so
+ * card transforms never fight the cards' own frame states. */
+function MotionWrap({
+  id,
+  strikes,
+  impacts,
+  acts,
+  side,
+  children,
+}: {
+  id: string;
+  strikes: Map<string, FxEvent>;
+  impacts: Set<string>;
+  acts: Set<string>;
+  side: "party" | "enemy";
+  children: React.ReactNode;
+}) {
+  const strike = strikes.get(id);
+  return (
+    <div
+      data-fid={id}
+      className={`${strike ? "fx-lunge" : ""} ${impacts.has(id) ? "fx-recoil" : ""} ${
+        acts.has(id) ? (side === "enemy" ? "fx-stepforward-w" : "fx-stepforward-e") : ""
+      }`}
+      style={strike ? lungeVars(id, strike.targetId, side === "party" ? 22 : -22) : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Full-field phase heralds — the round's heartbeat, made visible. Only the
+ * two phases the player FEELS get one: your phase (brass) and the enemy
+ * phase (crimson wash sweeping the whole board). Presentation only — input
+ * is never blocked; the herald plays over the top of whatever you're doing. */
+function PhaseHerald() {
+  const phase = useGame((s) => s.snapshot?.phase ?? null);
+  const prev = useRef<string | null>(null);
+  const [show, setShow] = useState<"players" | "enemies" | null>(null);
+  useEffect(() => {
+    const before = prev.current;
+    prev.current = phase;
+    if (!phase || before === phase || before == null) return;
+    const kind = phase === "enemy" ? "enemies" : phase === "player" ? "players" : null;
+    if (!kind) return;
+    setShow(kind);
+    const t = window.setTimeout(() => setShow(null), 1250);
+    return () => window.clearTimeout(t);
+  }, [phase]);
+  if (!show) return null;
+  const enemies = show === "enemies";
+  return (
+    <div className="pointer-events-none absolute inset-0 z-40" aria-hidden>
+      <div className={enemies ? "phase-herald-wash-blood" : "phase-herald-wash-brass"} />
+      <div className="absolute inset-x-0 top-[38%] flex justify-center">
+        <span
+          className={`caps-label phase-herald-word font-display text-[clamp(16px,3vh,26px)] tracking-[0.5em] ${
+            enemies ? "text-blood" : "text-brass-hi"
+          }`}
+        >
+          {enemies ? "Enemy Phase" : "Your Phase"}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export function Battlefield() {
@@ -80,8 +162,15 @@ export function Battlefield() {
   const you = useGame((s) => s.you);
   const focusedId = useGame((s) => s.focusedId);
   const pickTargetId = useGame((s) => s.pickTargetId);
+  const fx = useGame((s) => s.fx);
   const dying = useDeparting(snapshot);
   const shaking = useScreenShake();
+  const fieldRef = useRef<HTMLDivElement>(null);
+  // FLIP pass: any card whose layout position changed with this snapshot
+  // glides from where it stood — movement is a slide, never a teleport.
+  useFlip(fieldRef, snapshot);
+  // The motes borrow the scene's own light (brass until sampled).
+  const moteTint = useSceneTint(snapshot?.scene_image);
   if (!snapshot) return null;
 
   const holder = snapshot.priority.holder_character_id;
@@ -96,10 +185,41 @@ export function Battlefield() {
   // — the skull takes the card's place only once the card has crumbled out.
   const dyingIds = new Set(dying.map((d) => d.view.id));
 
+  // Live motion cues, read off the fx store: attackers mid-lunge, targets
+  // recoiling under a landed attack blow, enemies stepping forward as their
+  // declared intent hits the stack.
+  const strikes = new Map(
+    fx.filter((e) => e.kind === "strike").map((e) => [e.entityId, e]),
+  );
+  const impacts = new Set(
+    fx.filter((e) => e.kind === "hit").map((e) => e.entityId),
+  );
+  const acts = new Set(
+    fx.filter((e) => e.kind === "enemyact").map((e) => e.entityId),
+  );
+
+  // Positional intents (§L-5): a declared row assault marks its ground on the
+  // board itself, not only as a line in the intents window.
+  const threatenedRows = new Set(
+    (snapshot.intents ?? [])
+      .filter((i) => i.status === "declared" && i.target_row)
+      .map((i) => i.target_row as string),
+  );
+
+  // A live melee strike gives the whole field a 2px directional kick toward
+  // the blow — the small cousin of the big screen shake. Enemy blows win.
+  const creatureIds = new Set(snapshot.creatures.map((c) => c.id));
+  const kick = [...strikes.keys()].some((id) => creatureIds.has(id))
+    ? "fx-kick-w"
+    : strikes.size
+      ? "fx-kick-e"
+      : "";
+
   return (
     <div
-      className={`field-scene relative isolate flex h-full w-full gap-2 px-3 pb-1 pt-4 ${
-        shaking ? "fx-shake" : ""
+      ref={fieldRef}
+      className={`field-scene relative isolate flex h-full w-full gap-2 overflow-hidden px-3 pb-1 pt-4 ${
+        shaking ? "fx-shake" : kick
       }`}
     >
       {/* Generated scene backdrop, behind the cards; a scrim keeps them legible.
@@ -109,9 +229,19 @@ export function Battlefield() {
           <img
             src={snapshot.scene_image}
             alt=""
-            className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
+            className="anim-kenburns pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
           />
           <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(120%_90%_at_50%_45%,rgba(6,8,12,0.28)_0%,rgba(6,8,12,0.62)_78%,rgba(6,8,12,0.82)_100%)]" />
+          {/* Drifting motes — dust in the scene's own light, behind the cards. */}
+          <div
+            className="motes pointer-events-none absolute inset-0 -z-10"
+            style={moteTint ? ({ "--mote-c": moteTint } as React.CSSProperties) : undefined}
+            aria-hidden
+          >
+            {Array.from({ length: 7 }, (_, i) => (
+              <span key={i} />
+            ))}
+          </div>
         </>
       )}
 
@@ -133,6 +263,7 @@ export function Battlefield() {
           const chars = snapshot.characters.filter((c) => c.row === row);
           const toks = snapshot.tokens.filter((t) => t.row === row);
           const pickable = isMovePicker && ROW_IDS.includes(row) && targetIds.has(row);
+          const marked = threatenedRows.has(row);
           return (
             <div
               key={row}
@@ -141,26 +272,37 @@ export function Battlefield() {
                 pickable ? "brackets cursor-pointer bg-brass/5" : ""
               }`}
             >
+              {marked && (
+                <>
+                  <div className="row-threat pointer-events-none absolute inset-0" />
+                  <span className="caps-label pointer-events-none absolute left-1/2 top-0.5 z-[1] -translate-x-1/2 text-[9px] tracking-[0.3em] text-blood/90">
+                    marked
+                  </span>
+                </>
+              )}
               {chars.map((c) => (
-                <CharacterCard
-                  key={c.id}
-                  char={c}
-                  focused={focusedId === c.id}
-                  isHolder={holder === c.id && controlled.has(c.id)}
-                  waiting={holder === c.id && !controlled.has(c.id)}
-                  isTarget={targetIds.has(c.id)}
-                />
+                <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
+                  <CharacterCard
+                    char={c}
+                    focused={focusedId === c.id}
+                    isHolder={holder === c.id && controlled.has(c.id)}
+                    waiting={holder === c.id && !controlled.has(c.id)}
+                    isTarget={targetIds.has(c.id)}
+                  />
+                </MotionWrap>
               ))}
               <div className="flex flex-wrap justify-center gap-1.5">
                 {toks.map((t) => (
-                  <TokenCard key={t.id} token={t} isTarget={targetIds.has(t.id)} />
+                  <MotionWrap key={t.id} id={t.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
+                    <TokenCard token={t} isTarget={targetIds.has(t.id)} />
+                  </MotionWrap>
                 ))}
                 {dying
                   .filter((d) => d.kind === "token" && d.view.row === row)
                   .map((d) => (
                     <div
                       key={`dying-${d.view.id}`}
-                      className={`${DEPART_CLASS[d.depart]} pointer-events-none`}
+                      className={`${departClass(d)} pointer-events-none`}
                     >
                       <TokenCard token={d.view as TokenView} />
                     </div>
@@ -192,14 +334,16 @@ export function Battlefield() {
               className="relative flex flex-1 flex-col items-center justify-center gap-3"
             >
               {creatures.map((c) => (
-                <CreatureCard key={c.id} creature={c} isTarget={targetIds.has(c.id)} />
+                <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy">
+                  <CreatureCard creature={c} isTarget={targetIds.has(c.id)} />
+                </MotionWrap>
               ))}
               {dying
                 .filter((d) => d.kind === "creature" && d.view.row === row)
                 .map((d) => (
                   <div
                     key={`dying-${d.view.id}`}
-                    className={`${DEPART_CLASS[d.depart]} pointer-events-none`}
+                    className={`${departClass(d)} pointer-events-none`}
                   >
                     <CreatureCard creature={d.view as CreatureView} />
                   </div>
@@ -218,6 +362,11 @@ export function Battlefield() {
           );
         })}
       </div>
+
+      {/* Projectiles fly over everything on the board. */}
+      <ProjectileLayer field={fieldRef} />
+      {/* Phase heralds sweep over the whole field on the big turns of the round. */}
+      <PhaseHerald />
     </div>
   );
 }

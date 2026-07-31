@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useGame } from "../lib/store";
 import type { FxEvent } from "../lib/fx";
 
@@ -11,7 +12,46 @@ function magnitude(amount?: number): number {
   return 1 + Math.min(10, Math.max(0, (amount ?? 3) - 1)) * 0.08;
 }
 
-function Chip({ text, tone }: { text: string; tone: "brass" | "blood" | "poison" | "tide" }) {
+// ---- school tinting ------------------------------------------------------ //
+// A spell wears its caster's colour: the FX event carries the caster's first
+// identity letter, and the aether burst / vigor glow / spellbolt take that
+// school's palette. No tint (enemies, neutral effects) = the house defaults.
+
+export interface SchoolTint {
+  core: string; // the hot centre (bolt body, spark)
+  glow: string; // the soft bloom (gradient inner stop)
+  ring: string; // hairline / ring stroke
+  edge: string; // the gradient's outer stop — umbral schools darken here
+}
+
+const SCHOOLS: Record<string, SchoolTint> = {
+  W: { core: "rgba(247,238,214,0.95)", glow: "rgba(233,214,160,0.55)",
+       ring: "rgba(233,214,160,0.9)", edge: "rgba(233,214,160,0.18)" },
+  U: { core: "rgba(198,228,240,0.95)", glow: "rgba(130,180,201,0.55)",
+       ring: "rgba(130,180,201,0.9)", edge: "rgba(130,180,201,0.16)" },
+  B: { core: "rgba(196,178,222,0.95)", glow: "rgba(158,138,188,0.55)",
+       ring: "rgba(158,138,188,0.9)", edge: "rgba(26,20,34,0.7)" },
+  R: { core: "rgba(244,180,140,0.95)", glow: "rgba(214,122,84,0.55)",
+       ring: "rgba(214,122,84,0.9)", edge: "rgba(214,122,84,0.16)" },
+  G: { core: "rgba(186,226,196,0.95)", glow: "rgba(132,199,147,0.55)",
+       ring: "rgba(132,199,147,0.9)", edge: "rgba(132,199,147,0.16)" },
+};
+
+/** The caster's school palette, or undefined for the neutral default. */
+export function schoolTint(tint?: string): SchoolTint | undefined {
+  return tint ? SCHOOLS[tint] : undefined;
+}
+
+// Impact sparks: where each shard flies (px), and how far it tumbles. Scaled
+// by --fx-mag in fx-combat.css, so a haymaker throws further than a chip.
+const SPARKS: { x: string; y: string; r: string }[] = [
+  { x: "-34px", y: "-22px", r: "-150deg" },
+  { x: "30px", y: "-28px", r: "170deg" },
+  { x: "-24px", y: "12px", r: "-80deg" },
+  { x: "38px", y: "4px", r: "120deg" },
+];
+
+function Chip({ text, tone }: { text: string; tone: "brass" | "blood" | "poison" | "tide" | "dim" }) {
   const cls =
     tone === "brass"
       ? "border-brass/70 bg-ink-0/90 text-brass-hi"
@@ -19,7 +59,9 @@ function Chip({ text, tone }: { text: string; tone: "brass" | "blood" | "poison"
         ? "border-blood/70 bg-ink-0/90 text-blood"
         : tone === "tide"
           ? "border-[#82b4c9]/70 bg-ink-0/90 text-[#a9cbd9]"
-          : "border-[#7da05a]/70 bg-ink-0/90 text-[#a5c97a]";
+          : tone === "dim"
+            ? "border-line2 bg-ink-0/80 text-dimmed"
+            : "border-[#7da05a]/70 bg-ink-0/90 text-[#a5c97a]";
   return (
     <div
       className={`caps-label fx-chip absolute left-1/2 top-[12%] z-30 whitespace-nowrap border px-1.5 py-0.5 text-[9px] tracking-[0.14em] ${cls}`}
@@ -32,26 +74,52 @@ function Chip({ text, tone }: { text: string; tone: "brass" | "blood" | "poison"
 function Effect({ fx }: { fx: FxEvent }) {
   const mag = magnitude(fx.amount);
   const scaled = { "--fx-mag": mag } as React.CSSProperties;
+  const school = schoolTint(fx.tint);
   switch (fx.kind) {
     case "hit":
+      // Flash and blade stay inside the frame; the struck shards do not.
       return (
-        <div className="fx-wrap overflow-hidden" style={scaled}>
-          <div className="fx-hit-flash" />
-          <div className="fx-hit-slash" />
+        <div className="fx-wrap" style={scaled}>
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="fx-hit-flash" />
+            <div className="fx-hit-slash" />
+          </div>
+          <div className="fx-sparks">
+            {SPARKS.map((s, i) => (
+              <span
+                key={i}
+                className="fx-shard"
+                style={{ "--sx": s.x, "--sy": s.y, "--sr": s.r,
+                         animationDelay: `${i * 22}ms` } as React.CSSProperties}
+              />
+            ))}
+          </div>
         </div>
       );
     case "arcane":
       return (
         <div className="fx-wrap" style={scaled}>
-          <div className="fx-flash" style={{ background: "radial-gradient(60% 60% at 50% 50%, rgba(179,157,219,0.55), transparent 70%)" }} />
-          <div className="fx-ring" style={{ borderColor: "rgba(179,157,219,0.9)" }} />
+          <div
+            className="fx-flash"
+            style={{
+              background: school
+                ? `radial-gradient(60% 60% at 50% 50%, ${school.glow}, ${school.edge} 58%, transparent 76%)`
+                : "radial-gradient(60% 60% at 50% 50%, rgba(179,157,219,0.55), transparent 70%)",
+            }}
+          />
+          <div className="fx-ring" style={{ borderColor: school?.ring ?? "rgba(179,157,219,0.9)" }} />
         </div>
       );
     case "heal":
       return (
         <div className="fx-wrap overflow-hidden" style={scaled}>
-          <div className="fx-heal-glow" />
-          <div className="fx-ring" style={{ borderColor: "rgba(132,199,147,0.8)" }} />
+          <div
+            className="fx-heal-glow"
+            style={school
+              ? { background: `radial-gradient(70% 60% at 50% 65%, ${school.glow}, transparent 72%)` }
+              : undefined}
+          />
+          <div className="fx-ring" style={{ borderColor: school?.ring ?? "rgba(132,199,147,0.8)" }} />
         </div>
       );
     case "pump":
@@ -108,12 +176,40 @@ function Effect({ fx }: { fx: FxEvent }) {
         </div>
       );
     case "ultimate":
+      // The ceremony (1.8s, choreographed in fx-combat.css): the screen dims,
+      // the caster's sigil inscribes itself, and only THEN does it detonate.
+      return (
+        <div className="fx-wrap" style={scaled}>
+          <svg className="fx-ult-sigil" viewBox="0 0 100 100" aria-hidden="true">
+            <path className="fx-ult-stroke" pathLength={1} d="M50 4 L96 50 L50 96 L4 50 Z" />
+            <path className="fx-ult-stroke fx-ult-stroke-2" pathLength={1} d="M50 24 L76 50 L50 76 L24 50 Z" />
+            <path className="fx-ult-stroke fx-ult-stroke-3" pathLength={1} d="M50 4 L50 96" />
+            <path className="fx-ult-stroke fx-ult-stroke-3" pathLength={1} d="M4 50 L96 50" />
+          </svg>
+          <div className="fx-ult-flash" />
+          <div className="fx-ult-ring" />
+          <div className="fx-ult-ring fx-ult-ring-2" />
+        </div>
+      );
+    case "engrave":
+      // Permanent counters are STAMPED into the card — it lands hard, then
+      // sits crisp. (A temporary `pump` drifts away; these do not.)
       return (
         <div className="fx-wrap">
-          <div className="fx-flash fx-flash-strong" style={{ background: "radial-gradient(70% 70% at 50% 50%, rgba(233,204,130,0.75), transparent 72%)" }} />
-          <div className="fx-ring fx-ring-big" style={{ borderColor: "rgba(233,204,130,1)" }} />
-          <div className="fx-ring fx-ring-big" style={{ borderColor: "rgba(233,204,130,0.7)", animationDelay: "0.22s" }} />
-          <div className="fx-sigil border-brass-hi" />
+          <div className="fx-engrave-flash" />
+          <div className="fx-engrave-shock" />
+          <div className="fx-engrave-mark" />
+        </div>
+      );
+    case "ward":
+      // Protection granted: the ring inscribes itself and STAYS up.
+      return (
+        <div className="fx-wrap">
+          <div className="fx-ward-glow" />
+          <svg className="fx-ward" viewBox="0 0 100 100" aria-hidden="true">
+            <circle className="fx-ward-ring" cx="50" cy="50" r="42" pathLength={1} />
+            <circle className="fx-ward-ring fx-ward-ring-2" cx="50" cy="50" r="35" pathLength={1} />
+          </svg>
         </div>
       );
     case "enrage":
@@ -181,6 +277,24 @@ function Effect({ fx }: { fx: FxEvent }) {
           {fx.label && <Chip text={fx.label} tone="tide" />}
         </div>
       );
+    // An auto-pass made visible: the teammate's card quietly notes it, so a
+    // resolution never seems to have skipped their window.
+    case "passed":
+      return (
+        <div className="fx-wrap">
+          <Chip text="passes" tone="dim" />
+        </div>
+      );
+    // An enemy intent hitting the stack — crimson flare + rings; the card
+    // itself also steps forward (Battlefield's fx-stepforward wrapper).
+    case "enemyact":
+      return (
+        <div className="fx-wrap">
+          <div className="fx-flash" style={{ background: "radial-gradient(70% 70% at 50% 50%, rgba(194,90,80,0.55), transparent 72%)" }} />
+          <div className="fx-ring" style={{ borderColor: "rgba(194,90,80,0.95)" }} />
+          <div className="fx-ring" style={{ borderColor: "rgba(194,90,80,0.6)", animationDelay: "0.16s" }} />
+        </div>
+      );
     default:
       return null;
   }
@@ -201,9 +315,55 @@ export function FxLayer({ id }: { id: string }) {
   );
 }
 
+/** The body of one full-viewport treatment. */
+function ScreenEffect({ fx }: { fx: FxEvent }) {
+  switch (fx.kind) {
+    case "ultimate":
+      // Beat 1 of the ceremony: the room goes dark while the sigil draws on
+      // the caster's card; beat 3 blooms gold as the shockwave goes out.
+      return (
+        <>
+          <div className="fx-ult-scrim" />
+          <div className="fx-ult-screen-bloom" />
+        </>
+      );
+    case "vignette":
+      // A heavy blow on a hero — the hurt bleeds in at the edges of the world.
+      return <div className="fx-vignette" />;
+    case "victory":
+      return (
+        <>
+          <div className="fx-win-bloom" />
+          <div className="fx-win-line fx-win-line-l" />
+          <div className="fx-win-line fx-win-line-r" />
+          <div className="fx-end-word-wrap">
+            <span className="fx-end-word fx-win-word caps-label font-display">
+              Victory
+            </span>
+          </div>
+        </>
+      );
+    case "defeat":
+      return (
+        <>
+          <div className="fx-lose-scrim" />
+          <div className="fx-lose-line" />
+          <div className="fx-end-word-wrap">
+            <span className="fx-end-word fx-lose-word caps-label font-display">
+              The party falls
+            </span>
+          </div>
+        </>
+      );
+    default:
+      return <div className="fx-screen-pulse" />;
+  }
+}
+
 /** Full-viewport treatments for the biggest moments (mount once, over the
- * battlefield, under the modals): an Ultimate's golden flash, a boss enrage's
- * crimson pulse. The battlefield itself shakes via useScreenShake. */
+ * battlefield, under the modals): an Ultimate's ceremony, a boss enrage's
+ * crimson pulse, a heavy blow's vignette, the end of the battle. The
+ * battlefield itself shakes via useScreenShake. */
 export function ScreenFx() {
   const fx = useGame((s) => s.fx);
   const screen = fx.filter((e) => e.screen);
@@ -212,18 +372,36 @@ export function ScreenFx() {
     <>
       {screen.map((e) => (
         <div key={`screen-${e.key}`} className="pointer-events-none fixed inset-0 z-20">
-          {e.kind === "ultimate" ? (
-            <div className="fx-screen-flash" style={{ background: "radial-gradient(90% 90% at 50% 45%, rgba(233,204,130,0.32), transparent 75%)" }} />
-          ) : (
-            <div className="fx-screen-pulse" />
-          )}
+          <ScreenEffect fx={e} />
         </div>
       ))}
     </>
   );
 }
 
-/** True while a screen-scale effect is live — the battlefield adds fx-shake. */
+// The Ultimate's board kick belongs to the SHOCKWAVE, not to the dim that
+// opens the ceremony — it lands with beat 3 (see fx-combat.css §6).
+const ULT_SHOCKWAVE_MS = 820;
+
+/** True while a screen-scale effect is live — the battlefield adds fx-shake.
+ * The end-of-battle treatments hold the screen for 3.4s and a vignette is
+ * already saying "that hurt": only the two detonations kick the board. */
 export function useScreenShake(): boolean {
-  return useGame((s) => s.fx.some((e) => e.screen));
+  const enrage = useGame((s) => s.fx.some((e) => e.screen && e.kind === "enrage"));
+  const ultKey = useGame(
+    (s) => s.fx.find((e) => e.screen && e.kind === "ultimate")?.key ?? "",
+  );
+  const [ultShake, setUltShake] = useState(false);
+  useEffect(() => {
+    if (!ultKey) {
+      setUltShake(false);
+      return;
+    }
+    const t = window.setTimeout(() => setUltShake(true), ULT_SHOCKWAVE_MS);
+    return () => {
+      window.clearTimeout(t);
+      setUltShake(false);
+    };
+  }, [ultKey]);
+  return enrage || ultShake;
 }

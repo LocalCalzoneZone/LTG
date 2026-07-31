@@ -425,13 +425,18 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                     continue
                 async with session.lock():
                     try:
-                        session.apply_index(client_id, index, mana)
+                        # drain=False: the player's own action lands instantly;
+                        # the synthetic follow-up (auto-passes, resolutions,
+                        # enemy steps) drains PACED — one broadcast per step,
+                        # a beat between the ones worth watching.
+                        session.apply_index(client_id, index, mana, drain=False)
                     except ValueError as exc:
                         await _send(ws, {"type": "error", "message": str(exc)})
                         # Re-sync just this client so its optimistic arming reverts.
                         await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
                         continue
                 await _broadcast(session)
+                session.start_pacer(_broadcast)
 
             elif mtype == "confirm_level_up":
                 # The between-acts gate (Update 10 §D10-3.3): one confirmation

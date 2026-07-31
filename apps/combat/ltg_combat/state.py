@@ -752,6 +752,16 @@ class GameState:
     phase: str = "upkeep"             # upkeep|capacity|draw|intents|player|allies|enemy|end
     stack: List[StackItem] = field(default_factory=list)
     priority: Optional[str] = None    # party member who must decide now
+    # Presentation pacing (game server only — the runner/tests never set it):
+    # with `paced` on, a resolution that empties the stack raises `settle`,
+    # and the engine STOPS there instead of walking straight into the next
+    # automatic step (the next enemy's declaration, a phase flip). The only
+    # way forward is the synthetic "settle" action — which the server's paced
+    # drain submits after a beat, so a resolution is SEEN to finish before
+    # the next thing begins. With `paced` off (the default) behaviour is
+    # byte-identical to before these fields existed.
+    paced: bool = False
+    settle: bool = False
     passes: int = 0                   # consecutive passes in the open window
     acted_enemies: List[str] = field(default_factory=list)
     acted_tokens: List[str] = field(default_factory=list)

@@ -13,6 +13,23 @@ import {
 
 export type ZoneModal = { kind: "library" | "graveyard" | "channel"; charId: string } | null;
 
+// The about-to-resolve hold: how long an armed Pass All waits before firing
+// its automated pass into an open window. The client-side half of the
+// server's resolution pacing (session.py PACE_*) — in hotseat play nearly
+// every window is answered by THIS client, so without the hold the whole
+// stack collapses at click speed and the server pacer never gets a turn.
+const AUTO_PASS_HOLD_MS = 900;
+
+// The resolution hold (the beat after "what just happened"): fx kinds whose
+// arrival gates the action UI until the choreography lands, and how long
+// past the timeline tail the gate stays (the effect itself needs a moment
+// to play out once mounted).
+const HOLD_KINDS = new Set([
+  "hit", "arcane", "strike", "bolt", "heal", "wound", "downed", "revive",
+  "enemyact", "detonate", "ultimate", "enrage",
+]);
+const HOLD_SETTLE_MS = 680;
+
 // A cast that needs the player to pay its cost by hand ({X}, or a generic
 // portion payable more than one way): the player clicks mana symbols for the
 // ENTIRE cost — coloured pips included, in any order — then hits Cast. Nothing
@@ -155,6 +172,19 @@ interface StoreState {
   lastLogSeq: number | null;
   _stackModes: Record<string, string>;
 
+  // The resolution hold: while a snapshot's choreography is still landing
+  // (fx timeline tail), the action UI stays gated — the board finishes
+  // RESOLVING before the player is PROMPTED. Epoch ms; 0 = not holding.
+  // `_holdTick` bumps at expiry so gated components re-render open.
+  holdUntil: number;
+  _holdTick: number;
+  // The presentation queue: arrived-but-not-yet-shown states. Each applies
+  // only after the previous one's choreography has landed, so the WORLD
+  // advances beat by beat instead of batches overlapping.
+  _snapQueue: GameSnapshot[];
+  _applySnapshot: (snap: GameSnapshot) => number;
+  _drainPresent: () => void;
+
   // lifecycle
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -220,13 +250,17 @@ export const useGame = create<StoreState>((set, get) => ({
   departures: {},
   lastLogSeq: null,
   _stackModes: {},
+  holdUntil: 0,
+  _holdTick: 0,
+  _snapQueue: [],
 
   connect: (sessionId) => {
     get().socket?.close();
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
     set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
           passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null,
-          fx: [], departures: {}, lastLogSeq: null, _stackModes: {} });
+          fx: [], departures: {}, lastLogSeq: null, _stackModes: {},
+          holdUntil: 0, _snapQueue: [] });
   },
 
   disconnect: () => {
@@ -250,79 +284,34 @@ export const useGame = create<StoreState>((set, get) => ({
         get()._recomputeFocus();
         break;
       case "state": {
-        const snap = msg as GameSnapshot;
-        // Combat FX: fire one-shot effects for the log entries NEW since the
-        // last snapshot. A fresh log (new session / act transition) is
-        // swallowed as history, never replayed — and its departures cleared,
-        // so a board swap ghosts nothing.
-        const lastSeq = get().lastLogSeq;
-        const synced = syncSeq(lastSeq, snap.log);
-        let fxState: Partial<StoreState> = { lastLogSeq: synced };
-        let fired: FxEvent[] = [];
-        if (lastSeq != null && synced === lastSeq) {
-          const r = fxFromLog(snap, lastSeq, get()._stackModes);
-          fired = r.events;
-          fxState = {
-            lastLogSeq: r.maxSeq,
-            fx: fired.length ? [...get().fx, ...fired] : get().fx,
-            departures: Object.keys(r.departures).length
-              ? { ...get().departures, ...r.departures }
-              : get().departures,
-          };
-        } else if (synced !== lastSeq) {
-          fxState = { lastLogSeq: synced, fx: [], departures: {} };
-        }
-        // A fresh authoritative state ends any optimistic arming (§4.6).
-        set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null,
-              _stackModes: stackModes(snap), ...fxState });
-        for (const e of fired) {
-          window.setTimeout(
-            () => set((s) => ({ fx: s.fx.filter((x) => x.key !== e.key) })),
-            FX_TTL[e.kind],
-          );
-        }
-        get()._recomputeFocus();
-        // Pass All: whenever a window opens for a character that armed it, pass
-        // automatically — until the stack fully resolves, then reset. Windows
-        // for characters that did NOT arm it stay interactive.
-        const autoPassers = get().passAllFor;
-        if (autoPassers.length) {
-          // The commitment is bound to ONE stack episode, keyed by the root
-          // (bottom) item's uid. It ends when the stack empties or when a fresh
-          // episode opens under a different root — e.g. the next enemy's swing
-          // in the same enemy step, which the holder may still First Strike.
-          const rootUid = snap.stack.length ? snap.stack[0].uid : null;
-          if (rootUid === null || rootUid !== get().passAllRootUid) {
-            set({ passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null }); // episode ended
-          } else {
-            const pass = snap.legal_actions.find(
-              (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
-            );
-            // Only auto-pass ONCE per real state. A re-broadcast of an
-            // already-passed window (art refresh / reconnect / seat change)
-            // carries the same log high-water seq; firing again would submit a
-            // now-stale index (→ "action index out of range"). A genuine next
-            // window advances the log, so its key differs and the pass fires.
-            const stateSeq = snap.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
-            if (pass) {
-              const key = `${rootUid}@${stateSeq}#${pass.index}`;
-              if (get()._lastAutoPassKey !== key) {
-                set({ _lastAutoPassKey: key });
-                get().submitIndex(pass.index);
-              }
-            }
-            // else: a non-committed character (or another client) holds
-            // priority, or a forced choice is open — wait for the player.
-          }
-        }
+        // THE PRESENTATION QUEUE: states are not applied on arrival — they
+        // are applied in order, each held until the PREVIOUS state's
+        // choreography has fully landed. Without this, every batch's effect
+        // timeline starts at its own arrival moment, and with broadcasts
+        // ~1s apart but choreography up to ~1.7s long, the next attack's
+        // animations begin while the last one's are still ending — and the
+        // board (HP, chronicle, stack, departures) jumps ahead of both.
+        // Sequential application makes the WORLD move beat by beat, not
+        // just the overlays.
+        set((s) => ({ _snapQueue: [...s._snapQueue, msg as GameSnapshot] }));
+        get()._drainPresent();
         break;
       }
       case "prompt":
         // priority is already carried inside `state`; nothing extra to store.
         break;
-      case "game_over":
-        set({ gameOver: msg.result });
+      case "prompt":
+        // priority is already carried inside `state`; nothing extra to store.
         break;
+      case "game_over": {
+        // The end-of-battle modal must not jump the queue: let the final
+        // batch's choreography land (the grand death, the victory/defeat
+        // screen treatment) before the menu covers it.
+        const wait = Math.max(0, get().holdUntil - Date.now())
+          + get()._snapQueue.length * 1000 + 1200;
+        window.setTimeout(() => set({ gameOver: msg.result }), wait);
+        break;
+      }
       case "error":
         if (msg.fatal) {
           // The session can never be reached (e.g. the server restarted and
@@ -340,6 +329,130 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   // internal — not part of the public interface but kept on the object for reuse
+  _applySnapshot: (snap) => {
+    const lastSeq = get().lastLogSeq;
+    const synced = syncSeq(lastSeq, snap.log);
+    let fxState: Partial<StoreState> = { lastLogSeq: synced };
+    let fired: FxEvent[] = [];
+    if (lastSeq != null && synced === lastSeq) {
+      const r = fxFromLog(snap, lastSeq, get()._stackModes);
+      fired = r.events;
+      // The timeline scheduler: an event with a beat delay mounts LATER —
+      // impact follows delivery, response follows impact. Only beat-zero
+      // events ride in with the snapshot itself.
+      const now = fired.filter((e) => !(e.delayMs && e.delayMs > 0));
+      fxState = {
+        lastLogSeq: r.maxSeq,
+        fx: now.length ? [...get().fx, ...now] : get().fx,
+        departures: Object.keys(r.departures).length
+          ? { ...get().departures, ...r.departures }
+          : get().departures,
+      };
+    } else if (synced !== lastSeq) {
+      fxState = { lastLogSeq: synced, fx: [], departures: {} };
+    }
+    // A fresh authoritative state ends any optimistic arming (§4.6).
+    set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null,
+          _stackModes: stackModes(snap), ...fxState });
+    for (const e of fired) {
+      const mountAt = e.delayMs ?? 0;
+      if (mountAt > 0) {
+        window.setTimeout(
+          () => set((s) => ({ fx: [...s.fx, e] })), mountAt);
+      }
+      window.setTimeout(
+        () => set((s) => ({ fx: s.fx.filter((x) => x.key !== e.key) })),
+        mountAt + FX_TTL[e.kind],
+      );
+    }
+    // The resolution hold: when this batch carries real combat
+    // choreography, gate the action UI until its timeline tail has
+    // landed — the player watches the board RESOLVE, then gets the
+    // prompt. This is what paces the fully-interactive flow (manual
+    // passes, resource-rich windows) that never touches the server
+    // pacer or Pass All. Holds only extend, never shrink.
+    const dur = fired.some((e) => HOLD_KINDS.has(e.kind))
+      ? fired.reduce((m, e) => Math.max(m, e.delayMs ?? 0), 0) + HOLD_SETTLE_MS
+      : 0;
+    get()._recomputeFocus();
+    // Pass All: whenever a window opens for a character that armed it, pass
+    // automatically — until the stack fully resolves, then reset. Windows
+    // for characters that did NOT arm it stay interactive.
+    const autoPassers = get().passAllFor;
+    if (autoPassers.length) {
+      // The commitment is bound to ONE stack episode, keyed by the root
+      // (bottom) item's uid. It ends when the stack empties or when a fresh
+      // episode opens under a different root — e.g. the next enemy's swing
+      // in the same enemy step, which the holder may still First Strike.
+      const rootUid = snap.stack.length ? snap.stack[0].uid : null;
+      if (rootUid === null || rootUid !== get().passAllRootUid) {
+        set({ passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null }); // episode ended
+      } else {
+        const pass = snap.legal_actions.find(
+          (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
+        );
+        // Only auto-pass ONCE per real state. A re-broadcast of an
+        // already-passed window (art refresh / reconnect / seat change)
+        // carries the same log high-water seq; firing again would submit a
+        // now-stale index (→ "action index out of range"). A genuine next
+        // window advances the log, so its key differs and the pass fires.
+        const stateSeq = snap.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
+        if (pass) {
+          const key = `${rootUid}@${stateSeq}#${pass.index}`;
+          if (get()._lastAutoPassKey !== key) {
+            set({ _lastAutoPassKey: key });
+            // The about-to-resolve hold: an AUTOMATED pass waits a beat
+            // before firing, so the window it answers is actually SEEN
+            // (the stack row glows, the acting card embers) before the
+            // resolution lands — the client-side half of the server's
+            // resolution pacing. A manual click never waits. At fire
+            // time the world may have moved on (a fresh snapshot, the
+            // episode ended, someone acted): every check below bails
+            // out; a genuine next window re-schedules its own hold.
+            window.setTimeout(() => {
+              if (get()._lastAutoPassKey !== key) return;
+              const s = get().snapshot;
+              if (!s) return;
+              const seqNow = s.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
+              const still = s.legal_actions.find(
+                (a) => a.kind === "pass" && a.index === pass.index
+                  && a.actor_id === pass.actor_id);
+              if (seqNow !== stateSeq || !still) return;
+              get().submitIndex(pass.index);
+            }, AUTO_PASS_HOLD_MS);
+          }
+        }
+        // else: a non-committed character (or another client) holds
+        // priority, or a forced choice is open — wait for the player.
+      }
+    }
+    return dur;
+  },
+
+  _drainPresent: () => {
+    // Applies queued states in order, one per choreography window. When the
+    // current window is still open the pending expiry timeout re-drains;
+    // batches with no choreography apply straight through.
+    if (Date.now() < get().holdUntil) return;
+    const q = get()._snapQueue;
+    if (!q.length) return;
+    const snap = q[0];
+    set({ _snapQueue: q.slice(1) });
+    let dur = get()._applySnapshot(snap);
+    // Backlog collapse: if the queue is deep (a long Pass-All chain, a
+    // reconnect), shorten each beat so presentation lag stays bounded.
+    if (get()._snapQueue.length > 3) dur = Math.min(dur, 600);
+    if (dur > 0) {
+      set({ holdUntil: Date.now() + dur });
+      window.setTimeout(() => {
+        set({ _holdTick: Date.now() });
+        get()._drainPresent();
+      }, dur + 20);
+    } else if (get()._snapQueue.length) {
+      get()._drainPresent();
+    }
+  },
+
   _recomputeFocus: () => {
     const { snapshot, you, focusedId } = get() as any;
     if (!snapshot) return;

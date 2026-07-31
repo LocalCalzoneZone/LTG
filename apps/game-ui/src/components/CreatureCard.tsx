@@ -1,4 +1,5 @@
-import type { CorpseView, CreatureView, TokenView } from "../lib/types";
+import { useEffect, useRef, useState } from "react";
+import type { CorpseView, CreatureView, IntentCategory, IntentView, TokenView } from "../lib/types";
 import { hpColor, powerColor, roman } from "../lib/format";
 import { BOSS_CARD_WIDTH, CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
@@ -14,6 +15,68 @@ const NAME = "text-[clamp(9px,1.4vh,13px)]";
 // Long names on a standard-width card drop one notch instead of truncating.
 const NAME_LONG = "text-[clamp(8px,1.15vh,11px)]";
 
+// Veiled intent stamps (state-effects pass): three-letter codes by category —
+// "none" gets no chip at all.
+const INTENT_CODE: Record<IntentCategory, string> = {
+  threat: "ATK",
+  spellcraft: "SPL",
+  "row assault": "ROW",
+  "party assault": "AOE",
+  gathering: "GTH",
+  support: "SUP",
+  summon: "SMN",
+  manoeuvre: "MOV",
+  none: "",
+};
+// Hostile categories read blood-toned; the rest sit in dim brass.
+const HOSTILE_INTENT = new Set<IntentCategory>([
+  "threat",
+  "spellcraft",
+  "row assault",
+  "party assault",
+]);
+
+// Deterministic per-enemy stagger for the stamp-in animation, so a row of
+// enemies declares one after another rather than in lockstep.
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** Which intent slots (1, or 2 for an enraged boss) just became "declared"
+ * this snapshot — detected by a change in the stored line for that slot.
+ * Each freshly-declared slot self-clears after its stamp-in animation. */
+function useFreshIntentSlots(intents: IntentView[]): Set<number> {
+  const prev = useRef<Map<number, string>>(new Map());
+  const [fresh, setFresh] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    const next = new Map<number, string>();
+    const justDeclared: number[] = [];
+    for (const intent of intents) {
+      next.set(intent.slot, intent.line);
+      if (intent.status === "declared" && prev.current.get(intent.slot) !== intent.line) {
+        justDeclared.push(intent.slot);
+      }
+    }
+    prev.current = next;
+    if (!justDeclared.length) return;
+    setFresh((f) => new Set([...f, ...justDeclared]));
+    const timers = justDeclared.map((slot) =>
+      window.setTimeout(() => {
+        setFresh((f) => {
+          if (!f.has(slot)) return f;
+          const n = new Set(f);
+          n.delete(slot);
+          return n;
+        });
+      }, 700),
+    );
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [intents]);
+  return fresh;
+}
+
 export function CreatureCard({ creature, isTarget }: { creature: CreatureView; isTarget?: boolean }) {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
@@ -26,6 +89,8 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
   const setHoverIntent = useGame((s) => s.setHoverIntent);
   const intentLit = hoverIntent != null
     && (hoverIntent.enemyId === creature.id || hoverIntent.targetId === creature.id);
+  const freshIntentSlots = useFreshIntentSlots(creature.intents ?? []);
+  const shownIntents = (creature.intents ?? []).filter((i) => i.category !== "none");
 
   // Boss hooks are dormant (engine has no boss support — INTERFACE_NOTES §4.3).
   // Creatures share the player-card width (aspect-square, so shorter than a 9:16 PC).
@@ -59,13 +124,21 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         intentLit ? "shadow-[0_0_0_1px_rgba(233,204,130,0.5)]" : ""
       } ${isTarget || !armed ? "cursor-pointer" : "cursor-default"} ${creature.is_boss ? "z-10" : ""}`}
     >
-      {/* art slot — generated portrait when it exists, engraved sigil until then */}
+      {/* art slot — generated portrait when it exists, engraved sigil until then.
+          Living portraits idle-sway very slowly, de-synced per creature so the
+          field never pulses in lockstep. */}
       {creature.image ? (
-        <img
-          src={creature.image}
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <img
+            src={creature.image}
+            alt=""
+            className="anim-idle h-full w-full object-cover"
+            style={{
+              animationDelay: `-${(creature.id.charCodeAt(creature.id.length - 1) % 7)}s`,
+              animationDuration: `${7 + (creature.id.charCodeAt(0) % 4)}s`,
+            }}
+          />
+        </div>
       ) : (
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_32%,rgba(70,110,118,0.35),transparent_75%),linear-gradient(180deg,#1d2730_0%,#141a22_55%,#10131b_100%)]" />
@@ -109,6 +182,37 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
           poison={creature.poison_counters} regen={creature.regen_counters} />
       </div>
 
+      {/* Veiled-intent stamps (§D8-1) — one chip per declared line, pinned
+          top-centre next to the level gem; two stack for an enraged boss. */}
+      {shownIntents.length > 0 && (
+        <div className="pointer-events-none absolute left-1/2 top-1.5 z-10 flex -translate-x-1/2 flex-col items-center gap-0.5">
+          {shownIntents.map((intent) => {
+            const hostile = HOSTILE_INTENT.has(intent.category);
+            const isFresh = freshIntentSlots.has(intent.slot);
+            const faded = intent.status === "stripped" || intent.status === "stunned"
+              || intent.status === "fizzled";
+            const executed = intent.status === "executed";
+            return (
+              <span
+                key={intent.slot}
+                style={isFresh
+                  ? { animationDelay: `${(hashId(creature.id) % 4) * 150}ms` }
+                  : undefined}
+                className={`caps-label fx-intent-chip border px-1 py-0.5 text-[7px] tracking-[0.12em] ${
+                  hostile
+                    ? "border-blood/60 bg-ink-0/85 text-blood"
+                    : "border-brass/30 bg-ink-0/85 text-dimmed"
+                } ${isFresh ? "fx-intent-stamp" : ""} ${faded ? "fx-intent-faded" : ""} ${
+                  executed ? "opacity-40" : ""
+                }`}
+              >
+                {INTENT_CODE[intent.category]}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* charge gauge (D8-2.4) — the public windup pips: what they feed is veiled */}
       {(creature.charge > 0 || creature.charge_threshold != null) && (
         <div
@@ -126,6 +230,10 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         </div>
       )}
 
+      {/* Ritual glow — a held enemy channel burns crimson at the card's base,
+          the same language as the party's channeling glow, breathing faster. */}
+      {creature.is_channeling && <div className="fx-ritual-base" aria-hidden />}
+
       {/* channelling strip — named so the player knows what breaking does */}
       {creature.is_channeling && (
         <div
@@ -134,6 +242,17 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         >
           {(creature.channels ?? [])[0]?.name ?? "Channeling"}
           {(creature.channels?.length ?? 0) > 1 && ` +${creature.channels.length - 1}`}
+        </div>
+      )}
+
+      {/* break-threshold chip — only while channeling, pinned near the bottom
+          edge (bottom-left, clear of the stat gem and nameplate). */}
+      {creature.is_channeling && (
+        <div
+          title={`Break it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
+          className="caps-label absolute -left-px bottom-[8%] z-10 border border-l-0 border-blood/60 bg-ink-0/85 px-1 py-0.5 text-[7px] tracking-[0.1em] text-blood"
+        >
+          break ≥{creature.break_threshold}
         </div>
       )}
 

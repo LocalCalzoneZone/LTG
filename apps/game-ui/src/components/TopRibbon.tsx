@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { roman } from "../lib/format";
 import { inviteUrl } from "../lib/settings";
 import { useGame } from "../lib/store";
@@ -43,6 +43,90 @@ export function TopRibbon({ onNewGame, onOptions }: {
 
   const stepNow = snapshot ? (STEP_OF[snapshot.phase] ?? null) : null;
   const nowIdx = stepNow ? STEPS.indexOf(stepNow) : -1;
+  const turn = snapshot?.turn ?? null;
+
+  // ---- phase-transition FX: stamp-in on the active label, a hairline that
+  // sweeps to it, and a low crimson wash the moment ENEMIES opens. ----------
+  const stepsWrapRef = useRef<HTMLDivElement | null>(null);
+  const stepRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const [underline, setUnderline] = useState<{ left: number; width: number } | null>(null);
+  const prevPhaseIdxRef = useRef(nowIdx);
+  const firstPhaseRef = useRef(true);
+  const [phaseStampKey, setPhaseStampKey] = useState(0);
+  const washTimerRef = useRef<number | undefined>(undefined);
+  const [washKey, setWashKey] = useState<number | null>(null);
+  const enemiesIdx = STEPS.indexOf("Enemies");
+
+  // Turn-numeral engrave flip: the old numeral fades/slides out while the new
+  // one stamps in.
+  const prevTurnRef = useRef(turn);
+  const firstTurnRef = useRef(true);
+  const [turnGhost, setTurnGhost] = useState<number | null>(null);
+  const turnGhostTimerRef = useRef<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (nowIdx < 0) {
+        setUnderline(null);
+        return;
+      }
+      const el = stepRefs.current[nowIdx];
+      const wrap = stepsWrapRef.current;
+      if (el && wrap) {
+        const wrapRect = wrap.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        setUnderline({ left: elRect.left - wrapRect.left, width: elRect.width });
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [nowIdx]);
+
+  useEffect(() => {
+    if (firstPhaseRef.current) {
+      firstPhaseRef.current = false;
+      prevPhaseIdxRef.current = nowIdx;
+      return;
+    }
+    if (nowIdx !== prevPhaseIdxRef.current && nowIdx >= 0) {
+      prevPhaseIdxRef.current = nowIdx;
+      setPhaseStampKey((k) => k + 1);
+      if (nowIdx === enemiesIdx) {
+        window.clearTimeout(washTimerRef.current);
+        setWashKey((k) => (k ?? 0) + 1);
+        washTimerRef.current = window.setTimeout(() => setWashKey(null), 750);
+      }
+    }
+  }, [nowIdx, enemiesIdx]);
+
+  useEffect(() => {
+    // A vanished snapshot (disconnect / new game) resets the tracker so the
+    // next real turn stamps in clean instead of "flipping" from stale history.
+    if (turn == null) {
+      firstTurnRef.current = true;
+      prevTurnRef.current = null;
+      setTurnGhost(null);
+      return;
+    }
+    if (firstTurnRef.current) {
+      firstTurnRef.current = false;
+      prevTurnRef.current = turn;
+      return;
+    }
+    if (turn !== prevTurnRef.current) {
+      const outgoing = prevTurnRef.current;
+      prevTurnRef.current = turn;
+      setTurnGhost(outgoing);
+      window.clearTimeout(turnGhostTimerRef.current);
+      turnGhostTimerRef.current = window.setTimeout(() => setTurnGhost(null), 420);
+    }
+  }, [turn]);
+
+  useEffect(() => () => {
+    window.clearTimeout(washTimerRef.current);
+    window.clearTimeout(turnGhostTimerRef.current);
+  }, []);
 
   const copyInvite = () => {
     // The invite host comes from Options → Settings (e.g. a Tailscale IP);
@@ -54,6 +138,9 @@ export function TopRibbon({ onNewGame, onOptions }: {
 
   return (
     <div className="relative z-10 flex h-[42px] flex-none items-center gap-3 border-b border-line bg-gradient-to-b from-ink-3 to-ink-2 px-4">
+      {washKey != null && (
+        <div key={washKey} className="phase-wash-enemies pointer-events-none absolute inset-0" aria-hidden />
+      )}
       {/* wordmark */}
       <div
         className="h-3.5 w-3.5 rotate-45 border border-brass bg-gradient-to-br from-brass/25 to-transparent"
@@ -83,22 +170,42 @@ export function TopRibbon({ onNewGame, onOptions }: {
       {/* turn tracker — centred */}
       {snapshot && (
         <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-baseline">
-          <span className="caps-label mr-4 text-[13px] tracking-[0.2em] text-parch">
-            Turn {snapshot.turn}
-          </span>
-          {STEPS.map((step, i) => (
-            <span
-              key={step}
-              className={`caps-label relative px-2.5 text-[10px] tracking-[0.18em] ${
-                i === nowIdx ? "text-brass-hi" : i < nowIdx ? "text-mist" : "text-dimmed"
-              }`}
-            >
-              {step}
-              {i === nowIdx && (
-                <span className="absolute -bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rotate-45 bg-brass" />
+          <span className="caps-label mr-4 flex items-baseline text-[13px] tracking-[0.2em] text-parch">
+            Turn{" "}
+            <span className="relative inline-block">
+              {turnGhost != null && (
+                <span className="hud-turn-ghost pointer-events-none absolute left-0 top-0" aria-hidden>
+                  {turnGhost}
+                </span>
               )}
+              <span key={turn ?? -1} className="hud-turn-stamp inline-block">
+                {turn}
+              </span>
             </span>
-          ))}
+          </span>
+          <div ref={stepsWrapRef} className="relative flex items-baseline">
+            {STEPS.map((step, i) => (
+              <span
+                key={i === nowIdx ? `${step}-active-${phaseStampKey}` : step}
+                ref={(el) => { stepRefs.current[i] = el; }}
+                className={`caps-label relative px-2.5 text-[10px] tracking-[0.18em] ${
+                  i === nowIdx ? "hud-phase-stamp text-brass-hi" : i < nowIdx ? "text-mist" : "text-dimmed"
+                }`}
+              >
+                {step}
+                {i === nowIdx && (
+                  <span className="absolute -bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rotate-45 bg-brass" />
+                )}
+              </span>
+            ))}
+            {underline && (
+              <span
+                className="hud-phase-underline absolute bottom-[-4px] h-px"
+                style={{ left: `${underline.left}px`, width: `${underline.width}px` }}
+                aria-hidden
+              />
+            )}
+          </div>
         </div>
       )}
 

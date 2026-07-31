@@ -1,0 +1,111 @@
+/* fx-state — see main.tsx import order; index.css owns the base system.
+   Persistent-state visuals: channeling base-glows and intent stamps.
+   Loaded AFTER index.css so these rules can override it when needed. */
+
+/* ---- Channeling base-glow (CharacterCard) --------------------------------
+   Held magic burns at the card's base: a breathing under-glow in the
+   channel's reserved colour over a lit baseline. Strength scales with the
+   number of held channels (--channel-n). */
+.fx-channel-base {
+  --channel-color: #c9b37e;
+  --channel-n: 1;
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(26% + 8% * min(var(--channel-n), 2));
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--channel-color) 34%, transparent),
+    transparent 80%
+  );
+  animation: fx-channel-breathe 2.4s ease-in-out infinite;
+}
+.fx-channel-base::after {
+  /* The lit baseline — the card is standing in its own held spell. */
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: var(--channel-color);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--channel-color) 55%, transparent);
+}
+@keyframes fx-channel-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- Enemy ritual glow (CreatureCard) ------------------------------------
+   The same language in crimson, breathing faster — a ritual burning at the
+   channeler's feet, with the break threshold named beside it. */
+.fx-ritual-base {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 38%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(194, 90, 80, 0.4),
+    transparent 80%
+  );
+  animation: fx-channel-breathe 1.9s ease-in-out infinite;
+}
+.fx-ritual-base::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: rgba(194, 90, 80, 0.95);
+  box-shadow: 0 0 12px 3px rgba(194, 90, 80, 0.5);
+}
+
+/* ---- Intent stamps (CreatureCard) ----------------------------------------
+   Declared-intent chips pinned to the top edge. A fresh declaration stamps
+   in (scale settle + flash); a stripped/stunned/fizzled intent goes
+   strikethrough-dim; an executed one just dims. */
+.fx-intent-chip {
+  line-height: 1;
+  white-space: nowrap;
+}
+@keyframes fx-intent-stamp {
+  0% {
+    transform: scale(1.6);
+    opacity: 0;
+    filter: brightness(1.9);
+  }
+  55% {
+    transform: scale(0.92);
+    opacity: 1;
+    filter: brightness(1.15);
+  }
+  78% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.fx-intent-stamp {
+  animation: fx-intent-stamp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.fx-intent-faded {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* Stillness is a setting: the breathing glows hold steady at mid-strength
+   under the OS preference; one-shot stamps are not loops and stay. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-channel-base,
+  .fx-ritual-base {
+    animation: none;
+    opacity: 0.75;
+  }
+}

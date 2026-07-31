@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { CharacterView } from "../lib/types";
 import { canPickMana, castIndexFor, useGame } from "../lib/store";
 import { Pips } from "./Pips";
@@ -34,6 +35,31 @@ export function ManaWidget({ char, manaChoices }: {
   const count = (arr: string[], c: string) => arr.filter((x) => x === c).length;
   const poolRecord: Record<string, number> = Object.fromEntries(
     colors.map((c) => [c, byColor[c]?.pool ?? 0]));
+
+  // Diff pool/capacity against the previous render (reset silently on a
+  // character switch, never flagged as a "change"): a pool refill sparkles
+  // its gems once; a capacity gain stamps in the freshly-unlocked pip.
+  const prevManaRef = useRef<{ charId: string; byColor: Record<string, { pool: number; capacity: number }> } | null>(null);
+  const sparkleColors = new Set<string>();
+  const capBumpColors = new Set<string>();
+  const prevMana = prevManaRef.current;
+  if (prevMana && prevMana.charId === char.id) {
+    for (const c of colors) {
+      const cur = byColor[c];
+      const old = prevMana.byColor[c];
+      if (!cur || !old) continue;
+      if ((cur.pool ?? 0) > old.pool) sparkleColors.add(c);
+      if ((cur.capacity ?? 0) > old.capacity) capBumpColors.add(c);
+    }
+  }
+  useEffect(() => {
+    prevManaRef.current = {
+      charId: char.id,
+      byColor: Object.fromEntries(
+        colors.map((c) => [c, { pool: byColor[c]?.pool ?? 0, capacity: byColor[c]?.capacity ?? 0 }]),
+      ),
+    };
+  });
 
   return (
     // The pane's footprint never changes: paying a cast only lights the frame,
@@ -85,7 +111,9 @@ export function ManaWidget({ char, manaChoices }: {
                     clickable
                       ? "cursor-pointer ring-2 ring-brass-hi ring-offset-2 ring-offset-ink-0 hover:scale-110"
                       : ""
-                  } ${selecting && !manaClickable ? "opacity-40" : ""}`}
+                  } ${selecting && !manaClickable ? "opacity-40" : ""} ${
+                    sparkleColors.has(color) ? "hud-mana-sparkle" : ""
+                  } ${capacityClickable ? "hud-picker-glow" : ""}`}
                 />
                 {picked > 0 && (
                   <span className="font-display absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brass-hi text-[10px] text-ink-0">
@@ -103,12 +131,13 @@ export function ManaWidget({ char, manaChoices }: {
               <div className="flex gap-1.5">
                 {Array.from({ length: m.capacity }).map((_, i) => {
                   const channelled = i >= m.capacity - m.channel_occupied;
+                  const justUnlocked = capBumpColors.has(color) && i === m.capacity - 1;
                   return (
                     <span
                       key={i}
                       className={`h-2 w-2 rotate-45 ${
                         channelled ? "bg-aether shadow-[0_0_4px_rgba(179,157,219,0.6)]" : "border border-line2 bg-brass"
-                      }`}
+                      } ${justUnlocked ? "hud-capacity-stamp" : ""}`}
                     />
                   );
                 })}

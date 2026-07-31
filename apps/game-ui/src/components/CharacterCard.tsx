@@ -20,6 +20,26 @@ const BIG = "text-[clamp(15px,2.4vh,26px)]";
 const SMALL = "text-[clamp(8px,1.1vh,12px)]";
 const NAME = "text-[clamp(9px,1.4vh,14px)]";
 
+// Channeling glow tint (state-effects pass): the first WUBRG letter in the
+// reserved pip string picks the diamond's colour; digits are generic and
+// skipped; no letter at all falls back to brass (a colourless channel).
+const CHANNEL_TINT: Record<string, string> = {
+  W: "rgba(233,214,160,1)",
+  U: "rgba(130,180,201,1)",
+  B: "rgba(158,138,188,1)",
+  R: "rgba(214,122,84,1)",
+  G: "rgba(132,199,147,1)",
+};
+const CHANNEL_TINT_DEFAULT = "rgba(201,179,126,1)"; // brass
+
+function channelTint(reservedPips: string): string {
+  for (const ch of reservedPips) {
+    const tint = CHANNEL_TINT[ch];
+    if (tint) return tint;
+  }
+  return CHANNEL_TINT_DEFAULT;
+}
+
 export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Props) {
   const setFocus = useGame((s) => s.setFocus);
   const pickTargetId = useGame((s) => s.pickTargetId);
@@ -70,6 +90,19 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+
+      {/* Channeling base-glow — held magic burning at the card's base, tinted
+          by the reserved colour, stronger with more held channels. */}
+      {char.is_channeling && char.channels_summary.length > 0 && (
+        <div
+          className="fx-channel-base"
+          style={{
+            "--channel-color": channelTint(char.channels_summary[0].reserved_pips),
+            "--channel-n": char.channels_summary.length,
+          } as React.CSSProperties}
+          aria-hidden
+        />
+      )}
 
       {/* Your-move / waiting chevron banner */}
       {(isHolder || waiting) && (

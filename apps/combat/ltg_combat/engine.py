@@ -152,6 +152,20 @@ def _advance(st: GameState) -> None:
                 st.reacted_window = []
             return
 
+        # The presentation settle (paced games only): a resolution just
+        # emptied the stack — STOP before the turn structure takes its next
+        # automatic step, so the next enemy's declaration or the phase flip
+        # arrives as its own beat instead of fused into this one. Priority
+        # seeds so a legal (synthetic-only) "settle" action exists; the
+        # server's paced drain submits it after the viewing beat.
+        if st.settle:
+            holder = _party_ordered(st)
+            if not holder:
+                st.settle = False  # nobody left to hold the beat — play on
+            else:
+                st.priority = holder[0].id
+                return
+
         # Stack empty -> walk the turn structure (GDD §4.2).
         if st.phase == "upkeep":
             _begin_turn(st)
@@ -1529,6 +1543,7 @@ def _expire_keywords(combatant) -> None:
 def _apply(st: GameState, action: Action) -> None:
     handler = {
         "pass": _do_pass,
+        "settle": _do_settle,
         "end_turn": _do_end_turn,
         "attack": _do_attack,
         "cast": _do_cast,
@@ -1546,6 +1561,13 @@ def _apply(st: GameState, action: Action) -> None:
         "stance_ability": _do_stance_ability,
     }[action.kind]
     handler(st, action)
+
+
+def _do_settle(st: GameState, action: Action) -> None:
+    """Release a paced game's settle stop: the resolution has been watched;
+    the automatic flow (next declaration / phase flip) may take its next step."""
+    st.settle = False
+    st.priority = None
 
 
 def _do_choose_mana(st: GameState, action: Action) -> None:
@@ -2153,6 +2175,8 @@ def _next_priority_after(st: GameState, actor_id: str) -> str:
 def _resolve_top(st: GameState) -> StackItem:
     """Resolve and return the popped top item (the caller reads it to build the
     post-resolution reaction context — §F-7.4)."""
+    if st.paced:
+        st.settle = True  # a paced game pauses to WATCH this land (see _advance)
     item = st.stack.pop()
     _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
     if item.kind == "move":  # a voluntary Move resolves: the body relocates NOW (§L-2.2)
@@ -4976,6 +5000,10 @@ def _legal(st: GameState) -> List[Action]:
     actor = st.character(st.priority)
     if actor is None:
         return []
+    # A paced game paused at a settle stop: the ONLY move is the synthetic
+    # settle (the server's drain submits it after the viewing beat).
+    if st.settle and not st.stack:
+        return [Action("settle", actor.id, label="Settle")]
     if st.phase == "capacity" and not st.stack:
         return _legal_capacity(st, actor)
     return _legal_react(st, actor) if st.stack else _legal_main(st, actor)
@@ -5703,6 +5731,11 @@ def auto_pass_action(state: GameState) -> Optional[Action]:
     _advance(st)
     if st.result is not None or st.priority is None or st.pending_choice is not None:
         return None
+    # A settle stop is ALWAYS synthetic — checked before every other guard
+    # (a channeler's standing decision doesn't apply; nothing is decidable
+    # here, the game is simply being watched).
+    if st.settle and not st.stack:
+        return Action("settle", st.priority, auto=True, label="Settle (auto)")
     if st.phase == "capacity" and not st.stack:
         return None  # the capacity colour is a mandatory real choice
     actor = st.character(st.priority)

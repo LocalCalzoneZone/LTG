@@ -151,6 +151,9 @@ export interface IntentView {
   line: string; // the template line ("The Spore Husk threatens Soren.")
   status: "declared" | "stripped" | "stunned" | "executed" | "fizzled" | "none";
   reveal: string; // what a stripped intent turned out to be ("" otherwise)
+  // §L-5 positional intent: the party row this action will strike, named at
+  // declaration (the board marks it). Null for targeted/untargeted intents.
+  target_row?: Row | null;
   // 1, or 2 for an enraged boss's second declared intent (§D9-4 boss fury).
   slot: number;
 }
