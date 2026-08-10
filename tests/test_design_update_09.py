@@ -614,6 +614,34 @@ def test_stance_attack_replacement_satisfies_the_proactive_choice():
     assert not _has(st, "stance_ability", card_id="attack")
 
 
+def test_multi_site_mitigate_replacement_binds_every_target_site():
+    # A replacement whose effects target INDEPENDENTLY (Soren's Deficimus:
+    # "cancel an enemy attack" AND "deal damage equal to your Power") is one site
+    # per effect — the cancelled action and whom the damage hits are picked
+    # separately, exactly like a multi-site cast. Before this, only the counter's
+    # site bound and the damage half fizzled onto the stack uid.
+    counter_attack = {"name": "Counter-Attack", "effects": [
+        {"kind": "counter", "filter": "attack",
+         "target": {"class": "action", "side": "enemy"}},
+        {"kind": "deal_damage", "amount": {"ref": "caster_power"},
+         "target": CHOSEN_ENEMY_T}]}
+    st = _state([_char("p", power=4, hp=30, hand=1,
+                       library=[_stance_card(mitigate=counter_attack)])],
+                [_enemy("e", hp=10, amount=4)])
+    st = _do(st, "cast", card_id="trance")
+    st = _do(st, "pass")
+    st = _do(st, "end_turn")                       # → the enemy step
+    assert st.phase == "enemy" and st.stack[-1].kind == "attack"
+    act = next(a for a in legal_actions(st)
+               if a.kind == "stance_ability" and a.card_id == "mitigate")
+    assert len(act.targets) == 2                   # the cancelled action, then the victim
+    st = apply_action(st, act)[0]
+    while _has(st, "pass"):
+        st = _do(st, "pass")
+    assert st.character("p").hp == 30              # the swing was cancelled
+    assert st.enemy("e").hp == 6                   # …and Power 4 came back at it
+
+
 def test_stance_is_rejected_on_non_channeled_cards_and_enemy_verbs():
     with pytest.raises(ValidationError):
         Card.model_validate(_card("x", "X", "sorcery", {},

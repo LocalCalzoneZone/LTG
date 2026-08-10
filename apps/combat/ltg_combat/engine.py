@@ -2127,9 +2127,13 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     name = repl.name or f"{slot.title()}"
     # The stance's card rides along so slot refs ("$T1") and their descriptors
     # (splash scope, corpse state) resolve during the replacement's resolution.
+    # `targets` carries the per-site picks for a replacement whose effects target
+    # independently (Counter-Attack: the action it cancels AND whom it hits), so
+    # `_new_ctx` can bind each site; empty for the single-target shape.
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{name} (stance)", effects=list(repl.effects),
-                        target_id=action.target_id, card=_stance_card(actor),
+                        target_id=action.target_id, targets=tuple(action.targets),
+                        card=_stance_card(actor),
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
@@ -5098,11 +5102,31 @@ def _stance_actions(st: GameState, actor: CharacterState, slot: str,
     target enumeration over the replacement's leaf effects. `card_id` carries the
     slot name so `_do_stance_ability` finds the replacement again at apply time.
     The stance's own card rides along so a replacement aimed at a shared slot
-    ("$T1") resolves the slot's side instead of enumerating nothing."""
+    ("$T1") resolves the slot's side instead of enumerating nothing.
+
+    A replacement whose effects target INDEPENDENTLY (≥2 sites — a Counter-Attack's
+    "cancel that action" plus its own damage) offers one action per combination of
+    per-site picks, exactly like a multi-site cast; a site with no legal option
+    makes the replacement unusable right now."""
     name = repl.name or f"{slot.title()} (stance)"
+    card = _stance_card(actor)
+    effects = list(repl.effects)
     out = []
-    for tid, tlabel in _target_options_for(st, list(repl.effects),
-                                           _stance_card(actor)):
+    sites = _target_sites(effects, card)
+    if len(sites) >= 2:
+        per_site = [_site_options(st, side, targeted, kind, state)
+                    for _key, side, targeted, kind, state in sites]
+        if not all(per_site):
+            return []  # a required site has nothing to name — not offerable
+        for combo in itertools.product(*per_site):
+            tids = tuple(tid for tid, _ in combo)
+            labels = ", ".join(tl for _, tl in combo if tl)
+            out.append(Action("stance_ability", actor.id, card_id=slot,
+                              target_id=tids[0], targets=tids,
+                              label=f"{name} (stance)"
+                                    + (f" on {labels}" if labels else "")))
+        return out
+    for tid, tlabel in _target_options_for(st, effects, card):
         label = f"{name} (stance)" + (f" on {tlabel}" if tlabel else "")
         out.append(Action("stance_ability", actor.id, card_id=slot,
                           target_id=tid, label=label))
@@ -5339,20 +5363,8 @@ def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
         # uncastable — matching "you can't choose a mode you can't target".
         sites = _target_sites(effects, card)
         if len(sites) >= 2:
-            per_site = []
-            for _key, side, targeted, kind, state in sites:
-                if isinstance(side, str) and side.startswith("stack"):
-                    # "stack:<filt>" = enemy actions only (a counter);
-                    # "stack_any:<filt>" = either side's (a copy_spell).
-                    any_side = side.startswith("stack_any:")
-                    filt = side.split(":", 1)[1]
-                    opts = [(f"#{s.uid}", s.label) for s in st.stack
-                            if (any_side or s.source_side == "enemy")
-                            and _filter_matches(filt, s)
-                            and (kind != "redirect" or _stack_redirectable(st, s))]
-                else:
-                    opts = _pick_options(st, side, targeted, kind, state)
-                per_site.append(opts)
+            per_site = [_site_options(st, side, targeted, kind, state)
+                        for _key, side, targeted, kind, state in sites]
             if not all(per_site):
                 continue  # a required site has no legal pick — combo uncastable
             for combo in itertools.product(*per_site):
@@ -5431,6 +5443,24 @@ def _counter_filter(effects) -> Optional[str]:
         if e.kind == "counter":
             return e.filter
     return None
+
+
+def _site_options(st: GameState, side, targeted: bool, kind: Optional[str],
+                  state=None):
+    """The legal picks for ONE independent target site of a multi-site action
+    (a cast or a stance replacement): stack actions when the site names the
+    stack, creatures otherwise.
+
+    "stack:<filt>" = enemy actions only (a counter); "stack_any:<filt>" =
+    either side's (a copy_spell, or a redirect turning an ally's action)."""
+    if isinstance(side, str) and side.startswith("stack"):
+        any_side = side.startswith("stack_any:")
+        filt = side.split(":", 1)[1]
+        return [(f"#{s.uid}", s.label) for s in st.stack
+                if (any_side or s.source_side == "enemy")
+                and _filter_matches(filt, s)
+                and (kind != "redirect" or _stack_redirectable(st, s))]
+    return _pick_options(st, side, targeted, kind, state)
 
 
 def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],

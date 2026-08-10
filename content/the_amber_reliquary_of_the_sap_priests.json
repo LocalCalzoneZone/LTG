@@ -1,7 +1,7 @@
 {
   "name": "The Amber Reliquary of the Sap-Priests",
   "scene": "Deep within an ancient forest, a colossal amber-veined oak has been hollowed into a temple, its walls of hardened golden resin trapping motes of glowing pollen and the frozen forms of long-dead beasts. Sunlight filters amber-gold through the translucent bark, and thick sap oozes down the pillars, hissing where it drips onto the root-tangled floor.",
-  "scene_image": "/art/the_amber_reliquary_of_the_sap_priests/scene-66edfc54.png",
+  "scene_image": "/art/the_amber_reliquary_of_the_sap_priests/scene-52f5921e.png",
   "enemies": [
     {
       "id": "resin_warden",
