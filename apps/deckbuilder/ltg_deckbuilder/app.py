@@ -228,6 +228,12 @@ def api_character_model() -> dict:
         # baseline (an hp_step is one +2 pair). The list is long enough that a
         # client never runs off its end at any plausible spend.
         "curve": {stat: price_list(stat) for stat in PRICE_STATS},
+        # Back-compat for a browser still holding the pre-Update-17 app.js:
+        # the retired flat table (first-step prices) and an empty preset map,
+        # so a stale client renders instead of throwing mid-load.
+        "costs": {"hp_step": price_list("hp_step", 1)[0], "mana": price_list("mana", 1)[0],
+                  "card": price_list("card", 1)[0], "power": price_list("power", 1)[0]},
+        "presets": {},
         "caps": {"power_bought": MAX_POWER_BOUGHT, "keywords": MAX_KEYWORDS},
         "keywords": keywords,
         "banned_keywords": sorted(BANNED_CREATION_KEYWORDS),
@@ -511,4 +517,14 @@ def _safe_path(name: str) -> Path:
 app.include_router(update.router)
 
 if FRONTEND_DIR.exists():
+    from fastapi.responses import FileResponse
+
+    @app.get("/", include_in_schema=False)
+    def _index() -> FileResponse:
+        # index.html carries the cache-busting ?v= numbers for app.js/styles.css;
+        # it must never be cached itself, or a browser keeps the old script
+        # against a new API after an update.
+        return FileResponse(FRONTEND_DIR / "index.html",
+                            headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
