@@ -1,7 +1,7 @@
 {
   "name": "The Glimmering Corridors",
   "scene": "A labyrinth of translucent ice-walls that seem to breathe and reset, corridors folding into corridors under a ceiling of frozen stars. Blue witch-light drifts in the fog, and everything is silent save the crackle of shifting ice.",
-  "scene_image": "/art/the_frostmaze_of_vaelryn__act1/scene-a33093dd.png",
+  "scene_image": "/art/the_frostmaze_of_vaelryn__phase1/scene-a33093dd.png",
   "enemies": [
     {
       "id": "frost_wisp",
@@ -51,7 +51,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act1/frost_wisp-ab30b879.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase1/frost_wisp-ab30b879.png"
     },
     {
       "id": "glimmer_shade",
@@ -100,7 +100,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act1/glimmer_shade-bf0cccb8.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase1/glimmer_shade-bf0cccb8.png"
     },
     {
       "id": "rime_warden",
@@ -162,7 +162,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act1/rime_warden-9ae1afc1.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase1/rime_warden-9ae1afc1.png"
     }
   ],
   "tokens": {},

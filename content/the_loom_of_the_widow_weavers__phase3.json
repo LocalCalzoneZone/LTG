@@ -1,7 +1,7 @@
 {
   "name": "The Broodmatron's Loom",
   "scene": "A cathedral-sized silken chamber at the mine's base, the floor a heaving carpet of egg-sacs glowing faint pink. Cocooned husks hang in rows like a larder, and a colossal pale spider-queen crouches on a throne of woven bone at the center, silk pouring from her spinnerets in luminous ropes.",
-  "scene_image": "/art/the_loom_of_the_widow_weavers__act3/scene-36f614cd.png",
+  "scene_image": "/art/the_loom_of_the_widow_weavers__phase3/scene-36f614cd.png",
   "enemies": [
     {
       "id": "broodmatron",
@@ -115,7 +115,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act3/broodmatron-417ec1c3.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase3/broodmatron-417ec1c3.png"
     },
     {
       "id": "husk_spinner",
@@ -173,7 +173,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act3/husk_spinner-20fb8594.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase3/husk_spinner-20fb8594.png"
     },
     {
       "id": "carrion_widow",
@@ -239,7 +239,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act3/carrion_widow-b71736bd.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase3/carrion_widow-b71736bd.png"
     },
     {
       "id": "loom_guard",
@@ -296,7 +296,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act3/loom_guard-6a210145.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase3/loom_guard-6a210145.png"
     }
   ],
   "tokens": {
@@ -306,7 +306,7 @@
       "power": 1,
       "row": "front",
       "attack_mode": "melee",
-      "image": "/art/the_loom_of_the_widow_weavers__act3/hatchling-f25e3b6f.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase3/hatchling-f25e3b6f.png"
     }
   },
   "difficulty": "easy",

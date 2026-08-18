@@ -1,7 +1,7 @@
 {
   "name": "The Silken Threshold",
   "scene": "A crystal-mine entrance choked with pale spider-silk: broken lantern-poles wound in cocoons, cart-rails swallowed by webbing, and a thin dawn light filtering silver through the strands. Frost-glitter of crushed quartz coats the floor.",
-  "scene_image": "/art/the_loom_of_the_widow_weavers__act1/scene-27b178ca.png",
+  "scene_image": "/art/the_loom_of_the_widow_weavers__phase1/scene-27b178ca.png",
   "enemies": [
     {
       "id": "silk_scuttler",
@@ -62,7 +62,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act1/silk_scuttler-dcf47704.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase1/silk_scuttler-dcf47704.png"
     },
     {
       "id": "web_flinger",
@@ -122,7 +122,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act1/web_flinger-7a11259f.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase1/web_flinger-7a11259f.png"
     }
   ],
   "tokens": {},

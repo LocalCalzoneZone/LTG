@@ -160,7 +160,7 @@ class Session:
             self._auto_advance()
         elif self.adventure is not None:
             # The paced drain runs the hook per step; the player's own action
-            # still needs one here (it may itself have won the act).
+            # still needs one here (it may itself have won the phase).
             self.adventure.on_state_change(self.state)
 
     def _auto_advance(self) -> None:
@@ -176,7 +176,7 @@ class Session:
                 break
             new_state, _events = apply_action(self.state, action)
             self.state = new_state
-        # Adventure hook: a won act opens the level-up gate; a won finale marks
+        # Adventure hook: a won phase opens the level-up gate; a won finale marks
         # the run complete. No-op (and never reached) for plain encounters.
         if self.adventure is not None:
             self.adventure.on_state_change(self.state)
@@ -234,7 +234,7 @@ class Session:
 
     # -- adventures (Update 10) ----------------------------------------------- #
     def public_result(self) -> Optional[str]:
-        """The result the CLIENTS should see: a non-final act victory is an act
+        """The result the CLIENTS should see: a non-final phase victory is a phase
         boundary (the level-up gate), not a game over."""
         result = self.state.result
         if (self.adventure is not None
@@ -245,7 +245,7 @@ class Session:
     def confirm_level_up(self, client_id: str, character_id: str,
                          build: Dict[str, Any]) -> None:
         """Apply one seat's level-up confirmation; when the last seat confirms,
-        compose the next act (carry-over applied) and swap it in."""
+        compose the next phase (carry-over applied) and swap it in."""
         if self.adventure is None:
             raise ValueError("this game is not an adventure")
         if self.seats.get(character_id) != client_id:
@@ -255,7 +255,7 @@ class Session:
             state, portraits, art, encounter_id = self.adventure.advance(
                 seed=random.randrange(2**31))
             self.state = state
-            self.state.paced = True  # a fresh act's state is paced like the first
+            self.state.paced = True  # a fresh phase's state is paced like the first
             self.portraits = portraits
             self.art = art
             self.encounter_id = encounter_id
@@ -275,9 +275,9 @@ class Session:
                               self.portraits, art=self.art,
                               encounter_id=self.encounter_id)
         if self.adventure is not None:
-            # The adventure block (act, narration, the per-seat level-up gate) —
-            # and a suppressed result at a non-final act boundary, where the
-            # engine's "victory" means "act won", not "game over".
+            # The adventure block (phase, narration, the per-seat level-up gate) —
+            # and a suppressed result at a non-final phase boundary, where the
+            # engine's "victory" means "phase won", not "game over".
             snap["adventure"] = self.adventure.snapshot_block(self.state, controlled)
             result = self.public_result()
             snap["result"] = result

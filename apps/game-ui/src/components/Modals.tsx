@@ -189,7 +189,7 @@ export function CardPickPrompt() {
   if (!snapshot) return null;
   if (snapshot.priority.kind !== "card_choice") return null;
   const holder = snapshot.priority.holder_character_id;
-  if (!holder || !you.includes(holder)) return null; // only the controlling client acts
+  if (!holder || !you.includes(holder)) return null; // only the controlling client phases
   const picks = snapshot.legal_actions.filter(
     (a) =>
       a.kind === "choose_card" || a.kind === "choose_scry" || a.kind === "choose_target" ||
@@ -212,8 +212,8 @@ export function CardPickPrompt() {
         <div className="scroll-thin flex overflow-x-auto pb-2">
           <div className="mx-auto flex items-stretch gap-3">
           {pending.candidates.map((card, i) => {
-            const acts = byChoice[i] ?? [];
-            const single = acts.length === 1 ? acts[0] : null;
+            const phases = byChoice[i] ?? [];
+            const single = phases.length === 1 ? phases[0] : null;
             return (
               <div key={`${card.id}-${i}`} className="flex w-44 shrink-0 flex-col gap-1.5">
                 <div className={`h-64 ${single ? "" : "pointer-events-none"}`}>
@@ -232,7 +232,7 @@ export function CardPickPrompt() {
                     {single.label}
                   </button>
                 ) : (
-                  acts.map((a) => (
+                  phases.map((a) => (
                     <button
                       key={a.index}
                       onClick={() => submit(a.index)}
@@ -271,7 +271,7 @@ export function CardPickPrompt() {
 
 /** §4.16 game-over overlay (board stays visible behind). For an adventure
  * (Update 10) the finale's win reads "Adventure Complete", and a defeat offers
- * Restart from Act I — same party, fresh state, level 1. */
+ * Restart from Phase I — same party, fresh state, level 1. */
 export function GameOverOverlay({
   onNewGame,
   onOptions,
@@ -327,9 +327,9 @@ export function GameOverOverlay({
         )}
         <div className="mt-3 text-sm font-light text-mist">
           {advWin
-            ? `${adventure.name} — all three acts, cleared.`
+            ? `${adventure.name} — all three phases, cleared.`
             : adventure
-              ? `${adventure.name} ends in Act ${adventure.act}. No checkpoints — the run is the run.`
+              ? `${adventure.name} ends in Phase ${adventure.phase}. No checkpoints — the run is the run.`
               : "Tweak your party, encounters, or generation settings, then start again."}
         </div>
         {restartErr && <div className="mt-2 text-xs font-light text-blood">{restartErr}</div>}
@@ -340,7 +340,7 @@ export function GameOverOverlay({
               disabled={restarting}
               className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {restarting ? "Restarting…" : "Restart from Act I"}
+              {restarting ? "Restarting…" : "Restart from Phase I"}
             </button>
           )}
           <button

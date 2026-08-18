@@ -1,7 +1,7 @@
 {
   "name": "The Heart of the Frostmaze",
   "scene": "A vast domed cavern of black glacial ice, the throne of Vaelryn suspended over a bottomless chasm of green necrotic flame. Frozen courtiers ring the dais like statues, and the whole vault sings a low, grinding note as the labyrinth turns above.",
-  "scene_image": "/art/the_frostmaze_of_vaelryn__act3/scene-076905f9.png",
+  "scene_image": "/art/the_frostmaze_of_vaelryn__phase3/scene-076905f9.png",
   "enemies": [
     {
       "id": "vaelryn",
@@ -163,7 +163,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act3/vaelryn-ab5d5adc.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase3/vaelryn-ab5d5adc.png"
     },
     {
       "id": "icebound_thane",
@@ -221,7 +221,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act3/icebound_thane-c8331020.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase3/icebound_thane-c8331020.png"
     },
     {
       "id": "whisper_shade",
@@ -282,7 +282,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act3/whisper_shade-1a955355.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase3/whisper_shade-1a955355.png"
     },
     {
       "id": "frost_acolyte",
@@ -342,7 +342,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act3/frost_acolyte-57d7e4a4.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase3/frost_acolyte-57d7e4a4.png"
     }
   ],
   "tokens": {},

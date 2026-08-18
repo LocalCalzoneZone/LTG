@@ -73,7 +73,7 @@ export async function deleteEncounter(id: string): Promise<void> {
 }
 
 // Start a game on a standalone encounter, or an adventure (exactly one of the
-// two ids) — an adventure session runs the three-act flow server-side.
+// two ids) — an adventure session runs the three-phase flow server-side.
 export async function createGame(
   character_ids: string[],
   target: { encounterId?: string; adventureId?: string },
@@ -103,7 +103,7 @@ export async function fetchAdventure(id: string): Promise<AdventureDetail> {
 }
 
 // Update the adventure-level fields (name, flavor, the three narrations) —
-// acts are edited as encounters through saveEncounter with the act's id.
+// phases are edited as encounters through saveEncounter with the phase's id.
 export async function saveAdventureInfo(
   id: string,
   patch: { name?: string; flavor?: string; narrations?: string[] },
@@ -129,7 +129,7 @@ export async function deleteAdventure(id: string): Promise<void> {
   }
 }
 
-// Generate + persist a whole three-act adventure (one model call — slow).
+// Generate + persist a whole three-phase adventure (one model call — slow).
 export async function generateAdventure(
   character_ids: string[],
   difficulty: string,

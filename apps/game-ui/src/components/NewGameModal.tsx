@@ -109,7 +109,7 @@ export function NewGameModal({ onClose, onStarted }: {
       if (pick.kind === "adventure") {
         let adventureId = pick.id;
         if (adventureId === GENERATE_ADV) {
-          setStatus("Generating adventure — three acts in one arc… (this can take a few minutes)");
+          setStatus("Generating adventure — three phases in one arc… (this can take a few minutes)");
           const meta = await generateAdventure(picked, difficulty, note);
           adventureId = meta.id;
         }
@@ -308,7 +308,7 @@ export function NewGameModal({ onClose, onStarted }: {
                         <div className="pl-6 text-xs font-light italic text-mist">{a.flavor}</div>
                       )}
                       <div className="flex flex-col gap-0.5 pl-6">
-                        {a.act_names.map((n, i) => (
+                        {a.phase_names.map((n, i) => (
                           <span key={i} className="text-[11px] font-light text-dimmed">
                             {["I", "II", "III"][i] ?? i + 1}. {n}
                           </span>

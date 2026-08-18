@@ -377,7 +377,7 @@ def generate(encounter_id: str, kind: str, enemy_id: Optional[str] = None,
 # --------------------------------------------------------------------------- #
 class ArtQueue:
     """Sequential generate-all jobs, one per content id (an encounter, or an
-    adventure covering its acts in order). One generation in flight per job;
+    adventure covering its phases in order). One generation in flight per job;
     each completion — success or failure — fires the next: a failure is logged
     and skipped, never blocking the queue. Enqueueing is idempotent (only what
     is still missing joins), and every landed image broadcasts to connected
@@ -421,7 +421,7 @@ class ArtQueue:
     def start(self, key: str, encounter_ids: List[str],
               refresh: Callable[[str], Awaitable[None]]) -> Dict[str, Any]:
         """Queue every still-missing image for the given encounters (an
-        adventure passes its acts in order) and start the runner if idle.
+        adventure passes its phases in order) and start the runner if idle.
         Pressing again while running only adds what is newly missing."""
         missing = self._missing(encounter_ids)
         job = self._jobs.get(key)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-/** How long end-of-fight splashes (victory / defeat / act clear) hold back so
+/** How long end-of-fight splashes (victory / defeat / phase clear) hold back so
  * the killing blow — and the death animation it triggers — reads on the board
  * before the screen changes. Slightly longer than DEATH_MS in Battlefield. */
 export const SPLASH_HOLD_MS = 1600;

@@ -205,7 +205,7 @@ export default function App() {
       <CardPickPrompt />
       {/* Full-screen combat FX (ultimates, boss enrage) — under the modals */}
       <ScreenFx />
-      {/* Adventure act flow (Update 10): victory splash → level-up → narration */}
+      {/* Adventure phase flow (Update 10): victory splash → level-up → narration */}
       <AdventureFlow />
       <GameOverOverlay
         onNewGame={() => setShowNewGame(true)}

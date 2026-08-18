@@ -33,10 +33,10 @@ const DANGER_BTN =
   "transition hover:bg-blood hover:text-parch";
 
 /** Options → Adventures (§D10-6.1): the saved-adventures list, generation, and
- * the adventure-level editor (name / flavor / narrations + per-act art). Acts
- * themselves open in the existing encounter editor via `onEditAct`. */
-export function AdventurePanel({ onEditAct }: {
-  onEditAct: (act: EncounterDetail) => void;
+ * the adventure-level editor (name / flavor / narrations + per-phase art). Phases
+ * themselves open in the existing encounter editor via `onEditPhase`. */
+export function AdventurePanel({ onEditPhase }: {
+  onEditPhase: (phase: EncounterDetail) => void;
 }) {
   const [adventures, setAdventures] = useState<AdventureOption[]>([]);
   const [characters, setCharacters] = useState<CharacterOption[]>([]);
@@ -75,7 +75,7 @@ export function AdventurePanel({ onEditAct }: {
   const doGenerate = async () => {
     setGenBusy(true);
     setErr(null);
-    setNote("Generating adventure — three acts in one arc… (this can take a few minutes)");
+    setNote("Generating adventure — three phases in one arc… (this can take a few minutes)");
     try {
       const meta = await generateAdventure(party, difficulty, theme);
       setNote(`Generated ${meta.name}`);
@@ -119,7 +119,7 @@ export function AdventurePanel({ onEditAct }: {
       await saveAdventureInfo(editing.id, {
         name: editing.name,
         flavor: editing.flavor,
-        narrations: editing.acts.map((a) => a.narration),
+        narrations: editing.phases.map((a) => a.narration),
       });
       setNote("Adventure saved");
       setEditing(null);
@@ -151,41 +151,41 @@ export function AdventurePanel({ onEditAct }: {
           </label>
           <ArtQueueButton
             target={{ adventureId: editing.id }}
-            subject="all three acts (Act I first)"
+            subject="all three phases (Phase I first)"
           />
         </div>
 
         <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
-          {editing.acts.map((act, i) => (
-            <div key={act.encounter_id} className="border border-line bg-black/25 p-3">
+          {editing.phases.map((phase, i) => (
+            <div key={phase.encounter_id} className="border border-line bg-black/25 p-3">
               <div className="mb-2 flex items-center gap-3">
                 <span className="caps-label text-[11px] tracking-[0.2em] text-brass">
-                  Act {roman(i + 1)}
+                  Phase {roman(i + 1)}
                 </span>
-                <span className="truncate font-normal text-parch">{act.name}</span>
+                <span className="truncate font-normal text-parch">{phase.name}</span>
                 <span className="truncate text-xs font-light text-mist">
-                  {act.enemies.map((e) => e.name).join(", ")}
+                  {phase.enemies.map((e) => e.name).join(", ")}
                 </span>
                 <span className="ml-auto flex items-center gap-2">
-                  <button className={SMALL_BTN} onClick={() => onEditAct(act)}>
+                  <button className={SMALL_BTN} onClick={() => onEditPhase(phase)}>
                     <span className="flex items-center gap-1.5">
-                      <IconEdit size={10} /> Edit act
+                      <IconEdit size={10} /> Edit phase
                     </span>
                   </button>
                 </span>
               </div>
               <label className="flex flex-col gap-1">
                 <span className={label}>
-                  Narration (second person, present tense — the act&apos;s opening splash)
+                  Narration (second person, present tense — the phase&apos;s opening splash)
                 </span>
                 <textarea
                   className={`${field} min-h-[52px]`}
                   rows={2}
-                  value={act.narration}
+                  value={phase.narration}
                   onChange={(e) =>
                     setEditing({
                       ...editing,
-                      acts: editing.acts.map((a, j) =>
+                      phases: editing.phases.map((a, j) =>
                         j === i ? { ...a, narration: e.target.value } : a),
                     })
                   }
@@ -218,7 +218,7 @@ export function AdventurePanel({ onEditAct }: {
             Generate Adventure
           </button>
           <span className="text-xs font-light text-mist">
-            A three-act run against one theme: guards at the gate, knights in the
+            A three-phase run against one theme: guards at the gate, knights in the
             courtyard, the tyrant in his throne room.
           </span>
           {note && <span className="text-xs text-vigor">{note}</span>}
@@ -297,10 +297,10 @@ export function AdventurePanel({ onEditAct }: {
                 )}
               </div>
               <div className="truncate text-xs font-light text-mist">
-                {a.act_names.map((n, i) => `${roman(i + 1)}. ${n}`).join(" · ")}
+                {a.phase_names.map((n, i) => `${roman(i + 1)}. ${n}`).join(" · ")}
               </div>
             </div>
-            <ArtQueueButton target={{ adventureId: a.id }} subject="all three acts" />
+            <ArtQueueButton target={{ adventureId: a.id }} subject="all three phases" />
             {confirmId === a.id ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs font-light">Remove?</span>

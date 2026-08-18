@@ -1,7 +1,7 @@
 {
   "name": "The Throat of the Pit",
   "scene": "A cathedral-sized cavern lit by a central bonfire that throws a whirl of goblin shadows up the weeping walls; a shaft of pale daylight stabs down from a distant crack far overhead. A dais of mortared skulls holds a monstrous war-drum, its skin painted with generations of clan-marks.",
-  "scene_image": "/art/the_warrens_of_gnashpit__act3/scene-1de8c3e1.png",
+  "scene_image": "/art/the_warrens_of_gnashpit__phase3/scene-1de8c3e1.png",
   "enemies": [
     {
       "id": "drum_tyrant",
@@ -133,7 +133,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act3/drum_tyrant-8d69a089.png"
+      "image": "/art/the_warrens_of_gnashpit__phase3/drum_tyrant-8d69a089.png"
     },
     {
       "id": "pit_broodkeeper",
@@ -185,7 +185,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act3/pit_broodkeeper-56d490bb.png"
+      "image": "/art/the_warrens_of_gnashpit__phase3/pit_broodkeeper-56d490bb.png"
     },
     {
       "id": "screamer_goblin",
@@ -240,7 +240,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act3/screamer_goblin-91407f5e.png"
+      "image": "/art/the_warrens_of_gnashpit__phase3/screamer_goblin-91407f5e.png"
     },
     {
       "id": "deathmask_shaman",
@@ -296,7 +296,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act3/deathmask_shaman-12c0d4dd.png"
+      "image": "/art/the_warrens_of_gnashpit__phase3/deathmask_shaman-12c0d4dd.png"
     }
   ],
   "tokens": {
@@ -306,7 +306,7 @@
       "power": 1,
       "row": "front",
       "attack_mode": "melee",
-      "image": "/art/the_warrens_of_gnashpit__act3/pit_whelp-f35a5bd9.png"
+      "image": "/art/the_warrens_of_gnashpit__phase3/pit_whelp-f35a5bd9.png"
     }
   },
   "difficulty": "standard",

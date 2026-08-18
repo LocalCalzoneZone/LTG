@@ -1,9 +1,9 @@
-"""Adventure runs — the three-act session layer (Design Update 10).
+"""Adventure runs — the three-phase session layer (Design Update 10).
 
-The combat engine is untouched: every act is an ordinary encounter to it. This
-module owns everything the adventure adds around the engine — the act sequence,
-the carry-over rules at an act boundary (§D10-2), the adventure-local level-up
-and its validation (§D10-3), and composing the next act's `GameState` through
+The combat engine is untouched: every phase is an ordinary encounter to it. This
+module owns everything the adventure adds around the engine — the phase sequence,
+the carry-over rules at a phase boundary (§D10-2), the adventure-local level-up
+and its validation (§D10-3), and composing the next phase's `GameState` through
 the exact `compose_spec`/`state_from_dict` path a standalone encounter takes.
 
 An `AdventureRun` rides its `Session`; a session without one behaves byte-
@@ -31,8 +31,8 @@ from ltg_combat.state import GameState
 from . import content
 
 # Rebalance Register (Update 10 §D10-8)
-HP_FLOOR_PCT = 25          # T-59: act-start HP floor, max(current, ceil(25% max))
-GAUGE_CARRY = 0.5          # T-58: ultimate-gauge carry across acts (floored)
+HP_FLOOR_PCT = 25          # T-59: phase-start HP floor, max(current, ceil(25% max))
+GAUGE_CARRY = 0.5          # T-58: ultimate-gauge carry across phases (floored)
 POINTS_PER_LEVEL = LEVEL_UP_POINTS  # T-57
 
 
@@ -128,7 +128,7 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
 
 
 class AdventureRun:
-    """The adventure-specific state riding one session: act sequencing, the
+    """The adventure-specific state riding one session: phase sequencing, the
     per-character adventure-local builds, the carry snapshot, and the level-up
     gate. All mutation happens under the session's lock (the app layer's)."""
 
@@ -139,13 +139,13 @@ class AdventureRun:
         self.adventure_id = adventure_id
         self.name: str = detail["name"]
         self.flavor: str = detail["flavor"]
-        # [{encounter_id, narration, name}] in act order.
-        self.acts: List[Dict[str, Any]] = [
+        # [{encounter_id, narration, name}] in phase order.
+        self.phases: List[Dict[str, Any]] = [
             {"encounter_id": a["encounter_id"], "narration": a["narration"],
              "name": a["name"]}
-            for a in detail["acts"]
+            for a in detail["phases"]
         ]
-        self.act_index = 0
+        self.phase_index = 0
         self.complete = False
         # Filled by start(): the picked roster ids, the run's loadouts (deep
         # copies — the adventure-local builds live in loadouts[i]["character"]
@@ -154,19 +154,19 @@ class AdventureRun:
         self.loadouts: List[Dict[str, Any]] = []
         self.live_ids: List[str] = []
         self.banked: Dict[str, int] = {}      # live id -> unspent points pool
-        # The level-up gate (None outside an act boundary):
+        # The level-up gate (None outside a phase boundary):
         # live id -> {"confirmed": bool, "spent": int, "heal": int}
         self.level_up: Optional[Dict[str, Dict[str, Any]]] = None
         self.carry: Dict[str, Dict[str, Any]] = {}
 
-    # -- act composition ------------------------------------------------------ #
+    # -- phase composition ------------------------------------------------------ #
     def start(self, character_ids: List[str], seed: Optional[int] = None
               ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
-        """Build Act I from the base (saved) loadouts. Returns
-        ``(state, portraits, art, act_encounter_id)``."""
+        """Build Phase I from the base (saved) loadouts. Returns
+        ``(state, portraits, art, phase_encounter_id)``."""
         self.character_ids = list(character_ids)
         self.loadouts = content.loadouts_for(character_ids)  # deep copies
-        eid = self.acts[0]["encounter_id"]
+        eid = self.phases[0]["encounter_id"]
         state, portraits, art = content.build_state_from_loadouts(
             self.loadouts, eid, seed=seed)
         self.live_ids = [c.id for c in state.party]
@@ -180,27 +180,27 @@ class AdventureRun:
                 self.banked[live_id] = 0
         return state, portraits, art, eid
 
-    def current_act(self) -> Dict[str, Any]:
-        return self.acts[self.act_index]
+    def current_phase(self) -> Dict[str, Any]:
+        return self.phases[self.phase_index]
 
-    def is_final_act(self) -> bool:
-        return self.act_index >= len(self.acts) - 1
+    def is_final_phase(self) -> bool:
+        return self.phase_index >= len(self.phases) - 1
 
-    # -- the act boundary ------------------------------------------------------ #
+    # -- the phase boundary ------------------------------------------------------ #
     def on_state_change(self, state: GameState) -> None:
         """Called after every engine state change: opens the level-up gate the
-        moment a non-final act is won, and marks the run complete when the
+        moment a non-final phase is won, and marks the run complete when the
         finale is."""
         if state.result != "victory":
             return
-        if self.is_final_act():
+        if self.is_final_phase():
             self.complete = True
             return
         if self.level_up is None:
             self._begin_level_up(state)
 
     def suppresses_result(self, result: Optional[str]) -> bool:
-        """A non-final act victory is an ACT boundary, not a game over — the
+        """A non-final phase victory is an PHASE boundary, not a game over — the
         client sees the level-up gate instead. Defeat and the finale's victory
         pass through untouched."""
         return result == "victory" and not self.complete
@@ -211,7 +211,7 @@ class AdventureRun:
         for c in state.party:
             # Everything shuffles up together at the boundary — hand, library,
             # graveyard, and the cards of silently-dropped channels — and the
-            # next act opens on a FRESH hand of starting-cards (first-playtest
+            # next phase opens on a FRESH hand of starting-cards (first-playtest
             # amendment: carrying the literal hand let cards accumulate).
             cards = (list(c.hand) + list(c.library) + list(c.graveyard)
                      + [ch.card for ch in c.channels])
@@ -227,8 +227,8 @@ class AdventureRun:
         }
 
     def next_level(self) -> int:
-        """The level this boundary's level-up reaches (Act I → 2, Act II → 3)."""
-        return self.act_index + 2
+        """The level this boundary's level-up reaches (Phase I → 2, Phase II → 3)."""
+        return self.phase_index + 2
 
     def confirm_level_up(self, live_id: str, build: Dict[str, Any]) -> None:
         """Validate + apply one character's level-up; banking the remainder.
@@ -256,15 +256,15 @@ class AdventureRun:
 
     def advance(self, seed: Optional[int] = None
                 ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
-        """Compose the next act: leveled builds through the standard build path,
+        """Compose the next phase: leveled builds through the standard build path,
         then the §D10-2 carry rules applied on top. Returns
-        ``(state, portraits, art, act_encounter_id)``."""
+        ``(state, portraits, art, phase_encounter_id)``."""
         if not self.all_confirmed():
             raise ValueError("not every character has confirmed the level-up")
         heals = {lid: e["heal"] for lid, e in (self.level_up or {}).items()}
-        self.act_index += 1
+        self.phase_index += 1
         self.level_up = None
-        eid = self.acts[self.act_index]["encounter_id"]
+        eid = self.phases[self.phase_index]["encounter_id"]
         state, portraits, art = content.build_state_from_loadouts(
             self.loadouts, eid, seed=seed)
         rng = random.Random(seed)
@@ -273,7 +273,7 @@ class AdventureRun:
             if cy is None:
                 continue
             # HP: carry, heal by the bought max (+2 max is +2 current), then the
-            # act-start floor — one rule for everyone (T-59). The incapacitated
+            # phase-start floor — one rule for everyone (T-59). The incapacitated
             # stand back up at the floor; the barely-alive are lifted to it.
             floor = -(-c.max_hp * HP_FLOOR_PCT // 100)  # ceil(25% of max)
             c.hp = min(c.max_hp, max(cy["hp"] + heals.get(c.id, 0), floor))
@@ -296,15 +296,15 @@ class AdventureRun:
         """The per-client adventure block riding the state snapshot. The
         level-up gate is per-seat: your own characters carry their entering
         build and points; everyone else is just a confirmed/waiting light."""
-        act = self.current_act()
+        phase = self.current_phase()
         block: Dict[str, Any] = {
             "id": self.adventure_id,
             "name": self.name,
             "flavor": self.flavor,
-            "act": self.act_index + 1,
-            "acts_total": len(self.acts),
-            "act_name": act["name"],
-            "narration": act["narration"],
+            "phase": self.phase_index + 1,
+            "phases_total": len(self.phases),
+            "phase_name": phase["name"],
+            "narration": phase["narration"],
             "character_ids": list(self.character_ids),
             "complete": self.complete,
             "level_up": None,

@@ -110,7 +110,7 @@ def _small(gauntlet, n=2):
 def test_baseline_gauntlet_loads_and_hashes(baseline):
     assert len(baseline["encounters"]) == 8
     assert baseline["frozen"] is True
-    assert baseline["adventure"] and len(baseline["adventure"]["acts"]) == 3
+    assert baseline["adventure"] and len(baseline["adventure"]["phases"]) == 3
     assert baseline["sparring_partner"]["character"]["name"] == "Sparring Partner"
     # The hash is stable across loads and part of every verdict's context.
     again = gauntlets.load_gauntlet("baseline-1")

@@ -1,7 +1,7 @@
 {
   "name": "The Ambush-Warrens",
   "scene": "A honeycomb of cramped tunnels lit by phosphor-fungus in cold blue smears, the walls pocked with murder-holes and false doors. Bones and gnawed chains litter the crawlspaces, and every shadow seems to hold a held breath.",
-  "scene_image": "/art/the_warrens_of_gnashpit__act2/scene-42886f8a.png",
+  "scene_image": "/art/the_warrens_of_gnashpit__phase2/scene-42886f8a.png",
   "enemies": [
     {
       "id": "ceiling_cutthroat",
@@ -45,7 +45,7 @@
           "telegraph": "Melt into the murder-hole"
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act2/ceiling_cutthroat-2e75929c.png"
+      "image": "/art/the_warrens_of_gnashpit__phase2/ceiling_cutthroat-2e75929c.png"
     },
     {
       "id": "whetstone_ritualist",
@@ -104,7 +104,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act2/whetstone_ritualist-ea73ecb5.png"
+      "image": "/art/the_warrens_of_gnashpit__phase2/whetstone_ritualist-ea73ecb5.png"
     },
     {
       "id": "hookmaster",
@@ -209,7 +209,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act2/hookmaster-6e1171fe.png"
+      "image": "/art/the_warrens_of_gnashpit__phase2/hookmaster-6e1171fe.png"
     }
   ],
   "tokens": {},

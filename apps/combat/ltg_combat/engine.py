@@ -217,7 +217,7 @@ def _advance(st: GameState) -> None:
                 return
             # Objective timers tick at the completion of each End Step
             # (§D12-1.1): a `survive` timer may win here; an expired `race`
-            # clock loses the act or pushes its escalation payload (the window
+            # clock loses the encounter or pushes its escalation payload (the window
             # opens next loop iteration, with the turn already advanced).
             _objective_tick(st)
             if st.result is not None:
@@ -600,8 +600,8 @@ def _deploy_reserve(st: GameState, eid: str) -> Optional[str]:
 
 def _objective_tick(st: GameState) -> None:
     """The objective timer tick, at the completion of each End Step (§D12-1.1).
-    `survive` wins the act when round N completes; an expired `race` clock
-    loses the act (`fail: defeat`) or fires the escalation payload."""
+    `survive` wins the encounter when round N completes; an expired `race` clock
+    loses the encounter (`fail: defeat`) or fires the escalation payload."""
     obj = st.objective
     if obj is None or st.result is not None:
         return
@@ -644,7 +644,7 @@ def _race_expire(st: GameState, obj) -> None:
     obj.status = "failed"
     if obj.fail == "defeat":
         st.result = "defeat"
-        _log(st, "loss", "The clock runs out — the act is lost.",
+        _log(st, "loss", "The clock runs out — the encounter is lost.",
              result="defeat", objective="race", target=obj.target_id)
         return
     # `escalate`: if the marked enemy is out of play but undefeated, it
@@ -4879,7 +4879,7 @@ def _check_end(st: GameState) -> None:
     if st.result is not None:
         return
     # A race objective completes the moment its marked enemy is defeated
-    # (§D12-1.4): the doom clock vanishes; the act continues to standard victory.
+    # (§D12-1.4): the doom clock vanishes; the encounter continues to standard victory.
     obj = st.objective
     if (obj is not None and obj.kind == "race" and obj.status == "active"
             and _race_target_defeated(st, obj.target_id)):

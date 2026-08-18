@@ -1,7 +1,7 @@
 {
   "name": "The Guard-Gallery",
   "scene": "A low gallery of hewn rock rimed with soot, iron cages swinging empty on rusted chains, torch-brackets guttering greasy orange light. A carved war-drum the size of a cart squats against one wall, and a bone-horn's echo shivers the loose gravel underfoot.",
-  "scene_image": "/art/the_warrens_of_gnashpit__act1/scene-34b1ce47.png",
+  "scene_image": "/art/the_warrens_of_gnashpit__phase1/scene-34b1ce47.png",
   "enemies": [
     {
       "id": "jailer_grub",
@@ -58,7 +58,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act1/jailer_grub-6ae3659e.png"
+      "image": "/art/the_warrens_of_gnashpit__phase1/jailer_grub-6ae3659e.png"
     },
     {
       "id": "horn_howler",
@@ -117,7 +117,7 @@
           ]
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act1/horn_howler-70d441e8.png"
+      "image": "/art/the_warrens_of_gnashpit__phase1/horn_howler-70d441e8.png"
     },
     {
       "id": "catwalk_slinger",
@@ -160,7 +160,7 @@
           "telegraph": "Scramble the catwalk"
         }
       ],
-      "image": "/art/the_warrens_of_gnashpit__act1/catwalk_slinger-3d1f3268.png"
+      "image": "/art/the_warrens_of_gnashpit__phase1/catwalk_slinger-3d1f3268.png"
     }
   ],
   "tokens": {},

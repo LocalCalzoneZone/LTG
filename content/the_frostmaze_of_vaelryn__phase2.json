@@ -1,7 +1,7 @@
 {
   "name": "The Gallery of Hollow Knights",
   "scene": "A cathedral-vault of ice ribbed with pillars of frozen corpses, faded royal banners fused into the walls. The green heart-light is stronger now, throbbing up through cracks in the floor, and each pillar sheds meltwater tears.",
-  "scene_image": "/art/the_frostmaze_of_vaelryn__act2/scene-3403a826.png",
+  "scene_image": "/art/the_frostmaze_of_vaelryn__phase2/scene-3403a826.png",
   "enemies": [
     {
       "id": "hollow_knight",
@@ -67,7 +67,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act2/hollow_knight-aa398470.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase2/hollow_knight-aa398470.png"
     },
     {
       "id": "grave_chanter",
@@ -129,7 +129,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act2/grave_chanter-2cff1dcb.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase2/grave_chanter-2cff1dcb.png"
     },
     {
       "id": "crypt_captain",
@@ -228,7 +228,7 @@
           ]
         }
       ],
-      "image": "/art/the_frostmaze_of_vaelryn__act2/crypt_captain-64f30417.png"
+      "image": "/art/the_frostmaze_of_vaelryn__phase2/crypt_captain-64f30417.png"
     }
   ],
   "tokens": {},

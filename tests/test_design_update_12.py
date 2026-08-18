@@ -3,7 +3,7 @@
 §D12-1 Alternate objectives: the closed set survive / waves / race — reserve
 zone, End-Step timer ticks, wave/reinforcement deployment, race expiry and the
 escalation payload, the win/loss variants, snapshot surfaces, and the content
-validation (one objective per adventure, Acts I–II only, mini-boss in the final
+validation (one objective per adventure, Phases I–II only, mini-boss in the final
 wave, T-66 wave body minimums).
 
 Encounters WITHOUT an objective staying byte-identical is asserted by the whole
@@ -157,7 +157,7 @@ def test_survive_reinforcements_deploy_at_their_round_intents_step():
 
 def test_survive_reserves_block_kill_victory_but_not_the_timer():
     # Kill the only fielded wolf on turn 1: the reinforcement (turn 3) is still
-    # unarrived, so the act does NOT end — the party holds until it lands.
+    # unarrived, so the phase does NOT end — the party holds until it lands.
     spec = _survive_spec(turns=5, reinforce_turn=3)
     spec["party"] = [_hero(power=30)]
     st = state_from_dict(spec)
@@ -254,13 +254,13 @@ def test_race_completes_when_the_marked_enemy_dies():
         st = apply_action(st, _pick(st, "pass"))[0]
     assert st.objective.status == "complete"
     assert any(e.type == "objective_complete" for e in st.log)
-    # The act continues to standard victory (mop up) — not an instant win.
+    # The phase continues to standard victory (mop up) — not an instant win.
     assert st.result is None
     st = _drive_to_result(st, attack=True)
     assert st.result == "victory"
 
 
-def test_race_expiry_with_fail_defeat_loses_the_act():
+def test_race_expiry_with_fail_defeat_loses_the_phase():
     st = state_from_dict(_race_spec(turns=2, fail="defeat"))
     st = _drive_to_result(st)
     assert st.result == "defeat"
@@ -376,7 +376,7 @@ from ltg_game_server import content  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _isolate_content(tmp_path):
-    """Keep saved encounters/adventures/acts/hidden files out of the real
+    """Keep saved encounters/adventures/phases/hidden files out of the real
     content + loadouts state."""
     dirs = [content.CONTENT_DIR, content.LOADOUTS_DIR]
     before = {d: ({p.name for p in d.glob("*.json")} if d.is_dir() else set())
@@ -408,7 +408,7 @@ def _adv_enemy(eid, name, level, hp=4, boss=False):
     return e
 
 
-def _adv_act(name, enemies, boss_id=None,
+def _adv_phase(name, enemies, boss_id=None,
              narration="You arrive. The test begins.", objective=None):
     ids = [e["id"] for e in enemies if not e.get("is_boss")]
     filler = ids[0]
@@ -418,11 +418,11 @@ def _adv_act(name, enemies, boss_id=None,
         if boss_id:
             roster[0] = boss_id
         layouts[str(size)] = roster
-    act = {"name": name, "scene": f"The {name} scene, painted in test grey.",
+    phase = {"name": name, "scene": f"The {name} scene, painted in test grey.",
            "enemies": enemies, "layouts": layouts, "narration": narration}
     if objective is not None:
-        act["objective"] = objective
-    return act
+        phase["objective"] = objective
+    return phase
 
 
 def _survive_objective(turns=5):
@@ -435,12 +435,12 @@ def _adventure(act1_objective=None, act2_objective=None, act3_objective=None):
     return {
         "name": "Test Keep",
         "flavor": "Three rooms, one tyrant.",
-        "acts": [
-            _adv_act("The Gate", [_adv_enemy("guard", "Guard", 1)],
+        "phases": [
+            _adv_phase("The Gate", [_adv_enemy("guard", "Guard", 1)],
                      objective=act1_objective),
-            _adv_act("The Courtyard", [_adv_enemy("knight", "Knight", 2)],
+            _adv_phase("The Courtyard", [_adv_enemy("knight", "Knight", 2)],
                      objective=act2_objective),
-            _adv_act("The Throne Room",
+            _adv_phase("The Throne Room",
                      [_adv_enemy("footman", "Footman", 1),
                       _adv_enemy("tyrant", "Tyrant", 4, hp=20, boss=True)],
                      boss_id="tyrant", objective=act3_objective),
@@ -448,11 +448,11 @@ def _adventure(act1_objective=None, act2_objective=None, act3_objective=None):
     }
 
 
-def test_adventure_accepts_one_objective_on_an_early_act():
+def test_adventure_accepts_one_objective_on_an_early_phase():
     meta = content.save_adventure(_adventure(act1_objective=_survive_objective()))
     detail = content.adventure_detail(meta["id"])
-    assert detail["acts"][0]["objective"]["kind"] == "survive"
-    assert "objective" not in detail["acts"][1]
+    assert detail["phases"][0]["objective"]["kind"] == "survive"
+    assert "objective" not in detail["phases"][1]
 
 
 def test_adventure_rejects_two_objectives():
@@ -462,52 +462,52 @@ def test_adventure_rejects_two_objectives():
             act2_objective=_survive_objective()))
 
 
-def test_adventure_rejects_an_act_three_objective():
-    with pytest.raises(ValueError, match="Act III"):
+def test_adventure_rejects_an_phase_three_objective():
+    with pytest.raises(ValueError, match="Phase III"):
         content.save_adventure(_adventure(act3_objective=_survive_objective()))
 
 
-def test_waves_act_requires_the_miniboss_in_the_final_wave():
-    # An act with a mini-boss and a waves objective: the boss belongs in the
+def test_waves_phase_requires_the_miniboss_in_the_final_wave():
+    # A phase with a mini-boss and a waves objective: the boss belongs in the
     # LAST wave, never in the layouts (wave 1) or an earlier wave.
-    def waves_act(final_has_boss=True, boss_in_layouts=False):
+    def waves_phase(final_has_boss=True, boss_in_layouts=False):
         enemies = [_adv_enemy("cutpurse", "Cutpurse", 1),
                    _adv_enemy("captain", "Captain", 3, hp=10, boss=True)]
         per_size = lambda ids: {str(s): list(ids) for s in range(1, 5)}  # noqa: E731
-        act = _adv_act("The Pit", enemies,
+        phase = _adv_phase("The Pit", enemies,
                        boss_id="captain" if boss_in_layouts else None)
-        act["objective"] = {"kind": "waves", "waves": [
+        phase["objective"] = {"kind": "waves", "waves": [
             per_size(["cutpurse", "cutpurse", "cutpurse", "cutpurse"]),
             per_size(["captain", "cutpurse", "cutpurse", "cutpurse"]
                      if final_has_boss else
                      ["cutpurse", "cutpurse", "cutpurse", "cutpurse"]),
         ]}
-        return act
+        return phase
 
     adv = _adventure()
-    adv["acts"][1] = waves_act()
+    adv["phases"][1] = waves_phase()
     content.save_adventure(adv)  # valid: boss in the final wave only
 
     adv = _adventure()
-    adv["acts"][1] = waves_act(final_has_boss=False)
+    adv["phases"][1] = waves_phase(final_has_boss=False)
     with pytest.raises(ValueError, match="FINAL wave"):
         content.save_adventure(adv)
 
     adv = _adventure()
-    adv["acts"][1] = waves_act(boss_in_layouts=True)
+    adv["phases"][1] = waves_phase(boss_in_layouts=True)
     with pytest.raises(ValueError, match="not wave 1"):
         content.save_adventure(adv)
 
 
-def test_waves_act_body_minimums_t66():
+def test_waves_phase_body_minimums_t66():
     # Each wave ≥ 1× party size; ≥ 2× total across waves. A wave of one body
     # fails at size 2+.
     enemies = [_adv_enemy("cutpurse", "Cutpurse", 1)]
-    act = _adv_act("The Pit", enemies)
-    act["objective"] = {"kind": "waves", "waves": [
+    phase = _adv_phase("The Pit", enemies)
+    phase["objective"] = {"kind": "waves", "waves": [
         {str(s): ["cutpurse"] for s in range(1, 5)}]}  # 1 body at every size
     adv = _adventure()
-    adv["acts"][0] = act
+    adv["phases"][0] = phase
     with pytest.raises(ValueError, match="every wave fields at least"):
         content.save_adventure(adv)
 
@@ -515,14 +515,14 @@ def test_waves_act_body_minimums_t66():
 def test_race_target_must_be_in_every_layout():
     enemies = [_adv_enemy("guard", "Guard", 1),
                _adv_enemy("ritualist", "Ritualist", 2, hp=8)]
-    act = _adv_act("The Rite", enemies)  # layouts field only guards
-    act["objective"] = {
+    phase = _adv_phase("The Rite", enemies)  # layouts field only guards
+    phase["objective"] = {
         "kind": "race", "target": "ritualist", "turns": 4, "fail": "escalate",
         "escalation": {"telegraph": "The Rite Completes", "verbs": [
             {"kind": "deal_damage", "amount": 3,
              "target": {"mode": "all", "side": "ally"}}]}}
     adv = _adventure()
-    adv["acts"][0] = act
+    adv["phases"][0] = phase
     with pytest.raises(ValueError, match="every layout"):
         content.save_adventure(adv)
 
@@ -800,10 +800,10 @@ def test_spend_plans_produce_valid_builds():
     assert hp_new["hp"] == base["hp"] + 12  # 30 points = six +2 steps (T5-02)
 
 
-def test_run_adventure_replicates_the_act_boundary():
+def test_run_adventure_replicates_the_phase_boundary():
     lo = json.load(open("apps/deckbuilder/loadouts/soren.json"))
 
-    def act(name, hp, boss=False):
+    def phase(name, hp, boss=False):
         e = {"id": "foe", "name": f"{name} Foe", "hp": hp, "level": 1,
              "power": 1, "intent": {"name": "Hit", "amount": 1,
                                     "action_type": "ability",
@@ -815,12 +815,12 @@ def test_run_adventure_replicates_the_act_boundary():
         return {"name": name, "enemies": [e]}
 
     adv = {"name": "Tiny Keep",
-           "acts": [act("Gate", 4), act("Yard", 5), act("Throne", 8, boss=True)]}
+           "phases": [phase("Gate", 4), phase("Yard", 5), phase("Throne", 8, boss=True)]}
     p = make_policy("greedy", "greedy-power")
     rec = run_adventure(adv, [lo], p, seed=3)
     assert rec["kind"] == "adventure"
     assert rec["result"] == "victory"
-    assert [a["result"] for a in rec["acts"]] == ["victory"] * 3
+    assert [a["result"] for a in rec["phases"]] == ["victory"] * 3
     assert rec == run_adventure(adv, [lo], p, seed=3)  # deterministic
 
 

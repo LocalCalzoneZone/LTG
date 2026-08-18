@@ -161,9 +161,9 @@ export function TopRibbon({ onNewGame, onOptions }: {
       {snapshot?.adventure && (
         <span
           className="caps-label text-[10px] tracking-[0.18em] text-mist"
-          title={`${snapshot.adventure.name} — ${snapshot.adventure.act_name}`}
+          title={`${snapshot.adventure.name} — ${snapshot.adventure.phase_name}`}
         >
-          Act {roman(snapshot.adventure.act)} / {roman(snapshot.adventure.acts_total)}
+          Phase {roman(snapshot.adventure.phase)} / {roman(snapshot.adventure.phases_total)}
         </span>
       )}
 

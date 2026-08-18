@@ -881,8 +881,8 @@ def probe_character(loadout: Dict[str, Any],
             for mult in audit_pressures:
                 adv = {
                     "name": gauntlet["adventure"].get("name", "adventure"),
-                    "acts": [_apply_pressure(a, mult)
-                             for a in gauntlet["adventure"]["acts"]],
+                    "phases": [_apply_pressure(a, mult)
+                             for a in gauntlet["adventure"]["phases"]],
                 }
                 for seed in range(audit_seeds):
                     rec = run_adventure(adv, [loadout], policy, seed)

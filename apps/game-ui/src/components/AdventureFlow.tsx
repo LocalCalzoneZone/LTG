@@ -16,30 +16,30 @@ const SMALL_BTN =
   "caps-label border border-line px-2.5 py-1 text-[9px] tracking-[0.14em] text-mist transition " +
   "hover:border-line2 hover:text-parch";
 
-/** The between-acts flow (§D10-6.3), driven entirely by the snapshot's
- * adventure block: act victory splash → level-up screen (gated on every seat's
- * confirmation) → narrative splash over the next act's scene → combat. The
- * narrative splash also opens Act I (its narration is the adventure's opening).
+/** The between-phases flow (§D10-6.3), driven entirely by the snapshot's
+ * adventure block: phase victory splash → level-up screen (gated on every seat's
+ * confirmation) → narrative splash over the next phase's scene → combat. The
+ * narrative splash also opens Phase I (its narration is the adventure's opening).
  *
  * Every screen here sits BELOW the 42px top ribbon (top-[42px], z-20 — under
  * the z-40 modals): players must be able to Copy Link, claim seats, and reach
- * Options/Quit during splashes, e.g. inviting an ally before Act I begins.
+ * Options/Quit during splashes, e.g. inviting an ally before Phase I begins.
  */
 export function AdventureFlow() {
   const snapshot = useGame((s) => s.snapshot);
   const sessionId = useGame((s) => s.sessionId);
   const adventure = snapshot?.adventure;
 
-  // Which act boundaries this client has clicked through, keyed per session.
+  // Which phase boundaries this client has clicked through, keyed per session.
   const [victorySeen, setVictorySeen] = useState<Record<string, boolean>>({});
   const [narrationSeen, setNarrationSeen] = useState<Record<string, boolean>>({});
-  // Hold the act-clear splash back so the final kill (and its death animation)
+  // Hold the phase-clear splash back so the final kill (and its death animation)
   // reads on the board before the screen changes.
   const boundaryReady = useAfterHold(!!adventure?.level_up, SPLASH_HOLD_MS);
 
   if (!snapshot || !adventure) return null;
 
-  const key = `${sessionId}:${adventure.act}`;
+  const key = `${sessionId}:${adventure.phase}`;
 
   // Defeat / final victory: the GameOverOverlay owns the screen.
   if (snapshot.result != null) return null;
@@ -48,9 +48,9 @@ export function AdventureFlow() {
     if (!victorySeen[key]) {
       if (!boundaryReady) return null; // the killing blow plays out first
       return (
-        <ActVictorySplash
-          act={adventure.act}
-          actName={adventure.act_name}
+        <PhaseVictorySplash
+          phase={adventure.phase}
+          phaseName={adventure.phase_name}
           onContinue={() => setVictorySeen((m) => ({ ...m, [key]: true }))}
         />
       );
@@ -58,7 +58,7 @@ export function AdventureFlow() {
     return <LevelUpScreen adventure={adventure} />;
   }
 
-  // Combat (or the moment an act opens): the narrative splash, once per act.
+  // Combat (or the moment a phase opens): the narrative splash, once per phase.
   if (!narrationSeen[key] && adventure.narration) {
     return (
       <NarrativeSplash
@@ -71,10 +71,10 @@ export function AdventureFlow() {
   return null;
 }
 
-/** "Act I — clear": the act-labelled victory treatment (§D10-6.3 step 1). */
-function ActVictorySplash({ act, actName, onContinue }: {
-  act: number;
-  actName: string;
+/** "Phase I — clear": the phase-labelled victory treatment (§D10-6.3 step 1). */
+function PhaseVictorySplash({ phase, phaseName, onContinue }: {
+  phase: number;
+  phaseName: string;
   onContinue: () => void;
 }) {
   return (
@@ -86,11 +86,11 @@ function ActVictorySplash({ act, actName, onContinue }: {
             className="caps-label pl-[0.3em] text-4xl tracking-[0.3em] text-vigor"
             style={{ textShadow: "0 0 30px rgba(132,199,147,.4)" }}
           >
-            Act {roman(act)} — Clear
+            Phase {roman(phase)} — Clear
           </div>
           <span className="h-px w-16 bg-gradient-to-l from-transparent to-vigor/70" />
         </div>
-        <div className="mt-3 text-sm font-light text-mist">{actName}</div>
+        <div className="mt-3 text-sm font-light text-mist">{phaseName}</div>
         <button
           onClick={onContinue}
           className="chamfer-x caps-label mt-6 bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
@@ -102,7 +102,7 @@ function ActVictorySplash({ act, actName, onContinue }: {
   );
 }
 
-/** The next act's narration over its scene art (§D10-6.3 step 3). */
+/** The next phase's narration over its scene art (§D10-6.3 step 3). */
 function NarrativeSplash({ adventure, sceneImage, onContinue }: {
   adventure: AdventureBlock;
   sceneImage: string;
@@ -125,7 +125,7 @@ function NarrativeSplash({ adventure, sceneImage, onContinue }: {
         <div className="flex items-center gap-4">
           <span className="h-px w-14 bg-gradient-to-r from-transparent to-brass" />
           <div className="caps-label whitespace-nowrap text-[15px] tracking-[0.25em] text-brass-hi">
-            Act {roman(adventure.act)} · {adventure.act_name}
+            Phase {roman(adventure.phase)} · {adventure.phase_name}
           </div>
           <span className="h-px w-14 bg-gradient-to-l from-transparent to-brass" />
         </div>
@@ -213,7 +213,7 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
             </div>
             <div className="max-w-md text-sm font-light text-mist">
               {mine.length
-                ? "Waiting for the other players to confirm — the next act begins when every character is confirmed."
+                ? "Waiting for the other players to confirm — the next phase begins when every character is confirmed."
                 : "You control no characters. Claim a seat in the top ribbon to confirm its level-up."}
             </div>
           </div>
@@ -361,7 +361,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
           canDown={draft.starting_cards - 1 >= base.starting_cards}
           onUp={() => patch({ starting_cards: draft.starting_cards + 1 })}
           onDown={() => patch({ starting_cards: draft.starting_cards - 1 })}
-          hint="Each act opens on a full reshuffle and a fresh hand of this many cards."
+          hint="Each phase opens on a full reshuffle and a fresh hand of this many cards."
         />
         <StatRow
           name="Power"

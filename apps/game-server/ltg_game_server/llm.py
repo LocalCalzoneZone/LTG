@@ -511,7 +511,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
 - may phase-gate other components with `"phase": "pre_enrage"` or `"post_enrage"`
   so the fight transforms when it turns: e.g. a single-target breath before, a
   party-wide firestorm after. Give the post-enrage kit a clearly scarier shape —
-  the fight's final act should FEEL different, not just bigger numbers.
+  the fight's final phase should FEEL different, not just bigger numbers.
 - VARY THE BOSS SILHOUETTE — the worked example's "big breath pre / AoE post /
   pump-and-burn Enrage" is ONE shape, not the mold. Fit the silhouette to the
   faction, e.g.: the SUMMONER-TYRANT (token waves + a warband anthem; Enrage =
@@ -845,7 +845,7 @@ def _budget(size: int, avg_level: float, difficulty: str) -> int:
     return max(1, round(2 * size * avg_level * mult))
 
 
-# Signature mechanics rolled per request (encounters) / per act (adventures).
+# Signature mechanics rolled per request (encounters) / per phase (adventures).
 # The instructions teach every one of these; sampling here — in code, not in the
 # model — is what actually spreads generations across the design space: an LLM
 # left to its own devices reaches for the same healer/clock/tick-channel kit
@@ -895,7 +895,7 @@ def _signature_rolls(k: int) -> List[str]:
 # recur in any theme.
 _MOTIF_STOPWORDS = frozenset("""
 the of and or to in on at for with from by into over under a an
-new act one two three first second third final lord king queen chief
+new act phase one two three first second third final lord king queen chief
 captain keeper warden guard guardian sentinel watcher knight soldier
 road watch hollow keep hall gate camp war run fight trial menagerie
 caller shaman priest priestess stalker lurker dancer cutthroat reaver
@@ -917,7 +917,7 @@ def _recurring_motifs() -> List[str]:
         texts.extend(str(n) for n in (e.get("enemy_names") or []))
     for a in content.list_adventures():
         texts += [str(a.get("name") or ""), str(a.get("flavor") or "")]
-        texts += [str(n) for n in (a.get("act_names") or [])]
+        texts += [str(n) for n in (a.get("phase_names") or [])]
 
     stem_texts: Dict[str, set] = {}   # 5-char stem -> {text indices it appears in}
     stem_words: Dict[str, List[str]] = {}  # 5-char stem -> full words seen
@@ -1061,7 +1061,7 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "tokens": raw.get("tokens") if isinstance(raw.get("tokens"), dict) else {},
     }
     # The optional encounter objective (§D12-1) rides through to content
-    # validation (adventure acts only — see the adventure prompt extension).
+    # validation (adventure phases only — see the adventure prompt extension).
     if isinstance(raw.get("objective"), dict):
         out["objective"] = raw["objective"]
     return out
@@ -1094,7 +1094,7 @@ def _check_layouts(encounter: Dict[str, Any]) -> None:
 # Verb kinds that only develop the acting enemy itself when aimed at "self" —
 # the punching-bag test: a proactive component made solely of these, ready
 # every turn, locks out the basic attack forever (engine picks the top ready
-# proactive component each turn), so the enemy pumps and never acts.
+# proactive component each turn), so the enemy pumps and never phases.
 _SELF_DEV_KINDS = {"counters", "pump", "regen", "heal",
                    "prevent", "protection", "amplify", "double_next"}
 
@@ -1273,53 +1273,53 @@ ADVENTURE_TIMEOUT = 600.0  # one reply carries three encounters; allow the time
 
 # Appended to the (editable) encounter instructions for an adventure request:
 # everything the model already knows about designing ONE encounter holds per
-# act; this block adds the arc, the boss ladder, and the output wrapper.
+# phase; this block adds the arc, the boss ladder, and the output wrapper.
 ADVENTURE_EXTENSION = r"""
-# ADVENTURE MODE — three acts, one arc (this request generates a whole adventure)
+# ADVENTURE MODE — three phases, one arc (this request generates a whole adventure)
 
 You are designing an ADVENTURE: three thematically linked encounters (the ACTS)
 fought in sequence by one party — progress through a single place. Guards at the
 gate, knights in the courtyard, the tyrant in his throne room: one faction, one
 location traversed, escalating stakes. Everything in the instructions above
-applies to EACH act individually (chassis, components, budgets, layouts, scenes,
+applies to EACH phase individually (chassis, components, budgets, layouts, scenes,
 descriptions). This block adds the arc-level rules:
 
-- SCENES PROGRESS: the three acts' `scene` texts must read as three stations of
+- SCENES PROGRESS: the three phases' `scene` texts must read as three stations of
   ONE location — outside it, inside it, at its heart — not three unrelated
   arenas. Same palette, same weather-world, deepening dread.
-- DIFFICULTY ESCALATES BY DESIGN: each act's Level budgets are given below,
-  computed for a party one level stronger per act. Respect each act's own
+- DIFFICULTY ESCALATES BY DESIGN: each phase's Level budgets are given below,
+  computed for a party one level stronger per phase. Respect each phase's own
   per-party-size layout minimums and targets.
-- ACTS DIFFER MECHANICALLY: each act leans on a DIFFERENT signature mechanic
-  (the parameters roll one per act) so the run escalates in KIND, not just in
+- ACTS DIFFER MECHANICALLY: each phase leans on a DIFFERENT signature mechanic
+  (the parameters roll one per phase) so the run escalates in KIND, not just in
   numbers — e.g. a skirmish of evasive raiders, then the ritual they were
   screening, then the boss spending the corpses both fights left behind.
-- ACT III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Act III —
+- PHASE III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Phase III —
   the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
   Enrage, phase gates, real HP). No enemy anywhere may exceed its level.
 - ACTS I AND II MAY each field ONE MINI-BOSS — never an obligation, use it for
   variety. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
   2.5× budget, counts double), thematically distinct (the gate-captain, not the
-  king), and STRICTLY lower level than Act III's boss.
-- NARRATION: each act carries a `narration` — one short paragraph, SECOND
-  PERSON, PRESENT TENSE, describing the party arriving into that act's scene
-  ("You push through the splintered gate. Beyond, the courtyard…"). Act I's
+  king), and STRICTLY lower level than Phase III's boss.
+- NARRATION: each phase carries a `narration` — one short paragraph, SECOND
+  PERSON, PRESENT TENSE, describing the party arriving into that phase's scene
+  ("You push through the splintered gate. Beyond, the courtyard…"). Phase I's
   narration is the adventure's opening. No mechanics, no numbers — atmosphere
   and forward motion.
 - `flavor` is the adventure's one-line pitch, shown in the New Game list.
 
 # Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
 
-One act MAY carry an optional `"objective"` — an alternate win condition that
-turns the act into a set piece. The standing rules are HARD validation:
-- AT MOST ONE objective in the whole adventure, and only on Act I or Act II.
-  Act III is ALWAYS the standard boss kill — the climax stays a fight.
+One phase MAY carry an optional `"objective"` — an alternate win condition that
+turns the phase into a set piece. The standing rules are HARD validation:
+- AT MOST ONE objective in the whole adventure, and only on Phase I or Phase II.
+  Phase III is ALWAYS the standard boss kill — the climax stays a fight.
 - Objectives are fully public (the party sees the goal and its countdown from
   turn 1). Defeat by party wipe is unchanged.
 Use one in roughly two adventures out of three, when the fiction asks for it;
-let the act's `narration` reference the objective. The three kinds:
+let the phase's `narration` reference the objective. The three kinds:
 
-1. SURVIVE — hold out N rounds; the party wins the act when round N's End Step
+1. SURVIVE — hold out N rounds; the party wins the phase when round N's End Step
    completes (survivors withdraw). Timer 4–6 rounds. Survival must not be
    passive: schedule reinforcements and pick a defensible theme (a gate, a
    bridge, a shrinking camp).
@@ -1327,17 +1327,17 @@ let the act's `narration` reference the objective. The three kinds:
      {"turn": 3, "layouts": {"1": ["raider"], "2": ["raider","raider"],
                              "3": ["raider","raider","howler"],
                              "4": ["raider","raider","howler","howler"]}}]}
-   Reinforcement ids reference the act's enemy pool; repeats clone. Each entry
+   Reinforcement ids reference the phase's enemy pool; repeats clone. Each entry
    deploys at the start of round `turn`'s Enemy Intents step.
 
-2. WAVES — clear successive waves; the act's top-level `layouts` ARE wave 1,
+2. WAVES — clear successive waves; the phase's top-level `layouts` ARE wave 1,
    and `"waves"` lists the later waves (same per-size map shape). Later waves
    wait off-board and deploy when the current wave falls. A war-band theme with
    DISTINCT wave compositions — vary rows and roles, don't clone one statline
    thrice. Every wave fields at least 1× the party size (per size), at least 2×
-   in total, and the summed Level budget across waves may run to 1.5× the act's
+   in total, and the summed Level budget across waves may run to 1.5× the phase's
    standard budget (staggered arrival pays for the excess). A mini-boss, if the
-   act has one, appears in the FINAL wave only (never in `layouts`).
+   phase has one, appears in the FINAL wave only (never in `layouts`).
    {"kind": "waves", "waves": [
      {"1": ["cutthroat"], "2": ["cutthroat","cutthroat"],
       "3": ["cutthroat","cutthroat","archer"],
@@ -1365,19 +1365,19 @@ let the act's `narration` reference the objective. The three kinds:
 {
   "name": "Adventure name",
   "flavor": "one-line pitch",
-  "acts": [
+  "phases": [
     { "narration": "…", <a complete encounter object: name, scene, enemies, layouts, tokens> },
-    { "narration": "…", <act II encounter> },
-    { "narration": "…", <act III encounter — contains the one boss> }
+    { "narration": "…", <phase II encounter> },
+    { "narration": "…", <phase III encounter — contains the one boss> }
   ]
 }
-Each act is a COMPLETE encounter exactly per the contract above (name, scene,
+Each phase is a COMPLETE encounter exactly per the contract above (name, scene,
 enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
 
 
 def _adventure_request_block(party: Dict[str, Any], difficulty: str,
                              note: str) -> str:
-    """Per-request parameters: the party, the single difficulty, and each act's
+    """Per-request parameters: the party, the single difficulty, and each phase's
     per-party-size budget lines computed at party level 1 / 2 / 3 (T-62)."""
     roster = "; ".join(
         f'{m["name"]} (level {m["level"]}'
@@ -1387,31 +1387,31 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     lines = [
         "# THIS ADVENTURE'S PARAMETERS",
         f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
-        f"- Difficulty: {difficulty} (applies to all three acts).",
-        "- Between acts every character levels up, so act N is budgeted for a "
+        f"- Difficulty: {difficulty} (applies to all three phases).",
+        "- Between phases every character levels up, so phase N is budgeted for a "
         "party of level N:",
     ]
-    for act in range(1, content.ACT_COUNT + 1):
-        lines.append(f'- ACT {act} (party level {act}) — required layouts "1"–"4":')
+    for phase in range(1, content.PHASE_COUNT + 1):
+        lines.append(f'- PHASE {phase} (party level {phase}) — required layouts "1"–"4":')
         for size in range(1, 5):
-            budget = _budget(size, float(act), difficulty)
+            budget = _budget(size, float(phase), difficulty)
             lines.append(
                 f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies '
                 f"(2× the party, duplicates count), total enemy Levels about "
                 f"{budget} (a boss counts double).")
     lines.append(
-        "- Act III must contain exactly ONE boss (is_boss: true) — the "
-        "adventure's highest-level enemy. Acts I and II may each field at most "
-        "one mini-boss, strictly lower level than Act III's boss.")
+        "- Phase III must contain exactly ONE boss (is_boss: true) — the "
+        "adventure's highest-level enemy. Phases I and II may each field at most "
+        "one mini-boss, strictly lower level than Phase III's boss.")
     if difficulty != "easy":
         lines.append("- Include at least one CHANNELER (a channel component) "
-                     "somewhere in each act's pool.")
-    rolls = _signature_rolls(content.ACT_COUNT)
+                     "somewhere in each phase's pool.")
+    rolls = _signature_rolls(content.PHASE_COUNT)
     lines.append(
-        "- Rolled SIGNATURE MECHANICS, one per act — build each act's identity "
+        "- Rolled SIGNATURE MECHANICS, one per phase — build each phase's identity "
         "around its roll (adapt to the theme; the player's note overrides), so "
         "the threats escalate in KIND across the run, not just in budget: "
-        + " ".join(f"Act {i}: {r}." for i, r in enumerate(rolls, start=1)))
+        + " ".join(f"Phase {i}: {r}." for i, r in enumerate(rolls, start=1)))
     lines.extend(_library_lines())
     note = (note or "").strip()
     if note:
@@ -1425,8 +1425,8 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
     """Generate, validate, persist an adventure and return its meta.
 
     One request generates the whole arc (coherence by construction); the reply
-    then runs the same repair loop an encounter takes — per-act HP scaling,
-    per-act layout checks, then ``content.save_adventure`` (per-act engine gate
+    then runs the same repair loop an encounter takes — per-phase HP scaling,
+    per-phase layout checks, then ``content.save_adventure`` (per-phase engine gate
     + the §D10-4.1 adventure checks). Any failure re-prompts the model with the
     engine's own error, up to ``attempts`` total."""
     settings = load_settings()
@@ -1447,17 +1447,17 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                       max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT)
         try:
             raw = _extract_json(reply)
-            acts = raw.get("acts")
-            if not isinstance(acts, list) or len(acts) != content.ACT_COUNT:
+            phases = raw.get("phases")
+            if not isinstance(phases, list) or len(phases) != content.PHASE_COUNT:
                 raise ValueError(
-                    f'the adventure needs an "acts" list of exactly '
-                    f"{content.ACT_COUNT} acts")
-            cleaned_acts = []
-            for i, act in enumerate(acts, start=1):
-                if not isinstance(act, dict):
-                    raise ValueError(f"act {i} must be an object")
+                    f'the adventure needs an "phases" list of exactly '
+                    f"{content.PHASE_COUNT} phases")
+            cleaned_phases = []
+            for i, phase in enumerate(phases, start=1):
+                if not isinstance(phase, dict):
+                    raise ValueError(f"phase {i} must be an object")
                 try:
-                    enc = _normalize(act)
+                    enc = _normalize(phase)
                     _scale_hp(enc, difficulty)
                     _check_layouts(enc)
                     problems = []
@@ -1470,24 +1470,24 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                         problems.append('enemies missing a "description": '
                                         + ", ".join(undescribed))
                     problems.extend(_design_problems(enc))  # §D14: kit floor
-                    if not str(act.get("narration") or "").strip():
+                    if not str(phase.get("narration") or "").strip():
                         problems.append('missing its "narration" (one short '
                                         "second-person paragraph)")
                     if problems:
                         raise ValueError("; ".join(problems))
                 except ValueError as exc:
-                    raise ValueError(f"act {i}: {exc}") from exc
-                enc["narration"] = str(act.get("narration") or "").strip()
+                    raise ValueError(f"phase {i}: {exc}") from exc
+                enc["narration"] = str(phase.get("narration") or "").strip()
                 enc["difficulty"] = difficulty  # display flag (see generate_encounter)
-                cleaned_acts.append(enc)
+                cleaned_phases.append(enc)
             adventure = {
                 "name": str(raw.get("name") or "Generated Adventure"),
                 "flavor": str(raw.get("flavor") or "").strip(),
                 "difficulty": difficulty,
-                "acts": cleaned_acts,
+                "phases": cleaned_phases,
             }
-            # Same gate authored content takes: per-act engine validation plus
-            # the adventure-level checks, then persist (wrapper + act files).
+            # Same gate authored content takes: per-phase engine validation plus
+            # the adventure-level checks, then persist (wrapper + phase files).
             return content.save_adventure(adventure)
         except ValueError as exc:
             last_err = str(exc)

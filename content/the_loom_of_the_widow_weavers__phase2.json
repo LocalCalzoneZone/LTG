@@ -1,7 +1,7 @@
 {
   "name": "The Weaving Gallery",
   "scene": "A cavernous mining gallery entirely draped in tiered white webbing, cocoons swinging from silk cables overhead. Shafts of crystal glow faint blue through the silk, and pale broodlings skitter along the strand-bridges between pillars.",
-  "scene_image": "/art/the_loom_of_the_widow_weavers__act2/scene-c59f1b23.png",
+  "scene_image": "/art/the_loom_of_the_widow_weavers__phase2/scene-c59f1b23.png",
   "enemies": [
     {
       "id": "brood_tender",
@@ -63,7 +63,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act2/brood_tender-75a13272.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase2/brood_tender-75a13272.png"
     },
     {
       "id": "molting_lurker",
@@ -124,7 +124,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act2/molting_lurker-5fe62ca9.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase2/molting_lurker-5fe62ca9.png"
     },
     {
       "id": "venom_broodling",
@@ -180,7 +180,7 @@
           ]
         }
       ],
-      "image": "/art/the_loom_of_the_widow_weavers__act2/venom_broodling-c87db980.png"
+      "image": "/art/the_loom_of_the_widow_weavers__phase2/venom_broodling-c87db980.png"
     }
   ],
   "tokens": {},

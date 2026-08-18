@@ -388,11 +388,11 @@ export interface AdventureBlock {
   id: string;
   name: string;
   flavor: string;
-  act: number; // 1-based
-  acts_total: number;
-  act_name: string;
+  phase: number; // 1-based
+  phases_total: number;
+  phase_name: string;
   narration: string;
-  character_ids: string[]; // roster ids — Restart from Act I re-picks these
+  character_ids: string[]; // roster ids — Restart from Phase I re-picks these
   complete: boolean;
   level_up: LevelUpBlock | null;
 }
@@ -424,8 +424,8 @@ export interface GameSnapshot {
   legal_actions: LegalAction[];
   result: string | null;
   game_over: { result: string; objective_line?: string | null } | null;
-  // Present only when this session runs an adventure (Update 10): act sequence,
-  // narration, and the between-acts level-up gate. A non-final act victory
+  // Present only when this session runs an adventure (Update 10): phase sequence,
+  // narration, and the between-phases level-up gate. A non-final phase victory
   // arrives with result/game_over suppressed and `level_up` set instead.
   adventure?: AdventureBlock;
 }
@@ -534,12 +534,12 @@ export interface AdventureOption {
   flavor: string;
   // The difficulty it was generated at ("" / absent for hand-authored).
   difficulty?: string;
-  act_names: string[];
+  phase_names: string[];
   deletable: boolean;
   editable: boolean;
 }
-// The full adventure: wrapper fields + each act's embedded encounter detail.
-export interface AdventureActDetail extends EncounterDetail {
+// The full adventure: wrapper fields + each phase's embedded encounter detail.
+export interface AdventurePhaseDetail extends EncounterDetail {
   narration: string;
   encounter_id: string;
 }
@@ -549,7 +549,7 @@ export interface AdventureDetail {
   flavor: string;
   // The difficulty it was generated at ("" / absent for hand-authored).
   difficulty?: string;
-  acts: AdventureActDetail[];
+  phases: AdventurePhaseDetail[];
 }
 // "Generate all art" queue progress (polled).
 export interface ArtQueueStatus {

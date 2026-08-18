@@ -358,7 +358,7 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
         )}
 
         {tab === "adventures" && (
-          <AdventurePanel onEditAct={(act) => setEditing(act)} />
+          <AdventurePanel onEditPhase={(phase) => setEditing(phase)} />
         )}
 
         {tab === "llm" && <LlmSettingsPanel />}

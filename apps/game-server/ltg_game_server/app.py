@@ -41,7 +41,7 @@ MANAGER = SessionManager()
 class CreateGameBody(BaseModel):
     character_ids: List[str]
     # Exactly one of these: a standalone encounter, or an adventure (Update 10 —
-    # the session then runs the three-act flow: carry-over, level-ups, splashes).
+    # the session then runs the three-phase flow: carry-over, level-ups, splashes).
     encounter_id: Optional[str] = None
     adventure_id: Optional[str] = None
 
@@ -142,7 +142,7 @@ def delete_encounter(encounter_id: str) -> Dict[str, Any]:
 
 # --------------------------------------------------------------------------- #
 # REST: adventures (Design Update 10) — list/detail/edit/delete + generation.
-# Acts are ordinary encounters (reserved ids) edited through the encounter
+# Phases are ordinary encounters (reserved ids) edited through the encounter
 # endpoints above; the wrapper (name, flavor, narrations) is edited here.
 # --------------------------------------------------------------------------- #
 class AdventureInfoBody(BaseModel):
@@ -159,7 +159,7 @@ class GenerateAdventureBody(BaseModel):
 
 @app.get("/api/adventures/{adventure_id}")
 def get_adventure(adventure_id: str) -> Dict[str, Any]:
-    """The full adventure: wrapper fields + each act's embedded encounter."""
+    """The full adventure: wrapper fields + each phase's embedded encounter."""
     detail = content.adventure_detail(adventure_id)
     if detail is None:
         raise HTTPException(404, "no such adventure")
@@ -179,7 +179,7 @@ def put_adventure_info(adventure_id: str, body: AdventureInfoBody) -> Dict[str, 
 
 @app.delete("/api/adventures/{adventure_id}")
 def delete_adventure(adventure_id: str) -> Dict[str, Any]:
-    """Remove an adventure and its act files."""
+    """Remove an adventure and its phase files."""
     try:
         content.delete_adventure(adventure_id)
     except ValueError as exc:
@@ -189,7 +189,7 @@ def delete_adventure(adventure_id: str) -> Dict[str, Any]:
 
 @app.post("/api/adventures/generate")
 def generate_adventure(body: GenerateAdventureBody) -> Dict[str, Any]:
-    """Generate + persist a whole three-act adventure in one model call,
+    """Generate + persist a whole three-phase adventure in one model call,
     scoped to the picked party and difficulty; returns its meta."""
     try:
         meta = llm.generate_adventure(body.character_ids, body.difficulty, body.note)
@@ -301,8 +301,8 @@ async def delete_encounter_art(encounter_id: str, kind: str,
 # --------------------------------------------------------------------------- #
 # REST: the art queue — "Generate all art" (Update 10 §D10-6.4). POST enqueues
 # every still-missing image (idempotent); GET polls progress. The adventure
-# variant covers its acts in order (Act I first, so play can start while later
-# acts paint); completed images broadcast to sessions as they land.
+# variant covers its phases in order (Phase I first, so play can start while later
+# phases paint); completed images broadcast to sessions as they land.
 # --------------------------------------------------------------------------- #
 @app.post("/api/encounters/{encounter_id}/art/all")
 async def start_encounter_art_queue(encounter_id: str) -> Dict[str, Any]:
@@ -322,8 +322,8 @@ async def start_adventure_art_queue(adventure_id: str) -> Dict[str, Any]:
     detail = content.adventure_detail(adventure_id)
     if detail is None:
         raise HTTPException(404, "no such adventure")
-    act_ids = [a["encounter_id"] for a in detail["acts"]]
-    return art.QUEUE.start(f"adventure:{adventure_id}", act_ids,
+    phase_ids = [a["encounter_id"] for a in detail["phases"]]
+    return art.QUEUE.start(f"adventure:{adventure_id}", phase_ids,
                            _refresh_sessions_art)
 
 
@@ -366,7 +366,7 @@ def _prompt_msg(session) -> Dict[str, Any]:
 async def _broadcast(session) -> None:
     """Push a fresh (per-client filtered) state + seats + prompt to everyone."""
     prompt = _prompt_msg(session)
-    # public_result suppresses a non-final act victory in an adventure (the act
+    # public_result suppresses a non-final phase victory in an adventure (the phase
     # boundary is a level-up gate, not a game over); plain encounters unchanged.
     result = session.public_result()
     for cid, ws in list(session.clients.items()):
@@ -439,9 +439,9 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                 session.start_pacer(_broadcast)
 
             elif mtype == "confirm_level_up":
-                # The between-acts gate (Update 10 §D10-3.3): one confirmation
+                # The between-phases gate (Update 10 §D10-3.3): one confirmation
                 # per controlled character; the last confirmation composes the
-                # next act (carry-over applied) before the broadcast.
+                # next phase (carry-over applied) before the broadcast.
                 async with session.lock():
                     try:
                         session.confirm_level_up(
