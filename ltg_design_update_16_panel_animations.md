@@ -2,7 +2,7 @@
 
 **Status:** IMPLEMENTED 2026-08-17 (`core/ltg_core/schema.py` — `PanelAnimation`, `Character.animations`, `Card.animation`, `StanceReplacement.animation`; `apps/combat/ltg_combat/engine.py` + `state.py` — presentation tags on the `resolve` log entry; `apps/deckbuilder` — upload/delete/serve routes and the Panel animations UI; `apps/game-server` — `/anim` route, `char_anims` bundle, `anims` on the character snapshot; `apps/game-ui` — `lib/fx.ts` `panel` events, `components/PanelAnim.tsx` player).
 
-**Scope:** presentation only. **No rule reads any of this**; a loadout with no clips plays exactly as before. The companion working doc — generation settings and the per-action prompt set for Lasarre — is `ltg_panel_animation_prompts.md`.
+**Scope:** presentation only. **No rule reads any of this**; a loadout with no clips plays exactly as before. The companion working doc — generation settings and the per-action prompt set for Lasarre — is `ltg_panel_animation_prompts.md`; `ltg_panel_animation_prompt_guide.md` is the self-contained brief to hand an LLM (with a portrait + loadout JSON) to author the prompt set for any character.
 
 ---
 
