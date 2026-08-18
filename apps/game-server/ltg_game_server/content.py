@@ -690,6 +690,9 @@ def _adventure_registry() -> Dict[str, Dict[str, Any]]:
             "flavor": str(raw.get("flavor") or ""),
             "difficulty": str(raw.get("difficulty") or ""),
             "phases": copy.deepcopy(phases),
+            # Update 17: an adventure generated for a run (a scenario act) is
+            # kept out of the New Game picker; it stays editable/inspectable.
+            "run_only": bool(raw.get("run_only")),
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
             "path": path,
         }
@@ -719,15 +722,17 @@ def _adventure_meta(aid: str, adv: Dict[str, Any]) -> Dict[str, Any]:
         "flavor": adv["flavor"],
         "difficulty": adv.get("difficulty", ""),  # "made at" flag ("" = unstamped)
         "phase_names": phase_names,
+        "run_only": bool(adv.get("run_only")),
         "deletable": True,
         "editable": True,
     }
 
 
-def list_adventures() -> List[Dict[str, Any]]:
+def list_adventures(include_run_only: bool = False) -> List[Dict[str, Any]]:
     hidden = _adv_hidden()
     return [_adventure_meta(aid, adv)
-            for aid, adv in _adventure_registry().items() if aid not in hidden]
+            for aid, adv in _adventure_registry().items()
+            if aid not in hidden and (include_run_only or not adv.get("run_only"))]
 
 
 def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
@@ -745,7 +750,8 @@ def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
         phases.append({"narration": str(phase.get("narration") or ""),
                      "encounter_id": eid, **enc})
     return {"id": adventure_id, "name": adv["name"], "flavor": adv["flavor"],
-            "difficulty": adv.get("difficulty", ""), "phases": phases}
+            "difficulty": adv.get("difficulty", ""), "phases": phases,
+            **({"run_only": True} if adv.get("run_only") else {})}
 
 
 def _phase_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
@@ -882,6 +888,8 @@ def save_adventure(raw: Dict[str, Any],
                "flavor": str(raw.get("flavor") or ""), "phases": phase_entries}
     if str(raw.get("difficulty") or "").strip():  # "made at" flag (llm.py stamps it)
         wrapper["difficulty"] = str(raw["difficulty"]).strip()
+    if raw.get("run_only"):
+        wrapper["run_only"] = True
     _write_content(f"{aid}.json", json.dumps(wrapper, indent=2))
     hidden = _adv_hidden()
     if aid in hidden:
@@ -912,6 +920,8 @@ def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, A
     wrapper = {"kind": "adventure", "name": name, "flavor": flavor, "phases": phases}
     if adv.get("difficulty"):  # the "made at" flag rides through info edits
         wrapper["difficulty"] = adv["difficulty"]
+    if adv.get("run_only"):
+        wrapper["run_only"] = True
     _write_content(f"{adventure_id}.json", json.dumps(wrapper, indent=2))
     fresh = _adventure_registry().get(adventure_id)
     return _adventure_meta(adventure_id, fresh)

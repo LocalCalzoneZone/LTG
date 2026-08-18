@@ -823,15 +823,30 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 def _party_summary(character_ids: List[str]) -> Dict[str, Any]:
     """Size, average level, and a per-hero line, read from the picked loadouts."""
-    members: List[Dict[str, Any]] = []
+    loadouts = []
     for cid in character_ids:
         lo = content.loadout_for(cid)
         if lo is None:
             raise ValueError(f"unknown character: {cid}")
-        char = lo.get("character", {})
+        loadouts.append(lo)
+    return party_summary_from_loadouts(loadouts)
+
+
+def party_summary_from_loadouts(loadouts: List[Dict[str, Any]],
+                                levels: Optional[List[int]] = None) -> Dict[str, Any]:
+    """The same summary from raw loadout dicts (a run's frozen party copies —
+    Update 17). ``levels`` overrides each member's level (the run's derived /
+    effective level, §D17-4.2) so scenario adventures budget for the party as
+    it stands, not as it was saved."""
+    members: List[Dict[str, Any]] = []
+    for i, lo in enumerate(loadouts):
+        char = lo.get("character", {}) or {}
+        level = int(char.get("level", 1) or 1)
+        if levels is not None and i < len(levels):
+            level = int(levels[i])
         members.append({
-            "name": char.get("name", cid),
-            "level": int(char.get("level", 1) or 1),
+            "name": char.get("name", f"hero {i + 1}"),
+            "level": level,
             "colors": char.get("colors", []),
         })
     if not members:
@@ -1376,25 +1391,32 @@ enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
 
 
 def _adventure_request_block(party: Dict[str, Any], difficulty: str,
-                             note: str) -> str:
+                             note: str, base_level: int = 1,
+                             context: Optional[Dict[str, Any]] = None) -> str:
     """Per-request parameters: the party, the single difficulty, and each phase's
-    per-party-size budget lines computed at party level 1 / 2 / 3 (T-62)."""
+    per-party-size budget lines computed at party level L / L+1 / L+2 (T-62),
+    anchored on ``base_level`` — the party's effective level at adventure start
+    (Update 17 §D17-2.1 / §D17-4.2; 1 outside a run). ``context`` (§D17-6.3) is
+    the scenario's arc / town / quest block, passed verbatim."""
     roster = "; ".join(
         f'{m["name"]} (level {m["level"]}'
         + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
         for m in party["members"]
     )
+    base_level = max(1, int(base_level))
     lines = [
         "# THIS ADVENTURE'S PARAMETERS",
         f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
         f"- Difficulty: {difficulty} (applies to all three phases).",
-        "- Between phases every character levels up, so phase N is budgeted for a "
-        "party of level N:",
+        f"- The party enters at level {base_level}. Between phases every character "
+        "levels up, so phase N is budgeted for a party of level "
+        f"{base_level} + N − 1:",
     ]
     for phase in range(1, content.PHASE_COUNT + 1):
-        lines.append(f'- PHASE {phase} (party level {phase}) — required layouts "1"–"4":')
+        lvl = base_level + phase - 1
+        lines.append(f'- PHASE {phase} (party level {lvl}) — required layouts "1"–"4":')
         for size in range(1, 5):
-            budget = _budget(size, float(phase), difficulty)
+            budget = _budget(size, float(lvl), difficulty)
             lines.append(
                 f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies '
                 f"(2× the party, duplicates count), total enemy Levels about "
@@ -1413,6 +1435,8 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
         "the threats escalate in KIND across the run, not just in budget: "
         + " ".join(f"Phase {i}: {r}." for i, r in enumerate(rolls, start=1)))
     lines.extend(_library_lines())
+    if context:
+        lines.append(_adventure_context_lines(context))
     note = (note or "").strip()
     if note:
         lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
@@ -1420,25 +1444,68 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     return "\n".join(lines)
 
 
+def _adventure_context_lines(context: Dict[str, Any]) -> str:
+    """The scenario context block (§D17-6.3): arc, town, quest — the adventure
+    IS this act's quest, in this arc, near this town. Passed verbatim."""
+    arc = context.get("arc_context") or {}
+    town = context.get("town_context") or {}
+    quest = context.get("quest_context") or {}
+    act = arc.get("act") or {}
+    lines = ["\n# SCENARIO CONTEXT (this adventure is one act of a campaign — honor it)"]
+    if arc:
+        lines.append(f'- Arc: "{arc.get("title", "")}" — villain: {arc.get("villain", "")}. '
+                     f'Stakes: {arc.get("stakes", "")}')
+        if act:
+            lines.append(f'- This act ({act.get("title", "")}): {act.get("hook", "")} '
+                         f'Adventure theme: {act.get("adventure_theme", "")}. '
+                         f'Tone: {act.get("tone_notes", "")}')
+        if arc.get("act_number"):
+            lines.append(f"- Act {arc['act_number']} of {arc.get('acts_total', 3)}"
+                         + (" — the FINALE: the villain (or their last instrument) is the Phase III boss."
+                            if arc.get("act_number") == arc.get("acts_total", 3) else
+                            " — the villain's hand shows, but the villain is not yet the boss."))
+    if town:
+        npcs = ", ".join(town.get("npcs") or [])
+        lines.append(f'- Home town: {town.get("name", "")} ({town.get("region_flavor", "")}). '
+                     f"NPCs the narration may reference by name: {npcs}.")
+    if quest:
+        lines.append(f'- The accepted quest: "{quest.get("title", "")}" — {quest.get("text", "")}')
+    lines.append("- Name the adventure for the PLACE the quest leads to; the Phase I narration "
+                 "opens as the party leaves town for it.")
+    return "\n".join(lines)
+
+
 def generate_adventure(character_ids: List[str], difficulty: str = "standard",
-                       note: str = "", attempts: int = 3) -> Dict[str, Any]:
+                       note: str = "", attempts: int = 3,
+                       loadouts: Optional[List[Dict[str, Any]]] = None,
+                       levels: Optional[List[int]] = None,
+                       base_level: int = 1,
+                       context: Optional[Dict[str, Any]] = None,
+                       run_only: bool = False) -> Dict[str, Any]:
     """Generate, validate, persist an adventure and return its meta.
 
     One request generates the whole arc (coherence by construction); the reply
     then runs the same repair loop an encounter takes — per-phase HP scaling,
     per-phase layout checks, then ``content.save_adventure`` (per-phase engine gate
     + the §D10-4.1 adventure checks). Any failure re-prompts the model with the
-    engine's own error, up to ``attempts`` total."""
+    engine's own error, up to ``attempts`` total.
+
+    Update 17: ``loadouts`` (a run's frozen party) replaces ``character_ids``;
+    ``levels`` / ``base_level`` scope the budgets to the party's effective
+    level; ``context`` is the scenario block (§D17-6.3); ``run_only`` marks the
+    saved adventure as a run's (kept out of the New Game picker)."""
     settings = load_settings()
     if not settings["api_key"]:
         raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
     if difficulty not in DIFFICULTY:
         difficulty = "standard"
 
-    party = _party_summary(character_ids)
+    party = (party_summary_from_loadouts(loadouts, levels) if loadouts is not None
+             else _party_summary(character_ids))
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": settings["instructions"] + ADVENTURE_EXTENSION},
-        {"role": "user", "content": _adventure_request_block(party, difficulty, note)},
+        {"role": "user", "content": _adventure_request_block(
+            party, difficulty, note, base_level=base_level, context=context)},
     ]
 
     last_err = ""
@@ -1486,6 +1553,8 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                 "difficulty": difficulty,
                 "phases": cleaned_phases,
             }
+            if run_only:
+                adventure["run_only"] = True
             # Same gate authored content takes: per-phase engine validation plus
             # the adventure-level checks, then persist (wrapper + phase files).
             return content.save_adventure(adventure)
@@ -1497,3 +1566,236 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                 "Fix it and return ONLY the corrected adventure JSON.")})
     raise ValueError(f"adventure generation failed after {attempts} attempts: "
                      f"{last_err}")
+
+
+# --------------------------------------------------------------------------- #
+# Scenario Mode generators (Design Update 17 §D17-6): town · arc · act
+# --------------------------------------------------------------------------- #
+# Three grains, three moments; every later call receives the earlier grains
+# VERBATIM (the town's persona prose, the arc) so the innkeeper is the same
+# person across acts and scenarios. All three are small text calls; the
+# adventure itself is the existing generator with the context block above.
+SCENARIO_MAX_TOKENS = 12000
+SCENARIO_TIMEOUT = 300.0
+
+TOWN_INSTRUCTIONS = r"""
+You are the world-builder for LTG, a grim, painterly tactical fantasy card game
+("Brasswork & Ink": lantern-lit, weathered, no whimsy). Design ONE small frontier
+TOWN that will be the home base for many campaigns. Return ONLY JSON.
+
+Rules:
+- The town has EXACTLY these REQUIRED locations, one each, "function" set to the
+  literal word: "inn" (rest / restore / save), "weaponsmith" (weapons),
+  "artificer" (accessories, trinkets), "apothecary" (potions, consumables).
+- Plus 1–3 FLAVOUR locations that host questgivers and go-betweens — pick from:
+  tavern, shrine, witch_hut, guard_post, market, docks, library, graveyard, gate,
+  manor, well, chapel, stables. Use those words for "function".
+- Every location has: "name", "function", "scene" (2–3 sentences of painterly
+  setting for a backdrop — environment only, no people), "description" (one or
+  two lines the party reads when they consider visiting), and "npcs": 1–2
+  RESIDENT NPCs.
+- Every NPC has: "name", "role" (innkeeper, smith, priestess, drunk veteran…),
+  "persona" (3–5 sentences of PROSE: manner, voice, wants, a secret or a scar —
+  this text is reused verbatim to write their dialogue later, so make it a
+  character sheet in prose, no dialogue lines), and "portrait_desc" (2–3
+  sentences of physical appearance for a portrait painter).
+- NO dialogue, NO shop inventories, NO quests here — those come per campaign.
+- "region_flavor": one sentence on the land the town sits in.
+- "scene": 2–3 sentences of the town seen whole (the map backdrop).
+
+Output contract:
+{"name": "...", "region_flavor": "...", "scene": "...",
+ "locations": [{"name": "...", "function": "inn", "scene": "...", "description": "...",
+                "npcs": [{"name": "...", "role": "...", "persona": "...", "portrait_desc": "..."}]}, ...]}
+"""
+
+ARC_INSTRUCTIONS = r"""
+You are the campaign writer for LTG, a grim, painterly tactical fantasy card game.
+Given a TOWN (with its NPCs' personas) and a PARTY, write the ARC of one
+SCENARIO: a villain, the stakes, and THREE ACT OUTLINES. Each act is one town
+visit followed by one three-phase adventure (a dungeon-run against one place).
+Return ONLY JSON.
+
+Rules:
+- The villain is ONE named antagonist (a person, a cult, a beast-lord) whose
+  hand shows in Act I, tightens in Act II, and is confronted in Act III's
+  adventure — Act III's Phase III boss is the villain or their final instrument.
+- Each act outline: "title" (the act's story-beat name), "hook" (2–3 sentences:
+  what the town needs and why the party rides out), "questgiver_npc" (the id of
+  an NPC of this town — use the ids given, not names), "handoff" (optional: the
+  id of a second NPC who holds a clue or reward), "adventure_theme" (one line
+  naming the PLACE the adventure happens in and its faction — a mine, a manor,
+  a drowned chapel), "tone_notes" (one line: mood/palette for the writers).
+- Use different questgivers across acts where the town allows; keep the inn's
+  and merchants' NPCs mostly out of quest-giving unless the persona begs for it.
+- Respect every persona verbatim: a coward stays a coward.
+- "stakes": what is lost if the party fails (2 sentences). "title": the
+  scenario's title.
+
+Output contract:
+{"title": "...", "villain": "...", "stakes": "...",
+ "acts": [{"title": "...", "hook": "...", "questgiver_npc": "<npc id>", "handoff": "<npc id or null>",
+           "adventure_theme": "...", "tone_notes": "..."}, ×3]}
+"""
+
+ACT_INSTRUCTIONS = r"""
+You write the TOWN PORTION of one act for LTG, a grim, painterly tactical fantasy
+card game. You get the town (NPC personas — reuse them verbatim in spirit and
+voice), the arc, THIS act's outline, the party's state, and what happened in the
+previous act. Return ONLY JSON.
+
+Write:
+1. "quest": {"title", "text"} — the quest as the journal shows it (2–4 sentences).
+2. "arrival": ONE paragraph, second person, present tense: the party arriving in
+   town at the start of this act (the entry splash). No mechanics.
+3. "dialogues": a map of NPC id → DIALOGUE TREE for: the questgiver (required),
+   the handoff NPC if the outline names one, and 1–2 others whose personas earn a
+   word (the innkeeper may greet). Each tree:
+   {"root": "<node id>", "nodes": {"<id>": {"speaker": "npc" | "party", "text": "...",
+      "choices": [{"label": "...", "next": "<node id or omit to end>",
+                   "requires": ["<flag>", ...] (optional),
+                   "effects": [<hook>, ...] (optional)}]}}}
+   - 2–4 nodes deep on the main line, 2–3 choices per node, a choice with no
+     "next" ends the conversation. Node text 1–3 sentences in the NPC's voice.
+   - HOOKS are a CLOSED vocabulary — use ONLY these shapes, nothing else:
+       {"kind": "set_flag", "flag": "<name>"}
+       {"kind": "grant_quest"}            (the quest above)
+       {"kind": "unlock_adventure"}       (opens Start Adventure — write-once)
+       {"kind": "advance_quest"}
+       {"kind": "give_gold", "amount": <int>}
+       {"kind": "rest"}                   (full restore — the inn only)
+       {"kind": "open_shop"}              (merchants only)
+       {"kind": "direct_to", "npc": "<npc id>"}   (points the journal at someone)
+   - The QUESTGIVER'S tree MUST contain exactly one QUEST ACCEPT choice whose
+     effects are [{"kind":"grant_quest"},{"kind":"unlock_adventure"}] — label it
+     as an acceptance ("We'll go.", "Consider it done."). Offer at least one
+     flavour choice before it (a question about the danger, a haggle) and one
+     way to end without accepting (the player can return).
+   - The questgiver's tree MUST ALSO carry a branch for a party that already
+     tried and FAILED: a root choice with "requires": ["defeated_once"] leading
+     to a node where the NPC reacts to the party returning bloodied and re-offers
+     the same quest (another Quest Accept choice is fine there — same two hooks).
+   - The innkeeper's tree, if present, offers a choice with effects
+     [{"kind":"rest"}] ("Take a room.") — resting restores the party fully.
+   - Merchants' trees, if present, may offer [{"kind":"open_shop"}].
+   - "requires" may reference flags your own set_flag hooks create in this tree,
+     plus the standing flags: defeated_once, quest_accepted, act_1_complete,
+     act_2_complete, act_3_complete.
+   - NO other keys. No "freeform". No mechanics or numbers in text.
+4. "flavor": a map of NPC id → ONE fresh line of greeting for NPCs without a
+   tree (optional, 1–4 entries).
+
+Output contract:
+{"quest": {"title": "...", "text": "..."}, "arrival": "...",
+ "dialogues": {"<npc id>": {tree}}, "flavor": {"<npc id>": "..."}}
+"""
+
+
+def _town_block(town: Dict[str, Any]) -> str:
+    lines = [f'# TOWN — {town.get("name", "")}', f'Region: {town.get("region_flavor", "")}',
+             f'Scene: {town.get("scene", "")}', "Locations and resident NPCs (ids in brackets):"]
+    for loc in town.get("locations") or []:
+        lines.append(f'- [{loc["id"]}] {loc["name"]} ({loc.get("function", "")}): {loc.get("description", "")}')
+        for npc in loc.get("npcs") or []:
+            lines.append(f'    * [{npc["id"]}] {npc["name"]}, {npc.get("role", "")} — {npc.get("persona", "")}')
+    return "\n".join(lines)
+
+
+def _arc_block(arc: Dict[str, Any]) -> str:
+    lines = [f'# ARC — "{arc.get("title", "")}"', f'Villain: {arc.get("villain", "")}',
+             f'Stakes: {arc.get("stakes", "")}']
+    for i, act in enumerate(arc.get("acts") or [], start=1):
+        lines.append(f'- Act {i}: "{act.get("title", "")}" — {act.get("hook", "")} '
+                     f'(questgiver [{act.get("questgiver_npc", "")}]'
+                     + (f', handoff [{act["handoff"]}]' if act.get("handoff") else "")
+                     + f'; adventure: {act.get("adventure_theme", "")}; tone: {act.get("tone_notes", "")})')
+    return "\n".join(lines)
+
+
+def _scenario_chat(system: str, user: str, attempts: int, fix, what: str) -> Dict[str, Any]:
+    """The shared repair loop: call, validate via ``fix(raw) -> cleaned``, feed the
+    error back, up to ``attempts``."""
+    settings = load_settings()
+    if not settings["api_key"]:
+        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    last_err = ""
+    for _ in range(max(1, attempts)):
+        reply = _chat(settings["api_key"], settings["model"], messages,
+                      max_tokens=SCENARIO_MAX_TOKENS, timeout=SCENARIO_TIMEOUT)
+        try:
+            return fix(_extract_json(reply))
+        except ValueError as exc:
+            last_err = str(exc)
+            messages.append({"role": "assistant", "content": reply})
+            messages.append({"role": "user", "content": (
+                f"That output was rejected: {last_err}\n"
+                f"Fix it and return ONLY the corrected {what} JSON.")})
+    raise ValueError(f"{what} generation failed after {attempts} attempts: {last_err}")
+
+
+def generate_town(note: str = "", attempts: int = 3) -> Dict[str, Any]:
+    """Generate + validate + persist a town (§D17-5.1). Returns its meta."""
+    from . import scenario_content as sc
+    user = "Design the town now." + (f" Player's note (honor it): {note.strip()}" if note.strip() else "")
+    user += "\nReturn ONLY the town JSON."
+    town = _scenario_chat(TOWN_INSTRUCTIONS, user, attempts, sc.validate_town, "town")
+    return sc.save_town(town)
+
+
+def generate_arc(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
+                 previous_arcs: Optional[List[Dict[str, Any]]] = None,
+                 note: str = "", attempts: int = 3) -> Dict[str, Any]:
+    """The arc — once, at scenario start (§D17-6.1); Everquest passes the
+    previous arcs' summaries so the new one continues the town's story."""
+    from . import scenario_content as sc
+    roster = "; ".join(f'{m["name"]} (level {m["level"]}'
+                       + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
+                       for m in party["members"])
+    user = [_town_block(town), "",
+            f"# PARTY — {party['size']} hero(es): {roster}. Difficulty: {difficulty}."]
+    if previous_arcs:
+        user.append("\n# PREVIOUS ARCS in this town (the new arc follows them — new villain, "
+                    "consequences of the old):")
+        for i, prev in enumerate(previous_arcs, start=1):
+            user.append(f'- Scenario {i}: "{prev.get("title", "")}" — villain {prev.get("villain", "")}; '
+                        f'outcome: {prev.get("outcome", "defeated")}.')
+    if note.strip():
+        user.append(f"\nPlayer's note (honor it): {note.strip()}")
+    user.append("\nWrite the arc now. Return ONLY the arc JSON.")
+    return _scenario_chat(ARC_INSTRUCTIONS, "\n".join(user), attempts,
+                          lambda raw: sc.validate_arc(raw, town), "arc")
+
+
+def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
+                 party_state: Dict[str, Any], previous_summary: str = "",
+                 attempts: int = 3) -> Dict[str, Any]:
+    """The act's town portion (§D17-6.2): quest, dialogue trees (closed hooks),
+    arrival paragraph, flavour lines. ``party_state`` = {members: [{name,
+    level}], gold: {name: n}, flags: {…}}; ``defeated_once`` in the flags makes
+    the questgiver's tree open on the bloodied-return branch."""
+    from . import scenario_content as sc
+    outline = arc["acts"][act_index]
+    flags = party_state.get("flags") or {}
+    members = "; ".join(f'{m["name"]} (level {m["level"]})' for m in party_state.get("members", []))
+    user = [_town_block(town), "", _arc_block(arc), "",
+            f"# THIS ACT — Act {act_index + 1} of {len(arc['acts'])}: \"{outline['title']}\"",
+            f"Hook: {outline['hook']}",
+            f"Questgiver: [{outline['questgiver_npc']}]"
+            + (f"; handoff: [{outline['handoff']}]" if outline.get("handoff") else ""),
+            f"Adventure theme: {outline['adventure_theme']}. Tone: {outline.get('tone_notes', '')}",
+            "", f"# PARTY STATE — {members}.",
+            f"Flags set: {', '.join(sorted(k for k, v in flags.items() if v)) or 'none'}."]
+    if flags.get("defeated_once"):
+        user.append("The party ALREADY RODE OUT ON THIS QUEST AND WAS DEFEATED — they return "
+                    "bloodied. Write the questgiver's tree so the defeated_once branch is the "
+                    "living one (reproach, worry, or dark humour per persona), and re-offer the "
+                    "same quest.")
+    if previous_summary:
+        user.append(f"\n# PREVIOUSLY: {previous_summary}")
+    user.append("\nWrite this act's town portion now. Return ONLY the JSON.")
+    return _scenario_chat(ACT_INSTRUCTIONS, "\n".join(user), attempts,
+                          lambda raw: sc.validate_materialization(raw, town, outline), "act")
