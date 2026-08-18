@@ -437,6 +437,12 @@ export interface GameSnapshot {
   // Present when this session plays inside a run (Update 17 §D17-3): the run
   // id and the most recent auto-save row (or an error).
   run?: { run_id: string; last_save: { save_id?: string; label?: string; kind?: string; error?: string } | null };
+  // Scenario Mode (Update 17): present in adventure mode inside a scenario.
+  mode?: "adventure";
+  scenario?: ScenarioInfo;
+  quest_log?: QuestLogView;
+  party_sheet?: PartySheetRow[];
+  confirm?: ConfirmView | null;
 }
 
 export interface SeatsMsg {
@@ -575,10 +581,32 @@ export interface ArtQueueStatus {
   errors: string[];
 }
 
+export interface ScenarioOption {
+  id: string;
+  title: string;
+  town_id: string;
+  town_name: string;
+  villain: string;
+  stakes: string;
+  act_titles: string[];
+  act1_adventure_id: string;
+  difficulty: string;
+}
+export interface TownOption {
+  id: string;
+  name: string;
+  region_flavor: string;
+  art_url: string;
+  location_count: number;
+  npc_count: number;
+  art_missing: number;
+}
 export interface SetupOptions {
   characters: CharacterOption[];
   encounters: EncounterOption[];
   adventures: AdventureOption[];
+  scenarios: ScenarioOption[];
+  towns: TownOption[];
 }
 
 // LLM / encounter generation (Options → LLM).
@@ -610,4 +638,137 @@ export interface LlmSettingsPatch {
   art_backend?: string;
   comfyui_url?: string;
   comfyui_workflow?: string;
+}
+
+// ---- Scenario Mode (Design Update 17) --------------------------------------- //
+// The town-mode state message: no engine state — the town screen, the
+// conversation, the quest log, the party sheet. `mode` "complete" is the run's
+// end (Standard finished, or a Hardcore death).
+export interface TownLocationView {
+  id: string;
+  name: string;
+  function: string;
+  description: string;
+  art_url: string;
+  scene: string;
+  questgiver: boolean;
+  has_dialogue: boolean;
+  npc_count: number;
+}
+export interface TownNpcView {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  art_url: string;
+  has_dialogue: boolean;
+  questgiver: boolean;
+  merchant: boolean;
+  flavor: string;
+}
+export interface ConversationView {
+  npc_id: string;
+  node_id: string | null;
+  speaker: "npc" | "party" | null;
+  text: string;
+  attributed: string | null;
+  choices: { index: number; label: string; party_wide: boolean; ends: boolean }[];
+  over: boolean;
+}
+export interface QuestLogView {
+  arc_title: string;
+  villain: string;
+  stakes: string;
+  act_number: number;
+  acts_total: number;
+  act_title: string;
+  quest: { status: string; title: string; text: string; direct_to: unknown };
+  direct_to: { npc: string | null; location: string | null } | null;
+  completed: { act: number; title: string; quest: string; adventure: string }[];
+  scenario_number: number;
+}
+export interface PartySheetRow {
+  id: string;
+  name: string;
+  portrait: string;
+  level: number;
+  earned_points: number;
+  points_to_next_level: number | null;
+  banked: number;
+  gold: number;
+  hp: number | null;
+  max_hp: number | null;
+  build: {
+    hp: number; starting_mana: Color[]; starting_cards: number; power_bought: number;
+    keyword: string | null; attack_mode: "melee" | "ranged"; colors: Color[]; description: string;
+  };
+  gear: { primary: unknown; secondary: unknown; accessory: unknown; belt: unknown[]; inventory: unknown[] };
+}
+export interface ScenarioInfo {
+  title: string;
+  villain: string;
+  act_number: number;
+  acts_total: number;
+  act_title: string;
+  scenario_number: number;
+  options: { difficulty: string; hardcore: boolean; everquest: boolean };
+  mode: "town" | "adventure" | "complete";
+  dead: boolean;
+  scenario_id: string;
+}
+export interface ConfirmView {
+  id: number;
+  kind: string;
+  label: string;
+  initiator: string;
+  you_are_initiator: boolean;
+  answered: boolean;
+  yes_count: number;
+  player_count: number;
+  seconds_left: number;
+}
+export interface AdventureJobView {
+  state: "idle" | "pending" | "generated" | "art_queued" | "ready" | "failed";
+  progress: [number, number];
+  adventure_ref: string | null;
+  error: string | null;
+}
+export interface TownSnapshot {
+  mode: "town" | "complete";
+  session_id: string;
+  town: {
+    id: string; name: string; region_flavor: string; scene: string; art_url: string;
+    locations: TownLocationView[];
+  };
+  location: {
+    id: string; name: string; function: string; scene: string; art_url: string;
+    description: string; npcs: TownNpcView[];
+  } | null;
+  conversation: ConversationView | null;
+  splash: { kind: "town" | "location"; title: string; subtitle: string; text: string } | null;
+  materializing: boolean;
+  materialize_error: string | null;
+  quest_log: QuestLogView;
+  scenario: ScenarioInfo;
+  adventure_job: AdventureJobView;
+  adventure_unlocked: boolean;
+  adventure_ready: boolean;
+  adventure_name: string;
+  party_sheet: PartySheetRow[];
+  flags: Record<string, boolean>;
+  run: { run_id: string | null; last_save: { label?: string; kind?: string; error?: string } | null };
+  confirm: ConfirmView | null;
+}
+
+export interface TownDetail {
+  id: string; name: string; region_flavor: string; scene: string; art_url: string;
+  locations: { id: string; name: string; function: string; scene: string; description: string; art_url: string;
+               npcs: { id: string; name: string; role: string; persona: string; portrait_desc: string; art_url: string }[] }[];
+}
+export interface ScenarioDetail {
+  id: string; title: string; town_id: string; town_name: string; difficulty: string;
+  arc: { title: string; villain: string; stakes: string;
+         acts: { title: string; hook: string; questgiver_location: string; questgiver_npc: string;
+                 handoff: string | null; adventure_theme: string; tone_notes: string }[] };
+  act1: { adventure_id: string; materialization: { quest: { title: string; text: string }; arrival: string } };
 }

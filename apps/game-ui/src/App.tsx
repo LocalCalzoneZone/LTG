@@ -9,6 +9,7 @@ import { ScreenFx } from "./components/FxLayer";
 import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { LoadGameModal } from "./components/LoadGameModal";
+import { CharacterSheetModal, ConfirmOverlay, TownScreen } from "./components/TownScreen";
 import { OptionsModal } from "./components/OptionsModal";
 import {
   CardPickPrompt,
@@ -100,6 +101,7 @@ export default function App() {
   const openZone = useGame((s) => s.openZone);
   const setInspect = useGame((s) => s.setInspect);
   const snapshot = useGame((s) => s.snapshot);
+  const town = useGame((s) => s.town);
   const connected = useGame((s) => s.connected);
 
   const [sessionId, setSessionId] = useState<string | null>(sessionFromUrl());
@@ -156,9 +158,15 @@ export default function App() {
       />
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1">
-          {snapshot ? (
-            <Battlefield />
+        <div className="relative min-w-0 flex-1">
+          {town ? (
+            <TownScreen />
+          ) : snapshot ? (
+            <>
+              <Battlefield />
+              {snapshot.party_sheet && <CharacterSheetModal rows={snapshot.party_sheet} />}
+              <ConfirmOverlay confirm={snapshot.confirm} />
+            </>
           ) : (
             <div className="field-scene flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               {sessionId ? (

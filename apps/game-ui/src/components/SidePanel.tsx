@@ -45,6 +45,7 @@ function logTint(type: string): string {
 
 export function SidePanel() {
   const snapshot = useGame((s) => s.snapshot);
+  const town = useGame((s) => s.town);
   const armed = useGame((s) => s.armed);
   const pickTargetId = useGame((s) => s.pickTargetId);
   // The card a hovered log line references, floated at a FIXED position (the
@@ -62,6 +63,39 @@ export function SidePanel() {
 
   // A counter arms with stack-ref targets ("#<uid>"): those rows become clickable.
   const targetIds = armedTargetIdSet(armed);
+
+  if (!snapshot && town) {
+    // Town mode (Update 17): the journal at a glance — the arc, this act's
+    // quest, and where the story points next.
+    const log = town.quest_log;
+    return (
+      <div className="flex h-full flex-col gap-2 bg-ink-2 p-2.5">
+        <Panel title="Journal">
+          <div className="text-xs font-light">
+            <div className="text-parch">{log.arc_title}</div>
+            <div className="mt-0.5 italic text-mist">{log.villain}</div>
+            <div className="caps-label mt-2 text-[9px] tracking-[0.16em] text-mist">Act {log.act_number} — {log.act_title}</div>
+            <div className="mt-1 text-parch">{log.quest.title || "No quest yet"}</div>
+            {log.quest.text && <div className="mt-0.5 text-mist">{log.quest.text}</div>}
+            <div className="caps-label mt-1 text-[9px] tracking-[0.16em] text-brass">{log.quest.status}</div>
+            {log.direct_to && (
+              <div className="mt-1 text-parch">Seek {log.direct_to.npc ?? ""}{log.direct_to.location ? ` at ${log.direct_to.location}` : ""}.</div>
+            )}
+          </div>
+        </Panel>
+        <Panel title="Party">
+          <div className="flex flex-col gap-1 text-xs font-light">
+            {town.party_sheet.map((p) => (
+              <div key={p.id} className="flex items-center justify-between">
+                <span className="text-parch">{p.name}</span>
+                <span className="text-mist">L{p.level} · {p.gold} gold{p.hp != null && p.max_hp ? ` · ${p.hp}/${p.max_hp} HP` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+    );
+  }
 
   if (!snapshot) {
     return (

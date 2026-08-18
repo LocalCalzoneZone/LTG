@@ -9,7 +9,11 @@ import type {
   EncounterOption,
   LlmSettings,
   LlmSettingsPatch,
+  ScenarioDetail,
+  ScenarioOption,
   SetupOptions,
+  TownDetail,
+  TownOption,
 } from "./types";
 
 export async function fetchSetupOptions(): Promise<SetupOptions> {
@@ -86,7 +90,8 @@ export interface RunOptions {
 // two ids) — an adventure session runs the three-phase flow server-side.
 export async function createGame(
   character_ids: string[],
-  target: { encounterId?: string; adventureId?: string; run?: RunOptions },
+  target: { encounterId?: string; adventureId?: string; scenarioId?: string; townId?: string;
+            run?: RunOptions; note?: string },
 ): Promise<string> {
   const res = await fetch("/api/games", {
     method: "POST",
@@ -95,7 +100,10 @@ export async function createGame(
       character_ids,
       encounter_id: target.encounterId ?? null,
       adventure_id: target.adventureId ?? null,
+      scenario_id: target.scenarioId ?? null,
+      town_id: target.townId ?? null,
       run: target.run ?? null,
+      note: target.note ?? "",
     }),
   });
   if (!res.ok) {
@@ -223,7 +231,9 @@ export async function generateAdventure(
 }
 
 // ---- The art queue ("Generate all art", §D10-6.4) --------------------------- //
-function artQueueUrl(target: { encounterId?: string; adventureId?: string }): string {
+export type ArtTarget = { encounterId?: string; adventureId?: string; townId?: string };
+function artQueueUrl(target: ArtTarget): string {
+  if (target.townId) return `/api/towns/${encodeURIComponent(target.townId)}/art/all`;
   return target.adventureId
     ? `/api/adventures/${encodeURIComponent(target.adventureId)}/art/all`
     : `/api/encounters/${encodeURIComponent(target.encounterId ?? "")}/art/all`;
@@ -231,7 +241,7 @@ function artQueueUrl(target: { encounterId?: string; adventureId?: string }): st
 
 // Enqueue every still-missing image (idempotent); returns current progress.
 export async function startArtQueue(
-  target: { encounterId?: string; adventureId?: string },
+  target: ArtTarget,
 ): Promise<ArtQueueStatus> {
   const res = await fetch(artQueueUrl(target), { method: "POST" });
   if (!res.ok) {
@@ -242,7 +252,7 @@ export async function startArtQueue(
 }
 
 export async function artQueueStatus(
-  target: { encounterId?: string; adventureId?: string },
+  target: ArtTarget,
 ): Promise<ArtQueueStatus> {
   const res = await fetch(artQueueUrl(target));
   if (!res.ok) throw new Error(`art queue status failed: ${res.status}`);
@@ -359,4 +369,67 @@ export async function applyUpdate(): Promise<UpdateStatus> {
 
 export async function quitApp(): Promise<void> {
   await fetch("/api/quit", { method: "POST" });
+}
+
+
+// ---- Towns & scenarios (Update 17 — Options → Towns / Scenarios) ------------ //
+export async function fetchTowns(): Promise<TownOption[]> {
+  const res = await fetch("/api/towns");
+  if (!res.ok) throw new Error(`towns load failed: ${res.status}`);
+  return (await res.json()).towns;
+}
+export async function fetchTown(id: string): Promise<TownDetail> {
+  const res = await fetch(`/api/towns/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`town load failed: ${res.status}`);
+  return res.json();
+}
+export async function generateTown(note: string): Promise<TownOption> {
+  const res = await fetch("/api/towns/generate", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `town generation failed: ${res.status}`);
+  }
+  return (await res.json()).town;
+}
+export async function deleteTown(id: string): Promise<void> {
+  const res = await fetch(`/api/towns/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+}
+export async function generateTownArt(townId: string, kind: "town" | "location" | "npc", targetId?: string): Promise<{ url: string }> {
+  const res = await fetch(`/api/towns/${encodeURIComponent(townId)}/art`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, target_id: targetId ?? null }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `art failed: ${res.status}`);
+  }
+  return res.json();
+}
+export async function fetchScenarios(): Promise<ScenarioOption[]> {
+  const res = await fetch("/api/scenarios");
+  if (!res.ok) throw new Error(`scenarios load failed: ${res.status}`);
+  return (await res.json()).scenarios;
+}
+export async function fetchScenario(id: string): Promise<ScenarioDetail> {
+  const res = await fetch(`/api/scenarios/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`scenario load failed: ${res.status}`);
+  return res.json();
+}
+export async function generateScenario(townId: string, difficulty: string, note: string): Promise<ScenarioOption> {
+  const res = await fetch("/api/scenarios/generate", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ town_id: townId, difficulty, note }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `scenario generation failed: ${res.status}`);
+  }
+  return (await res.json()).scenario;
+}
+export async function deleteScenario(id: string): Promise<void> {
+  const res = await fetch(`/api/scenarios/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`delete failed: ${res.status}`);
 }

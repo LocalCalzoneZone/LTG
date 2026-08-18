@@ -22,7 +22,10 @@ const SECTION = "caps-label mb-2 text-[10px] tracking-[0.25em] text-brass";
 type Pick =
   | { kind: "encounter"; id: string }
   | { kind: "adventure"; id: string }
+  | { kind: "scenario"; id: string }   // a pre-generated scenario (Update 17)
+  | { kind: "town"; id: string }       // Town + New: generate an arc at start
   | null;
+type Tab = "encounters" | "adventures" | "scenarios";
 
 function DifficultyNote({ difficulty, setDifficulty, note, setNote, accent }: {
   difficulty: string;
@@ -72,7 +75,8 @@ export function NewGameModal({ onClose, onStarted }: {
   const [opts, setOpts] = useState<SetupOptions | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [pick, setPick] = useState<Pick>(null);
-  const [tab, setTab] = useState<"encounters" | "adventures">("encounters");
+  const [tab, setTab] = useState<Tab>("encounters");
+  const [everquest, setEverquest] = useState(false);
   const [difficulty, setDifficulty] = useState("standard");
   const [note, setNote] = useState("");
   // Update 17 §D17-3: play the adventure inside a RUN (auto-saved at every
@@ -95,12 +99,18 @@ export function NewGameModal({ onClose, onStarted }: {
 
   // Switching tabs re-anchors the selection to that tab's first card (or its
   // generate row) so the Start button always reflects what's on screen.
-  const switchTab = (t: "encounters" | "adventures") => {
+  const switchTab = (t: Tab) => {
     setTab(t);
     if (t === "encounters") {
       setPick({ kind: "encounter", id: opts?.encounters[0]?.id ?? GENERATE_ENC });
-    } else {
+    } else if (t === "adventures") {
       setPick({ kind: "adventure", id: opts?.adventures[0]?.id ?? GENERATE_ADV });
+    } else if (opts?.scenarios[0]) {
+      setPick({ kind: "scenario", id: opts.scenarios[0].id });
+    } else if (opts?.towns[0]) {
+      setPick({ kind: "town", id: opts.towns[0].id });
+    } else {
+      setPick(null);
     }
   };
 
@@ -112,6 +122,19 @@ export function NewGameModal({ onClose, onStarted }: {
     setBusy(true);
     setErr(null);
     try {
+      if (pick.kind === "scenario" || pick.kind === "town") {
+        // Scenario Mode (Update 17 §D17-7): always a run.
+        setStatus(pick.kind === "town"
+          ? "Writing the arc for this town… (a short model call)"
+          : "Entering town…");
+        const run: RunOptions = { difficulty: difficulty as RunOptions["difficulty"], hardcore, everquest };
+        onStarted(await createGame(picked, {
+          scenarioId: pick.kind === "scenario" ? pick.id : undefined,
+          townId: pick.kind === "town" ? pick.id : undefined,
+          run, note,
+        }));
+        return;
+      }
       if (pick.kind === "adventure") {
         let adventureId = pick.id;
         if (adventureId === GENERATE_ADV) {
@@ -143,6 +166,8 @@ export function NewGameModal({ onClose, onStarted }: {
 
   const encPicked = pick?.kind === "encounter" ? pick.id : "";
   const advPicked = pick?.kind === "adventure" ? pick.id : "";
+  const scPicked = pick?.kind === "scenario" ? pick.id : "";
+  const townPicked = pick?.kind === "town" ? pick.id : "";
   const generating = encPicked === GENERATE_ENC || advPicked === GENERATE_ADV;
 
   return (
@@ -226,7 +251,7 @@ export function NewGameModal({ onClose, onStarted }: {
                   full-width title cards (Options-list typography, no truncation) */}
               <section className="flex min-h-0 flex-col">
                 <div className="mb-2 flex items-center gap-4">
-                  {(["encounters", "adventures"] as const).map((t) => (
+                  {(["encounters", "adventures", "scenarios"] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => switchTab(t)}
@@ -236,13 +261,66 @@ export function NewGameModal({ onClose, onStarted }: {
                           : "border-b border-transparent text-mist hover:text-parch"
                       }`}
                     >
-                      {t === "encounters" ? "Encounter" : "Adventure"}
+                      {t === "encounters" ? "Encounter" : t === "adventures" ? "Adventure" : "Scenario"}
                     </button>
                   ))}
                 </div>
 
                 <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
-                  <label
+                  {tab === "scenarios" && (
+                    <>
+                      {opts.scenarios.map((sc) => (
+                        <label
+                          key={sc.id}
+                          className={`flex cursor-pointer flex-col gap-1 border p-3 transition ${
+                            scPicked === sc.id ? "border-brass bg-brass/10" : "border-line bg-white/[0.02] hover:border-line2"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input type="radio" name="target" className="accent-[#c9b37e]"
+                                   checked={scPicked === sc.id}
+                                   onChange={() => setPick({ kind: "scenario", id: sc.id })} />
+                            <span className="caps-label text-[11px] tracking-[0.1em] text-parch">{sc.title}</span>
+                            <DifficultyTag difficulty={sc.difficulty} />
+                            <span className="caps-label ml-auto shrink-0 text-[9px] tracking-[0.1em] text-brass">{sc.town_name}</span>
+                          </div>
+                          <div className="pl-6 text-xs font-light italic text-mist">{sc.villain}</div>
+                          <div className="flex flex-col gap-0.5 pl-6">
+                            {sc.act_titles.map((n, i) => (
+                              <span key={i} className="text-[11px] font-light text-dimmed">{["I", "II", "III"][i] ?? i + 1}. {n}</span>
+                            ))}
+                          </div>
+                        </label>
+                      ))}
+                      {opts.towns.map((t) => (
+                        <label
+                          key={t.id}
+                          className={`flex cursor-pointer flex-col gap-1 border p-3 transition ${
+                            townPicked === t.id ? "border-aether/70 bg-aether/10" : "border-line bg-white/[0.02] hover:border-line2"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input type="radio" name="target" className="accent-[#b39ddb]"
+                                   checked={townPicked === t.id}
+                                   onChange={() => setPick({ kind: "town", id: t.id })} />
+                            <span className="caps-label text-[11px] tracking-[0.1em] text-parch">{t.name} — new scenario</span>
+                            <span className="caps-label ml-auto shrink-0 text-[9px] tracking-[0.1em] text-aether">Town + New</span>
+                          </div>
+                          <div className="pl-6 text-xs font-light text-mist">{t.region_flavor}</div>
+                          {townPicked === t.id && (
+                            <DifficultyNote difficulty={difficulty} setDifficulty={setDifficulty}
+                                            note={note} setNote={setNote} accent="aether" />
+                          )}
+                        </label>
+                      ))}
+                      {opts.scenarios.length === 0 && opts.towns.length === 0 && (
+                        <div className="px-1 py-2 text-xs font-light text-dimmed">
+                          No towns yet — generate one in Options → Towns, then a scenario in Options → Scenarios (or start Town + New here).
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {tab !== "scenarios" && <label
                     className={`flex cursor-pointer flex-col gap-2 border p-3 transition ${
                       (tab === "encounters" ? encPicked === GENERATE_ENC : advPicked === GENERATE_ADV)
                         ? "border-aether/70 bg-aether/10"
@@ -267,7 +345,7 @@ export function NewGameModal({ onClose, onStarted }: {
                       <DifficultyNote difficulty={difficulty} setDifficulty={setDifficulty}
                                       note={note} setNote={setNote} accent="aether" />
                     )}
-                  </label>
+                  </label>}
 
                   {tab === "encounters" && opts.encounters.map((e) => (
                     <label
@@ -339,8 +417,9 @@ export function NewGameModal({ onClose, onStarted }: {
                     </div>
                   )}
                 </div>
-                {tab === "adventures" && (
+                {(tab === "adventures" || tab === "scenarios") && (
                   <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-line pt-2">
+                    {tab === "adventures" && (
                     <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
                       <input
                         type="checkbox"
@@ -351,7 +430,30 @@ export function NewGameModal({ onClose, onStarted }: {
                       <span className="caps-label text-[10px] tracking-[0.16em] text-parch">Save as a run</span>
                       <span className="text-dimmed">— auto-saves at every phase; resume or fork from Load Game</span>
                     </label>
-                    {asRun && (
+                    )}
+                    {tab === "scenarios" && (
+                      <>
+                        <span className="caps-label text-[10px] tracking-[0.16em] text-mist">Difficulty</span>
+                        {DIFFICULTIES.map((d) => (
+                          <button
+                            key={d}
+                            onClick={() => setDifficulty(d)}
+                            className={`caps-label border px-2 py-0.5 text-[9px] tracking-[0.14em] transition ${
+                              difficulty === d ? "border-brass text-brass" : "border-line text-mist hover:text-parch"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
+                          <input type="checkbox" className="accent-[#c9b37e]" checked={everquest}
+                                 onChange={(e) => setEverquest(e.target.checked)} />
+                          <span className="caps-label text-[10px] tracking-[0.16em] text-parch">Everquest</span>
+                          <span className="text-dimmed">— a new arc when the last completes</span>
+                        </label>
+                      </>
+                    )}
+                    {(asRun || tab === "scenarios") && (
                       <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
                         <input
                           type="checkbox"

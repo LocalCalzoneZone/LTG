@@ -28,6 +28,7 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   onLoadGame?: () => void;
 }) {
   const snapshot = useGame((s) => s.snapshot);
+  const town = useGame((s) => s.town);
   const sessionId = useGame((s) => s.sessionId);
   const seats = useGame((s) => s.seats);
   const you = useGame((s) => s.you);
@@ -164,7 +165,16 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
           className="caps-label text-[10px] tracking-[0.18em] text-mist"
           title={`${snapshot.adventure.name} — ${snapshot.adventure.phase_name}`}
         >
+          {snapshot.scenario ? `Act ${roman(snapshot.scenario.act_number)} · ` : ""}
           Phase {roman(snapshot.adventure.phase)} / {roman(snapshot.adventure.phases_total)}
+        </span>
+      )}
+      {town && (
+        <span
+          className="caps-label text-[10px] tracking-[0.18em] text-mist"
+          title={`${town.scenario.title} — ${town.scenario.act_title}`}
+        >
+          {town.town.name} · Act {roman(town.scenario.act_number)} / {roman(town.scenario.acts_total)}
         </span>
       )}
 
