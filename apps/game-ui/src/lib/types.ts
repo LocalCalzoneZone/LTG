@@ -342,13 +342,16 @@ export interface Priority {
 }
 
 // ---- Adventures (Design Update 10) ----------------------------------------- //
-// The points-buy price table (server-sent; the client renders costs, never rules).
+// The points-buy price curve (server-sent; the client renders costs, never rules).
+// Update 17 §D17-2.2 (T-79): `curve[stat][n-1]` is the price of the nth purchase
+// of that stat counted from the free baseline (an hp_step is one +2 pair).
+export type PriceStat = "hp_step" | "mana" | "card" | "power";
 export interface BuildPrices {
-  hp_step: number; // per +2 HP
-  mana: number; // per +1 capacity slot
-  card: number; // per +1 starting card
-  power: number; // per +1 bought Power
+  curve: Record<PriceStat, number[]>;
+  baseline: { hp: number; mana: number; cards: number };
   power_cap_per_level: number; // bought Power ≤ this × level (T-60)
+  level_thresholds: number[]; // T-78: cumulative points to reach index-level
+  max_level: number;
 }
 
 // A character's points-buy build as the level-up screen edits it.
@@ -374,6 +377,9 @@ export interface LevelUpRow {
   locked?: number; // the entering build's spend
   banked?: number; // carried remainder
   available?: number; // banked + the 30 grant (0 extra once confirmed)
+  earned_points?: number; // cumulative grants incl. this boundary's (T-78)
+  next_level?: number; // the level those points derive to
+  points_to_next_level?: number | null; // null at max level
 }
 
 export interface LevelUpBlock {
@@ -446,6 +452,11 @@ export interface CharacterOption {
   portrait: string; // data URL / image URL, "" if none
   card_count: number;
   deletable: boolean; // true for imported loadouts; false for bundled examples
+  // Build spend on the T-79 curve (Update 17 §D17-2.2). `points_over` > 0 flags
+  // a loadout that over-spends its budget — advisory, like deck status.
+  points_spent?: number;
+  points_budget?: number;
+  points_over?: number;
 }
 export interface EncounterOption {
   id: string;

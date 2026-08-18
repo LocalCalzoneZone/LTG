@@ -234,11 +234,12 @@ def test_level_up_keyword_is_creation_only():
 
 def test_level_up_power_cap_scales_with_level():
     old = _fresh_char()
-    # Level 2 allows +4 bought (T-60): +3 more over the entering +1 = 30 pts.
-    new, spent = validate_level_up(old, {"power_bought": 4}, 2, 30)
-    assert spent == 30 and new["power_bought"] == 4
+    # Level 2 allows +4 bought (T-60): +3 more over the entering +1 — on the
+    # T-79 curve the 2nd/3rd/4th Power purchases cost 10+15+20 = 45 pts.
+    new, spent = validate_level_up(old, {"power_bought": 4}, 2, 45)
+    assert spent == 45 and new["power_bought"] == 4
     with pytest.raises(ValueError, match="Power cap"):
-        validate_level_up(old, {"power_bought": 5}, 2, 60)
+        validate_level_up(old, {"power_bought": 5}, 2, 90)
 
 
 def test_level_up_budget_is_the_available_pool():
@@ -253,14 +254,21 @@ def test_level_up_budget_is_the_available_pool():
 
 
 def test_leveled_build_passes_schema_validation():
-    """A level-3 build spending 70+60 validates (T-57 budget, T-60 cap)."""
+    """A level-3 build spending 70+60 validates (T-57 budget, T-60 cap). On the
+    T-79 curve: 6 HP pairs 5+5+5+5+6+6 = 32, +2 mana 15+15 = 30, +2 cards 30,
+    +4 Power 10+10+15+20 = 55 → 147 against a 130 budget: ADVISORY over by 17
+    (Update 17 §D17-2.2), never a validation error."""
     c = Character.model_validate({
         **_fresh_char(), "level": 3,
         "hp": 20, "starting_cards": 3, "power_bought": 4,
         "starting_mana": ["U", "B", "U"],
     })
-    assert c.points_budget == 130
-    assert c.points_spent == 130
+    assert c.points_budget == 130          # 70 + the 60 a level-3 build has earned (T-78)
+    assert c.points_spent == 147
+    assert c.points_over == 17
+    # Recorded earnings raise the budget (a run copy mid-adventure 3, still L5).
+    c2 = Character.model_validate({**_fresh_char(), "level": 5, "earned_points": 180})
+    assert c2.points_budget == 250
 
 
 # --------------------------------------------------------------------------- #

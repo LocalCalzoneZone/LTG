@@ -189,6 +189,14 @@ export function NewGameModal({ onClose, onStarted }: {
                             </div>
                           )}
                         </div>
+                        {(c.points_over ?? 0) > 0 && (
+                          <span
+                            className="caps-label absolute left-1 top-1 border border-blood/70 bg-ink-0/85 px-1.5 py-0.5 text-[9px] tracking-[0.14em] text-blood"
+                            title={`This build spends ${c.points_spent} points against a ${c.points_budget}-point budget on the escalating price curve — trim it in the Deckbuilder (advisory; play is not blocked).`}
+                          >
+                            Over by {c.points_over}
+                          </span>
+                        )}
                         <div className="flex items-center justify-between gap-1 bg-gradient-to-t from-ink-0/95 to-ink-0/60 p-2">
                           <span className="caps-label truncate text-[11px] tracking-[0.1em] text-parch">
                             {c.name}

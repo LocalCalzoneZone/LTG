@@ -246,6 +246,11 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="text-xs font-light text-mist">
                   {c.card_count} cards
+                  {(c.points_over ?? 0) > 0 && (
+                    <span className="ml-2 text-blood" title="Over-spends its points budget on the escalating price curve — advisory; trim in the Deckbuilder.">
+                      · over budget by {c.points_over}
+                    </span>
+                  )}
                 </div>
                 {c.description && (
                   <div className="line-clamp-2 text-[11px] font-light text-dimmed">{c.description}</div>

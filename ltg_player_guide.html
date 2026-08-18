@@ -686,9 +686,11 @@ command or sacrifice them. Allies die; characters are only incapacitated.</p>
 <!-- ================================================================ -->
 <h2 id="character"><span class="num">XV</span>Building a Character</h2>
 
-<p>A character is a <b>70-point build</b>. There are no classes — the four archetypes
-below are just well-tuned example spends. Everyone starts from the same free
-baseline and buys upward:</p>
+<p>A character is a <b>70-point build</b>. There are no classes and no presets — the
+four archetype names below are just well-tuned example spends. Everyone starts from
+the same free baseline and buys upward, and <b>each purchase of a stat costs more
+than the last</b> (the escalating price curve): the first two steps are cheap, the
+fifth is dear.</p>
 
 <div class="panel">
   <p class="ptitle">Free baseline</p>
@@ -698,13 +700,16 @@ baseline and buys upward:</p>
 </div>
 
 <div class="tbl-scroll"><table>
-  <tr><th>Purchase</th><th style="width:110px">Cost</th><th>Notes</th></tr>
-  <tr><td class="phase">+2 HP</td><td>5 pts</td><td>bought two at a time</td></tr>
-  <tr><td class="phase">+1 mana capacity</td><td>15 pts</td><td>your turn-1 mana; the curve-up builds on it</td></tr>
-  <tr><td class="phase">+1 starting card</td><td>15 pts</td><td>opening-hand size</td></tr>
-  <tr><td class="phase">+1 Power</td><td>10 pts</td><td>max +2 bought at creation (melee caps at 4, ranged at 3); the cap grows with adventure levels (§XVII)</td></tr>
-  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 20 · vigilance 20 · flying 25</td></tr>
+  <tr><th>Purchase</th><th style="width:230px">Cost — 1st · 2nd · 3rd · 4th · 5th · then</th><th>Notes</th></tr>
+  <tr><td class="phase">+2 HP</td><td>5 · 5 · 5 · 5 · 6 · 6, 7, 7, 8, 8…</td><td>bought two at a time; +1 per two pairs after the fifth</td></tr>
+  <tr><td class="phase">+1 mana capacity</td><td>15 · 15 · 20 · 25 · 30 · +5 each</td><td>your turn-1 mana; the curve-up builds on it</td></tr>
+  <tr><td class="phase">+1 starting card</td><td>15 · 15 · 20 · 25 · 30 · +5 each</td><td>opening-hand size</td></tr>
+  <tr><td class="phase">+1 Power</td><td>10 · 10 · 15 · 20 · 25 · +5 each</td><td>max +2 bought at creation (melee caps at 4, ranged at 3); the cap grows with your level (§XVII)</td></tr>
+  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts, flat</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 20 · vigilance 20 · flying 25</td></tr>
 </table></div>
+<p class="muted">The counter never resets: the level-up screen prices your sixth HP pair as
+the sixth, however many adventures ago you bought the first five. Loadouts saved before
+the curve are still playable — the picker only flags how far over budget they sit.</p>
 
 <p><b>Guardrails:</b> HP ≥ 8, mana ≥ 1, cards ≥ 1, one attack mode, at most one
 keyword — for the character's whole life, level-ups included. Protection, hexproof,
@@ -718,13 +723,13 @@ Buying offence buys your guard. And every character picks a <b>colour identity</
 <span class="mana mg"></span>G), which bounds both your mana colours and your deck —
 permanently: not even a level-up changes your colours.</p>
 
-<h3>The four reference builds</h3>
+<h3>Four worked examples <small>(descriptive names, not presets — every one is ≤ 70 on the curve)</small></h3>
 <div class="tbl-scroll"><table>
-  <tr><th></th><th>HP</th><th>Mana</th><th>Cards</th><th>Attack</th><th>Mitigate</th><th>Plays like</th></tr>
-  <tr><td class="phase">Fighter</td><td>20</td><td>2</td><td>2</td><td>Melee 3</td><td>2</td><td>the wall — swings, guards, holds the front</td></tr>
-  <tr><td class="phase">Tactician</td><td>12</td><td>2</td><td>4</td><td>Ranged 1 / Melee 2</td><td>1</td><td>the widest hand — answers for everything</td></tr>
-  <tr><td class="phase">Caster</td><td>8</td><td>3</td><td>3</td><td>Ranged 2 / Melee 1</td><td>1</td><td>glass cannon — big turns, thin skin</td></tr>
-  <tr><td class="phase">Channeler</td><td>12</td><td>4</td><td>2</td><td>Ranged 1 / Melee 2</td><td>1</td><td>the engine — holds rituals the enemy must break</td></tr>
+  <tr><th></th><th>HP</th><th>Mana</th><th>Cards</th><th>Attack</th><th>Mitigate</th><th>Points</th><th>Plays like</th></tr>
+  <tr><td class="phase">Fighter</td><td>18</td><td>2</td><td>2</td><td>Melee 3</td><td>2</td><td>66</td><td>the wall — swings, guards, holds the front</td></tr>
+  <tr><td class="phase">Tactician</td><td>10</td><td>2</td><td>4</td><td>Ranged 1</td><td>1</td><td>70</td><td>the widest hand — answers for everything</td></tr>
+  <tr><td class="phase">Caster</td><td>8</td><td>3</td><td>3</td><td>Ranged 2</td><td>1</td><td>70</td><td>glass cannon — big turns, thin skin</td></tr>
+  <tr><td class="phase">Channeler</td><td>10</td><td>4</td><td>2</td><td>Ranged 1</td><td>1</td><td>70</td><td>the engine — holds rituals the enemy must break</td></tr>
 </table></div>
 
 <h3>A worked example — "Rell," a duelist <small>(exactly 70 points)</small></h3>
@@ -842,7 +847,13 @@ level-up screen — your portrait beside the same points-buy panel you built the
 character with — then the next phase's narrative, then the fight.</p>
 
 <ul>
-  <li><b>+30 points</b> per level, on the same price list as creation.</li>
+  <li><b>+30 points</b> per phase, on the same escalating price curve as creation
+      (your nth purchase of a stat costs the nth price, creation purchases included).</li>
+  <li><b>Your level is earned, not counted:</b> it derives from your cumulative
+      points — 30 to reach level 2, 60 for 3, 105 for 4, 150 for 5, 210 for 6, 300
+      for 7 … 2010 for 20. A lone adventure still walks 1 → 2 → 3; in a longer
+      campaign the level-up screen appears after every phase, but the number
+      may not tick.</li>
   <li><b>Bank freely:</b> spend 25 now and you'll have 35 next time. Confirming is
       mandatory; spending is not.</li>
   <li><b>No take-backs:</b> everything bought at creation or a previous level is
@@ -851,8 +862,8 @@ character with — then the next phase's narrative, then the fight.</p>
       existing identity.</li>
   <li><b>One keyword, ever</b> — though a character who took None at creation may
       finally buy theirs here.</li>
-  <li><b>The Power ceiling rises with you:</b> total bought Power ≤ 2 × your level
-      (+2 at creation, +4 at level 2, +6 at level 3).</li>
+  <li><b>The Power ceiling rises with you:</b> total bought Power ≤ 2 × your
+      (earned) level — +2 at creation, +4 at level 2, +6 at level 3.</li>
   <li><b>HP purchases heal:</b> +2 max HP is also +2 current HP — the only healing
       money can buy mid-run, at roughly 2½ points per HP.</li>
   <li><b>It's all temporary:</b> the levelled build lives and dies with this

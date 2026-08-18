@@ -26,10 +26,6 @@ from ltg_core.schema import (
     BASELINE_MANA,
     Card,
     Character,
-    COST_CARD,
-    COST_HP_STEP,
-    COST_MANA,
-    COST_POWER,
     CREATION_BUDGET,
     CREATION_KEYWORD_COST,
     KEYWORDS,
@@ -37,12 +33,13 @@ from ltg_core.schema import (
     MAX_KEYWORDS,
     MAX_POWER_BOUGHT,
     MODE_VALUES,
-    PRESETS,
+    PRICE_STATS,
     REF_VALUES,
     Row,
     SIDE_VALUES,
     deck_status,
     effect_specs,
+    price_list,
 )
 from ltg_core.lints import lint_card
 from ltg_core.translation import render_effects
@@ -214,15 +211,10 @@ class CharacterPriceBody(BaseModel):
 
 @app.get("/api/character-model")
 def api_character_model() -> dict:
-    """The points-buy character-creation model (Design Update 05, §P-1..P-4): the
-    single source of truth for the Deckbuilder's build UI — budget, flat costs,
-    keyword costs/bans, guardrails, and the four archetypes as loadable presets."""
-    presets = {}
-    for a, p in PRESETS.items():
-        presets[a.value] = {
-            "hp": p["hp"], "mana": p["mana"], "cards": p["cards"],
-            "power_bought": p["power"], "attack_mode": p["mode"].value,
-        }
+    """The points-buy character-creation model (Design Update 05 §P-1..P-4,
+    Update 17 §D17-2.2): the single source of truth for the Deckbuilder's build
+    UI — budget, the escalating price curve, keyword costs/bans, guardrails.
+    There are no presets: the points-buy is the only creation path."""
     keywords = {
         kw: {"cost": cost, "display": KEYWORDS.get(kw, {}).get("display", kw),
              "gloss": KEYWORDS.get(kw, {}).get("gloss", "")}
@@ -232,12 +224,13 @@ def api_character_model() -> dict:
         "budget": CREATION_BUDGET,
         "baseline": {"hp": BASELINE_HP, "mana": BASELINE_MANA, "cards": BASELINE_CARDS},
         "base_power": {m.value: p for m, p in BASE_POWER.items()},
-        "costs": {"hp_step": COST_HP_STEP, "mana": COST_MANA,
-                  "card": COST_CARD, "power": COST_POWER},
+        # T-79: curve[stat][n-1] is the price of the nth purchase counted from
+        # baseline (an hp_step is one +2 pair). The list is long enough that a
+        # client never runs off its end at any plausible spend.
+        "curve": {stat: price_list(stat) for stat in PRICE_STATS},
         "caps": {"power_bought": MAX_POWER_BOUGHT, "keywords": MAX_KEYWORDS},
         "keywords": keywords,
         "banned_keywords": sorted(BANNED_CREATION_KEYWORDS),
-        "presets": presets,
         "modes": MODE_VALUES,
         "rows": [r.value for r in Row],
     }
@@ -260,6 +253,7 @@ def api_character_price(body: CharacterPriceBody) -> dict:
         "errors": [],
         "points_spent": char.points_spent,
         "points_remaining": char.points_remaining,
+        "points_over": char.points_over,  # advisory overage (Update 17 §D17-2.2)
         "stat_block": char.stat_block,
     }
 

@@ -192,7 +192,12 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
             "meta": {
                 "id": cid,
                 "name": char.name,
-                "archetype": char.preset or "Custom",  # display label; presets or a custom build
+                "archetype": "Custom",  # retired label (presets removed, Update 17); kept for the client contract
+                # Build spend on the T-79 curve — advisory (Update 17 §D17-2.2):
+                # an over-spent loadout is flagged, never rejected.
+                "points_spent": char.points_spent,
+                "points_budget": char.points_budget,
+                "points_over": char.points_over,
                 "colors": [c.value for c in char.colors],
                 "identity": [c.value for c in char.starting_mana],
                 "description": char.description,

@@ -25,7 +25,7 @@ import random
 from math import ceil
 from typing import Any, Dict, List, Optional, Tuple
 
-from ltg_core.schema import Character, LEVEL_UP_POINTS
+from ltg_core.schema import Character, LEVEL_UP_POINTS, level_for_points
 
 from ..engine import apply_action, legal_actions
 from ..scenario import compose_spec, scale_encounter, state_from_dict
@@ -498,9 +498,12 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
         for slot, lo in enumerate(loadouts):
             live_id = live_ids[slot] if slot < len(live_ids) else None
             old = dict(lo.get("character", {}))
-            new_level = i + 2
+            # Level is derived from cumulative earned points (Update 17 T-78);
+            # a lone adventure still walks 1 → 2 → 3.
+            earned = int(old.get("earned_points", 0)) + LEVEL_UP_POINTS
+            new_level = level_for_points(earned)
             available = banked.get(live_id, 0) + LEVEL_UP_POINTS
-            candidate = {**old, "level": new_level}
+            candidate = {**old, "level": new_level, "earned_points": earned}
             new_char, spent = policy.spend_level_up(candidate, available)
             try:
                 Character.model_validate(new_char)

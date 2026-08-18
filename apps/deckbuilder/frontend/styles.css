@@ -211,7 +211,8 @@ textarea { resize: vertical; }
   gap: 8px; height: 38px; padding: 0 6px 0 10px; background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--line); border-radius: 0;
 }
-.buy-label { font-size: 13px; color: var(--text); }
+.buy-label { font-size: 13px; color: var(--text); display: flex; flex-direction: column; line-height: 1.15; }
+.buy-price { font-size: 10px; color: var(--muted, #98a0ae); letter-spacing: 0.04em; }
 .buy-ctrl {
   display: flex; align-items: center; gap: 2px; background: var(--bg);
   border: 1px solid var(--line); border-radius: 0; padding: 2px;

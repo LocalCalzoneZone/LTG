@@ -5,18 +5,38 @@ const COLORS = ["W", "U", "B", "R", "G"];
 // A spell's speed derives from its timing (matches backend spell_speed).
 const SPEED_BY_TIMING = { instant: "reactive", sorcery: "active", channeled: "sustained" };
 const derivedSpeed = (timing) => SPEED_BY_TIMING[timing] || "—";
-const PRESET_ORDER = ["Fighter", "Tactician", "Caster", "Channeler"];
-// The points-buy character-creation model (Design Update 05), fetched from
-// /api/character-model: budget, flat costs, keyword costs/bans, guardrails, presets.
+// The points-buy character-creation model (Design Update 05, Update 17 §D17-2.2),
+// fetched from /api/character-model: budget, the ESCALATING price curve (T-79 —
+// curve[stat][n-1] is the price of the nth purchase counted from baseline),
+// keyword costs/bans, guardrails. There are no presets: the points-buy is the
+// only creation path.
 let CMODEL = {
   budget: 70,
   baseline: { hp: 8, mana: 1, cards: 1 },
   base_power: { melee: 2, ranged: 1 },
-  costs: { hp_step: 5, mana: 15, card: 15, power: 10 },
+  curve: {
+    hp_step: [5, 5, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10],
+    mana: [15, 15, 20, 25, 30, 35, 40, 45, 50],
+    card: [15, 15, 20, 25, 30, 35, 40, 45, 50],
+    power: [10, 10, 15, 20, 25, 30, 35, 40, 45],
+  },
   caps: { power_bought: 2, keywords: 1 },
   keywords: {},
-  presets: {},
 };
+
+// Price of the nth purchase (1-based) of a stat on the curve; past the shipped
+// list, extend by its last step.
+function nthPrice(stat, n) {
+  const list = CMODEL.curve[stat] || [0];
+  if (n <= list.length) return list[n - 1];
+  const step = list.length >= 2 ? list[list.length - 1] - list[list.length - 2] : 0;
+  return list[list.length - 1] + step * (n - list.length);
+}
+function statCost(stat, count) {
+  let sum = 0;
+  for (let n = 1; n <= count; n++) sum += nthPrice(stat, n);
+  return sum;
+}
 let ROWS = ["front", "mid", "rear"];
 
 // A fresh character is the free baseline (§P-1): 8 HP, 1 mana, 1 card, melee Power 2.
@@ -26,7 +46,7 @@ const blankLoadout = () => ({
     name: "New Character", description: "", portrait: "",
     level: 1, colors: ["U"], starting_mana: ["U"],
     hp: 8, starting_cards: 1, power_bought: 0,
-    attack_mode: "melee", keyword: null, row: "front", preset: null,
+    attack_mode: "melee", keyword: null, row: "front",
     // Heroic actions (Design Update 08 §D8-3): character-sheet cards, not deck
     // cards — once-per-encounter Skill (instant) and Ultimate (sorcery, no cost).
     skill: null, ultimate: null,
@@ -294,15 +314,23 @@ function currentPower() {
   return basePower() + (state.character.power_bought || 0);
 }
 
-// Points this build spends — mirrors the backend `creation_points` (§P-2) so the
-// budget meter and stepper gating respond instantly; the backend stays the gate.
+// Points this build spends — mirrors the backend `creation_points` (T-79 curve)
+// so the budget meter and stepper gating respond instantly; the backend stays
+// the reference.
+function boughtCounts() {
+  const ch = state.character, b = CMODEL.baseline;
+  return {
+    hp_step: (ch.hp - b.hp) / 2,
+    mana: manaCapacity() - b.mana,
+    card: ch.starting_cards - b.cards,
+    power: ch.power_bought || 0,
+  };
+}
 function pointsSpent() {
   const ch = state.character;
-  const c = CMODEL.costs, b = CMODEL.baseline;
-  let p = c.hp_step * ((ch.hp - b.hp) / 2)
-        + c.mana * (manaCapacity() - b.mana)
-        + c.card * (ch.starting_cards - b.cards)
-        + c.power * (ch.power_bought || 0);
+  const n = boughtCounts();
+  let p = statCost("hp_step", n.hp_step) + statCost("mana", n.mana)
+        + statCost("card", n.card) + statCost("power", n.power);
   if (ch.keyword) p += CMODEL.keywords[ch.keyword]?.cost || 0;
   return p;
 }
@@ -310,26 +338,10 @@ function pointsRemaining() {
   return CMODEL.budget - pointsSpent();
 }
 
-// Editing any build knob makes this a custom build (no longer a pristine preset).
+// Retired (Update 17): builds no longer carry a preset label. Kept as a no-op
+// seam so the stepper handlers read the same.
 function markCustom() {
-  state.character.preset = null;
-}
-
-// Load a named 70-point preset (§P-4b) as the current build's starting point.
-function loadPreset(name) {
-  const p = CMODEL.presets[name];
-  if (!p) return;
-  const ch = state.character;
-  ch.hp = p.hp;
-  ch.starting_cards = p.cards;
-  ch.power_bought = p.power_bought;
-  ch.attack_mode = p.attack_mode;
-  // Resize starting mana to the preset's capacity, filling from the identity.
-  ch.starting_mana.length = 0;
-  for (let i = 0; i < p.mana; i++) ch.starting_mana.push(ch.colors[0]);
-  ch.preset = name;
-  renderCharacter();
-  scheduleValidate();
+  if (state.character.preset !== undefined) delete state.character.preset;
 }
 
 // Keep every starting-mana slot within the current colour identity.
@@ -344,12 +356,18 @@ function reconcileStartingMana() {
 // One buyable track: a label and a −/+ stepper around the current total. `plus` is
 // disabled when the next step would break a cap or blow the budget; `minus` when it
 // would drop below the floor. Cost is conveyed live by the budget meter, not text.
-function buyRow(label, totalText, canMinus, canPlus, onMinus, onPlus) {
+function buyRow(label, totalText, canMinus, canPlus, onMinus, onPlus, priceText) {
   const row = document.createElement("div");
   row.className = "buy-row";
   const lab = document.createElement("span");
   lab.className = "buy-label";
   lab.textContent = label;
+  if (priceText) {
+    const price = document.createElement("small");
+    price.className = "buy-price";
+    price.textContent = priceText;
+    lab.appendChild(price);
+  }
   const ctrl = document.createElement("div");
   ctrl.className = "buy-ctrl";
   const minus = document.createElement("button");
@@ -386,19 +404,6 @@ function renderCharacter() {
     `<span class="budget-remaining">${over ? `${-remaining} over budget` : `${remaining} left`}</span></div>` +
     `<div class="budget-bar"><span style="width:${pct}%"></span></div>`;
 
-  // Preset picker (loads a full 70-point build; the active one is highlighted).
-  const presetPick = $("#preset-pick");
-  presetPick.innerHTML = "";
-  PRESET_ORDER.forEach((a) => {
-    if (!CMODEL.presets[a]) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "archetype-btn" + (ch.preset === a ? " on" : "");
-    btn.textContent = a;
-    btn.onclick = () => loadPreset(a);
-    presetPick.appendChild(btn);
-  });
-
   // Resolved stat block — what the engine will consume (§P-4c).
   $("#stat-block").innerHTML =
     `<span class="stat"><b>${ch.hp}</b> HP</span>` +
@@ -419,27 +424,32 @@ function renderCharacter() {
     attackPick.appendChild(btn);
   });
 
-  // Build steppers (§P-2 flat costs; §P-4 caps/floors).
+  // Build steppers (T-79 escalating prices — each row shows the NEXT purchase's
+  // price, which climbs as you buy; §P-4 caps/floors).
   const buy = $("#buy-pick");
   buy.innerHTML = "";
-  const cost = CMODEL.costs;
+  const n = boughtCounts();
+  const nextHp = nthPrice("hp_step", n.hp_step + 1);
+  const nextMana = nthPrice("mana", n.mana + 1);
+  const nextCard = nthPrice("card", n.card + 1);
+  const nextPower = nthPrice("power", n.power + 1);
   buy.appendChild(buyRow(
     "HP", `${ch.hp}`,
-    ch.hp > CMODEL.baseline.hp, remaining >= cost.hp_step,
-    () => stepHp(-2), () => stepHp(+2)));
+    ch.hp > CMODEL.baseline.hp, remaining >= nextHp,
+    () => stepHp(-2), () => stepHp(+2), `+2 HP · ${nextHp} pts`));
   buy.appendChild(buyRow(
     "Mana", `${manaCapacity()}`,
-    manaCapacity() > CMODEL.baseline.mana, remaining >= cost.mana,
-    () => stepMana(-1), () => stepMana(+1)));
+    manaCapacity() > CMODEL.baseline.mana, remaining >= nextMana,
+    () => stepMana(-1), () => stepMana(+1), `+1 slot · ${nextMana} pts`));
   buy.appendChild(buyRow(
     "Cards", `${ch.starting_cards}`,
-    ch.starting_cards > CMODEL.baseline.cards, remaining >= cost.card,
-    () => stepCards(-1), () => stepCards(+1)));
+    ch.starting_cards > CMODEL.baseline.cards, remaining >= nextCard,
+    () => stepCards(-1), () => stepCards(+1), `+1 card · ${nextCard} pts`));
   buy.appendChild(buyRow(
     "Power", `${currentPower()}`,
     (ch.power_bought || 0) > 0,
-    (ch.power_bought || 0) < CMODEL.caps.power_bought && remaining >= cost.power,
-    () => stepPower(-1), () => stepPower(+1)));
+    (ch.power_bought || 0) < CMODEL.caps.power_bought && remaining >= nextPower,
+    () => stepPower(-1), () => stepPower(+1), `+1 Power · ${nextPower} pts`));
 
   // Keyword — a single dropdown (you may pick at most one, §P-3). Each option shows
   // its cost; ones you can't afford are disabled. Banned keywords aren't offered.
@@ -966,14 +976,20 @@ async function loadCharacterModel() {
 function normalizeCharacter(ch) {
   if (!ch) return blankLoadout().character;
   if (ch.hp === undefined && ch.archetype) {
-    const p = CMODEL.presets[ch.archetype];
+    // Pre-Update-05 files: the retired archetypes' legacy builds (mirrors the
+    // backend's migration; the presets themselves are gone — Update 17).
+    const LEGACY = {
+      Fighter:   { hp: 25, cards: 2, power_bought: 1, attack_mode: "melee" },
+      Tactician: { hp: 15, cards: 4, power_bought: 0, attack_mode: "ranged" },
+      Caster:    { hp: 10, cards: 3, power_bought: 1, attack_mode: "ranged" },
+      Channeler: { hp: 15, cards: 2, power_bought: 0, attack_mode: "ranged" },
+    };
+    const p = LEGACY[ch.archetype];
     if (p) {
-      const LEGACY_HP = { Fighter: 25, Tactician: 15, Caster: 10, Channeler: 15 };
-      ch.hp = LEGACY_HP[ch.archetype] ?? p.hp;
+      ch.hp = p.hp;
       if (ch.starting_cards === undefined) ch.starting_cards = p.cards;
       if (ch.power_bought === undefined) ch.power_bought = p.power_bought;
       if (!ch.attack_mode) ch.attack_mode = p.attack_mode;
-      ch.preset = ch.archetype;
     }
   }
   if (ch.hp === undefined) ch.hp = 8;
@@ -981,7 +997,7 @@ function normalizeCharacter(ch) {
   if (ch.power_bought === undefined) ch.power_bought = 0;
   if (!ch.attack_mode) ch.attack_mode = "melee";
   if (ch.keyword === undefined) ch.keyword = null;
-  if (ch.preset === undefined) ch.preset = null;
+  delete ch.preset;  // retired label (Update 17)
   if (ch.skill === undefined) ch.skill = null;          // heroic actions (D8-3)
   if (ch.skill && ch.skill.timing === "instant") ch.skill.timing = "sorcery";  // legacy: skills are no longer instant
   if (ch.ultimate === undefined) ch.ultimate = null;

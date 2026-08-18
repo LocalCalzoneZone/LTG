@@ -797,7 +797,9 @@ def test_spend_plans_produce_valid_builds():
         assert 0 <= spent <= 30
         Character.model_validate(new)  # every plan yields a legal build
     hp_new, _ = make_policy("greedy", "greedy-hp").spend_level_up(dict(base), 30)
-    assert hp_new["hp"] == base["hp"] + 12  # 30 points = six +2 steps (T5-02)
+    # Soren enters with 4 HP pairs bought (16 HP); on the T-79 curve the 5th–9th
+    # pairs cost 6+6+7+7 = 26 (an 8-pt 9th won't fit) → four more pairs.
+    assert hp_new["hp"] == base["hp"] + 8
 
 
 def test_run_adventure_replicates_the_phase_boundary():

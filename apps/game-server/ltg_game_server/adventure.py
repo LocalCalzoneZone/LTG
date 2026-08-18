@@ -17,14 +17,19 @@ import random
 from typing import Any, Dict, List, Optional
 
 from ltg_core.schema import (
-    COST_CARD,
-    COST_HP_STEP,
-    COST_MANA,
-    COST_POWER,
+    BASELINE_CARDS,
+    BASELINE_HP,
+    BASELINE_MANA,
     Character,
+    LEVEL_THRESHOLDS,
     LEVEL_UP_POINTS,
+    MAX_LEVEL,
     MAX_POWER_BOUGHT,
+    PRICE_STATS,
     creation_points,
+    level_for_points,
+    points_to_next_level,
+    price_list,
 )
 from ltg_combat.state import GameState
 
@@ -37,32 +42,37 @@ POINTS_PER_LEVEL = LEVEL_UP_POINTS  # T-57
 
 
 def _points(char: Character) -> int:
-    """The build's spend against the flat price table (legacy builds included —
-    their odd baselines price consistently, only the deltas matter here)."""
+    """The build's spend on the T-79 curve (legacy builds included — their odd
+    baselines price consistently, only the deltas matter here)."""
     return creation_points(char.hp, char.mana_capacity, char.starting_cards,
                            char.power_bought, char.keyword)
 
 
 def price_table() -> Dict[str, Any]:
     """The points-buy prices, shipped to the level-up screen so the client
-    renders costs without knowing any rules."""
+    renders costs without knowing any rules. Update 17 §D17-2.2: prices are
+    the escalating T-79 curve — ``curve[stat][n-1]`` is the price of the nth
+    purchase of that stat counted from baseline (an HP step is one +2 pair)."""
     return {
-        "hp_step": COST_HP_STEP,        # per +2 HP
-        "mana": COST_MANA,              # per +1 mana capacity
-        "card": COST_CARD,              # per +1 starting card
-        "power": COST_POWER,            # per +1 bought Power
+        "curve": {stat: price_list(stat) for stat in PRICE_STATS},
+        "baseline": {"hp": BASELINE_HP, "mana": BASELINE_MANA, "cards": BASELINE_CARDS},
         "power_cap_per_level": MAX_POWER_BOUGHT,   # T-60: bought Power ≤ 2 × level
+        "level_thresholds": list(LEVEL_THRESHOLDS),  # T-78 (index = level)
+        "max_level": MAX_LEVEL,
     }
 
 
 def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
-                      new_level: int, available: int) -> "tuple[Dict[str, Any], int]":
+                      new_level: int, available: int,
+                      earned_points: Optional[int] = None) -> "tuple[Dict[str, Any], int]":
     """Validate one character's level-up (§D10-3.1) and price it.
 
     ``old_raw`` is the entering character dict (the loadout's ``character``);
     ``patch`` the client's proposed build fields (hp, starting_mana,
     starting_cards, power_bought); ``available`` the spendable points
-    (banked + the 30 grant). Returns ``(new_character_dict, points_spent)`` or
+    (banked + the 30 grant); ``new_level`` the derived level the build now
+    holds (T-78) and ``earned_points`` its cumulative grants (both written to
+    the run copy). Returns ``(new_character_dict, points_spent)`` or
     raises ValueError with a human message. Everything not in the points-buy
     (colours, attack mode, row, cards, heroics, the keyword — keywords are
     character-creation only) is locked to the old build.
@@ -111,9 +121,11 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
                "hp": hp, "starting_mana": mana,
                "starting_cards": starting_cards, "power_bought": power_bought,
                "keyword": keyword, "level": new_level}
+    if earned_points is not None:
+        new_raw["earned_points"] = int(earned_points)
     try:
-        # The schema enforces the rest: HP parity, the T-60 Power cap
-        # (2 × level), and the level budget (70 + 30/level).
+        # The schema enforces the rest: HP parity and the T-60 Power cap
+        # (2 × derived level). Spend is limited against ``available`` below.
         new = Character.model_validate(new_raw)
     except Exception as exc:
         raise ValueError(str(exc)) from exc
@@ -154,6 +166,9 @@ class AdventureRun:
         self.loadouts: List[Dict[str, Any]] = []
         self.live_ids: List[str] = []
         self.banked: Dict[str, int] = {}      # live id -> unspent points pool
+        # live id -> cumulative level-up points GRANTED (Update 17 §D17-2.1);
+        # the character's level is derived from it (T-78).
+        self.earned: Dict[str, int] = {}
         # The level-up gate (None outside a phase boundary):
         # live id -> {"confirmed": bool, "spent": int, "heal": int}
         self.level_up: Optional[Dict[str, Dict[str, Any]]] = None
@@ -176,8 +191,10 @@ class AdventureRun:
             try:
                 char = Character.model_validate(lo["character"])
                 self.banked[live_id] = max(0, char.points_remaining) if not char.legacy else 0
+                self.earned[live_id] = int(char.earned_points)
             except Exception:
                 self.banked[live_id] = 0
+                self.earned[live_id] = 0
         return state, portraits, art, eid
 
     def current_phase(self) -> Dict[str, Any]:
@@ -226,9 +243,15 @@ class AdventureRun:
             for live_id in self.live_ids
         }
 
-    def next_level(self) -> int:
-        """The level this boundary's level-up reaches (Phase I → 2, Phase II → 3)."""
-        return self.phase_index + 2
+    def next_level(self, live_id: Optional[str] = None) -> int:
+        """The level this boundary's level-up reaches, derived from cumulative
+        earned points (T-78): every phase grants 30, so a lone adventure still
+        walks 1 → 2 → 3, but a run that has earned more reads higher, and past
+        level 10 the number may not tick at all. ``live_id`` None = the party's
+        first character (all characters in one run earn in lockstep)."""
+        lid = live_id if live_id is not None else (self.live_ids[0] if self.live_ids else None)
+        earned = self.earned.get(lid, 0) if lid is not None else 0
+        return level_for_points(earned + LEVEL_UP_POINTS)
 
     def confirm_level_up(self, live_id: str, build: Dict[str, Any]) -> None:
         """Validate + apply one character's level-up; banking the remainder.
@@ -243,11 +266,14 @@ class AdventureRun:
         slot = self.live_ids.index(live_id)
         old_raw = self.loadouts[slot]["character"]
         available = self.banked.get(live_id, 0) + POINTS_PER_LEVEL
+        earned = self.earned.get(live_id, 0) + POINTS_PER_LEVEL
         new_raw, spent = validate_level_up(old_raw, build or {},
-                                           self.next_level(), available)
+                                           self.next_level(live_id), available,
+                                           earned_points=earned)
         heal = int(new_raw["hp"]) - int(old_raw.get("hp", new_raw["hp"]))
         self.loadouts[slot]["character"] = new_raw
         self.banked[live_id] = available - spent
+        self.earned[live_id] = earned
         entry.update(confirmed=True, spent=spent, heal=heal)
 
     def all_confirmed(self) -> bool:
@@ -338,6 +364,14 @@ class AdventureRun:
                     }
                     row["locked"] = spent
                     row["banked"] = self.banked.get(live_id, 0)
+                    # Progression readout (T-78): points earned so far (after this
+                    # boundary's grant once confirmed) and the distance to the
+                    # next level number.
+                    earned_now = (self.earned.get(live_id, 0)
+                                  + (0 if entry.get("confirmed") else POINTS_PER_LEVEL))
+                    row["earned_points"] = earned_now
+                    row["next_level"] = level_for_points(earned_now)
+                    row["points_to_next_level"] = points_to_next_level(earned_now)
                     row["available"] = (self.banked.get(live_id, 0)
                                         + (0 if entry.get("confirmed")
                                            else POINTS_PER_LEVEL))

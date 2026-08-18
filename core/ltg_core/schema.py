@@ -1365,32 +1365,100 @@ class Card(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# Character creation — points-buy against a budget (Design Update 05, §P-1..P-4).
+# Character creation — points-buy against a budget (Design Update 05, §P-1..P-4;
+# progression rewritten by Design Update 17 §D17-2).
 #
-# A character is no longer an archetype; it is a *build*: baseline stats plus
-# bought steps, priced against a 70-point budget. The four GDD archetypes survive
-# only as named 70-point PRESETS (§P-4b) — starting points, not a closed taxonomy.
-# The engine consumes the resolved STAT BLOCK (`stat_block`), never a class name.
+# A character is a *build*: baseline stats plus bought steps, priced against a
+# 70-point creation budget. Update 17 removes the archetype presets — the
+# points-buy is the only creation path (Fighter/Tactician/Caster/Channeler are
+# descriptive words in the docs, nothing more) — and replaces the flat price
+# table with an ESCALATING PER-STAT CURVE (T-79): the nth purchase of a stat
+# costs more than the (n-1)th, at creation and at every level-up alike. The
+# engine consumes the resolved STAT BLOCK (`stat_block`), never a class name.
 #
-# All magnitudes are playtest starting values (§P-8 Rebalance Register); the
-# mechanism is canonical. Only level-1 creation is implemented (flat costs); the
-# leveling cliff of §P-6 is [DESIGNED — NOT SCHEDULED] and deliberately absent.
+# All magnitudes are playtest starting values (Rebalance Register); the
+# mechanism is canonical.
 # --------------------------------------------------------------------------- #
 CREATION_BUDGET = 70                                    # T5-01
-# Adventure-local leveling (Design Update 10 §D10-3): +30 bankable points per
-# level-up (T-57). A level-L build may spend up to the creation budget plus every
-# grant since level 1; the Deckbuilder remains creation-only (always level 1).
+# Leveling (Update 10 §D10-3, Update 17 §D17-2.1): +30 bankable points per phase
+# level-up (T-57). Character LEVEL is derived from the cumulative points earned
+# against LEVEL_THRESHOLDS (T-78); the level-up screen still appears after every
+# phase (30 fresh points) but the level number may not tick. The Deckbuilder
+# remains creation-only (always level 1, zero earned).
 LEVEL_UP_POINTS = 30                                    # T-57
+MAX_LEVEL = 20
+# T-78: cumulative earned points needed to REACH each level (index = level;
+# levels 0 and 1 need nothing). ≈L3 after adventure 1 (60), L5 after 2 (120),
+# L6 early in adventure 4 (210), L7 after 5 (300); each level past 10 costs a
+# full adventure or more.
+LEVEL_THRESHOLDS = [0, 0, 30, 60, 105, 150, 210, 300, 390, 480, 570,
+                    690, 810, 930, 1050, 1200, 1350, 1500, 1650, 1830, 2010]
+assert len(LEVEL_THRESHOLDS) == MAX_LEVEL + 1
+
+
+def level_for_points(earned_points: int) -> int:
+    """The character level a cumulative earned-points total has reached (T-78)."""
+    pts = max(0, int(earned_points))
+    level = 1
+    for lvl in range(2, MAX_LEVEL + 1):
+        if pts >= LEVEL_THRESHOLDS[lvl]:
+            level = lvl
+        else:
+            break
+    return level
+
+
+def points_to_next_level(earned_points: int) -> Optional[int]:
+    """Points still needed for the next level, or None at MAX_LEVEL."""
+    level = level_for_points(earned_points)
+    if level >= MAX_LEVEL:
+        return None
+    return LEVEL_THRESHOLDS[level + 1] - max(0, int(earned_points))
+
+
 BASELINE_HP = 8                                         # §P-1 free base
 BASELINE_MANA = 1
 BASELINE_CARDS = 1
 # Free base Power per attack mode; melee's higher base pays for its row-restriction.
 BASE_POWER = {AttackMode.melee: 2, AttackMode.ranged: 1}  # §P-1
 
-COST_HP_STEP = 5     # per +2 HP step (HP is bought two at a time)   T5-02
-COST_MANA = 15       # per +1 mana capacity                          T5-03
-COST_CARD = 15       # per +1 starting card                          T5-04
-COST_POWER = 10      # per +1 Power above the mode's base            T5-05
+# T-79: the escalating price curve — the price of the nth purchase of each stat
+# (1-based). The listed prices are explicit; past the list, mana/cards/Power rise
+# by PRICE_TAIL_STEP per purchase and an HP pair rises by +1 every two purchases
+# (5,5,5,5,6,6,7,7,8,8,…). "hp_step" is one +2 HP pair.
+PRICE_CURVE = {
+    "hp_step": (5, 5, 5, 5),
+    "mana": (15, 15, 20, 25, 30),
+    "card": (15, 15, 20, 25, 30),
+    "power": (10, 10, 15, 20, 25),
+}
+PRICE_TAIL_STEP = 5
+PRICE_STATS = tuple(PRICE_CURVE)
+
+
+def stat_price(stat: str, n: int) -> int:
+    """Price of the nth purchase (1-based) of ``stat`` on the T-79 curve."""
+    if n < 1:
+        raise ValueError("purchase index is 1-based")
+    curve = PRICE_CURVE[stat]
+    if n <= len(curve):
+        return curve[n - 1]
+    if stat == "hp_step":
+        return 6 + (n - 5) // 2
+    return curve[-1] + PRICE_TAIL_STEP * (n - len(curve))
+
+
+def stat_cost(stat: str, count: int) -> int:
+    """Total price of the first ``count`` purchases of ``stat``."""
+    return sum(stat_price(stat, i) for i in range(1, max(0, int(count)) + 1))
+
+
+def price_list(stat: str, upto: int = 40) -> List[int]:
+    """The first ``upto`` prices of a stat — shipped to clients so they can price
+    a draft without knowing the curve's rules."""
+    return [stat_price(stat, i) for i in range(1, upto + 1)]
+
+
 # §P-4 Power cap, generalised by Update 10 (T-60): bought Power ≤ 2 × character
 # level. Creation (level 1) is the original flat +2 (melee ≤ 4, ranged ≤ 3).
 MAX_POWER_BOUGHT = 2  # per level (T5-14 / T-60)
@@ -1409,58 +1477,38 @@ BANNED_CREATION_KEYWORDS = {"protection", "hexproof", "indestructible", "deathto
 
 
 class Archetype(str, Enum):
+    """The pre-Update-17 preset names. Kept ONLY so pre-Update-05 saves (an
+    `archetype` key, no build fields) still migrate; nothing offers them."""
     Fighter = "Fighter"
     Tactician = "Tactician"
     Caster = "Caster"
     Channeler = "Channeler"
 
 
-# The four archetypes as pre-spent 70-point builds (§P-4b). Each is a *build* the
-# Deckbuilder can load, not a class the engine knows about. `mode` is the default
-# attack mode (the first profile listed); `power` is Power bought above base. HP is
-# re-baselined to the even values that preserve 70-point equality under the 8-HP base.
-PRESETS = {
-    Archetype.Fighter:   {"hp": 20, "mana": 2, "cards": 2, "power": 1, "mode": AttackMode.melee},
-    Archetype.Tactician: {"hp": 12, "mana": 2, "cards": 4, "power": 0, "mode": AttackMode.ranged},
-    Archetype.Caster:    {"hp": 8,  "mana": 3, "cards": 3, "power": 1, "mode": AttackMode.ranged},
-    Archetype.Channeler: {"hp": 12, "mana": 4, "cards": 2, "power": 0, "mode": AttackMode.ranged},
-}
-
-# Pre-Update-05 HP for the same archetypes. Only HP was re-baselined (§P-4b); hand,
-# mana, and Power are identical to the new presets. Characters saved before Update
-# 05 (an `archetype` key, no build fields) load with these legacy HP values, exempt
-# from the even-HP/budget guardrails — the odd legacy values (25/15) cannot be valid
-# new builds, and the canonical §A/§C reference traces are tuned to them. New builds
-# authored in the Deckbuilder always use the re-baselined PRESETS above.
-LEGACY_ARCHETYPE_HP = {
-    Archetype.Fighter: 25, Archetype.Tactician: 15,
-    Archetype.Caster: 10, Archetype.Channeler: 15,
+# The retired presets' builds, used only by the legacy `archetype` migration
+# below (pre-Update-05 saves). Legacy HP is the pre-Update-05 value; hand, mana,
+# and Power are the preset's. Not selectable anywhere (Update 17 §D17-2.2).
+_LEGACY_ARCHETYPE_BUILDS = {
+    Archetype.Fighter:   {"hp": 25, "cards": 2, "power": 1, "mode": AttackMode.melee},
+    Archetype.Tactician: {"hp": 15, "cards": 4, "power": 0, "mode": AttackMode.ranged},
+    Archetype.Caster:    {"hp": 10, "cards": 3, "power": 1, "mode": AttackMode.ranged},
+    Archetype.Channeler: {"hp": 15, "cards": 2, "power": 0, "mode": AttackMode.ranged},
 }
 
 
 def creation_points(hp: int, mana_capacity: int, starting_cards: int,
                     power_bought: int, keyword: Optional[str]) -> int:
-    """Points a build spends against the §P-2 flat creation table."""
+    """Points a build spends on the T-79 curve (creation and level-ups are the
+    same curve — a fresh character is its first few steps)."""
     pts = (
-        COST_HP_STEP * ((hp - BASELINE_HP) // 2)
-        + COST_MANA * (mana_capacity - BASELINE_MANA)
-        + COST_CARD * (starting_cards - BASELINE_CARDS)
-        + COST_POWER * power_bought
+        stat_cost("hp_step", (hp - BASELINE_HP) // 2)
+        + stat_cost("mana", mana_capacity - BASELINE_MANA)
+        + stat_cost("card", starting_cards - BASELINE_CARDS)
+        + stat_cost("power", power_bought)
     )
     if keyword:
         pts += CREATION_KEYWORD_COST.get(keyword, 0)
     return pts
-
-
-def preset_character(archetype: Archetype, name: str, colors, starting_mana,
-                     **extra) -> "Character":
-    """Materialise a named 70-point preset (§P-4b) into a concrete Character."""
-    p = PRESETS[Archetype(archetype)]
-    return Character(
-        name=name, colors=list(colors), starting_mana=list(starting_mana),
-        hp=p["hp"], starting_cards=p["cards"], power_bought=p["power"],
-        attack_mode=p["mode"], preset=Archetype(archetype).value, **extra,
-    )
 
 
 class FlavorEntry(BaseModel):
@@ -1558,8 +1606,12 @@ class Character(BaseModel):
     ultimate: Optional[Card] = None    # once per encounter; sorcery; zero mana cost
     ability_flavor: AbilityFlavor = Field(default_factory=AbilityFlavor)
 
-    # Display-only label: the preset this build was loaded from, or None for a
-    # custom build. The engine derives nothing from it.
+    # Cumulative level-up points GRANTED to this build (Update 17 §D17-2.1) —
+    # the run's copy of a character carries it; a saved profile is always 0.
+    # `level` is derived from it (T-78) by the run layer; the budget reads it.
+    earned_points: int = 0
+    # Retired display label (the pre-Update-17 preset a build was loaded from).
+    # Accepted on load so old loadouts round-trip; never set going forward.
     preset: Optional[str] = None
     # True for a pre-Update-05 character migrated from an `archetype` key: it keeps
     # its legacy (possibly odd) HP and is exempt from the even-HP/budget guardrails.
@@ -1577,9 +1629,9 @@ class Character(BaseModel):
         arch = data.get("archetype")
         if arch is not None and "hp" not in data:
             a = Archetype(arch)
-            p = PRESETS[a]
+            p = _LEGACY_ARCHETYPE_BUILDS[a]
             data = dict(data)
-            data["hp"] = LEGACY_ARCHETYPE_HP[a]  # only HP was re-baselined; keep legacy
+            data["hp"] = p["hp"]  # the pre-Update-05 (odd) HP, kept as-is
             data.setdefault("starting_cards", p["cards"])
             data.setdefault("power_bought", p["power"])
             data.setdefault("attack_mode", data.get("attack_mode") or p["mode"].value)
@@ -1650,24 +1702,34 @@ class Character(BaseModel):
             )
         return self
 
-    @model_validator(mode="after")
-    def _within_budget(self) -> "Character":
-        """The build may not spend more than its level's budget: the 70-point
-        creation budget (§P-1) plus 30 per level-up (Update 10 T-57 — adventure-
-        local leveling). Migrated legacy characters are exempt (their odd HP can
-        exceed it)."""
-        budget = CREATION_BUDGET + LEVEL_UP_POINTS * (self.level - 1)
-        if not self.legacy and self.points_spent > budget:
-            raise ValueError(
-                f"build spends {self.points_spent} points, over the "
-                f"{budget}-point budget for level {self.level} (§P-1/T-57)"
-            )
-        return self
+    @field_validator("earned_points")
+    @classmethod
+    def _earned_min(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("earned_points must be >= 0")
+        return v
 
     @property
     def points_budget(self) -> int:
-        """The total points available to a build of this level (T5-01 + T-57)."""
-        return CREATION_BUDGET + LEVEL_UP_POINTS * (self.level - 1)
+        """The total points available to this build: the creation budget plus
+        every level-up grant it has earned (T5-01 + T-57). A build whose
+        `earned_points` were never recorded (a level > 1 stamped by hand) is
+        credited the minimum earned total for its level (T-78).
+
+        Over-spending is ADVISORY, not a validation error (Update 17 §D17-2.2):
+        loadouts saved under the old flat table are revalidated on load and
+        flagged with their overage in the picker, never rejected. The level-up
+        gate (`validate_level_up`) is where new spending is hard-limited."""
+        floor = LEVEL_THRESHOLDS[min(max(self.level, 1), MAX_LEVEL)]
+        return CREATION_BUDGET + max(self.earned_points, floor)
+
+    @property
+    def points_over(self) -> int:
+        """How far the build over-spends its budget (0 when within it). Legacy
+        migrated characters are never counted over."""
+        if self.legacy:
+            return 0
+        return max(0, self.points_spent - self.points_budget)
 
     @model_validator(mode="after")
     def _heroics_valid(self) -> "Character":
@@ -1702,7 +1764,7 @@ class Character(BaseModel):
 
     @property
     def points_spent(self) -> int:
-        """Creation points this build spends against the §P-2 flat table."""
+        """Points this build spends on the T-79 curve."""
         return creation_points(self.hp, self.mana_capacity, self.starting_cards,
                                self.power_bought, self.keyword)
 
@@ -1787,7 +1849,13 @@ def deck_status(loadout: Loadout) -> dict:
         m.value for m in loadout.character.starting_mana if m not in identity
     ]
 
+    ch = loadout.character
     return {
+        # Build spend on the T-79 curve (Update 17 §D17-2.2) — advisory like the
+        # rest: a loadout saved under the old flat table may now over-spend;
+        # the picker shows the overage and its owner trims it here.
+        "build": {"points_spent": ch.points_spent, "budget": ch.points_budget,
+                  "over": ch.points_over},
         "size": {"count": len(cards), "minimum": DECK_MINIMUM},
         "rarity": {
             r: {"count": rarity_counts[r], "minimum": RARITY_MINIMUMS[r],

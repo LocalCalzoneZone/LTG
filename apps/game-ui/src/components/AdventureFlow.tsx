@@ -8,6 +8,7 @@ import type {
   BuildView,
   Color,
   LevelUpRow,
+  PriceStat,
 } from "../lib/types";
 import { ManaIcon } from "./Pips";
 import { IconSigil } from "./Icons";
@@ -165,12 +166,42 @@ function draftFrom(b: BuildView): Draft {
   };
 }
 
+/** Price of the nth purchase (1-based) of a stat on the T-79 curve. Past the
+ * shipped list, extend by the last step (the server's list is long enough
+ * that this is a formality). */
+function nthPrice(prices: BuildPrices, stat: PriceStat, n: number): number {
+  const list = prices.curve[stat];
+  if (n <= list.length) return list[n - 1];
+  const step = list.length >= 2 ? list[list.length - 1] - list[list.length - 2] : 0;
+  return list[list.length - 1] + step * (n - list.length);
+}
+
+/** Total price of purchases (from+1 … to) of a stat, counted from baseline. */
+function rangeCost(prices: BuildPrices, stat: PriceStat, from: number, to: number): number {
+  let sum = 0;
+  for (let n = from + 1; n <= to; n++) sum += nthPrice(prices, stat, n);
+  return sum;
+}
+
+/** Bought-count of each stat in a build (purchases since the free baseline). */
+function boughtCounts(b: { hp: number; starting_mana: unknown[]; starting_cards: number; power_bought: number },
+                      prices: BuildPrices): Record<PriceStat, number> {
+  return {
+    hp_step: (b.hp - prices.baseline.hp) / 2,
+    mana: b.starting_mana.length - prices.baseline.mana,
+    card: b.starting_cards - prices.baseline.cards,
+    power: b.power_bought,
+  };
+}
+
 function draftCost(d: Draft, base: BuildView, prices: BuildPrices): number {
+  const from = boughtCounts(base, prices);
+  const to = boughtCounts(d, prices);
   return (
-    ((d.hp - base.hp) / 2) * prices.hp_step +
-    (d.starting_mana.length - base.starting_mana.length) * prices.mana +
-    (d.starting_cards - base.starting_cards) * prices.card +
-    (d.power_bought - base.power_bought) * prices.power
+    rangeCost(prices, "hp_step", from.hp_step, to.hp_step) +
+    rangeCost(prices, "mana", from.mana, to.mana) +
+    rangeCost(prices, "card", from.card, to.card) +
+    rangeCost(prices, "power", from.power, to.power)
   );
 }
 
@@ -193,6 +224,9 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
           <span className="h-px flex-1 bg-line" />
           <span className="caps-label text-[10px] tracking-[0.2em] text-mist">
             +{lu.points_per_level} points · bankable · irreversible
+            {active?.points_to_next_level != null && active.earned_points != null && (
+              <> · {active.earned_points} earned · {active.points_to_next_level} to level {(active.next_level ?? lu.next_level) + 1}</>
+            )}
           </span>
         </div>
 
@@ -292,6 +326,12 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
   const spent = useMemo(() => draftCost(draft, base, prices), [draft, base, prices]);
   const remaining = available - spent;
   const powerCap = prices.power_cap_per_level * nextLevel;
+  // The NEXT purchase's price per stat — escalating (T-79), so it moves as you buy.
+  const bought = boughtCounts(draft, prices);
+  const nextHp = nthPrice(prices, "hp_step", bought.hp_step + 1);
+  const nextCard = nthPrice(prices, "card", bought.card + 1);
+  const nextPower = nthPrice(prices, "power", bought.power + 1);
+  const nextMana = nthPrice(prices, "mana", bought.mana + 1);
   const basePower = base.attack_mode === "melee" ? 2 : 1;
 
   const patch = (next: Partial<Draft>) => setDraft((d) => ({ ...d, ...next }));
@@ -346,8 +386,8 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         <StatRow
           name="Hit Points"
           value={String(draft.hp)}
-          cost={`+2 HP · ${prices.hp_step} pts (heals +2)`}
-          canUp={remaining >= prices.hp_step}
+          cost={`+2 HP · ${nextHp} pts (heals +2)`}
+          canUp={remaining >= nextHp}
           canDown={draft.hp - 2 >= base.hp}
           onUp={() => patch({ hp: draft.hp + 2 })}
           onDown={() => patch({ hp: draft.hp - 2 })}
@@ -356,8 +396,8 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         <StatRow
           name="Starting Cards"
           value={String(draft.starting_cards)}
-          cost={`+1 card · ${prices.card} pts`}
-          canUp={remaining >= prices.card}
+          cost={`+1 card · ${nextCard} pts`}
+          canUp={remaining >= nextCard}
           canDown={draft.starting_cards - 1 >= base.starting_cards}
           onUp={() => patch({ starting_cards: draft.starting_cards + 1 })}
           onDown={() => patch({ starting_cards: draft.starting_cards - 1 })}
@@ -366,8 +406,8 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         <StatRow
           name="Power"
           value={`${basePower + draft.power_bought}`}
-          cost={`+1 Power · ${prices.power} pts (cap +${powerCap} at level ${nextLevel})`}
-          canUp={remaining >= prices.power && draft.power_bought < powerCap}
+          cost={`+1 Power · ${nextPower} pts (cap +${powerCap} at level ${nextLevel})`}
+          canUp={remaining >= nextPower && draft.power_bought < powerCap}
           canDown={draft.power_bought - 1 >= base.power_bought}
           onUp={() => patch({ power_bought: draft.power_bought + 1 })}
           onDown={() => patch({ power_bought: draft.power_bought - 1 })}
@@ -400,7 +440,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
             <button
               onClick={() =>
                 patch({ starting_mana: [...draft.starting_mana, base.colors[0]] })}
-              disabled={remaining < prices.mana}
+              disabled={remaining < nextMana}
               className={`${SMALL_BTN} disabled:cursor-not-allowed disabled:opacity-30`}
             >
               +
@@ -416,7 +456,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
             )}
           </span>
           <span className="ml-auto text-xs font-light text-dimmed">
-            +1 slot · {prices.mana} pts · colour locks now
+            +1 slot · {nextMana} pts · colour locks now
           </span>
         </div>
 
