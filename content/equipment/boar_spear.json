@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "boar_spear",
+  "name": "Boar Spear",
+  "slot": "weapon",
+  "rarity": "rare",
+  "level_min": 2,
+  "points_price": 25,
+  "flavor": "Long enough to say hello first.",
+  "art_desc": "A cross-guarded boar spear, ash haft, leaf blade with a lug of iron beneath it.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "reach"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

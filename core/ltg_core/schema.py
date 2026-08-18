@@ -17,7 +17,7 @@ That is the whole change.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import (
     BaseModel,
@@ -1288,6 +1288,15 @@ class Card(BaseModel):
     # the default for the card's timing ("channel" for channeled, else "cast";
     # a Skill / Ultimate falls back to its own trigger type).
     animation: Optional[str] = None
+    # Update 17 §D17-4.4: set when this card IS a carried consumable — an
+    # always-in-hand, mana-free card that stacks as an ACTIVATED ABILITY and is
+    # consumed (exiled) on use. The value is the belt item's id.
+    consumable_id: Optional[str] = None
+    # Update 17 §D17-4.2: set when this card is an ability GRANTED by worn
+    # gear (the item's id) — dealt into the opening hand each encounter.
+    granted_by: Optional[str] = None
+    # Item art for consumable / granted cards (URL); "" for ordinary cards.
+    image: str = ""
 
     @model_validator(mode="after")
     def _check_targets(self) -> "Card":
@@ -1801,6 +1810,120 @@ class Loadout(BaseModel):
     ltg_version: str = "0.1"
     character: Character
     cards: List[Card] = Field(default_factory=list)
+    # Update 17 §D17-4: worn gear + belt + inventory — present ONLY on a run's
+    # copy of the character; a saved profile never carries it. Free-form here
+    # (validated by the game server's items module) so the Deckbuilder's
+    # contract is untouched.
+    gear: Optional[Dict[str, Any]] = None
+
+
+# --------------------------------------------------------------------------- #
+# Items — gear and consumables (Design Update 17 §D17-4)
+# --------------------------------------------------------------------------- #
+ItemSlot = Literal["weapon", "accessory", "consumable"]
+ItemRarity = Literal["common", "uncommon", "rare", "mythic"]
+GEAR_STATS = ("hp", "mana", "cards")
+# T-80: three gear slots (primary / secondary weapon, accessory), a belt of 3,
+# an inventory of 3 unequipped gear + 3 unequipped consumables.
+BELT_SIZE = 3
+INVENTORY_GEAR = 3
+INVENTORY_CONSUMABLES = 3
+# T-86: merchant premium on stock, sell-back fraction of points_price.
+BUY_MULT = 1.25
+SELL_MULT = 0.5
+
+
+class ItemStatic(BaseModel):
+    """One item-only static (§D17-4.2): folded into the stat block / keyword
+    list at encounter setup, exactly as a level-up would. ``ability`` grants a
+    card the wearer is dealt every encounter."""
+    kind: Literal["attack_mode", "power_bonus", "keyword", "stat", "ability"]
+    mode: Optional[AttackMode] = None            # attack_mode
+    amount: int = 0                              # power_bonus / stat
+    keyword: Optional[str] = None                # keyword (any, incl. the creation-banned)
+    stat: Optional[Literal["hp", "mana", "cards"]] = None   # stat rider
+    card: Optional[Card] = None                  # ability
+
+    @model_validator(mode="after")
+    def _shape(self) -> "ItemStatic":
+        if self.kind == "attack_mode" and self.mode is None:
+            raise ValueError("attack_mode static needs a mode")
+        if self.kind == "power_bonus" and self.amount == 0:
+            raise ValueError("power_bonus static needs a non-zero amount")
+        if self.kind == "keyword" and not self.keyword:
+            raise ValueError("keyword static needs a keyword")
+        if self.kind == "keyword" and self.keyword not in KEYWORDS:
+            raise ValueError(f"unknown keyword '{self.keyword}'")
+        if self.kind == "stat" and (self.stat is None or self.amount == 0):
+            raise ValueError("stat static needs a stat and a non-zero amount")
+        if self.kind == "ability" and self.card is None:
+            raise ValueError("ability static needs a card")
+        return self
+
+
+class ConsumableUse(BaseModel):
+    timing: Literal["instant", "sorcery"] = "instant"
+
+
+class Item(BaseModel):
+    """A gear piece or a consumable (§D17-4.2). ``points_price`` is the balance
+    handle — on the same scale as level-up points, so gold (XP-shaped) prices
+    it directly and encounter budgeting can read worn points."""
+    id: str
+    name: str
+    slot: ItemSlot
+    rarity: ItemRarity = "common"
+    level_min: int = 1
+    points_price: int = 0
+    flavor: str = ""                # ONE line
+    art_desc: str = ""
+    art_url: str = ""
+    # Gear: the item-only statics. Consumables: none.
+    statics: List[ItemStatic] = Field(default_factory=list)
+    # Consumables: the card effects (the card vocabulary verbatim) + speed.
+    effects: List[Effect] = Field(default_factory=list)
+    targets: Dict[str, TargetDescriptor] = Field(default_factory=dict)
+    consumable: Optional[ConsumableUse] = None
+    # Procedural provenance (a rolled item): the template + affix ids.
+    template: Optional[str] = None
+    affixes: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _shape(self) -> "Item":
+        if self.slot == "consumable":
+            if self.consumable is None:
+                self.consumable = ConsumableUse()
+            if self.statics:
+                raise ValueError("a consumable carries effects, not statics")
+            if not self.effects:
+                raise ValueError("a consumable needs at least one effect")
+        else:
+            if self.consumable is not None:
+                raise ValueError("gear has no consumable timing")
+            if self.effects:
+                raise ValueError("gear grants abilities through an 'ability' static, not effects")
+            if self.slot == "accessory" and any(st.kind in ("attack_mode", "power_bonus")
+                                                for st in self.statics):
+                raise ValueError("only weapons set attack mode or Power")
+        if self.points_price < 0:
+            raise ValueError("points_price must be >= 0")
+        if self.level_min < 1:
+            raise ValueError("level_min must be >= 1")
+        return self
+
+    def as_card(self, owner_prefix: str = "") -> Card:
+        """A consumable as the always-in-hand card it becomes (§D17-4.4): no
+        mana cost, its timing, the item's art and flavour, flagged with the
+        item id so the engine stacks it as an activated ability and exiles it."""
+        if self.slot != "consumable":
+            raise ValueError("only consumables become cards")
+        return Card(
+            id=f"{owner_prefix}consumable_{self.id}", name=self.name, source_name=self.name,
+            rarity=Rarity.common, level=self.level_min, type="Consumable",
+            cost=Cost(), timing=Timing(self.consumable.timing if self.consumable else "instant"),
+            flavor_text=self.flavor, effects=list(self.effects), targets=dict(self.targets),
+            validated=True, consumable_id=self.id, image=self.art_url,
+        )
 
 
 # --------------------------------------------------------------------------- #

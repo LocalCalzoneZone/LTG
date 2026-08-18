@@ -1,0 +1,55 @@
+{
+  "kind": "item",
+  "id": "pilgrims_flask",
+  "name": "Pilgrim's Flask",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 15,
+  "flavor": "Never quite empty.",
+  "art_desc": "A dented tin flask on a cord, a stamped pilgrim's shell on its face.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "ability",
+      "amount": 0,
+      "card": {
+        "id": "pilgrims_sip",
+        "name": "Pilgrim's Sip",
+        "source_name": "Pilgrim's Sip",
+        "rarity": "common",
+        "level": 1,
+        "type": "Ability",
+        "cost": {
+          "generic": 1,
+          "colors": {},
+          "x": false
+        },
+        "timing": "instant",
+        "original_text": "",
+        "translated_text": "Heal 2 to target ally.",
+        "flavor_text": "",
+        "effects": [
+          {
+            "kind": "heal",
+            "amount": 2,
+            "target": {
+              "mode": "chosen",
+              "side": "ally",
+              "exclude_self": false,
+              "targeted": false
+            }
+          }
+        ],
+        "targets": {},
+        "needs_translation": false,
+        "text_override": false,
+        "validated": true,
+        "image": ""
+      }
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

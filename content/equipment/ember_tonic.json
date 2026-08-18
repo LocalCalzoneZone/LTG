@@ -1,0 +1,32 @@
+{
+  "kind": "item",
+  "id": "ember_tonic",
+  "name": "Ember Tonic",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 10,
+  "flavor": "It burns going down. Then it burns going out.",
+  "art_desc": "A glass phial of glowing orange tonic, cork singed.",
+  "art_url": "",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "pump",
+      "power": 2,
+      "toughness": 2,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

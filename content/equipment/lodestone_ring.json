@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "lodestone_ring",
+  "name": "Lodestone Ring",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 15,
+  "flavor": "It pulls a little more of the world toward you.",
+  "art_desc": "A dull grey ring of lodestone set in tarnished silver, faintly warm.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 1,
+      "stat": "mana"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

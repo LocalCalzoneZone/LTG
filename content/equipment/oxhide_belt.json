@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "oxhide_belt",
+  "name": "Oxhide Belt",
+  "slot": "accessory",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 10,
+  "flavor": "Tight enough to hold you together.",
+  "art_desc": "A broad belt of thick oxhide with an iron buckle, stitched with heavy cord.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 4,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

@@ -201,6 +201,8 @@ def progression_label(adventure_name: str, kind: str, phase_index: int,
             return f"{head} · Adventure, Phase 1"
         if kind == "adventure_end":
             return f"{head} · Adventure complete"
+        if kind == "rewards":
+            return f"{head} · Adventure — spoils taken"
         nxt = min(phase_index + 2, phases_total)
         return f"{head} · Adventure, Phase {nxt}"
     if kind == "adventure_start":

@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "siege_bow",
+  "name": "Siege Bow",
+  "slot": "weapon",
+  "rarity": "rare",
+  "level_min": 2,
+  "points_price": 30,
+  "flavor": "It does not care what stands in front.",
+  "art_desc": "A great recurved bow of horn and sinew, arrows thick as thumbs with barbed heads.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "trample"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

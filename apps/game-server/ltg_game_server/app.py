@@ -669,6 +669,70 @@ def town_art_queue_status(town_id: str) -> Dict[str, Any]:
     return art.QUEUE.status(f"town:{town_id}")
 
 
+# --------------------------------------------------------------------------- #
+# REST: equipment (Update 17 §D17-4.3 — Options → Equipment)
+# --------------------------------------------------------------------------- #
+class SaveItemBody(BaseModel):
+    id: Optional[str] = None
+    item: Dict[str, Any]
+
+
+@app.get("/api/items")
+def list_items() -> Dict[str, Any]:
+    from . import items as _items
+    return {"items": _items.list_items()}
+
+
+@app.get("/api/items/{item_id}")
+def get_item(item_id: str) -> Dict[str, Any]:
+    from . import items as _items
+    d = _items.item_detail(item_id)
+    if d is None:
+        raise HTTPException(404, "no such item")
+    return d
+
+
+@app.post("/api/items")
+def save_item(body: SaveItemBody) -> Dict[str, Any]:
+    from . import items as _items
+    try:
+        return {"item": _items.save_item(body.item, body.id)}
+    except Exception as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.delete("/api/items/{item_id}")
+def delete_item(item_id: str) -> Dict[str, Any]:
+    from . import items as _items
+    try:
+        _items.delete_item(item_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/items/{item_id}/art")
+async def generate_item_art(item_id: str) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(art.generate_item_art, item_id)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+
+
+async def _refresh_nothing(_key: str) -> None:
+    return None
+
+
+@app.post("/api/items/art/all")
+async def start_item_art_queue() -> Dict[str, Any]:
+    return art.QUEUE.start_items("items", art.item_art_items(), _refresh_nothing)
+
+
+@app.get("/api/items/art/all")
+def item_art_queue_status() -> Dict[str, Any]:
+    return art.QUEUE.status("items")
+
+
 @app.get("/api/scenarios")
 def list_scenarios() -> Dict[str, Any]:
     return {"scenarios": scenario_content.list_scenarios()}
@@ -823,8 +887,13 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                 # leave / talk / choose / attribute / start_adventure / save.
                 async with session.lock():
                     try:
-                        session.town_verb(client_id, str(msg.get("verb") or ""),
-                                          msg.get("payload") or {})
+                        verb = str(msg.get("verb") or "")
+                        if session.scenario is not None and session.state is not None:
+                            # In a fight: only the economy verbs (gear at the
+                            # gate, the rewards modal) apply.
+                            session.economy_verb(client_id, verb, msg.get("payload") or {})
+                        else:
+                            session.town_verb(client_id, verb, msg.get("payload") or {})
                     except ValueError as exc:
                         await _send(ws, {"type": "error", "message": str(exc)})
                         continue

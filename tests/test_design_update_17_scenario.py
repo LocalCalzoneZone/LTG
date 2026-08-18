@@ -98,6 +98,16 @@ def _win_adventure(session):
     session._run_hooks()
 
 
+def _take_rewards(session, client="c1"):
+    """The Rewards modal after Phase III (§D17-4.5): discard everything, accept."""
+    scen = session.scenario
+    if scen.rewards is None:
+        return
+    for i in range(len(scen.rewards["items"])):
+        session.economy_verb(client, "reward_assign", {"index": i, "target": "discard"})
+    session.economy_verb(client, "reward_accept", {})
+
+
 def _accept_quest(session, client="c1"):
     scen = session.scenario
     outline = scen.outline
@@ -155,6 +165,8 @@ def test_start_adventure_win_and_return_to_next_act(runs):
     assert session.snapshot_for("c1")["mode"] == "adventure"
     assert set(session.seats) == set(session.adventure.live_ids)   # seats remapped
     _win_adventure(session)
+    assert scen.rewards is not None                                # the spoils first
+    _take_rewards(session)
     # Back in town, Act II, materialized inline by the driver; the act saved.
     assert scen.mode == "town" and scen.act_index == 1 and session.state is None
     assert scen.flags["act_1_complete"] and scen.quest["title"] == "Quest 2"
@@ -165,7 +177,7 @@ def test_start_adventure_win_and_return_to_next_act(runs):
     assert sheet[0]["level"] == 3 and sheet[0]["gold"] == 60 and sheet[0]["earned_points"] == 60
     kinds = [s["kind"] for s in runs.run_detail(run_id)["saves"]]
     assert kinds == ["act_start", "quest_accept", "adventure_start", "phase_boundary",
-                     "phase_boundary", "adventure_end", "act_start"]
+                     "phase_boundary", "adventure_end", "rewards", "act_start"]
     labels = [s["label"] for s in runs.run_detail(run_id)["saves"]]
     assert labels[2] == "Hollowmere · Scenario 1 · Act I · Adventure, Phase 1"
     assert labels[-1] == "Hollowmere · Scenario 1 · Act II · Town — arrival"
@@ -235,6 +247,7 @@ def test_standard_ends_after_act_three_and_everquest_rolls_a_new_arc(runs):
             session.town_verb("c1", "leave", {})
             session.town_verb("c1", "start_adventure", {})
             _win_adventure(session)
+            _take_rewards(session)
         if everquest:
             assert scen.mode == "town" and scen.scenario_number == 2 and scen.act_index == 0
             assert scen.arc["title"] == "The Second Siege"

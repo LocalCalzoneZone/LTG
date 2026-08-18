@@ -1,0 +1,30 @@
+{
+  "kind": "item",
+  "id": "marsh_draught",
+  "name": "Marsh Draught",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 10,
+  "flavor": "Bitter, brown, and it works.",
+  "art_desc": "A squat clay bottle stoppered with wax, dark liquid inside.",
+  "art_url": "",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "heal",
+      "amount": 5,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "sorcery"
+  },
+  "affixes": []
+}

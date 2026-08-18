@@ -317,11 +317,20 @@ class AdventureRun:
             # stand back up at the floor; the barely-alive are lifted to it.
             floor = -(-c.max_hp * HP_FLOOR_PCT // 100)  # ceil(25% of max)
             c.hp = min(c.max_hp, max(cy["hp"] + heals.get(c.id, 0), floor))
+            # Belt consumables and granted cards (Update 17): the freshly
+            # composed hand dealt them above the draw; keep the ones not yet
+            # used (a used consumable sits in exile with its item id) and put
+            # them back above the reshuffled hand.
+            used = {k.consumable_id for k in cy["exile"] if getattr(k, "consumable_id", None)}
+            extras = [k for k in c.hand
+                      if (getattr(k, "consumable_id", None) and k.consumable_id not in used)
+                      or getattr(k, "granted_by", None)]
             # Shuffle up completely — hand, library, graveyard as one pool —
             # and draw a fresh hand of starting-cards. Exile is forever.
-            cards = list(cy["cards"])
+            cards = [k for k in cy["cards"]
+                     if not getattr(k, "consumable_id", None) and not getattr(k, "granted_by", None)]
             rng.shuffle(cards)
-            c.hand = cards[:c.hand_size]
+            c.hand = extras + cards[:c.hand_size]
             c.library = cards[c.hand_size:]
             c.graveyard = []
             c.exile = list(cy["exile"])

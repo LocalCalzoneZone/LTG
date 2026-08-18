@@ -1,0 +1,30 @@
+{
+  "kind": "item",
+  "id": "quick_salve",
+  "name": "Quick Salve",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 8,
+  "flavor": "Slap it on and keep moving.",
+  "art_desc": "A small tin of green salve, lid half open.",
+  "art_url": "",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "heal",
+      "amount": 3,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

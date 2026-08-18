@@ -1,0 +1,26 @@
+{
+  "kind": "item",
+  "id": "hunters_crossbow",
+  "name": "Hunter's Crossbow",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 15,
+  "flavor": "Wind it. Wait. Do not breathe.",
+  "art_desc": "A stout crossbow of black walnut and horn, iron stirrup, bolts bundled with red thread.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

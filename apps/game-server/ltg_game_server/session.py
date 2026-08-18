@@ -90,6 +90,7 @@ class Session:
         # The last scenario transition ("next_act" / "scenario_complete" /
         # "everquest" / "town" / "dead") — informational, for the app + tests.
         self.pending_transition: Optional[str] = None
+        self._rewards_done = False
         self.state = state  # authoritative (un-settled) engine state (None in town)
         # Presentation pacing (engine settle stops): ONLY the game server's
         # states are paced — the runner, cockpit and tests never set this.
@@ -334,7 +335,15 @@ class Session:
         sc = self.scenario
         if sc is None or self.adventure is None or self.state is None:
             return
+        if self.adventure.complete and sc.rewards is None and not getattr(self, "_rewards_done", False):
+            # §D17-4.5: the Rewards modal comes BEFORE the return to town; the
+            # victory stays suppressed until every drop is placed and accepted.
+            sc.open_rewards(seed=random.randrange(2**31))
+            return
+        if self.adventure.complete and sc.rewards is not None:
+            return  # waiting on the rewards modal
         if self.adventure.complete:
+            self._rewards_done = False
             transition = sc.on_adventure_complete(self.state)
             self.pending_transition = transition
             if transition == "next_act":
@@ -503,7 +512,124 @@ class Session:
         if verb == "save":
             self.save_point("town", None, auto=False)
             return []
-        raise ValueError(f"unknown town verb: {verb}")
+        return self.economy_verb(client_id, verb, payload)
+
+    def economy_verb(self, client_id: str, verb: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Gear / shop / trade / rewards verbs (Update 17 Phase 2). Gear edits
+        are allowed in town and at the between-phase gate (never mid-fight);
+        shops and trades are town-only; rewards at the finale."""
+        from . import items as _items
+        sc = self.scenario
+        if sc is None:
+            raise ValueError("this game is not a scenario")
+        in_town = sc.mode == "town" and self.state is None
+        at_gate = (self.adventure is not None and self.adventure.level_up is not None)
+        cid = str(payload.get("character_id") or "")
+
+        def _loadout(character_id: str) -> Dict[str, Any]:
+            if character_id not in sc.character_ids:
+                raise ValueError("unknown character")
+            slot = sc.slot_of(character_id)
+            if self.adventure is not None and self.state is not None:
+                return self.adventure.loadouts[slot]
+            return sc.loadouts[slot]
+
+        def _own(character_id: str) -> None:
+            # In town the seat map is by roster id; at the gate by live id.
+            key = character_id
+            if self.adventure is not None and self.state is not None:
+                key = self.adventure.live_ids[sc.slot_of(character_id)]
+            owner = self.seats.get(key)
+            if owner not in (None, client_id) and len(self.clients) > 1:
+                raise ValueError("that character is not yours")
+
+        if verb in ("equip", "unequip", "to_belt", "from_belt", "discard"):
+            if not (in_town or at_gate):
+                raise ValueError("gear changes only in town or between phases")
+            _own(cid)
+            lo = _loadout(cid)
+            if verb == "equip":
+                _items.equip(lo, str(payload.get("item_id") or ""), str(payload.get("slot") or ""))
+            elif verb == "unequip":
+                _items.unequip(lo, str(payload.get("slot") or ""))
+            elif verb == "to_belt":
+                _items.to_belt(lo, str(payload.get("item_id") or ""))
+            elif verb == "from_belt":
+                _items.from_belt(lo, str(payload.get("item_id") or ""))
+            else:
+                _items.remove_item(lo, str(payload.get("item_id") or ""))
+            return []
+        if verb == "buy":
+            if not in_town:
+                raise ValueError("shops are town-only")
+            _own(cid)
+            sc.buy(str(payload.get("location_id") or sc.location_id or ""),
+                   str(payload.get("item_id") or ""), cid)
+            return []
+        if verb == "sell":
+            if not in_town:
+                raise ValueError("selling is town-only")
+            _own(cid)
+            sc.sell(cid, str(payload.get("item_id") or ""))
+            return []
+        if verb == "give":
+            if not in_town:
+                raise ValueError("trading is town-only")
+            _own(cid)
+            to_id = str(payload.get("to") or "")
+            item_id = payload.get("item_id") or None
+            gold = int(payload.get("gold") or 0)
+            to_owner = self.seats.get(to_id)
+            if to_owner in (None, client_id) or len(self.clients) <= 1:
+                sc.give(cid, to_id, item_id, gold)
+                return []
+            # Two-party confirm: the receiving player must accept (§D17-5.3).
+            sc.trade = {"from": cid, "to": to_id, "item_id": item_id, "gold": gold,
+                        "offered_by": client_id, "to_owner": to_owner}
+            return []
+        if verb == "trade_answer":
+            t = sc.trade
+            if t is None:
+                raise ValueError("no trade pending")
+            if client_id != t["to_owner"] and client_id != t["offered_by"]:
+                raise ValueError("this trade is not yours to answer")
+            sc.trade = None
+            if bool(payload.get("yes")) and client_id == t["to_owner"]:
+                sc.give(t["from"], t["to"], t["item_id"], t["gold"])
+            return []
+        if verb == "reward_assign":
+            if sc.rewards is None:
+                raise ValueError("no rewards")
+            sc.assign_reward(int(payload.get("index", -1)), payload.get("target"))
+            return []
+        if verb == "reward_accept":
+            if sc.rewards is None:
+                raise ValueError("no rewards")
+            if not sc.rewards_all_assigned():
+                raise ValueError("assign every reward first")
+            self.request_confirm(client_id, "rewards", "Accept the spoils as assigned?",
+                                 self._accept_rewards)
+            return []
+        raise ValueError(f"unknown verb: {verb}")
+
+    def _accept_rewards(self) -> None:
+        sc = self.scenario
+        if sc is None or sc.rewards is None:
+            return
+        # Land the items on the ADVENTURE's copies (still the live ones), then
+        # let the finale's transition harvest them into the run.
+        if self.adventure is not None:
+            saved = sc.loadouts
+            sc.loadouts = self.adventure.loadouts
+            try:
+                sc.accept_rewards()
+            finally:
+                sc.loadouts = saved
+        else:
+            sc.accept_rewards()
+        self._rewards_done = True
+        self.save_point("rewards", None)
+        self._scenario_transitions()
 
     def _require_initiator(self, client_id: str) -> None:
         sc = self.scenario
@@ -589,6 +715,8 @@ class Session:
         boundary (the level-up gate), not a game over."""
         if self.state is None:
             return None
+        if self.scenario is not None and self.scenario.rewards is not None:
+            return None  # the Rewards modal holds the finale's victory back
         result = self.state.result
         if (self.adventure is not None
                 and self.adventure.suppresses_result(result)):
@@ -647,7 +775,10 @@ class Session:
             snap["mode"] = "adventure"
             snap["scenario"] = self.scenario.town_snapshot()["scenario"]
             snap["quest_log"] = self.scenario.quest_log()
-            snap["party_sheet"] = self.scenario.party_block()
+            live = self.adventure.loadouts if self.adventure is not None else None
+            snap["party_sheet"] = self.scenario.party_block(live)
+            snap["rewards"] = self.scenario.rewards_view()
+            snap["gear_editable"] = bool(self.adventure is not None and self.adventure.level_up is not None)
         snap["confirm"] = self.confirm_payload(client_id)
         return snap
 
@@ -666,6 +797,7 @@ class Session:
             "game_over": None,
             "party": [],  # the combat party list is empty; see party_sheet
             "party_sheet": town.pop("party"),
+            "gear_editable": True,
             "run": {"run_id": self.run_id, "last_save": self.last_save},
             "confirm": self.confirm_payload(client_id),
             **town,

@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ltg_core.schema import LEVEL_UP_POINTS, level_for_points, points_to_next_level
 
-from . import content, llm, scenario_content as sc
+from . import content, items, llm, scenario_content as sc
 from .adventure import AdventureRun, HP_FLOOR_PCT
 from .dialogue import Conversation
 
@@ -90,6 +90,12 @@ class ScenarioRun:
         self.act_summaries: List[str] = []
         self.splash: Optional[Dict[str, Any]] = None  # the pending entry splash
         self.dead = False
+        # The Rewards modal after Phase III (§D17-4.5): rolled drops awaiting
+        # assignment; None outside that moment.
+        self.rewards: Optional[Dict[str, Any]] = None
+        # A per-player shop view is stateless (stock lives on the act); the
+        # pending two-party trade offer (§D17-5.3), if any.
+        self.trade: Optional[Dict[str, Any]] = None
         # Pluggable generators (tests swap them; the app uses llm.*).
         self.materializer: Callable[..., Dict[str, Any]] = llm.generate_act
         self.arc_generator: Callable[..., Dict[str, Any]] = llm.generate_arc
@@ -106,10 +112,15 @@ class ScenarioRun:
         return [level_for_points(self.earned.get(cid, 0)) for cid in self.character_ids]
 
     def effective_level(self) -> int:
-        """T-81: derived level + floor(worn points ÷ 30). Gear arrives in Phase 2;
-        until then the derived level (party average, floored, min 1)."""
-        lv = self.levels()
+        """T-81: derived level + floor(worn points ÷ 30), party average, floored."""
+        lv = [l + items.effective_level_bonus(lo)
+              for l, lo in zip(self.levels(), self.loadouts)]
         return max(1, int(sum(lv) / max(1, len(lv))))
+
+    def act_tier(self) -> int:
+        """The act's item tier: the party's effective level (drops), the
+        merchant stock caps below it (§D17-4.3)."""
+        return max(1, self.effective_level())
 
     def party_state(self) -> Dict[str, Any]:
         members = []
@@ -158,6 +169,18 @@ class ScenarioRun:
         self.act = copy.deepcopy(m)
         self.materializing = False
         self.materialize_error = None
+        # Merchant stock (§D17-5.5): rolled in code at the act's tier, fixed
+        # for the act, refreshed each act — unless the materialization already
+        # carries it (a reload, a pre-generated Act I).
+        if not self.act.get("stock"):
+            seed = random.randrange(2**31)
+            stock: Dict[str, List[Dict[str, Any]]] = {}
+            for loc in self.town.get("locations") or []:
+                rolled = items.roll_stock(loc.get("function", ""), self.act_tier(),
+                                          seed=seed + sum(ord(ch) for ch in loc["id"]))
+                if rolled:
+                    stock[loc["id"]] = [it.model_dump(mode="json", exclude_none=True) for it in rolled]
+            self.act["stock"] = stock
         self.quest = {"status": "offered", "title": m["quest"]["title"],
                       "text": m["quest"]["text"], "direct_to": None}
         if self.splash and self.splash.get("kind") == "town":
@@ -343,9 +366,16 @@ class ScenarioRun:
     def _harvest(self, run: AdventureRun, state: Any) -> None:
         """Pull the leveled builds, pools, gold, and HP back out of a finished
         (or lost) adventure into the run's party."""
+        party_states = {c.id: c for c in (getattr(state, "party", []) or [])}
         for cid, live, lo in zip(self.character_ids, run.live_ids, run.loadouts):
             slot = self.slot_of(cid)
             self.loadouts[slot] = copy.deepcopy(lo)
+            # Consumables drunk this adventure leave the belt (§D17-4.4).
+            cst = party_states.get(live)
+            if cst is not None:
+                used = [k.consumable_id for k in cst.exile if getattr(k, "consumable_id", None)]
+                if used:
+                    items.consume_used(self.loadouts[slot], used)
             old_earned = self.earned.get(cid, 0)
             self.earned[cid] = int(run.earned.get(live, old_earned))
             self.banked[cid] = int(run.banked.get(live, self.banked.get(cid, 0)))
@@ -412,6 +442,150 @@ class ScenarioRun:
         self.flags["defeated_once"] = True
         return "town"
 
+    # -- rewards (§D17-4.5) ------------------------------------------------- #
+    def open_rewards(self, seed: Optional[int] = None) -> None:
+        drops = items.roll_drops(len(self.character_ids), self.act_tier(), seed=seed)
+        self.rewards = {
+            "items": [it.model_dump(mode="json", exclude_none=True) for it in drops],
+            "assign": {},           # index (str) -> character id | "discard"
+            "accepted": False,
+        }
+
+    def assign_reward(self, index: int, target: Optional[str]) -> None:
+        if self.rewards is None:
+            raise ValueError("no rewards to assign")
+        if not 0 <= index < len(self.rewards["items"]):
+            raise ValueError("no such reward")
+        if target not in (None, "discard") and target not in self.character_ids:
+            raise ValueError("unknown character")
+        if target and target != "discard":
+            # "full" — the dropdown disallows a character whose slots would overflow,
+            # counting the other rewards already headed their way.
+            lo = copy.deepcopy(self.loadouts[self.slot_of(target)])
+            for i_str, who in self.rewards["assign"].items():
+                if who == target and int(i_str) != index:
+                    try:
+                        items.add_item(lo, self.rewards["items"][int(i_str)])
+                    except ValueError:
+                        pass
+            if not items.has_room(lo, self.rewards["items"][index]):
+                raise ValueError(f"{lo['character'].get('name', target)} is full")
+        if target is None:
+            self.rewards["assign"].pop(str(index), None)
+        else:
+            self.rewards["assign"][str(index)] = target
+
+    def rewards_all_assigned(self) -> bool:
+        return (self.rewards is not None
+                and all(str(i) in self.rewards["assign"] for i in range(len(self.rewards["items"]))))
+
+    def rewards_room(self) -> Dict[str, Dict[str, bool]]:
+        """index -> {character id -> can take it (given the current plan)}."""
+        out: Dict[str, Dict[str, bool]] = {}
+        if self.rewards is None:
+            return out
+        for i, item in enumerate(self.rewards["items"]):
+            row: Dict[str, bool] = {}
+            for cid in self.character_ids:
+                lo = copy.deepcopy(self.loadouts[self.slot_of(cid)])
+                for j_str, who in self.rewards["assign"].items():
+                    if who == cid and int(j_str) != i:
+                        try:
+                            items.add_item(lo, self.rewards["items"][int(j_str)])
+                        except ValueError:
+                            pass
+                row[cid] = items.has_room(lo, item)
+            out[str(i)] = row
+        return out
+
+    def accept_rewards(self) -> None:
+        """Land the assigned items (discards vanish); the modal closes."""
+        if self.rewards is None:
+            raise ValueError("no rewards")
+        if not self.rewards_all_assigned():
+            raise ValueError("assign every reward first (or discard it)")
+        for i_str, who in sorted(self.rewards["assign"].items(), key=lambda kv: int(kv[0])):
+            if who == "discard":
+                continue
+            lo = self.loadouts[self.slot_of(who)]
+            try:
+                items.add_item(lo, self.rewards["items"][int(i_str)])
+            except ValueError:
+                pass  # overflow at the last moment: the item is lost, not the run
+        self.rewards = None
+
+    # -- shops, selling, trading (§D17-5.3 / §D17-5.5) ----------------------- #
+    def shop_view(self, location_id: str) -> Dict[str, Any]:
+        loc = sc.find_location(self.town, location_id)
+        if loc is None:
+            raise ValueError("no such location")
+        stock = (self.act or {}).get("stock", {}).get(location_id, [])
+        rows = []
+        for it in stock:
+            try:
+                item = items.Item.model_validate(it)
+            except Exception:
+                continue
+            rows.append({**it, "buy_price": items.buy_price(item), "summary": items.summarize(item)})
+        return {"location_id": location_id, "name": loc["name"], "function": loc.get("function", ""),
+                "stock": rows, "sell_mult": items.SELL_MULT, "buy_mult": items.BUY_MULT}
+
+    def buy(self, location_id: str, item_id: str, character_id: str) -> None:
+        if self.location_id != location_id:
+            raise ValueError("you are not at that shop")
+        stock = (self.act or {}).get("stock", {}).get(location_id, [])
+        raw = next((it for it in stock if it.get("id") == item_id), None)
+        if raw is None:
+            raise ValueError("that item is no longer in stock")
+        item = items.Item.model_validate(raw)
+        price = items.buy_price(item)
+        if character_id not in self.character_ids:
+            raise ValueError("unknown character")
+        if self.gold.get(character_id, 0) < price:
+            raise ValueError(f"not enough gold ({price} needed)")
+        lo = self.loadouts[self.slot_of(character_id)]
+        items.add_item(lo, raw)     # raises when full
+        self.gold[character_id] -= price
+        stock.remove(raw)
+
+    def sell(self, character_id: str, item_id: str) -> None:
+        if character_id not in self.character_ids:
+            raise ValueError("unknown character")
+        lo = self.loadouts[self.slot_of(character_id)]
+        found = items.find_item(lo, item_id)
+        if found is None:
+            raise ValueError("no such item")
+        item = items.Item.model_validate(found[1])
+        items.remove_item(lo, item_id)
+        self.gold[character_id] = self.gold.get(character_id, 0) + items.sell_price(item)
+
+    def discard(self, character_id: str, item_id: str) -> None:
+        lo = self.loadouts[self.slot_of(character_id)]
+        items.remove_item(lo, item_id)
+
+    def give(self, from_id: str, to_id: str, item_id: Optional[str], gold: int) -> None:
+        """Trade between characters (town only): an item and/or gold."""
+        if from_id == to_id:
+            raise ValueError("choose another character")
+        if from_id not in self.character_ids or to_id not in self.character_ids:
+            raise ValueError("unknown character")
+        src = self.loadouts[self.slot_of(from_id)]
+        dst = self.loadouts[self.slot_of(to_id)]
+        gold = max(0, int(gold or 0))
+        if gold > self.gold.get(from_id, 0):
+            raise ValueError("not enough gold")
+        if item_id:
+            found = items.find_item(src, item_id)
+            if found is None:
+                raise ValueError("no such item")
+            if not items.has_room(dst, found[1]):
+                raise ValueError("they have no room for it")
+            it = items.remove_item(src, item_id)
+            items.add_item(dst, it)
+        if gold:
+            self.gold[from_id] -= gold
+            self.gold[to_id] = self.gold.get(to_id, 0) + gold
+
     # -- quest log (§D17-5.6) ---------------------------------------------- #
     def quest_log(self) -> Dict[str, Any]:
         direct = self.quest.get("direct_to")
@@ -432,9 +606,12 @@ class ScenarioRun:
         }
 
     # -- snapshots (the town screen) ---------------------------------------- #
-    def party_block(self) -> List[Dict[str, Any]]:
+    def party_block(self, loadouts: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        """The party sheet rows. ``loadouts`` overrides the run's copies (in
+        adventure mode the live gear is on the AdventureRun's copies)."""
         out = []
-        for cid, lo, lvl in zip(self.character_ids, self.loadouts, self.levels()):
+        loadouts = loadouts if loadouts is not None else self.loadouts
+        for cid, lo, lvl in zip(self.character_ids, loadouts, self.levels()):
             ch = lo.get("character", {}) or {}
             earned = self.earned.get(cid, 0)
             out.append({
@@ -448,10 +625,29 @@ class ScenarioRun:
                           "power_bought": ch.get("power_bought", 0),
                           "keyword": ch.get("keyword"), "attack_mode": ch.get("attack_mode", "melee"),
                           "colors": list(ch.get("colors", [])), "description": ch.get("description", "")},
-                "gear": {"primary": None, "secondary": None, "accessory": None,
-                         "belt": [], "inventory": []},  # Phase 2 fills these
+                "gear": self._gear_view(lo),
+                "worn_points": items.worn_points(lo),
+                "effective_level": lvl + items.effective_level_bonus(lo),
             })
         return out
+
+    @staticmethod
+    def _gear_view(lo: Dict[str, Any]) -> Dict[str, Any]:
+        g = items.gear_of(copy.deepcopy(lo))
+
+        def view(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+            if not raw:
+                return None
+            try:
+                it = items.Item.model_validate(raw)
+            except Exception:
+                return raw
+            return {**raw, "summary": items.summarize(it), "sell_price": items.sell_price(it)}
+        return {"primary": view(g["primary"]), "secondary": view(g["secondary"]),
+                "accessory": view(g["accessory"]),
+                "belt": [view(x) for x in g["belt"]],
+                "inventory": {"gear": [view(x) for x in g["inventory"]["gear"]],
+                              "consumables": [view(x) for x in g["inventory"]["consumables"]]}}
 
     def town_snapshot(self) -> Dict[str, Any]:
         loc = sc.find_location(self.town, self.location_id) if self.location_id else None
@@ -505,7 +701,26 @@ class ScenarioRun:
             "adventure_name": (self.adventure_detail or {}).get("name", ""),
             "party": self.party_block(),
             "flags": dict(self.flags),
+            "shop": (self.shop_view(self.location_id)
+                     if self.location_id and (loc or {}).get("function") in ("weaponsmith", "artificer", "apothecary")
+                     else None),
+            "trade": copy.deepcopy(self.trade),
         }
+
+    def rewards_view(self) -> Optional[Dict[str, Any]]:
+        if self.rewards is None:
+            return None
+        rows = []
+        for it in self.rewards["items"]:
+            try:
+                item = items.Item.model_validate(it)
+                rows.append({**it, "summary": items.summarize(item)})
+            except Exception:
+                rows.append(it)
+        return {"items": rows, "assign": dict(self.rewards["assign"]),
+                "room": self.rewards_room(), "all_assigned": self.rewards_all_assigned(),
+                "characters": [{"id": cid, "name": (lo.get("character") or {}).get("name", cid)}
+                               for cid, lo in zip(self.character_ids, self.loadouts)]}
 
     # -- save / restore (§D17-3) -------------------------------------------- #
     def snapshot(self) -> Dict[str, Any]:
@@ -528,6 +743,7 @@ class ScenarioRun:
             "act_summaries": list(self.act_summaries),
             "dead": self.dead,
             "act_present": self.act is not None,
+            "rewards": copy.deepcopy(self.rewards),
         }
 
     def restore(self, block: Dict[str, Any], act: Optional[Dict[str, Any]],
@@ -553,6 +769,7 @@ class ScenarioRun:
         self.completed_acts = copy.deepcopy(block.get("completed_acts") or [])
         self.act_summaries = list(block.get("act_summaries") or [])
         self.dead = bool(block.get("dead"))
+        self.rewards = copy.deepcopy(block.get("rewards")) or None
         self.conversation = None
         self.splash = None
         if act is not None:

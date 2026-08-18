@@ -491,6 +491,45 @@ def town_art_items(town_id: str) -> List[Dict[str, Any]]:
     return items
 
 
+_ITEM_TASK = (
+    "Paint a single ITEM for a card in a painterly tactical fantasy card game: "
+    "the object alone, centred, on a dark atmospheric ground falling off into a "
+    "vignette — no people, no hands, no creatures. Rich material detail: metal, "
+    "leather, glass, wax, cloth.\n\nThe item:\n"
+)
+
+
+def generate_item_art(item_id: str, text: str = "") -> Dict[str, Any]:
+    """Item art (Update 17 §D17-4.3): ``content/art/items/<item_id>/``; the
+    item's JSON gets its art_url. Returns ``{"url"}``."""
+    from . import items as _items
+    item = _items.get_item(item_id)
+    if item is None:
+        raise ValueError(f"unknown item: {item_id}")
+    prompt = f"{_style()}\n\n{_ITEM_TASK}{item.name}. {text or item.art_desc or item.flavor}"
+    url = paint(prompt, "1:1", f"items/{item_id}", "item")
+    _items.set_item_art(item_id, url)
+    return {"url": url}
+
+
+def item_art_items() -> List[Dict[str, Any]]:
+    """Every catalogue / user item without art, as generic queue items."""
+    from . import items as _items
+    out: List[Dict[str, Any]] = []
+    for meta in _items.list_items():
+        if meta.get("art_url"):
+            continue
+        iid = meta["id"]
+
+        def _paint(iid=iid) -> None:
+            fresh = _items.get_item(iid)
+            if fresh is None or fresh.art_url:
+                return
+            generate_item_art(iid)
+        out.append({"label": f"item — {meta['name']}", "paint": _paint, "refresh_key": "items"})
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # The art queue — "Generate all art" (Design Update 10 §D10-6.4)
 # --------------------------------------------------------------------------- #

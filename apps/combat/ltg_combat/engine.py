@@ -1911,7 +1911,14 @@ def _do_cast(st: GameState, action: Action) -> None:
     x = max(0, int(action.x or 0))
     paid = _pay(actor, card, action.mana, x=x)
     actor.hand.remove(card)
-    actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
+    # Update 17 §D17-4.4: a carried consumable is CONSUMED — exiled, never
+    # reshuffled — and stacks as an activated ability (a spell-counter can't
+    # stop you drinking; a broad ability/action counter can).
+    consumable = bool(getattr(card, "consumable_id", None))
+    if consumable:
+        actor.exile.append(card)
+    else:
+        actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
     if card.timing in _SORCERY_SPEED and not reactive:
         if actor.acted_mode is None:
             _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
@@ -1920,7 +1927,8 @@ def _do_cast(st: GameState, action: Action) -> None:
     # charges its reserved cost once, at cast) — D8-3.3.
     _gain_gauge(st, actor, len(paid))
     reserved = list(paid) if card.timing == Timing.channeled else []
-    _push(st, StackItem(kind="spell", source_id=actor.id, source_side="party",
+    _push(st, StackItem(kind="ability" if consumable else "spell",
+                        source_id=actor.id, source_side="party",
                         label=card.name, effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card_id=card.id,
@@ -1928,7 +1936,8 @@ def _do_cast(st: GameState, action: Action) -> None:
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
-    _log(st, "cast", f"{actor.name} casts {card.name}"
+    verb = "uses" if consumable else "casts"
+    _log(st, "cast", f"{actor.name} {verb} {card.name}"
          + (f" on {tgt.name}" if tgt else "") + f". Mana: {_mana_str(actor.pool)}.",
          character=actor.id, card=card.id, target=action.target_id)
     # `spells_cast` conditions count this cast; on-cast channel triggers fire now

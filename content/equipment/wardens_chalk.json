@@ -1,0 +1,32 @@
+{
+  "kind": "item",
+  "id": "wardens_chalk",
+  "name": "Warden's Chalk",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 12,
+  "flavor": "One line. Nothing crosses it.",
+  "art_desc": "A stub of white chalk wrapped in a scrap of blessed cloth.",
+  "art_url": "",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "prevent",
+      "parameter": "combat_damage",
+      "uses": "next",
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

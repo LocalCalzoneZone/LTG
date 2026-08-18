@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "yew_bow",
+  "name": "Yew Bow",
+  "slot": "weapon",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 0,
+  "flavor": "Strung this morning, in the cold.",
+  "art_desc": "A tall self-bow of pale yew, string of waxed flax, a quiver of grey-fletched arrows.",
+  "art_url": "",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

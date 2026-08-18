@@ -1,0 +1,30 @@
+{
+  "kind": "item",
+  "id": "reedwifes_antidote",
+  "name": "Reedwife's Antidote",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 6,
+  "flavor": "Spit the black out first.",
+  "art_desc": "A tiny bottle of clear tincture, reed-stopper, a scrap label in a spidery hand.",
+  "art_url": "",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "heal",
+      "amount": 1,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}
