@@ -5,6 +5,7 @@ import {
   generateAdventure,
   generateEncounter,
 } from "../lib/api";
+import type { RunOptions } from "../lib/api";
 import type { SetupOptions } from "../lib/types";
 import { DifficultyTag } from "./DifficultyTag";
 import { ManaIcon } from "./Pips";
@@ -74,6 +75,11 @@ export function NewGameModal({ onClose, onStarted }: {
   const [tab, setTab] = useState<"encounters" | "adventures">("encounters");
   const [difficulty, setDifficulty] = useState("standard");
   const [note, setNote] = useState("");
+  // Update 17 §D17-3: play the adventure inside a RUN (auto-saved at every
+  // phase boundary; resumable / forkable from Load Game). Off == today's
+  // throwaway session, byte-identical.
+  const [asRun, setAsRun] = useState(false);
+  const [hardcore, setHardcore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null); // busy sub-status
   const [err, setErr] = useState<string | null>(null);
@@ -114,7 +120,10 @@ export function NewGameModal({ onClose, onStarted }: {
           adventureId = meta.id;
         }
         setStatus("Starting adventure…");
-        onStarted(await createGame(picked, { adventureId }));
+        const run: RunOptions | undefined = asRun
+          ? { difficulty: difficulty as RunOptions["difficulty"], hardcore, everquest: false }
+          : undefined;
+        onStarted(await createGame(picked, { adventureId, run }));
         return;
       }
       let encounterId = pick.id;
@@ -330,6 +339,32 @@ export function NewGameModal({ onClose, onStarted }: {
                     </div>
                   )}
                 </div>
+                {tab === "adventures" && (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-line pt-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
+                      <input
+                        type="checkbox"
+                        className="accent-[#c9b37e]"
+                        checked={asRun}
+                        onChange={(e) => setAsRun(e.target.checked)}
+                      />
+                      <span className="caps-label text-[10px] tracking-[0.16em] text-parch">Save as a run</span>
+                      <span className="text-dimmed">— auto-saves at every phase; resume or fork from Load Game</span>
+                    </label>
+                    {asRun && (
+                      <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
+                        <input
+                          type="checkbox"
+                          className="accent-[#c9b37e]"
+                          checked={hardcore}
+                          onChange={(e) => setHardcore(e.target.checked)}
+                        />
+                        <span className="caps-label text-[10px] tracking-[0.16em] text-parch">Hardcore</span>
+                        <span className="text-dimmed">— a defeat ends the run</span>
+                      </label>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
 

@@ -72,11 +72,21 @@ export async function deleteEncounter(id: string): Promise<void> {
   }
 }
 
+// Run options (Update 17 §D17-1): present on an adventure start == play it
+// inside a NEW run — saved at every phase boundary, resumable and forkable
+// from Load Game. Absent == today's throwaway session.
+export interface RunOptions {
+  difficulty: "easy" | "standard" | "hard";
+  hardcore: boolean;
+  everquest: boolean;
+  name?: string;
+}
+
 // Start a game on a standalone encounter, or an adventure (exactly one of the
 // two ids) — an adventure session runs the three-phase flow server-side.
 export async function createGame(
   character_ids: string[],
-  target: { encounterId?: string; adventureId?: string },
+  target: { encounterId?: string; adventureId?: string; run?: RunOptions },
 ): Promise<string> {
   const res = await fetch("/api/games", {
     method: "POST",
@@ -85,6 +95,7 @@ export async function createGame(
       character_ids,
       encounter_id: target.encounterId ?? null,
       adventure_id: target.adventureId ?? null,
+      run: target.run ?? null,
     }),
   });
   if (!res.ok) {
@@ -93,6 +104,69 @@ export async function createGame(
   }
   const data = await res.json();
   return data.session_id as string;
+}
+
+// ---- Runs & saves (Update 17 §D17-3) — Load Game ---------------------------- //
+export interface RunSummary {
+  run_id: string;
+  name: string;
+  party: { id: string; name: string; portrait: string }[];
+  options: { difficulty: string; hardcore: boolean; everquest: boolean };
+  created_at: string;
+  updated_at: string;
+  dead: boolean;
+  save_count?: number;
+  latest_label?: string;
+}
+export interface SaveRow {
+  save_id: string;
+  saved_at: string;
+  label: string;
+  kind: string;
+  auto: boolean;
+}
+export interface RunDetail extends RunSummary {
+  saves: SaveRow[]; // oldest → newest
+}
+
+export async function fetchRuns(): Promise<RunSummary[]> {
+  const res = await fetch("/api/runs");
+  if (!res.ok) throw new Error(`runs load failed: ${res.status}`);
+  return (await res.json()).runs as RunSummary[];
+}
+
+export async function fetchRun(runId: string): Promise<RunDetail> {
+  const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(`run load failed: ${res.status}`);
+  return res.json();
+}
+
+// Rebuild the save's session (the exact adventure + party it points at) and
+// return its id; continuing appends new saves — a fork when the save was not
+// the newest.
+export async function loadSave(runId: string, saveId: string): Promise<string> {
+  const res = await fetch(
+    `/api/runs/${encodeURIComponent(runId)}/saves/${encodeURIComponent(saveId)}/load`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `load failed: ${res.status}`);
+  }
+  return (await res.json()).session_id as string;
+}
+
+export async function deleteSave(runId: string, saveId: string): Promise<void> {
+  const res = await fetch(
+    `/api/runs/${encodeURIComponent(runId)}/saves/${encodeURIComponent(saveId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+}
+
+export async function deleteRun(runId: string): Promise<void> {
+  const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`delete failed: ${res.status}`);
 }
 
 // ---- Adventures (Update 10) ------------------------------------------------ //

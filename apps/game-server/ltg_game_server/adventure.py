@@ -144,11 +144,17 @@ class AdventureRun:
     per-character adventure-local builds, the carry snapshot, and the level-up
     gate. All mutation happens under the session's lock (the app layer's)."""
 
-    def __init__(self, adventure_id: str) -> None:
-        detail = content.adventure_detail(adventure_id)
+    def __init__(self, adventure_id: str,
+                 detail: Optional[Dict[str, Any]] = None) -> None:
+        """``detail`` (optional) is a FROZEN adventure detail — a run's
+        content-store copy (Update 17 §D17-3.3) — used instead of the live
+        registry so a loaded save replays the exact adventure it pointed at."""
+        if detail is None:
+            detail = content.adventure_detail(adventure_id)
         if detail is None:
             raise ValueError(f"unknown adventure: {adventure_id}")
         self.adventure_id = adventure_id
+        self.detail: Dict[str, Any] = copy.deepcopy(detail)
         self.name: str = detail["name"]
         self.flavor: str = detail["flavor"]
         # [{encounter_id, narration, name}] in phase order.
@@ -175,15 +181,23 @@ class AdventureRun:
         self.carry: Dict[str, Dict[str, Any]] = {}
 
     # -- phase composition ------------------------------------------------------ #
-    def start(self, character_ids: List[str], seed: Optional[int] = None
+    def _scenario(self, phase_index: int) -> Dict[str, Any]:
+        """The frozen encounter behind a phase (the detail embeds each phase's
+        full encounter), in the build path's shape."""
+        return content.scenario_from_detail(self.detail["phases"][phase_index])
+
+    def start(self, character_ids: List[str], seed: Optional[int] = None,
+              loadouts: Optional[List[Dict[str, Any]]] = None
               ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
-        """Build Phase I from the base (saved) loadouts. Returns
+        """Build Phase I from the base (saved) loadouts — or from ``loadouts``
+        supplied directly (a run's frozen party copies). Returns
         ``(state, portraits, art, phase_encounter_id)``."""
         self.character_ids = list(character_ids)
-        self.loadouts = content.loadouts_for(character_ids)  # deep copies
+        self.loadouts = (copy.deepcopy(loadouts) if loadouts is not None
+                         else content.loadouts_for(character_ids))  # deep copies
         eid = self.phases[0]["encounter_id"]
         state, portraits, art = content.build_state_from_loadouts(
-            self.loadouts, eid, seed=seed)
+            self.loadouts, eid, seed=seed, scenario=self._scenario(0))
         self.live_ids = [c.id for c in state.party]
         # The unspent pool opens with whatever creation left over (§D10-3:
         # points are "added to the character's unspent pool").
@@ -292,7 +306,7 @@ class AdventureRun:
         self.level_up = None
         eid = self.phases[self.phase_index]["encounter_id"]
         state, portraits, art = content.build_state_from_loadouts(
-            self.loadouts, eid, seed=seed)
+            self.loadouts, eid, seed=seed, scenario=self._scenario(self.phase_index))
         rng = random.Random(seed)
         for c in state.party:
             cy = self.carry.get(c.id)
@@ -315,6 +329,84 @@ class AdventureRun:
             c.ultimate_gauge = int(cy["gauge"] * GAUGE_CARRY)
         self.carry = {}
         return state, portraits, art, eid
+
+    # -- run saves (Update 17 §D17-3) ------------------------------------------ #
+    def boundary_snapshot(self) -> Dict[str, Any]:
+        """The JSON-safe party/progress block a run save holds at a save point:
+        the run copies of the characters (leveled builds), the unspent and
+        earned pools, and — at a phase boundary — the §D10-2 carry plus the
+        level-up heals so the next phase composes IDENTICALLY on reload.
+        Called at adventure start (no carry), when the level-up gate closes
+        (before `advance`), and at adventure end."""
+        heals = ({lid: int(e.get("heal", 0)) for lid, e in self.level_up.items()}
+                 if self.level_up is not None else {})
+        carry = {
+            lid: {
+                "hp": cy["hp"],
+                "cards": [c.model_dump(mode="json") for c in cy["cards"]],
+                "exile": [c.model_dump(mode="json") for c in cy["exile"]],
+                "gauge": cy["gauge"],
+            }
+            for lid, cy in self.carry.items()
+        }
+        return {
+            "character_ids": list(self.character_ids),
+            "live_ids": list(self.live_ids),
+            "loadouts": copy.deepcopy(self.loadouts),
+            "banked": dict(self.banked),
+            "earned": dict(self.earned),
+            "carry": carry,
+            "heals": heals,
+            # At adventure start: 0 (Phase I about to begin). At a boundary: the
+            # index of the phase just won (the next composes on restore). At the
+            # end: the finale's index with `complete` set.
+            "phase_index": self.phase_index,
+            "complete": self.complete,
+        }
+
+    def restore(self, block: Dict[str, Any], seed: Optional[int] = None
+                ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
+        """Rebuild the composed phase-start state from a `boundary_snapshot`
+        block: adventure start replays `start`; a phase boundary replays
+        `advance` (carry + heals applied) with the saved seed. Returns the same
+        tuple those do."""
+        from ltg_core.schema import Card as _Card
+        self.character_ids = list(block.get("character_ids", []))
+        self.banked = {k: int(v) for k, v in (block.get("banked") or {}).items()}
+        self.earned = {k: int(v) for k, v in (block.get("earned") or {}).items()}
+        self.complete = bool(block.get("complete"))
+        phase_index = int(block.get("phase_index", 0))
+        carry = block.get("carry") or {}
+        if not carry:  # adventure start (or end): no boundary carry recorded
+            out = self.start(self.character_ids, seed=seed,
+                             loadouts=block.get("loadouts") or [])
+            self.phase_index = phase_index
+            # start() re-derives banked/earned from the loadouts; a save's
+            # recorded pools win (they include this run's history).
+            if block.get("banked"):
+                self.banked = {k: int(v) for k, v in block["banked"].items()}
+            if block.get("earned"):
+                self.earned = {k: int(v) for k, v in block["earned"].items()}
+            return out
+        self.loadouts = copy.deepcopy(block.get("loadouts") or [])
+        self.live_ids = list(block.get("live_ids") or [])
+        self.carry = {
+            lid: {
+                "hp": int(cy["hp"]),
+                "cards": [_Card.model_validate(c) for c in cy.get("cards", [])],
+                "exile": [_Card.model_validate(c) for c in cy.get("exile", [])],
+                "gauge": int(cy.get("gauge", 0)),
+            }
+            for lid, cy in carry.items()
+        }
+        heals = {k: int(v) for k, v in (block.get("heals") or {}).items()}
+        # Re-open a fully-confirmed gate so `advance` finds its heals and the
+        # boundary bookkeeping is byte-identical to the live path.
+        self.level_up = {lid: {"confirmed": True, "spent": 0, "heal": heals.get(lid, 0)}
+                         for lid in self.live_ids}
+        # A boundary save records the phase just WON; `advance` composes the next.
+        self.phase_index = phase_index
+        return self.advance(seed=seed)
 
     # -- snapshot -------------------------------------------------------------- #
     def snapshot_block(self, state: GameState,

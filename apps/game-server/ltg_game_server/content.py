@@ -1038,12 +1038,32 @@ def loadouts_for(character_ids: List[str]) -> List[Dict[str, Any]]:
     return loadouts
 
 
+def scenario_from_detail(detail: Dict[str, Any]) -> Dict[str, Any]:
+    """The build-time scenario shape (`encounter_for`'s) from a full encounter
+    detail dict — used when the encounter is a FROZEN copy in a run's content
+    store rather than a live registry entry (Update 17 §D17-3.3)."""
+    return {
+        "name": str(detail.get("name") or ""),
+        "scene_image": str(detail.get("scene_image") or ""),
+        "enemies": copy.deepcopy(detail.get("enemies") or []),
+        "tokens": copy.deepcopy(detail.get("tokens") or {}),
+        "layouts": copy.deepcopy(detail.get("layouts") or {}),
+        **({"objective": copy.deepcopy(detail["objective"])} if detail.get("objective") else {}),
+    }
+
+
 def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
-                              seed: Optional[int] = None
+                              seed: Optional[int] = None,
+                              scenario: Optional[Dict[str, Any]] = None
                               ) -> "tuple[GameState, Dict[str, str], Dict[str, Any]]":
     """`build_state` with the loadouts already in hand — the adventure layer uses
-    this to field leveled (adventure-local) builds against a phase."""
-    scenario = encounter_for(encounter_id)
+    this to field leveled (adventure-local) builds against a phase. ``scenario``
+    (optional) supplies the encounter itself — a run's frozen copy — instead of
+    the live registry's entry for ``encounter_id``; art still resolves by id."""
+    if scenario is None:
+        scenario = encounter_for(encounter_id)
+    else:
+        scenario = copy.deepcopy(scenario)
     if scenario is None:
         raise ValueError(f"unknown encounter: {encounter_id}")
     pool_ids = {_pool_id(e) for e in scenario["enemies"] if isinstance(e, dict)}

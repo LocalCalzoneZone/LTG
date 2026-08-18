@@ -434,6 +434,9 @@ export interface GameSnapshot {
   // narration, and the between-phases level-up gate. A non-final phase victory
   // arrives with result/game_over suppressed and `level_up` set instead.
   adventure?: AdventureBlock;
+  // Present when this session plays inside a run (Update 17 §D17-3): the run
+  // id and the most recent auto-save row (or an error).
+  run?: { run_id: string; last_save: { save_id?: string; label?: string; kind?: string; error?: string } | null };
 }
 
 export interface SeatsMsg {

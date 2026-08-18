@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from . import appctl, art, content, llm
 from .adventure import AdventureRun
+from .runs import RunManager
 from .session import SessionManager
 
 APP_ROOT = Path(__file__).resolve().parent.parent          # apps/game-server
@@ -33,17 +34,30 @@ app.add_middleware(
 )
 
 MANAGER = SessionManager()
+RUNS = RunManager()
 
 
 # --------------------------------------------------------------------------- #
 # REST: lobby / setup
 # --------------------------------------------------------------------------- #
+class RunOptionsBody(BaseModel):
+    """Update 17 §D17-1: a run's immutable options. Present on an adventure
+    start == play it inside a NEW run (saved, resumable, forkable)."""
+    difficulty: str = "standard"      # easy / standard / hard
+    hardcore: bool = False            # defeat ends the run
+    everquest: bool = False           # (scenario layer — recorded, unused in Phase 0)
+    name: str = ""
+
+
 class CreateGameBody(BaseModel):
     character_ids: List[str]
     # Exactly one of these: a standalone encounter, or an adventure (Update 10 —
     # the session then runs the three-phase flow: carry-over, level-ups, splashes).
     encounter_id: Optional[str] = None
     adventure_id: Optional[str] = None
+    # Optional (adventures only): create a run around this adventure (§D17-3).
+    # Absent == today's throwaway adventure session, byte-identical.
+    run: Optional[RunOptionsBody] = None
 
 
 @app.get("/api/setup-options")
@@ -62,12 +76,22 @@ def create_game(body: CreateGameBody) -> Dict[str, Any]:
     try:
         if body.adventure_id:
             run = AdventureRun(body.adventure_id)
+            seed = random.randrange(2**31)
             state, portraits, game_art, encounter_id = run.start(
-                body.character_ids, seed=random.randrange(2**31))
+                body.character_ids, seed=seed)
+            run_id = None
+            if body.run is not None:
+                meta = RUNS.create_adventure_run(
+                    run, options=body.run.model_dump(exclude={"name"}),
+                    name=body.run.name)
+                run_id = meta["run_id"]
             session = MANAGER.create(state, name=run.name, portraits=portraits,
                                      encounter_id=encounter_id, art=game_art,
-                                     adventure=run)
-            return {"session_id": session.id}
+                                     adventure=run, run_id=run_id,
+                                     run_manager=RUNS if run_id else None)
+            if run_id:
+                session.save_point("adventure_start", seed)  # the first auto-save
+            return {"session_id": session.id, "run_id": run_id}
         state, portraits, game_art = content.build_state(
             body.character_ids, body.encounter_id, seed=random.randrange(2**31)
         )
@@ -100,6 +124,59 @@ def delete_character(character_id: str) -> Dict[str, Any]:
         content.delete_loadout(character_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# REST: runs & saves (Update 17 §D17-3) — Load Game
+# --------------------------------------------------------------------------- #
+@app.get("/api/runs")
+def list_runs() -> Dict[str, Any]:
+    """The Load Game list: every run under saves/, newest first."""
+    return {"runs": RUNS.list_runs()}
+
+
+@app.get("/api/runs/{run_id}")
+def run_detail(run_id: str) -> Dict[str, Any]:
+    """One run with its saves, oldest → newest (each loadable / deletable)."""
+    try:
+        return RUNS.run_detail(run_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.post("/api/runs/{run_id}/saves/{save_id}/load")
+def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
+    """Rebuild the save's session (the exact adventure + party it points at)
+    and return its id; continuing appends new saves — a fork when this save
+    was not the newest (§D17-3.1)."""
+    try:
+        meta, adventure, state, portraits, game_art, encounter_id = RUNS.load_save(run_id, save_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    session = MANAGER.create(state, name=adventure.name, portraits=portraits,
+                             encounter_id=encounter_id, art=game_art,
+                             adventure=adventure, run_id=run_id, run_manager=RUNS)
+    return {"session_id": session.id, "run_id": run_id}
+
+
+@app.delete("/api/runs/{run_id}/saves/{save_id}")
+def delete_save(run_id: str, save_id: str) -> Dict[str, Any]:
+    try:
+        RUNS.delete_save(run_id, save_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    return {"ok": True}
+
+
+@app.delete("/api/runs/{run_id}")
+def delete_run(run_id: str) -> Dict[str, Any]:
+    try:
+        RUNS.delete_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
     return {"ok": True}
 
 

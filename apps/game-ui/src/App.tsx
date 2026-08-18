@@ -8,6 +8,7 @@ import { AdventureFlow } from "./components/AdventureFlow";
 import { ScreenFx } from "./components/FxLayer";
 import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
+import { LoadGameModal } from "./components/LoadGameModal";
 import { OptionsModal } from "./components/OptionsModal";
 import {
   CardPickPrompt,
@@ -105,6 +106,7 @@ export default function App() {
   // Start on an empty battlefield — the player opens New Game / Options themselves.
   const [showNewGame, setShowNewGame] = useState<boolean>(false);
   const [showOptions, setShowOptions] = useState<boolean>(false);
+  const [showLoadGame, setShowLoadGame] = useState<boolean>(false);
 
   // Pane sizes (persisted). consoleH 0 = "use the responsive default clamp".
   const [sideW, setSideW, resetSideW] = usePaneSize("ltg_side_w", SIDE_DEFAULT, clampSide);
@@ -142,11 +144,16 @@ export default function App() {
     history.pushState({}, "", url);
     setSessionId(sid);
     setShowNewGame(false);
+    setShowLoadGame(false);
   };
 
   return (
     <div className="flex h-full flex-col bg-ink-1">
-      <TopRibbon onNewGame={() => setShowNewGame(true)} onOptions={() => setShowOptions(true)} />
+      <TopRibbon
+        onNewGame={() => setShowNewGame(true)}
+        onOptions={() => setShowOptions(true)}
+        onLoadGame={() => setShowLoadGame(true)}
+      />
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
@@ -198,6 +205,9 @@ export default function App() {
         <NewGameModal onClose={() => setShowNewGame(false)} onStarted={onStarted} />
       )}
       {showOptions && <OptionsModal onClose={() => setShowOptions(false)} />}
+      {showLoadGame && (
+        <LoadGameModal onClose={() => setShowLoadGame(false)} onStarted={onStarted} />
+      )}
       {/* Portrait inspection — under the gameplay prompts, which must stay on top */}
       <InspectModal />
       <ChooseModeModal />

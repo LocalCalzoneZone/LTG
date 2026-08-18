@@ -22,9 +22,10 @@ const STEP_OF: Record<string, string> = {
 
 /** One 42px ribbon: wordmark · turn tracker · seats · invite / options / new game.
  *  Always rendered, so an empty battlefield can still reach New Game / Options. */
-export function TopRibbon({ onNewGame, onOptions }: {
+export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   onNewGame: () => void;
   onOptions: () => void;
+  onLoadGame?: () => void;
 }) {
   const snapshot = useGame((s) => s.snapshot);
   const sessionId = useGame((s) => s.sessionId);
@@ -262,6 +263,15 @@ export function TopRibbon({ onNewGame, onOptions }: {
         >
           <IconGear size={13} />
         </button>
+        {onLoadGame && (
+          <button
+            onClick={onLoadGame}
+            title="Load Game — runs and their saves (Update 17)"
+            className="caps-label ml-2 flex items-center border border-line px-3 py-[5px] text-[10px] tracking-[0.16em] text-mist transition hover:border-line2 hover:text-parch"
+          >
+            Load Game
+          </button>
+        )}
         <button
           onClick={onNewGame}
           className="caps-label ml-2 flex items-center gap-1.5 border border-line2 px-3 py-[5px] text-[10px] tracking-[0.16em] text-brass transition hover:border-brass hover:text-brass-hi hover:shadow-[0_0_12px_rgba(233,204,130,0.15)]"

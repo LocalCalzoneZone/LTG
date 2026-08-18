@@ -23,6 +23,9 @@ from ltg_combat.state import GameState
 from .adventure import AdventureRun
 from .snapshot import build_snapshot
 
+if False:  # typing only (avoid an import cycle at runtime)
+    from .runs import RunManager  # noqa: F401
+
 # Safety valve for the auto-pass loop (D8-4): each synthetic action strictly
 # advances the game, but cap the chain so a rules bug can never spin forever.
 _AUTO_CAP = 200
@@ -55,9 +58,18 @@ class Session:
                  portraits: Optional[Dict[str, str]] = None,
                  encounter_id: str = "",
                  art: Optional[Dict[str, Any]] = None,
-                 adventure: Optional[AdventureRun] = None) -> None:
+                 adventure: Optional[AdventureRun] = None,
+                 run_id: Optional[str] = None,
+                 run_manager: Optional["RunManager"] = None) -> None:
         self.id = session_id
         self.name = name
+        # The run this session plays inside (Update 17 §D17-3), or None for a
+        # plain encounter / an adventure outside a run (byte-identical to
+        # before). Save points call back into the manager; every save appends.
+        self.run_id = run_id
+        self.run_manager = run_manager
+        self._end_saved = False
+        self.last_save: Optional[Dict[str, Any]] = None
         self.state = state  # authoritative (un-settled) engine state
         # Presentation pacing (engine settle stops): ONLY the game server's
         # states are paced — the runner, cockpit and tests never set this.
@@ -162,6 +174,7 @@ class Session:
             # The paced drain runs the hook per step; the player's own action
             # still needs one here (it may itself have won the phase).
             self.adventure.on_state_change(self.state)
+            self._run_hooks()
 
     def _auto_advance(self) -> None:
         """Drain every no-decision priority stop (D8-4): while the engine-truth
@@ -180,6 +193,7 @@ class Session:
         # the run complete. No-op (and never reached) for plain encounters.
         if self.adventure is not None:
             self.adventure.on_state_change(self.state)
+            self._run_hooks()
 
     # -- paced auto-advance (the ws path's resolution rhythm) ------------------ #
     def start_pacer(self, broadcast: Any) -> None:
@@ -224,6 +238,7 @@ class Session:
                 self.state = new_state
                 if self.adventure is not None:
                     self.adventure.on_state_change(self.state)
+                    self._run_hooks()
                 effects = any(e.type in _PACE_VISIBLE
                               for e in self.state.log[log_before:])
                 dwell = (PACE_BEAT_S if effects
@@ -231,6 +246,35 @@ class Session:
                          else PACE_STEP_S)
             await broadcast(self)
             await asyncio.sleep(dwell)
+
+    # -- runs (Update 17 §D17-3) ---------------------------------------------- #
+    def save_point(self, kind: str, seed: Optional[int], auto: bool = True) -> None:
+        """Write a save for the bound run (no-op outside a run). Never raises
+        into the game: a failed save is logged on the session, not fatal."""
+        if self.run_id is None or self.run_manager is None or self.adventure is None:
+            return
+        try:
+            self.last_save = self.run_manager.save(self.run_id, self.adventure,
+                                                   kind, seed, auto=auto)
+        except Exception as exc:  # pragma: no cover — disk trouble
+            self.last_save = {"error": str(exc), "kind": kind}
+
+    def _run_hooks(self) -> None:
+        """After any adventure state change: the adventure-end auto-save, and
+        the Hardcore death mark on defeat (§D17-6.4)."""
+        if self.run_id is None or self.run_manager is None or self.adventure is None:
+            return
+        if self.adventure.complete and not self._end_saved:
+            self._end_saved = True
+            self.save_point("adventure_end", None)
+        elif self.state.result == "defeat" and not self._end_saved:
+            self._end_saved = True
+            try:
+                run = self.run_manager.run_detail(self.run_id)
+                if run.get("options", {}).get("hardcore"):
+                    self.run_manager.mark_dead(self.run_id)
+            except Exception:
+                pass
 
     # -- adventures (Update 10) ----------------------------------------------- #
     def public_result(self) -> Optional[str]:
@@ -252,8 +296,12 @@ class Session:
             raise ValueError("you do not control that character")
         self.adventure.confirm_level_up(character_id, build)
         if self.adventure.all_confirmed():
-            state, portraits, art, encounter_id = self.adventure.advance(
-                seed=random.randrange(2**31))
+            seed = random.randrange(2**31)
+            # The phase-boundary auto-save (§D17-3.2) is taken BEFORE the next
+            # phase composes, with the seed it will compose with — a reload
+            # replays `advance` and lands on the identical state.
+            self.save_point("phase_boundary", seed)
+            state, portraits, art, encounter_id = self.adventure.advance(seed=seed)
             self.state = state
             self.state.paced = True  # a fresh phase's state is paced like the first
             self.portraits = portraits
@@ -282,6 +330,8 @@ class Session:
             result = self.public_result()
             snap["result"] = result
             snap["game_over"] = {"result": result} if result is not None else None
+        if self.run_id is not None:
+            snap["run"] = {"run_id": self.run_id, "last_save": self.last_save}
         return snap
 
 
@@ -293,13 +343,16 @@ class SessionManager:
                portraits: Optional[Dict[str, str]] = None,
                encounter_id: str = "",
                art: Optional[Dict[str, Any]] = None,
-               adventure: Optional[AdventureRun] = None) -> Session:
+               adventure: Optional[AdventureRun] = None,
+               run_id: Optional[str] = None,
+               run_manager: Optional["RunManager"] = None) -> Session:
         session_id = _short_id()
         while session_id in self._sessions:
             session_id = _short_id()
         session = Session(session_id, state, name=name, portraits=portraits,
                           encounter_id=encounter_id, art=art,
-                          adventure=adventure)
+                          adventure=adventure, run_id=run_id,
+                          run_manager=run_manager)
         self._sessions[session_id] = session
         return session
 
