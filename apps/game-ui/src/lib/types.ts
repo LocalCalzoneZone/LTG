@@ -77,12 +77,36 @@ export interface EvergreenBlock {
   defensive_reaction: EvergreenEntry;
 }
 
+// Panel animations (Update 16): pre-generated clips a character's panel plays
+// over its portrait when the matching action resolves. Authored in the
+// deckbuilder; the engine reads none of it.
+export type AnimTrigger =
+  | "attack" | "cast" | "channel" | "defend" | "mitigate"
+  | "skill" | "ultimate" | "hit" | "death";
+
+export interface PanelAnimation {
+  id: string;
+  title: string;
+  file: string; // URL path served by the game server (/anim/<char>/<clip>)
+  trigger: AnimTrigger; // the action type it plays for by default
+  alternate: boolean; // offered as a per-card / per-stance pick, never a default
+  speed: number; // video playback rate (ignored for animated images)
+  duration_s: number; // animated images only: how long to show the clip
+}
+
+export interface PanelAnimBundle {
+  animations: PanelAnimation[];
+  cards: Record<string, string>; // card id -> animation id (per-card pick)
+  stances: Record<string, string>; // stance card id -> animation id (replaced attack)
+}
+
 export interface CharacterView {
   id: string;
   name: string;
   archetype: string;
   portrait: string; // loadout art (data URL / image URL), "" if none
   description: string; // the loadout's character blurb, "" if none
+  anims: PanelAnimBundle | null; // null = no clips; the panel behaves as before
   row: Row;
   power: StatBlock;
   hp: StatBlock;

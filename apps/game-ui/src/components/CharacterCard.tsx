@@ -4,6 +4,7 @@ import { CARD_WIDTH } from "../lib/layout";
 import { useGame } from "../lib/store";
 import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
+import { PanelAnim } from "./PanelAnim";
 import { StatPop } from "./StatPop";
 
 interface Props {
@@ -87,6 +88,10 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
         intentLit ? "shadow-[0_0_0_1px_rgba(194,90,80,0.6)]" : ""
       } ${isTarget || !armed ? "cursor-pointer" : "cursor-default"}`}
     >
+      {/* Panel animation (Update 16): a clip over the portrait while an action
+          resolves; renders nothing when the loadout has no clips. */}
+      <PanelAnim charId={char.id} bundle={char.anims} incapacitated={char.incapacitated} />
+
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/90 via-black/50 to-transparent" />

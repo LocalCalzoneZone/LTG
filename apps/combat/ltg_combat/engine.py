@@ -2063,7 +2063,7 @@ def _do_use_skill(st: GameState, action: Action) -> None:
                         # that merely CARRY a channeled card, e.g. a stance's
                         # replaced ability).
                         starts_channel=(card.timing == Timing.channeled),
-                        cast_mode="action"))
+                        cast_mode="action", heroic="skill"))
     _open_window(st, actor.id, reactive=False)
     tgt = st.combatant(action.target_id)
     _log(st, "skill", f"{actor.name} uses their Skill — {card.name}"
@@ -2086,7 +2086,7 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
                         label=f"{card.name} (Ultimate)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card=card, mode=action.mode, cast_mode="action",
-                        is_ultimate=True))
+                        is_ultimate=True, heroic="ultimate"))
     _open_window(st, actor.id, reactive=False)
     tgt = st.combatant(action.target_id)
     _log(st, "ultimate", f"{actor.name} unleashes their Ultimate — {card.name}"
@@ -2133,7 +2133,7 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{name} (stance)", effects=list(repl.effects),
                         target_id=action.target_id, targets=tuple(action.targets),
-                        card=_stance_card(actor),
+                        card=_stance_card(actor), stance_slot=slot,
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
@@ -2182,7 +2182,15 @@ def _resolve_top(st: GameState) -> StackItem:
     if st.paced:
         st.settle = True  # a paced game pauses to WATCH this land (see _advance)
     item = st.stack.pop()
-    _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
+    _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id,
+         # Presentation payload (the panel-animation picker reads these; no
+         # rules do): what kind of item this was and which card it carried.
+         kind=item.kind, side=item.source_side,
+         card=item.card_id or (item.card.id if item.card is not None else None),
+         heroic=item.heroic, stance_slot=item.stance_slot,
+         channeled=bool(item.card is not None
+                        and item.card.timing == Timing.channeled
+                        and (item.kind == "spell" or item.starts_channel)))
     if item.kind == "move":  # a voluntary Move resolves: the body relocates NOW (§L-2.2)
         mover = st.combatant(item.source_id)
         if mover is not None and getattr(mover, "alive", True) and item.target_id:

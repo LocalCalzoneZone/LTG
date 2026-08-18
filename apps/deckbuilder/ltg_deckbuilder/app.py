@@ -413,6 +413,90 @@ def api_schema() -> dict:
     return Loadout.model_json_schema()
 
 
+# --------------------------------------------------------------------------- #
+# Panel animations (Update 16): clip files live on disk beside the loadouts —
+# loadouts/anim/<character_slug>/<file> — and the loadout JSON stores only the
+# URL path (/anim/<slug>/<file>), which both this app and the game server serve.
+# Never inline a clip into the JSON: they are megabytes and the JSON rides every
+# game snapshot.
+# --------------------------------------------------------------------------- #
+ANIM_DIR = LOADOUT_DIR / "anim"
+ANIM_URL_PREFIX = "/anim"
+ANIM_EXTS = {"webm", "mp4", "webp", "gif"}
+
+
+class AnimUploadBody(BaseModel):
+    character: str   # the character name (slugged into the folder)
+    filename: str    # original filename; extension picks the format
+    data: str        # base64 payload (a data URL or bare base64)
+
+
+def _anim_slug_dir(character: str) -> Path:
+    slug = _slug(character)
+    if not slug:
+        raise HTTPException(status_code=400, detail="invalid character name")
+    return ANIM_DIR / slug
+
+
+@app.post("/api/anim/upload")
+def api_anim_upload(body: AnimUploadBody) -> dict:
+    """Write one clip to disk; return its URL path for the loadout to reference."""
+    import base64
+    import re as _re
+
+    ext = Path(body.filename).suffix.lower().lstrip(".")
+    if ext not in ANIM_EXTS:
+        raise HTTPException(status_code=422,
+                            detail=f"unsupported animation format .{ext} "
+                                   f"(use {', '.join(sorted(ANIM_EXTS))})")
+    stem = _re.sub(r"[^a-z0-9]+", "_", Path(body.filename).stem.lower()).strip("_") or "clip"
+    payload = body.data.split(",", 1)[1] if body.data.startswith("data:") else body.data
+    try:
+        raw = base64.b64decode(payload)
+    except Exception:
+        raise HTTPException(status_code=422, detail="animation payload is not valid base64")
+    folder = _anim_slug_dir(body.character)
+    folder.mkdir(parents=True, exist_ok=True)
+    # Never clobber: a re-upload of the same name gets a numeric suffix.
+    path, n = folder / f"{stem}.{ext}", 1
+    while path.exists():
+        n += 1
+        path = folder / f"{stem}_{n}.{ext}"
+    path.write_bytes(raw)
+    return {"file": f"{ANIM_URL_PREFIX}/{folder.name}/{path.name}",
+            "bytes": len(raw), "kind": "video" if ext in ("webm", "mp4") else "image"}
+
+
+class AnimDeleteBody(BaseModel):
+    file: str  # the URL path returned by upload
+
+
+@app.post("/api/anim/delete")
+def api_anim_delete(body: AnimDeleteBody) -> dict:
+    """Remove a clip file. Only paths under /anim/ resolve; anything else is refused."""
+    rel = body.file[len(ANIM_URL_PREFIX) + 1:] if body.file.startswith(ANIM_URL_PREFIX + "/") else None
+    if not rel:
+        raise HTTPException(status_code=400, detail="not an animation path")
+    target = (ANIM_DIR / rel).resolve()
+    if not target.is_relative_to(ANIM_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="invalid animation path")
+    if target.exists():
+        target.unlink()
+        return {"deleted": body.file}
+    return {"deleted": None}
+
+
+@app.get(ANIM_URL_PREFIX + "/{anim_path:path}")
+def api_anim_file(anim_path: str):
+    """Serve a clip for the in-builder preview (the game server has its own route)."""
+    from fastapi.responses import FileResponse
+
+    target = (ANIM_DIR / anim_path).resolve()
+    if not target.is_relative_to(ANIM_DIR.resolve()) or not target.is_file():
+        raise HTTPException(status_code=404, detail="animation not found")
+    return FileResponse(str(target))
+
+
 def _slug(name: str) -> str:
     import re
 

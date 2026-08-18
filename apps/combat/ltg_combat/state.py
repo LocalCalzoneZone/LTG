@@ -630,6 +630,12 @@ class StackItem:
     # engine._raise_next_trigger_pick. Cleared by the picks.
     needs_target: bool = False
     needs_mode: bool = False
+    # Presentation tags (no rules read them): which heroic action this is
+    # ("skill" | "ultimate"), and which main-ability slot a stance-replaced
+    # ability fills ("attack" | "defend" | "mitigate" | "move"). Surfaced on
+    # the `resolve` log entry so the client can pick a panel animation.
+    heroic: Optional[str] = None
+    stance_slot: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #

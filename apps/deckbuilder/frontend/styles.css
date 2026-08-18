@@ -290,6 +290,7 @@ td input { padding: 4px 6px; }
   border: 1px solid currentColor; white-space: nowrap; margin-top: 2px;
   font: 400 9px var(--display); text-transform: uppercase; letter-spacing: 0.1em;
 }
+.chip[hidden] { display: none; }
 .chip.bad { color: var(--bad); }
 .chip.warn { color: var(--warn); }
 .chip.flag { color: var(--warn); }
@@ -416,3 +417,37 @@ label.inline.mini { font-size: 11px; gap: 3px; }
   text-transform: uppercase; letter-spacing: 0.22em;
 }
 .closed-screen p { margin: 0; color: var(--muted); }
+
+/* Panel animations (Update 16) — an "Animations" button under the portrait
+   opens a modal listing the clips: a 9:16 thumbnail that plays on click, then
+   title / trigger / flags. On-theme: hairline frame, no rounding, brass for
+   interaction only. */
+.anim-open { width: 100%; margin-top: -6px; }
+.anim-count { color: var(--dim); margin-left: 6px; }
+.anim-card { width: min(640px, 100%); }
+.anim-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.anim-row {
+  display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: start;
+  padding: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--line);
+}
+.anim-row.alt { border-left: 2px solid var(--aether); }
+.anim-thumb {
+  position: relative; aspect-ratio: 9 / 16; width: 64px; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--line2); cursor: pointer;
+}
+.anim-thumb video, .anim-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.anim-thumb:hover { border-color: var(--accent); }
+.anim-thumb .anim-play {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  color: var(--accent-hi); font: 400 16px var(--display); text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+}
+.anim-thumb.playing .anim-play { display: none; }
+.anim-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.anim-body input[type="text"] { width: 100%; }
+.anim-line { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; color: var(--muted); }
+.anim-line select, .anim-line input[type="number"] { font-size: 12px; padding: 3px 5px; }
+.anim-line input[type="number"] { width: 56px; }
+.anim-line label.inline { display: inline-flex; align-items: center; gap: 5px; }
+.anim-file { color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 60px; }
+.anim-add { display: flex; align-items: center; gap: 10px; }
+.anim-empty { color: var(--dim); font-size: 12px; padding: 10px 0; }

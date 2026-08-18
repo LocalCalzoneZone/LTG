@@ -481,6 +481,21 @@ def serve_art(image_path: str) -> FileResponse:
     raise HTTPException(status_code=404, detail="no such image")
 
 
+# Panel animation clips (Update 16): uploaded through the deckbuilder into the
+# gitignored loadouts/anim/<char>/ folder; content/anim/ is a tracked fallback
+# for clips shipped with the repo. Same URL scheme as the deckbuilder's preview.
+ANIM_DIRS = (content.LOADOUTS_DIR / "anim", content.CONTENT_DIR / "anim")
+
+
+@app.get("/anim/{clip_path:path}")
+def serve_anim(clip_path: str) -> FileResponse:
+    for base in ANIM_DIRS:
+        p = (base / clip_path).resolve()
+        if p.is_relative_to(base.resolve()) and p.is_file():
+            return FileResponse(p)
+    raise HTTPException(status_code=404, detail="no such animation")
+
+
 _PLACEHOLDER = """<!doctype html><html><head><meta charset="utf-8">
 <title>LTG-Game</title></head><body style="font-family:system-ui;padding:2rem">
 <h1>LTG-Game</h1>

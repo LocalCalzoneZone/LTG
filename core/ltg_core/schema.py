@@ -793,6 +793,10 @@ class StanceReplacement(BaseModel):
 
     name: str = ""
     effects: List["ModeEffect"] = Field(min_length=1)
+    # Presentation only: the id of one of the character's panel animations
+    # (see PanelAnimation) to play when this replacement resolves, instead of
+    # the slot's default. None = the slot's default animation.
+    animation: Optional[str] = None
 
 
 # One stance slot: leave the ability as-is, remove it outright, or swap it for
@@ -1279,6 +1283,11 @@ class Card(BaseModel):
     text_override: bool = False
     # True when a human has ratified this card's effects. Any edit resets it.
     validated: bool = False
+    # Presentation only: the id of one of the owning character's panel
+    # animations (see PanelAnimation) to play when this card resolves. None =
+    # the default for the card's timing ("channel" for channeled, else "cast";
+    # a Skill / Ultimate falls back to its own trigger type).
+    animation: Optional[str] = None
 
     @model_validator(mode="after")
     def _check_targets(self) -> "Card":
@@ -1468,12 +1477,59 @@ class AbilityFlavor(BaseModel):
     mitigate: Optional[FlavorEntry] = None
 
 
+# The action types a panel animation can be wired to by default. Each is the
+# moment the game UI swaps the character's static portrait for a clip.
+AnimTrigger = Literal[
+    "attack",    # the default attack resolves (a stance-replaced attack too)
+    "cast",      # a non-channeled card resolves
+    "channel",   # a channeled card resolves (the channel begins)
+    "defend",    # Defend is taken
+    "mitigate",  # Mitigate is declared
+    "skill",     # the Skill resolves
+    "ultimate",  # the Ultimate resolves
+    "hit",       # the character takes damage
+    "death",     # the character is incapacitated
+]
+
+
+class PanelAnimation(BaseModel):
+    """One pre-generated panel clip attached to a character (Update 16). The
+    file lives on disk next to the loadouts (never inline: clips are megabytes)
+    and `file` is its URL path as served by the game server. Presentation
+    only — the engine reads none of this."""
+
+    id: str
+    title: str = ""
+    file: str                       # e.g. "/anim/lasarre/attack.webm"
+    trigger: AnimTrigger = "cast"   # the action type this plays for by default
+    # An alternate is NOT used automatically for its trigger; it is offered as a
+    # per-card / per-stance-replacement pick instead (e.g. a second attack).
+    alternate: bool = False
+    # Playback rate for video clips (webm/mp4); 1.0 = as authored. Clips are
+    # expected to be delivered at their final length — retime before upload
+    # rather than here. Ignored for animated images (webp/gif).
+    speed: float = 1.0
+    # For animated images only: how long (s) the clip shows before the panel
+    # swaps back to the portrait. Video clips end themselves.
+    duration_s: float = 5.0
+
+    @field_validator("speed")
+    @classmethod
+    def _speed_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("speed must be > 0")
+        return v
+
+
 class Character(BaseModel):
     name: str
     description: str = ""
     # Optional portrait, stored inline as a data URL (or any image URL) so a
     # saved loadout stays self-contained. Empty when unset.
     portrait: str = ""
+    # Panel animations (Update 16): clips played over the portrait when the
+    # matching action resolves. Empty = the panel behaves as before.
+    animations: List[PanelAnimation] = Field(default_factory=list)
     level: int = 1
     colors: List[Color]
     # Starting-mana capacity as a per-slot colour list; its LENGTH is the mana

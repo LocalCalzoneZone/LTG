@@ -3,7 +3,9 @@
 // to what the engine says happened. Entries are identified by `seq` (their
 // absolute position in the engine log), so effects fire exactly once each.
 
-import type { GameSnapshot, LogEntry } from "./types";
+import type {
+  AnimTrigger, GameSnapshot, LogEntry, PanelAnimBundle, PanelAnimation,
+} from "./types";
 
 export type FxKind =
   | "hit" // attack damage connecting — a slash across the target
@@ -34,8 +36,10 @@ export type FxKind =
   | "defeat" // the party falls — full-screen treatment
   | "passed" // an AUTO-pass fired — a visible beat, so resolutions never
   // feel like they jumped the queue (also stretches the scheduler's timeline)
-  | "enemyact"; // an enemy's declared intent hits the stack — the card steps
+  | "enemyact" // an enemy's declared intent hits the stack — the card steps
   // forward with a crimson flare; the moment you are being asked to answer
+  | "panel"; // a hero's panel plays a pre-generated clip (Update 16) — `label`
+  // carries the animation id; the CharacterCard's player owns the lifetime
 
 export interface FxEvent {
   key: string; // unique per firing (seq + slot)
@@ -86,6 +90,7 @@ export const FX_TTL: Record<FxKind, number> = {
   defeat: 3400,
   passed: 900,
   enemyact: 1100,
+  panel: 1500, // a trigger pulse — the clip itself outlives the event
 };
 
 // Departing-card treatments (the Battlefield ghost system): how a combatant
@@ -111,6 +116,32 @@ export function stackModes(snapshot: GameSnapshot): Record<string, string> {
 const str = (v: unknown): string => (v == null ? "" : String(v));
 const num = (v: unknown): number | undefined =>
   typeof v === "number" ? v : undefined;
+
+// ---- panel animations (Update 16) --------------------------------------- //
+// Which clip a hero's panel plays for an action: an explicit per-card /
+// per-stance pick wins; otherwise the first NON-alternate clip wired to the
+// trigger; a Skill / Ultimate with no clip of its own falls back to the
+// cast / channel default. Undefined = no clip — the panel stays static.
+export function pickPanelAnim(
+  bundle: PanelAnimBundle | null | undefined,
+  trigger: AnimTrigger,
+  opts: { cardId?: string; stance?: boolean; channeled?: boolean } = {},
+): PanelAnimation | undefined {
+  if (!bundle || !bundle.animations.length) return undefined;
+  const byId = (id: string | undefined) =>
+    id ? bundle.animations.find((a) => a.id === id) : undefined;
+  if (opts.cardId) {
+    const picked = byId(opts.stance ? bundle.stances[opts.cardId] : bundle.cards[opts.cardId]);
+    if (picked) return picked;
+  }
+  const dflt = (t: AnimTrigger) =>
+    bundle.animations.find((a) => a.trigger === t && !a.alternate);
+  const own = dflt(trigger);
+  if (own) return own;
+  if (trigger === "skill") return dflt(opts.channeled ? "channel" : "cast");
+  if (trigger === "ultimate") return dflt("cast");
+  return undefined;
+}
 
 // The choreography beats (ms within a resolution): delivery leads, the impact
 // answers it, the defence answers the impact. One resolution's scene ends
@@ -157,6 +188,7 @@ export function fxFromLog(
       const offsets: Partial<Record<FxKind, number>> = {
         strike: 0,
         bolt: 0,
+        panel: 0, // the actor's clip leads its own delivery
         hit: BEAT_IMPACT,
         arcane: BEAT_IMPACT,
         wound: BEAT_IMPACT,
@@ -170,12 +202,45 @@ export function fxFromLog(
         cursor = Math.max(cursor, Math.min(beat + BEAT_SCENE, BEAT_CAP));
       }
     };
+    // A hero's panel clip for `trigger`, if the loadout wired one. Only party
+    // members have panels; the picker returns nothing for anyone else.
+    const panel = (
+      charId: string, trigger: AnimTrigger,
+      opts: { cardId?: string; stance?: boolean; channeled?: boolean } = {},
+      extra: Partial<FxEvent> = {},
+    ) => {
+      const anim = pickPanelAnim(partyIds.get(charId)?.anims, trigger, opts);
+      if (anim) push("panel", charId, { label: anim.id, ...extra });
+    };
 
     switch (e.type) {
-      case "resolve":
+      case "resolve": {
         resolvingMode = modes[str(d.label)] ?? "";
         beat = cursor; // a new scene opens where the last one ended
+        // The actor's panel plays its clip as the action lands (Update 16).
+        if (str(d.side) === "party") {
+          const src = str(d.source);
+          const kind = str(d.kind);
+          const cardId = str(d.card) || undefined;
+          const channeled = d.channeled === true;
+          if (kind === "attack") {
+            panel(src, "attack");
+          } else if (kind === "spell") {
+            panel(src, channeled ? "channel" : "cast", { cardId });
+          } else if (kind === "activated") {
+            const heroic = str(d.heroic);
+            const slot = str(d.stance_slot);
+            if (heroic === "skill" || heroic === "ultimate") {
+              panel(src, heroic, { cardId, channeled });
+            } else if (slot === "attack") {
+              panel(src, "attack", { cardId, stance: true });
+            } else if (slot === "defend" || slot === "mitigate") {
+              panel(src, slot);
+            }
+          }
+        }
         break;
+      }
       case "damage": {
         const attack = resolvingMode.includes("attack");
         const ranged = resolvingMode.includes("ranged");
@@ -185,6 +250,15 @@ export function fxFromLog(
           amount: num(d.amount),
           tint: attack ? undefined : tintOf(source),
         });
+        // The struck hero's panel flinches (a "hit" clip), on the impact beat.
+        if (partyIds.has(target)) {
+          const anim = pickPanelAnim(partyIds.get(target)?.anims, "hit");
+          if (anim) {
+            events.push({ key: `${seq}:${events.length}`, kind: "panel",
+                          entityId: target, label: anim.id,
+                          delayMs: Math.min(beat + BEAT_IMPACT, BEAT_CAP) });
+          }
+        }
         // A heavy blow on a hero bleeds onto the screen's edges.
         if ((num(d.amount) ?? 0) >= 5 && partyIds.has(target)) {
           push("vignette", target, { screen: true });
@@ -294,17 +368,21 @@ export function fxFromLog(
         break;
       case "incapacitated":
         push("downed", str(d.character));
+        // The death clip lands with the downed flash, on the impact beat.
+        panel(str(d.character), "death", {}, { delayMs: Math.min(beat + BEAT_IMPACT, BEAT_CAP) });
         break;
       case "countered":
         push("countered", str(d.source));
         break;
       case "defend":
         push("defend", str(d.character));
+        panel(str(d.character), "defend");
         break;
       case "mitigate":
         push("mitigate", str(d.character), {
           label: d.value != null ? `mitigates ${num(d.value)}` : "mitigates",
         });
+        panel(str(d.character), "mitigate");
         break;
       // Damage soaked before it lands: a Mitigate / prevent shield ("reduced")
       // or Defend's temp HP buffer ("absorbed") — the defence paying off.
