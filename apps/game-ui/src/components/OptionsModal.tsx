@@ -163,7 +163,9 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={onClose}>
       <div
-        className="panel-ticks flex max-h-[85vh] w-[min(94vw,860px)] flex-col border border-line2 bg-ink-2 p-5 shadow-2xl"
+        className={`panel-ticks flex max-h-[85vh] flex-col border border-line2 bg-ink-2 p-5 shadow-2xl ${
+          tab === "characters" ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center gap-3">
@@ -211,15 +213,20 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
           {err && <span className="text-xs text-blood">{err}</span>}
         </div>
 
-        {/* Available characters */}
-        <div className="scroll-thin -mx-1 grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto px-1 sm:grid-cols-3">
-          {loading && <div className="col-span-full font-light text-mist">Loading…</div>}
+        {/* Available characters — one row of full-height 9:16 panels: scroll
+            sideways through the roster; the row also scrolls vertically when
+            the viewport is too short for a whole panel, so nothing is clipped. */}
+        <div className="scroll-thin -mx-1 flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-auto px-1 pb-2">
+          {loading && <div className="font-light text-mist">Loading…</div>}
           {!loading && chars.length === 0 && (
-            <div className="col-span-full font-light text-dimmed">No characters found. Import one above.</div>
+            <div className="font-light text-dimmed">No characters found. Import one above.</div>
           )}
           {chars.map((c) => (
-            <div key={c.id} className="relative flex flex-col overflow-hidden border border-line bg-white/[0.02]">
-              <div className="aspect-[3/2] w-full bg-ink-0">
+            <div
+              key={c.id}
+              className="relative flex w-[clamp(180px,30vh,280px)] shrink-0 flex-col self-start overflow-hidden border border-line bg-white/[0.02]"
+            >
+              <div className="aspect-[9/16] w-full bg-ink-0">
                 {c.portrait ? (
                   <img src={c.portrait} alt={c.name} className="h-full w-full object-cover object-top" />
                 ) : (

@@ -27,6 +27,24 @@ from .snapshot import build_snapshot
 # advances the game, but cap the chain so a rules bug can never spin forever.
 _AUTO_CAP = 200
 
+# Resolution pacing (the MTG-Arena beat): over the WebSocket path, synthetic
+# auto-advance steps drain asynchronously — one broadcast per step, with a
+# pause after any step worth watching — so a chain of auto-passes and stack
+# resolutions arrives as a readable sequence instead of one collapsed jump.
+# Server wall-clock, so every connected client sees the same beats. Player
+# clicks are never delayed; only the synthetic steps between them are.
+PACE_BEAT_S = 1.1   # after a resolution / an effect landing — watch it finish
+PACE_HOLD_S = 0.6   # after a pass on a live stack — the about-to-resolve hold
+PACE_STEP_S = 0.18  # after silent bookkeeping (an auto end-turn on an empty board)
+
+# Log entry types whose appearance in a step's delta means "the player should
+# watch this land" — the step earns the full beat.
+_PACE_VISIBLE = frozenset({
+    "resolve", "damage", "heal", "wound", "intent_execute", "channel_trigger",
+    "charge_detonate", "enemy_died", "token_died", "revive", "incapacitated",
+    "enemy_move", "intent_declared",
+})
+
 
 def _short_id(n: int = 8) -> str:
     return secrets.token_urlsafe(6)[:n]
@@ -41,6 +59,9 @@ class Session:
         self.id = session_id
         self.name = name
         self.state = state  # authoritative (un-settled) engine state
+        # Presentation pacing (engine settle stops): ONLY the game server's
+        # states are paced — the runner, cockpit and tests never set this.
+        self.state.paced = True
         # The adventure this session runs, or None for a plain encounter —
         # every adventure behaviour below is gated on it (Update 10 §D10-7).
         self.adventure = adventure
@@ -62,6 +83,8 @@ class Session:
         # Created lazily from within the event loop: a Session is constructed by the
         # sync REST endpoint (a threadpool worker with no running loop on 3.9).
         self._lock: Optional[asyncio.Lock] = None
+        # The one live pacing task draining synthetic steps (ws path only).
+        self._pacer: Optional["asyncio.Task[None]"] = None
 
     def lock(self) -> asyncio.Lock:
         if self._lock is None:
@@ -103,12 +126,18 @@ class Session:
 
     # -- actions (authority) ------------------------------------------------- #
     def apply_index(self, client_id: str, index: int,
-                    mana: Optional[List[str]] = None) -> None:
+                    mana: Optional[List[str]] = None,
+                    drain: bool = True) -> None:
         """Validate + apply a legal-action index submitted by `client_id`.
 
         `mana` is an optional explicit payment (the exact colours to spend) for a
         cast whose generic portion could be paid multiple ways; the engine
         re-validates it covers the cost.
+
+        `drain=True` (the default, and every non-ws caller) runs the smart
+        auto-pass chain synchronously, exactly as before. The ws path passes
+        `drain=False` and starts the PACED drain instead (`start_pacer`), so
+        the synthetic steps arrive as separate, spaced broadcasts.
 
         Raises ValueError (turned into an `error` message) on any rejection:
         out-of-range index, a character the client does not control, or an action
@@ -125,9 +154,14 @@ class Session:
         # apply_action re-validates against the engine's current legal set as well.
         new_state, _events = apply_action(self.state, action)
         self.state = new_state
-        # Smart auto-pass / auto end-turn (D8-4): after every state change,
-        # submit synthetic actions for seats with no meaningful option.
-        self._auto_advance()
+        if drain:
+            # Smart auto-pass / auto end-turn (D8-4): after every state change,
+            # submit synthetic actions for seats with no meaningful option.
+            self._auto_advance()
+        elif self.adventure is not None:
+            # The paced drain runs the hook per step; the player's own action
+            # still needs one here (it may itself have won the act).
+            self.adventure.on_state_change(self.state)
 
     def _auto_advance(self) -> None:
         """Drain every no-decision priority stop (D8-4): while the engine-truth
@@ -146,6 +180,57 @@ class Session:
         # the run complete. No-op (and never reached) for plain encounters.
         if self.adventure is not None:
             self.adventure.on_state_change(self.state)
+
+    # -- paced auto-advance (the ws path's resolution rhythm) ------------------ #
+    def start_pacer(self, broadcast: Any) -> None:
+        """Ensure one paced-drain task is running. `broadcast` is an async
+        callable taking this session (the app layer's `_broadcast`). Idempotent:
+        a live pacer already drains everything there is to drain."""
+        if self._pacer is not None and not self._pacer.done():
+            return
+        self._pacer = asyncio.get_event_loop().create_task(
+            self._drain_paced(broadcast))
+
+    async def _drain_paced(self, broadcast: Any) -> None:
+        """The synchronous `_auto_advance` chain, unrolled over wall time: one
+        synthetic step per broadcast, a full beat after any step the player
+        should watch (a resolution landing, or a pass while something sits on
+        the stack — the about-to-resolve moment), a blink after bookkeeping.
+
+        The SETTLE step (engine settle stop: a resolution just emptied the
+        stack) sleeps BEFORE applying instead — that leading beat is the
+        window in which the resolution's animations play out with nothing
+        else moving; only then does the flow take its next step (the next
+        enemy's declaration, the phase flip), as its own broadcast.
+
+        The lock is held only while stepping, never while sleeping, so real
+        player actions interleave freely; each iteration re-reads the live
+        state, so anything a player does mid-drain is simply drained from."""
+        for _ in range(_AUTO_CAP):
+            async with self.lock():
+                pending = auto_pass_action(self.state)
+            if pending is None:
+                return
+            if pending.kind == "settle":
+                await asyncio.sleep(PACE_BEAT_S)  # watch the resolution land
+            async with self.lock():
+                # Re-read after any sleep: a player may have acted meanwhile.
+                action = auto_pass_action(self.state)
+                if action is None:
+                    return
+                stack_live = bool(self.state.stack)
+                log_before = len(self.state.log)
+                new_state, _events = apply_action(self.state, action)
+                self.state = new_state
+                if self.adventure is not None:
+                    self.adventure.on_state_change(self.state)
+                effects = any(e.type in _PACE_VISIBLE
+                              for e in self.state.log[log_before:])
+                dwell = (PACE_BEAT_S if effects
+                         else PACE_HOLD_S if stack_live
+                         else PACE_STEP_S)
+            await broadcast(self)
+            await asyncio.sleep(dwell)
 
     # -- adventures (Update 10) ----------------------------------------------- #
     def public_result(self) -> Optional[str]:
@@ -170,6 +255,7 @@ class Session:
             state, portraits, art, encounter_id = self.adventure.advance(
                 seed=random.randrange(2**31))
             self.state = state
+            self.state.paced = True  # a fresh act's state is paced like the first
             self.portraits = portraits
             self.art = art
             self.encounter_id = encounter_id

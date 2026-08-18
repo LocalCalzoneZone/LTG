@@ -362,6 +362,125 @@ def screening_table(records: List[Dict[str, Any]], character_id: str,
 # --------------------------------------------------------------------------- #
 # The probes
 # --------------------------------------------------------------------------- #
+_AUTOPSY_ORDER = {"never-castable": 0, "declined": 1, "whiffing": 2,
+                  "unseen": 3, "ok": 4}
+
+
+def card_autopsy(records: List[Dict[str, Any]], character_id: str,
+                 loadout: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """WHY each card did or didn't get cast, over the as-is records (needs
+    greedy-1.3.0+ RunRecords, which carry `card_flow` / `condition_whiffs`).
+    Sorts a dead card into a NAMED cause instead of a bare 0:
+
+      never-castable  held through whole games, a cast was never OFFERED —
+                      costs/colors (or channel-reserved mana) gate it; a KIT
+                      problem, not a bot problem
+      declined        castable moments existed, the ladder never took one —
+                      the stick's vocabulary; value INVISIBLE, not absent
+      whiffing        cast, but the condition usually skipped — spent in the
+                      wrong mode (or the condition can't hold on this kit)
+      ok / unseen     cast and resolving / never drawn on these cells
+    """
+    names = {c["id"]: c.get("name", c["id"]) for c in loadout.get("cards", [])}
+    agg: Dict[str, Dict[str, Any]] = {
+        card_id: {"hand": 0, "offered": 0, "cast": 0, "whiffs": 0, "rules": {}}
+        for card_id in names}
+    for rec in records:
+        m = (rec.get("characters") or {}).get(character_id)
+        if not m:
+            continue
+        flow = m.get("card_flow") or {}
+        whiffs = m.get("condition_whiffs") or {}
+        events = m.get("card_events") or {}
+        for card_id, s in agg.items():
+            f = flow.get(card_id)
+            if f:
+                s["hand"] += f.get("hand", 0)
+                s["offered"] += f.get("offered", 0)
+                for rule, n in (f.get("cast_rules") or {}).items():
+                    s["rules"][rule] = s["rules"].get(rule, 0) + n
+            s["cast"] += events.get(card_id, [0, 0])[1]
+            s["whiffs"] += whiffs.get(card_id, 0)
+    out = []
+    for card_id, s in agg.items():
+        castable = s["offered"] / s["hand"] if s["hand"] else None
+        whiff_share = s["whiffs"] / s["cast"] if s["cast"] else None
+        if s["cast"] == 0 and s["hand"] > 0 and s["offered"] == 0:
+            status = "never-castable"
+        elif s["cast"] == 0 and s["offered"] > 0:
+            status = "declined"
+        elif whiff_share is not None and whiff_share >= 0.5:
+            status = "whiffing"
+        else:
+            status = "ok" if s["cast"] else "unseen"
+        top_rules = sorted(s["rules"].items(),
+                           key=lambda kv: (-kv[1], kv[0]))[:2]
+        out.append({
+            "card_id": card_id, "name": names[card_id],
+            "hand_decisions": s["hand"], "offered_decisions": s["offered"],
+            "castable_share": (round(castable, 4)
+                               if castable is not None else None),
+            "casts": s["cast"], "condition_whiffs": s["whiffs"],
+            "whiff_share": (round(whiff_share, 4)
+                            if whiff_share is not None else None),
+            "status": status,
+            "cast_rules": [f"{r} ×{n}" for r, n in top_rules],
+        })
+    out.sort(key=lambda r: (_AUTOPSY_ORDER.get(r["status"], 9),
+                            -(r["hand_decisions"] or 0), r["card_id"]))
+    return out
+
+
+def channel_economy(records: List[Dict[str, Any]], character_id: str,
+                    loadout: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Per channeled card: how often it was started, whether its triggers
+    actually FIRED while held, how long it was held, and the mana-turns its
+    reservation kept out of the refresh — the is-this-channel-earning-its-
+    lock-up read (needs greedy-1.3.0+ RunRecords)."""
+    chan = {c["id"]: c.get("name", c["id"])
+            for c in loadout.get("cards", [])
+            if str(c.get("timing")) == "channeled"}
+    # A trigger ENGINE is a channel whose every effect waits on a trigger —
+    # zero fires convicts it. A continuous aura's value is held, not fired;
+    # its zero can't.
+    engines = {c["id"]: bool(c.get("effects")) and all(
+        e.get("trigger") is not None for e in c.get("effects", []))
+        for c in loadout.get("cards", [])
+        if str(c.get("timing")) == "channeled"}
+    agg: Dict[str, Dict[str, int]] = {
+        card_id: {"starts": 0, "triggers": 0, "turns_held": 0,
+                  "reserved_manaturns": 0, "drops": 0} for card_id in chan}
+    games = 0
+    for rec in records:
+        m = (rec.get("characters") or {}).get(character_id)
+        if not m:
+            continue
+        games += 1
+        for card_id, cs in (m.get("channel_stats") or {}).items():
+            s = agg.get(card_id)
+            if s is None:
+                continue
+            for k in s:
+                s[k] += cs.get(k, 0)
+    out = []
+    for card_id, s in agg.items():
+        starts = s["starts"]
+        out.append({
+            "card_id": card_id, "name": chan[card_id],
+            "trigger_engine": engines.get(card_id, False),
+            "starts": starts,
+            "triggers_per_start": (round(s["triggers"] / starts, 2)
+                                   if starts else None),
+            "turns_held_per_start": (round(s["turns_held"] / starts, 2)
+                                     if starts else None),
+            "reserved_manaturns_per_game": (round(
+                s["reserved_manaturns"] / games, 2) if games else None),
+            "drops": s["drops"],
+        })
+    out.sort(key=lambda r: (-(r["starts"] or 0), r["card_id"]))
+    return out
+
+
 def probe_party(loadout: Dict[str, Any],
                 gauntlet: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The subject plus the gauntlet's vanilla Training Ally (falling back to
@@ -793,14 +912,29 @@ def probe_character(loadout: Dict[str, Any],
     attr_duo = _attr(subject_runs, 2)
     attr = attr_solo or attr_duo or {}
     solo_screening = screening_table(subject_runs, cid, loadout)
-    never_cast = [s["name"] for s in solo_screening if s["games_cast"] == 0]
+    autopsy = card_autopsy(subject_runs, cid, loadout)
+    channels = channel_economy(subject_runs, cid, loadout)
+    never_castable = [r["name"] for r in autopsy
+                     if r["status"] == "never-castable"]
+    declined = [r["name"] for r in autopsy if r["status"] == "declined"]
+    whiffing = [r["name"] for r in autopsy if r["status"] == "whiffing"]
+    idle_channels = [r for r in channels
+                     if r["starts"] and r["trigger_engine"]
+                     and r["triggers_per_start"] == 0
+                     and (r["turns_held_per_start"] or 0) >= 2]
     granted = (attr.get("mana_granted") or 1)
     waste_share = (attr.get("mana_wasted") or 0) / granted
     dead_share = (attr.get("dead_in_hand") or 0) / max(1, deck_size)
     castability_problem = waste_share >= 0.4 or dead_share >= 0.6
     win_pct = f"{roster_rates[cid]:.0%}"
-    contribution = (round(roster_rates[cid] - ally_baseline, 4)
-                    if ally_baseline is not None else None)
+    # Contribution is the PAIR read: the subject beside the Training Ally vs
+    # two Training Allies, on the same duo cells. (Comparing the combined
+    # solo+duo rate against the duo-only floor mixed the denominators and
+    # once flipped the sign of the story.)
+    duo_rate = roster_duo.get(cid)
+    contribution = (round(duo_rate - ally_baseline, 4)
+                    if ally_baseline is not None and duo_rate is not None
+                    else None)
     parts = []
     if flag == "OVER":
         parts.append(
@@ -816,12 +950,15 @@ def probe_character(loadout: Dict[str, Any],
             parts.append(
                 f"Beside the vanilla Training Ally, {cid} "
                 + (f"adds {contribution:+.0%} over the two-vanilla baseline "
-                   f"({ally_baseline:.0%})."
+                   f"({duo_rate:.0%} with {cid} in the pair vs "
+                   f"{ally_baseline:.0%} with two warm bodies)"
                    if contribution > 0 else
                    f"adds NOTHING over the two-vanilla baseline "
                    f"({ally_baseline:.0%} with two warm bodies vs "
-                   f"{roster_rates[cid]:.0%} with {cid} in the pair).")
-                )
+                   f"{duo_rate:.0%} with {cid} in the pair)")
+                + (f" — the solo cells ({roster_solo.get(cid, 0):.0%}) are "
+                   "where the combined rate is lost."
+                   if (roster_solo.get(cid) or 1) < ally_baseline else "."))
         if castability_problem:
             parts.append(
                 f"The games say WHY: {cid} left "
@@ -838,13 +975,36 @@ def probe_character(loadout: Dict[str, Any],
     else:
         parts.append(f"{cid} is inside the roster's band ({win_pct}, "
                      f"{percentile}th percentile). No change needed.")
-    if never_cast:
+    if never_castable:
         parts.append(
-            f"CAVEAT: the {POLICY} stick never plays {len(never_cast)} of the "
-            f"{deck_size} cards ({', '.join(never_cast[:4])}"
-            + ("…" if len(never_cast) > 4 else "") + ") — their value is "
-            "INVISIBLE to this probe; part of any low reading is the bot's "
-            "vocabulary, not the character.")
+            f"AUTOPSY: {len(never_castable)} of the {deck_size} cards never "
+            f"saw a cast OFFERED while held "
+            f"({', '.join(never_castable[:4])}"
+            + ("…" if len(never_castable) > 4 else "") + ") — costs/colors "
+            "(or channel-reserved mana) gate them. That is a KIT problem; "
+            "price it, don't buff it.")
+    if declined:
+        parts.append(
+            f"CAVEAT: the {POLICY} stick saw castable moments for "
+            f"{len(declined)} card(s) and never took one "
+            f"({', '.join(declined[:4])}"
+            + ("…" if len(declined) > 4 else "") + ") — their value is "
+            "INVISIBLE to this probe; that part of any low reading is the "
+            "bot's vocabulary, not the character.")
+    if whiffing:
+        parts.append(
+            f"WHIFF: {', '.join(whiffing[:4])} mostly resolve(s) to nothing "
+            "when cast (condition skipped) — the card's condition can't hold "
+            "the way this kit reaches it; check its mode/condition before "
+            "its numbers.")
+    if idle_channels:
+        names_idle = ", ".join(r["name"] for r in idle_channels[:3])
+        parts.append(
+            f"CHANNEL ECONOMY: {names_idle} sat held for "
+            f"{idle_channels[0]['turns_held_per_start']:.0f}+ turns without "
+            "a single trigger firing, reserving mana the whole time — the "
+            "kit can't feed its own engines on these cells; that is the "
+            "channel COSTS locking out the triggers, not weak numbers.")
     if spend_audit_meta and spend_audit_meta["no_signal"]:
         parts.append("The spend audit produced no signal on this gauntlet "
                      "(rates saturated/flat) — ignore that table.")
@@ -876,6 +1036,8 @@ def probe_character(loadout: Dict[str, Any],
         "ladder": [],
         "recommendation": recommendation,
         "screening": solo_screening,
+        "card_autopsy": autopsy,
+        "channel_economy": channels,
         "cells": aggregate(subject_runs)["cells"],
         "duo_cells": None,
     })

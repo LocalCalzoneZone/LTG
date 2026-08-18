@@ -1064,4 +1064,35 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
         entry["id"]: str(raw.get("character", {}).get("description") or "")
         for entry, raw in zip(spec["party"], loadouts)
     }
+    # Panel animations (Update 16): the clip list plus the per-card and
+    # per-stance-replacement picks, keyed by card id. Presentation only — the
+    # engine drops these too, so they ride the art bundle like descriptions.
+    art["char_anims"] = {
+        entry["id"]: panel_anim_bundle(raw)
+        for entry, raw in zip(spec["party"], loadouts)
+    }
     return state, portraits, art
+
+
+def panel_anim_bundle(raw: dict) -> dict:
+    """{animations: [...], cards: {card_id: anim_id}, stances: {card_id: anim_id}}
+    from a raw loadout dict — an empty bundle when the loadout has no clips, so
+    the client behaves exactly as before."""
+    char = raw.get("character", {}) or {}
+    anims = [a for a in (char.get("animations") or []) if isinstance(a, dict)]
+    if not anims:
+        return {"animations": [], "cards": {}, "stances": {}}
+    ids = {a.get("id") for a in anims}
+    cards: dict = {}
+    stances: dict = {}
+    for card in list(raw.get("cards") or []) + [char.get("skill"), char.get("ultimate")]:
+        if not isinstance(card, dict) or not card.get("id"):
+            continue
+        if card.get("animation") in ids:
+            cards[card["id"]] = card["animation"]
+        for eff in card.get("effects") or []:
+            if isinstance(eff, dict) and eff.get("kind") == "stance":
+                repl = eff.get("attack")
+                if isinstance(repl, dict) and repl.get("animation") in ids:
+                    stances[card["id"]] = repl["animation"]
+    return {"animations": anims, "cards": cards, "stances": stances}

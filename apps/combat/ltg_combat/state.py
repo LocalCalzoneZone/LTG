@@ -119,6 +119,8 @@ class EnemyChannel:
     holder_id: str = ""
     target_id: Optional[str] = None
     started_turn: int = 0
+    # Trigger-fire count, mirroring Channel.fires.
+    fires: int = 0
     # Row/blast splash victims pinned at first apply (see Channel.splash_ids).
     splash_ids: List[str] = field(default_factory=list)
 
@@ -144,6 +146,11 @@ class Channel:
     # The X chosen at cast (0 for a non-X card) — read by `x`/`casting_cost`
     # value references on the channel's triggered effects.
     x: int = 0
+    # How many times this channel's triggered effects have fired (event and
+    # upkeep triggers both). A pure trigger-engine channel with fires == 0 after
+    # a couple of rounds is idle — the autoplay stick reads this to swap it out,
+    # and the Tester reports it as trigger economy.
+    fires: int = 0
     # Row/blast splash victims (§D9-3.2) pinned when the channel's continuous
     # effect first applied around its pick: the SAME creatures must be covered
     # for the channel's whole life — reasserted each end step and lifted when
@@ -623,6 +630,12 @@ class StackItem:
     # engine._raise_next_trigger_pick. Cleared by the picks.
     needs_target: bool = False
     needs_mode: bool = False
+    # Presentation tags (no rules read them): which heroic action this is
+    # ("skill" | "ultimate"), and which main-ability slot a stance-replaced
+    # ability fills ("attack" | "defend" | "mitigate" | "move"). Surfaced on
+    # the `resolve` log entry so the client can pick a panel animation.
+    heroic: Optional[str] = None
+    stance_slot: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -745,6 +758,16 @@ class GameState:
     phase: str = "upkeep"             # upkeep|capacity|draw|intents|player|allies|enemy|end
     stack: List[StackItem] = field(default_factory=list)
     priority: Optional[str] = None    # party member who must decide now
+    # Presentation pacing (game server only — the runner/tests never set it):
+    # with `paced` on, a resolution that empties the stack raises `settle`,
+    # and the engine STOPS there instead of walking straight into the next
+    # automatic step (the next enemy's declaration, a phase flip). The only
+    # way forward is the synthetic "settle" action — which the server's paced
+    # drain submits after a beat, so a resolution is SEEN to finish before
+    # the next thing begins. With `paced` off (the default) behaviour is
+    # byte-identical to before these fields existed.
+    paced: bool = False
+    settle: bool = False
     passes: int = 0                   # consecutive passes in the open window
     acted_enemies: List[str] = field(default_factory=list)
     acted_tokens: List[str] = field(default_factory=list)

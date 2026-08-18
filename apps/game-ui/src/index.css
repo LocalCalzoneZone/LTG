@@ -172,7 +172,72 @@ body {
   }
 }
 .anim-statpop {
-  animation: statpop 1.6s ease-out forwards;
+  /* Held back one impact beat (fx.ts BEAT_IMPACT) so the numeral lands WITH
+     the flash, not before it. `both` keeps it invisible through the delay. */
+  animation: statpop 1.6s ease-out 0.18s both;
+}
+
+/* The small directional cousin of fx-shake: the whole field kicks 2px along
+   a live melee blow, west when an enemy swings, east when a hero does. */
+@keyframes fx-kick-w {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-2px); }
+}
+@keyframes fx-kick-e {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(2px); }
+}
+.fx-kick-w { animation: fx-kick-w 0.34s ease-out; }
+.fx-kick-e { animation: fx-kick-e 0.34s ease-out; }
+
+/* An enemy's declared intent hits the stack: its card STEPS FORWARD toward
+   the party (west) and settles back — you can see who is acting before you
+   are asked to answer. The party variant mirrors east for symmetric use. */
+@keyframes fx-stepforward-w {
+  0% { transform: translateX(0) scale(1); }
+  30% { transform: translateX(-10px) scale(1.045); }
+  70% { transform: translateX(-7px) scale(1.03); }
+  100% { transform: translateX(0) scale(1); }
+}
+@keyframes fx-stepforward-e {
+  0% { transform: translateX(0) scale(1); }
+  30% { transform: translateX(10px) scale(1.045); }
+  70% { transform: translateX(7px) scale(1.03); }
+  100% { transform: translateX(0) scale(1); }
+}
+.fx-stepforward-w { animation: fx-stepforward-w 1.1s cubic-bezier(0.3, 0, 0.3, 1); }
+.fx-stepforward-e { animation: fx-stepforward-e 1.1s cubic-bezier(0.3, 0, 0.3, 1); }
+
+/* Phase heralds (Battlefield.tsx PhaseHerald): a wash sweeping the whole
+   field plus the phase name, ~1.2s, when the round turns over to you or to
+   the enemy. The breather between beats the player asked for. */
+@keyframes phase-herald-wash {
+  0% { transform: translateX(-100%); opacity: 0; }
+  22% { opacity: 1; }
+  70% { opacity: 0.7; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+.phase-herald-wash-blood,
+.phase-herald-wash-brass {
+  position: absolute;
+  inset: 0;
+  animation: phase-herald-wash 1.25s cubic-bezier(0.3, 0, 0.4, 1) forwards;
+}
+.phase-herald-wash-blood {
+  background: linear-gradient(100deg, transparent 18%, rgba(194, 90, 80, 0.13) 42%, rgba(194, 90, 80, 0.2) 50%, rgba(194, 90, 80, 0.13) 58%, transparent 82%);
+}
+.phase-herald-wash-brass {
+  background: linear-gradient(100deg, transparent 18%, rgba(233, 204, 130, 0.1) 42%, rgba(233, 204, 130, 0.16) 50%, rgba(233, 204, 130, 0.1) 58%, transparent 82%);
+}
+@keyframes phase-herald-word {
+  0% { opacity: 0; letter-spacing: 0.9em; transform: translateY(4px); }
+  22% { opacity: 1; }
+  72% { opacity: 1; letter-spacing: 0.5em; transform: translateY(0); }
+  100% { opacity: 0; letter-spacing: 0.46em; }
+}
+.phase-herald-word {
+  animation: phase-herald-word 1.25s ease-out forwards;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -487,6 +552,154 @@ body {
 }
 .anim-death {
   animation: death-fade 1.4s ease-in forwards;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Board motion (motion.ts / MotionWrap): delivery and weight.                */
+/* ------------------------------------------------------------------------- */
+
+/* Melee delivery: the attacker's card steps INTO the blow along the real
+   vector to its target (--lx/--ly from lungeVars), then settles back. */
+@keyframes fx-lunge {
+  0% { transform: translate(0, 0); }
+  32% { transform: translate(var(--lx, 22px), var(--ly, 0px)); }
+  58% { transform: translate(calc(var(--lx, 22px) * 0.35), calc(var(--ly, 0px) * 0.35)); }
+  100% { transform: translate(0, 0); }
+}
+.fx-lunge {
+  animation: fx-lunge 0.5s cubic-bezier(0.34, 1.3, 0.5, 1);
+}
+
+/* Impact weight: the struck card recoils — a hard little punch, no bounce. */
+@keyframes fx-recoil {
+  0% { transform: scale(1) rotate(0deg); }
+  22% { transform: scale(0.955) rotate(-0.8deg); }
+  55% { transform: scale(1.012) rotate(0.35deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.fx-recoil {
+  animation: fx-recoil 0.42s cubic-bezier(0.3, 0, 0.4, 1);
+}
+
+/* Projectile spark (ProjectileLayer.tsx): a travelling brass/aether diamond
+   with a short light-tail. Flight is WAAPI; this is just the body. */
+.fx-bolt {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.fx-bolt::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  transform: rotate(45deg);
+}
+.fx-bolt::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 55%;
+  width: 26px;
+  height: 1.5px;
+  transform: translateY(-50%);
+}
+.fx-bolt-arrow::before {
+  background: #ecdcae;
+  box-shadow: 0 0 8px 2px rgba(233, 204, 130, 0.75);
+}
+.fx-bolt-arrow::after {
+  background: linear-gradient(to left, rgba(233, 204, 130, 0.85), transparent);
+}
+.fx-bolt-arcane::before {
+  background: #c9b4e6;
+  box-shadow: 0 0 10px 3px rgba(179, 157, 219, 0.8);
+}
+.fx-bolt-arcane::after {
+  background: linear-gradient(to left, rgba(179, 157, 219, 0.85), transparent);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Ambient life: the field is a place, not a spreadsheet.                     */
+/* ------------------------------------------------------------------------- */
+
+/* Scene backdrop: a very slow push-and-drift (Ken Burns). Alternates, so it
+   never jump-cuts; the field container clips the overdraw. */
+@keyframes kenburns {
+  0% { transform: scale(1.04) translate(0.6%, 0.4%); }
+  100% { transform: scale(1.1) translate(-0.8%, -0.5%); }
+}
+.anim-kenburns {
+  animation: kenburns 52s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Living portrait idle: a breath-slow sway, per-card de-synced via inline
+   delay/duration (CreatureCard). */
+@keyframes idle-sway {
+  0% { transform: scale(1.015) translateY(0.6%); }
+  100% { transform: scale(1.045) translateY(-0.6%); }
+}
+.anim-idle {
+  animation: idle-sway 8s ease-in-out infinite alternate;
+}
+
+/* Drifting brass motes — dust catching the light, behind the cards. */
+@keyframes mote-drift {
+  0% { transform: translateY(104%) translateX(0); opacity: 0; }
+  12% { opacity: var(--mote-a, 0.4); }
+  85% { opacity: var(--mote-a, 0.4); }
+  100% { transform: translateY(-6%) translateX(var(--mote-x, 12px)); opacity: 0; }
+}
+.motes span {
+  position: absolute;
+  bottom: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  /* --mote-c: the scene-sampled tint (lib/sceneTint.ts); brass by default. */
+  background: radial-gradient(circle, var(--mote-c, rgba(233, 204, 130, 0.9)), transparent 70%);
+  filter: blur(0.5px);
+  animation: mote-drift linear infinite;
+}
+.motes span:nth-child(1) { left: 8%;  --mote-a: 0.35; --mote-x: 18px;  animation-duration: 21s; animation-delay: -3s; }
+.motes span:nth-child(2) { left: 22%; --mote-a: 0.25; --mote-x: -14px; animation-duration: 27s; animation-delay: -11s; width: 2px; height: 2px; }
+.motes span:nth-child(3) { left: 37%; --mote-a: 0.3;  --mote-x: 10px;  animation-duration: 19s; animation-delay: -7s; }
+.motes span:nth-child(4) { left: 52%; --mote-a: 0.2;  --mote-x: -20px; animation-duration: 31s; animation-delay: -17s; width: 2px; height: 2px; }
+.motes span:nth-child(5) { left: 66%; --mote-a: 0.35; --mote-x: 14px;  animation-duration: 23s; animation-delay: -1s; }
+.motes span:nth-child(6) { left: 79%; --mote-a: 0.25; --mote-x: -8px;  animation-duration: 29s; animation-delay: -13s; width: 2px; height: 2px; }
+.motes span:nth-child(7) { left: 91%; --mote-a: 0.3;  --mote-x: 16px;  animation-duration: 25s; animation-delay: -9s; }
+
+/* A row marked by a declared positional intent (§L-5): the ground itself is
+   dangerous — a blood wash and pulsing hairlines, until it resolves or the
+   party dodges. */
+@keyframes row-threat-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.row-threat {
+  animation: row-threat-pulse 1.6s ease-in-out infinite;
+  background:
+    radial-gradient(80% 55% at 50% 100%, rgba(194, 90, 80, 0.16), transparent 75%),
+    linear-gradient(to bottom, rgba(194, 90, 80, 0.5), transparent 2px) top / 100% 2px no-repeat,
+    linear-gradient(to top, rgba(194, 90, 80, 0.5), transparent 2px) bottom / 100% 2px no-repeat;
+}
+
+/* Stillness is a setting: ambient motion yields to the OS preference.
+   (One-shot combat cues stay — they carry information.) */
+@media (prefers-reduced-motion: reduce) {
+  .anim-kenburns,
+  .anim-idle,
+  .motes span,
+  .phase-herald-wash-blood,
+  .phase-herald-wash-brass,
+  .fx-stepforward-w,
+  .fx-stepforward-e {
+    animation: none;
+  }
 }
 
 /* Next-to-resolve stack row glows. */

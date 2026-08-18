@@ -77,12 +77,37 @@ export interface EvergreenBlock {
   defensive_reaction: EvergreenEntry;
 }
 
+// Panel animations (Update 16): pre-generated clips a character's panel plays
+// over its portrait when the matching action resolves. Authored in the
+// deckbuilder; the engine reads none of it.
+export type AnimTrigger =
+  | "attack" | "cast" | "channel" | "defend" | "mitigate"
+  | "skill" | "ultimate" | "hit" | "death";
+
+export interface PanelAnimation {
+  id: string;
+  title: string;
+  file: string; // URL path served by the game server (/anim/<char>/<clip>)
+  trigger: AnimTrigger; // the action type it plays for by default
+  alternate: boolean; // offered as a per-card / per-stance pick, never a default
+  speed: number; // video playback rate (ignored for animated images)
+  duration_s: number; // animated images only: how long to show the clip
+  impact_s: number; // when the action lands in the clip — the board's effects wait for it
+}
+
+export interface PanelAnimBundle {
+  animations: PanelAnimation[];
+  cards: Record<string, string>; // card id -> animation id (per-card pick)
+  stances: Record<string, string>; // stance card id -> animation id (replaced attack)
+}
+
 export interface CharacterView {
   id: string;
   name: string;
   archetype: string;
   portrait: string; // loadout art (data URL / image URL), "" if none
   description: string; // the loadout's character blurb, "" if none
+  anims: PanelAnimBundle | null; // null = no clips; the panel behaves as before
   row: Row;
   power: StatBlock;
   hp: StatBlock;
@@ -151,6 +176,9 @@ export interface IntentView {
   line: string; // the template line ("The Spore Husk threatens Soren.")
   status: "declared" | "stripped" | "stunned" | "executed" | "fizzled" | "none";
   reveal: string; // what a stripped intent turned out to be ("" otherwise)
+  // §L-5 positional intent: the party row this action will strike, named at
+  // declaration (the board marks it). Null for targeted/untargeted intents.
+  target_row?: Row | null;
   // 1, or 2 for an enraged boss's second declared intent (§D9-4 boss fury).
   slot: number;
 }

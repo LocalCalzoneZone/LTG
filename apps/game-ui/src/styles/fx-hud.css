@@ -1,0 +1,140 @@
+/* fx-hud — see main.tsx import order; index.css owns the base system.
+ * HUD-local VFX: phase transitions (TopRibbon), card draw (Hand / BottomBar),
+ * and mana (ManaWidget). Restrained, reading-first — one-shot reactions to
+ * real state changes, never idle bounce. Every overlay is pointer-events:none.
+ * Decorative *loops* are gated behind prefers-reduced-motion; one-shot
+ * stamps/transitions are left alone since they carry information (something
+ * just changed) rather than being ambient decoration.
+ */
+
+/* ---------------------------------------------------------------------- */
+/* TopRibbon — phase transitions                                          */
+/* ---------------------------------------------------------------------- */
+
+@keyframes hud-phase-stamp {
+  0% { transform: scale(1.4); filter: brightness(1.9); }
+  55% { transform: scale(0.95); filter: brightness(1.25); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.hud-phase-stamp {
+  display: inline-block;
+  transform-origin: center;
+  animation: hud-phase-stamp 420ms cubic-bezier(0.22, 0.9, 0.3, 1.15) both;
+}
+
+.hud-phase-underline {
+  background: linear-gradient(90deg, transparent, #ecdcae 35%, #ecdcae 65%, transparent);
+  box-shadow: 0 0 6px rgba(236, 220, 174, 0.55);
+  transition: left 280ms ease, width 280ms ease;
+  pointer-events: none;
+}
+
+@keyframes hud-phase-wash {
+  0% { opacity: 0; }
+  22% { opacity: 0.32; }
+  100% { opacity: 0; }
+}
+.phase-wash-enemies {
+  background: linear-gradient(90deg, transparent, rgba(194, 90, 80, 0.4) 45%, rgba(194, 90, 80, 0.4) 55%, transparent);
+  animation: hud-phase-wash 700ms ease-out forwards;
+}
+
+@keyframes hud-turn-out {
+  0% { opacity: 1; transform: translateY(0); filter: brightness(1); }
+  100% { opacity: 0; transform: translateY(-7px); filter: brightness(0.7); }
+}
+.hud-turn-ghost {
+  animation: hud-turn-out 380ms ease-in forwards;
+}
+
+@keyframes hud-turn-in {
+  0% { opacity: 0; transform: translateY(5px) scale(1.25); filter: brightness(1.7); }
+  55% { opacity: 1; transform: translateY(0) scale(0.96); filter: brightness(1.2); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+.hud-turn-stamp {
+  animation: hud-turn-in 380ms cubic-bezier(0.22, 0.85, 0.3, 1.1) both;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hand — card draw                                                        */
+/* ---------------------------------------------------------------------- */
+
+@keyframes hud-card-rise {
+  0% { opacity: 0; transform: translateY(16px) scale(0.95); }
+  60% { opacity: 1; transform: translateY(-2px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes hud-card-glimmer {
+  0% { transform: translateX(-120%); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+.hud-card-draw {
+  animation: hud-card-rise 480ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.hud-card-draw::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: linear-gradient(
+    115deg,
+    transparent 26%,
+    rgba(236, 220, 174, 0.75) 46%,
+    rgba(255, 246, 220, 0.35) 54%,
+    transparent 74%
+  );
+  animation: hud-card-glimmer 780ms ease-out both;
+  pointer-events: none;
+}
+
+
+/* Library counter tick */
+@keyframes hud-counter-pop {
+  0% { transform: scale(1.55); color: #ecdcae; }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+.hud-counter-pulse {
+  display: inline-block;
+  animation: hud-counter-pop 380ms cubic-bezier(0.3, 1, 0.4, 1) both;
+}
+
+/* ---------------------------------------------------------------------- */
+/* ManaWidget                                                              */
+/* ---------------------------------------------------------------------- */
+
+@keyframes hud-mana-sparkle {
+  0% { filter: brightness(1); transform: scale(1); }
+  35% { filter: brightness(1.9); transform: scale(1.12); }
+  100% { filter: brightness(1); transform: scale(1); }
+}
+.hud-mana-sparkle {
+  animation: hud-mana-sparkle 480ms ease-out;
+}
+
+@keyframes hud-capacity-stamp {
+  0% { transform: scale(1.6) rotate(45deg); box-shadow: 0 0 0 0 rgba(236, 220, 174, 0.9); }
+  55% { transform: scale(0.9) rotate(45deg); box-shadow: 0 0 10px 3px rgba(236, 220, 174, 0.55); }
+  100% { transform: scale(1) rotate(45deg); box-shadow: 0 0 0 0 rgba(236, 220, 174, 0); }
+}
+.hud-capacity-stamp {
+  animation: hud-capacity-stamp 460ms cubic-bezier(0.25, 1, 0.4, 1) both;
+}
+
+/* Gentle inviting glow loop on the capacity-choice picker — decorative and
+ * looping, so it's the one treatment gated behind reduced motion. */
+@keyframes hud-picker-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(236, 220, 174, 0); }
+  50% { box-shadow: 0 0 14px 3px rgba(236, 220, 174, 0.45); }
+}
+.hud-picker-glow {
+  animation: hud-picker-glow 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-picker-glow {
+    animation: none;
+  }
+}

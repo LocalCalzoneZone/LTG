@@ -32,9 +32,22 @@ const blankLoadout = () => ({
     skill: null, ultimate: null,
     // Optional display flavour for the evergreen abilities (§D8-3.4).
     ability_flavor: {},
+    // Panel animations (Update 16): clips played over the portrait in game.
+    animations: [],
   },
   cards: [],
 });
+
+// The action types a panel animation can be wired to by default (schema
+// AnimTrigger). Order = display order in the trigger select.
+const ANIM_TRIGGERS = [
+  ["attack", "Attack"], ["cast", "Cast (spell)"], ["channel", "Channel (channeled spell)"],
+  ["defend", "Defend"], ["mitigate", "Mitigate"], ["skill", "Skill"],
+  ["ultimate", "Ultimate"], ["hit", "Hit (takes damage)"], ["death", "Death"],
+];
+const ANIM_TRIGGER_LABEL = Object.fromEntries(ANIM_TRIGGERS);
+const animList = () => (state.character.animations ||= []);
+const animIsVideo = (a) => /\.(webm|mp4)(\?|$)/i.test(a.file || "");
 
 let state = blankLoadout();
 let validateTimer = null;
@@ -102,6 +115,170 @@ function renderPortrait() {
   } else {
     img.hidden = true; img.removeAttribute("src"); ph.hidden = false; clear.hidden = true;
   }
+}
+
+// --------------------------------------------------------------------------
+// Panel animations (Update 16): the clip list on the character sheet. Files
+// upload to the server (loadouts/anim/<char>/) and the loadout keeps only the
+// URL path + metadata; the game plays a clip over the portrait when its
+// trigger action resolves. An "alternate" is never picked by its trigger — it
+// is offered on cards / stance attacks as an explicit choice.
+// --------------------------------------------------------------------------
+function renderAnimations() {
+  const anims = animList();
+  const count = $("#anim-count");
+  if (count) count.textContent = anims.length ? `(${anims.length})` : "";
+  const host = $("#anim-list");
+  if (!host) return;
+  if (!anims.length) {
+    host.innerHTML = `<div class="anim-empty">No clips yet. Add a WebM (recommended), MP4, animated WebP or GIF generated from this portrait.</div>`;
+    return;
+  }
+  host.innerHTML = anims.map((a, i) => {
+    const video = animIsVideo(a);
+    const thumb = video
+      ? `<video src="${escapeAttr(a.file)}" muted playsinline preload="metadata"></video>`
+      : `<img src="${escapeAttr(a.file)}" alt="" />`;
+    return `<div class="anim-row${a.alternate ? " alt" : ""}" data-i="${i}">
+      <div class="anim-thumb" data-i="${i}" title="${video ? "Click to preview" : "Animated image"}">
+        ${thumb}${video ? `<div class="anim-play">▶</div>` : ""}
+      </div>
+      <div class="anim-body">
+        <input type="text" class="anim-title" data-i="${i}" value="${escapeAttr(a.title || "")}" placeholder="Title (e.g. Crystal blade slash)" />
+        <div class="anim-line">
+          <label class="inline">plays on
+            <select class="anim-trigger" data-i="${i}">
+              ${ANIM_TRIGGERS.map(([v, l]) => `<option value="${v}" ${a.trigger === v ? "selected" : ""}>${l}</option>`).join("")}
+            </select></label>
+          <label class="inline" title="An alternate is not used automatically — pick it on a card or a stance attack instead">
+            <input type="checkbox" class="anim-alt" data-i="${i}" ${a.alternate ? "checked" : ""}/> alternate</label>
+        </div>
+        <div class="anim-line">
+          ${video
+            ? `<label class="inline" title="Playback rate — leave at 1 to play the clip as authored">speed ×<input type="number" class="anim-speed" data-i="${i}" min="0.25" max="4" step="0.25" value="${a.speed ?? 1}" /></label>`
+            : `<label class="inline" title="Animated images can't be retimed by the browser — how long to show the clip">shows for <input type="number" class="anim-dur" data-i="${i}" min="0.5" max="30" step="0.5" value="${a.duration_s ?? 5}" /> s</label>`}
+          <label class="inline" title="When the action lands in the clip (seconds from its start) — the board's hit / damage effects wait for this moment so the clip leads. Only used for attack / cast / channel / skill / ultimate clips.">impact at <input type="number" class="anim-impact" data-i="${i}" min="0" max="10" step="0.1" value="${a.impact_s ?? 1.5}" /> s</label>
+          <span class="anim-file" title="${escapeAttr(a.file)}">${escapeHtml((a.file || "").split("/").pop())}</span>
+          <button class="small danger anim-remove" data-i="${i}" title="Remove this clip (deletes the file)">×</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  host.querySelectorAll(".anim-title").forEach((inp) => {
+    inp.oninput = () => { anims[+inp.dataset.i].title = inp.value; };
+  });
+  host.querySelectorAll(".anim-trigger").forEach((sel) => {
+    sel.onchange = () => { anims[+sel.dataset.i].trigger = sel.value; };
+  });
+  host.querySelectorAll(".anim-alt").forEach((cb) => {
+    cb.onchange = () => { anims[+cb.dataset.i].alternate = cb.checked; renderAnimations(); };
+  });
+  host.querySelectorAll(".anim-speed").forEach((inp) => {
+    inp.onchange = () => { anims[+inp.dataset.i].speed = Math.max(0.25, +inp.value || 1); };
+  });
+  host.querySelectorAll(".anim-impact").forEach((inp) => {
+    inp.onchange = () => { anims[+inp.dataset.i].impact_s = Math.max(0, +inp.value || 0); };
+  });
+  host.querySelectorAll(".anim-dur").forEach((inp) => {
+    inp.onchange = () => { anims[+inp.dataset.i].duration_s = Math.max(0.5, +inp.value || 5); };
+  });
+  host.querySelectorAll(".anim-thumb").forEach((th) => {
+    const v = th.querySelector("video");
+    if (!v) return;
+    th.onclick = () => {
+      if (v.paused) {
+        v.currentTime = 0;
+        v.playbackRate = anims[+th.dataset.i].speed || 1;
+        v.play(); th.classList.add("playing");
+        v.onended = () => th.classList.remove("playing");
+      } else { v.pause(); th.classList.remove("playing"); }
+    };
+  });
+  host.querySelectorAll(".anim-remove").forEach((btn) => {
+    btn.onclick = async () => {
+      const i = +btn.dataset.i;
+      const a = anims[i];
+      if (!confirm(`Remove "${a.title || a.file.split("/").pop()}"? This deletes the clip file.`)) return;
+      try { await api("POST", "/api/anim/delete", { file: a.file }); }
+      catch (e) { toast("Delete failed: " + e.message); return; }
+      anims.splice(i, 1);
+      // Drop dangling picks so cards / stances fall back to their defaults.
+      const gone = a.id;
+      const scrub = (card) => {
+        if (!card) return;
+        if (card.animation === gone) card.animation = null;
+        (card.effects || []).forEach((e) => {
+          if (e && e.kind === "stance" && e.attack && typeof e.attack === "object" && e.attack.animation === gone) e.attack.animation = null;
+        });
+      };
+      state.cards.forEach(scrub); scrub(state.character.skill); scrub(state.character.ultimate);
+      renderAnimations();
+    };
+  });
+}
+
+function openAnimations() {
+  renderAnimations();
+  $("#anim-overlay").classList.remove("hidden");
+}
+function closeAnimations() {
+  document.querySelectorAll("#anim-list video").forEach((v) => v.pause());
+  $("#anim-overlay").classList.add("hidden");
+}
+
+function bindAnimationUpload() {
+  const input = $("#anim-file");
+  const status = $("#anim-status");
+  if (!input) return;
+  $("#btn-animations").onclick = openAnimations;
+  $("#anim-close").onclick = closeAnimations;
+  $("#anim-overlay").onclick = (e) => { if (e.target.id === "anim-overlay") closeAnimations(); };
+  $("#anim-add").onclick = () => {
+    // Clips are filed under the character's name — it needs one first.
+    if (!state.character.name || state.character.name === "New Character") {
+      status.hidden = false; status.textContent = "Name the character first — clips are filed under its name.";
+      return;
+    }
+    status.hidden = true;
+    input.click();
+  };
+  input.onchange = () => {
+    const file = input.files[0];
+    input.value = "";
+    if (!file) return;
+    status.hidden = false; status.textContent = `Uploading ${file.name}…`;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const res = await api("POST", "/api/anim/upload",
+          { character: state.character.name, filename: file.name, data: reader.result });
+        const isVideo = res.kind === "video";
+        animList().push({
+          id: "anim_" + Math.random().toString(36).slice(2, 10),
+          title: file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "),
+          file: res.file, trigger: "cast", alternate: false,
+          speed: 1.0, duration_s: 5.0, impact_s: 1.5,
+        });
+        status.hidden = true;
+        renderAnimations();
+        toast(`Added ${file.name} (${(res.bytes / 1048576).toFixed(1)} MB)`);
+      } catch (e) {
+        status.hidden = true;
+        toast("Upload failed: " + e.message);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+}
+
+// The <select> for picking a clip on a card / stance attack: "Default" + every
+// clip (alternates tagged). `current` is the picked id or null.
+function animSelectHtml(cls, dataAttrs, current, defaultLabel) {
+  const opts = animList().map((a) =>
+    `<option value="${escapeAttr(a.id)}" ${current === a.id ? "selected" : ""}>${escapeHtml(a.title || a.file.split("/").pop())} — ${ANIM_TRIGGER_LABEL[a.trigger] || a.trigger}${a.alternate ? " (alternate)" : ""}</option>`);
+  return `<select class="${cls}" ${dataAttrs}>
+      <option value="" ${!current ? "selected" : ""}>${escapeHtml(defaultLabel)}</option>${opts.join("")}</select>`;
 }
 
 // Mana capacity IS the number of starting-mana slots (§P-1).
@@ -194,6 +371,7 @@ function renderCharacter() {
   $("#char-desc").value = ch.description || "";
   $("#char-level").textContent = ch.level || 1;
   renderPortrait();
+  renderAnimations();
 
   const spent = pointsSpent();
   const remaining = CMODEL.budget - spent;
@@ -1087,11 +1265,11 @@ function flattenEffects(effects) {
       for (const slot of STANCE_SLOTS) {
         const v = e[slot] ?? "unchanged";
         if (typeof v === "string") row[slot] = v;
-        else { row[slot] = "replace"; groups.push({ slot, name: v.name || "", effects: v.effects || [] }); }
+        else { row[slot] = "replace"; groups.push({ slot, name: v.name || "", effects: v.effects || [], animation: v.animation || null }); }
       }
       items.push(row);
       groups.forEach((g) => {
-        items.push({ kind: "stance_slot", slot: g.slot, name: g.name });
+        items.push({ kind: "stance_slot", slot: g.slot, name: g.name, animation: g.animation });
         g.effects.forEach(pushEffect);
       });
     } else {
@@ -1167,6 +1345,7 @@ function rebuildEffects(items) {
     } else if (it.kind === "stance_slot") {
       modal = mode = cond = null;
       slotRepl = { name: it.name || "", effects: [] };
+      if (it.animation) slotRepl.animation = it.animation;  // panel clip pick (attack)
       if (stance && STANCE_SLOTS.includes(it.slot)) stance[it.slot] = slotRepl;
     } else if (it.kind === "conditional") {
       cond = { kind: "conditional", condition: clone(it.condition), effects: [] };
@@ -1312,6 +1491,9 @@ function effectRowHtml(e, i, card, depth = 0) {
         <div class="effect-head"><span class="kw-label">${e.slot} — replacement</span></div>
         <div class="effect-params">
           <label class="inline">name <input type="text" class="stance-name" data-i="${i}" value="${escapeAttr(e.name || "")}" placeholder="e.g. Soothing Palm"/></label>
+          ${e.slot === "attack" && animList().length
+            ? `<label class="inline" title="Which panel clip plays when this replaced attack resolves — pick an alternate for a distinct look">animation ${animSelectHtml("stance-anim", `data-i="${i}"`, e.animation || null, "Default attack clip")}</label>`
+            : ""}
           <span class="marker-note">the effects below (until the next block) resolve as this ability — set the slot to unchanged/removed above to delete</span>
         </div></div>`;
   }
@@ -1433,6 +1615,13 @@ function openDetail(idx) {
 
     ${costBlock}
 
+    ${animList().length ? `<div class="block">
+      <div class="label">Panel animation — played when this card resolves</div>
+      ${animSelectHtml("detail-anim", 'id="detail-anim"', card.animation || null,
+        `Default (${idx === "skill" ? "Skill" : idx === "ultimate" ? "Ultimate"
+          : card.timing === "channeled" ? "Channel" : "Cast"} clip)`)}
+    </div>` : ""}
+
     ${heroic ? "" : `<div class="block">
       <div class="label">Original MTG text (read-only)</div>
       <div class="readonly-text">${escapeHtml(card.original_text) || "—"}</div>
@@ -1501,6 +1690,8 @@ function wireDetail(idx) {
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
+  const animSel = $("#detail-anim");
+  if (animSel) animSel.onchange = () => { card.animation = animSel.value || null; };
   if ($("#detail-type")) {
     $("#detail-type").onchange = (e) => {
       card.timing = e.target.value;
@@ -1681,6 +1872,12 @@ function wireDetail(idx) {
   document.querySelectorAll(".stance-name").forEach((inp) => {
     inp.onchange = () => {
       editorItems[+inp.dataset.i].name = inp.value;
+      commitEffects(idx, false);
+    };
+  });
+  document.querySelectorAll(".stance-anim").forEach((sel) => {
+    sel.onchange = () => {
+      editorItems[+sel.dataset.i].animation = sel.value || null;
       commitEffects(idx, false);
     };
   });
@@ -2193,6 +2390,7 @@ function init() {
     e.target.value = "";
   };
   $("#detail-overlay").onclick = (e) => { if (e.target.id === "detail-overlay") { closeDetail(); renderDeck(); } };
+  bindAnimationUpload();
   document.querySelectorAll("#deck-table th.sortable").forEach((th) => {
     th.onclick = () => applySort(th.dataset.sort);
   });

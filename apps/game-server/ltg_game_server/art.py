@@ -37,7 +37,7 @@ ART_MODEL = llm.ART_MODEL
 COMFY_TIMEOUT = 300.0
 COMFY_POLL_INTERVAL = 1.0
 # Pixel sizes injected for the %width%/%height% placeholders, per aspect.
-COMFY_SIZES = {"16:9": (1344, 768), "1:1": (1024, 1024)}
+COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024)}
 
 # Generated images write into the tracked content dir, beside the encounter /
 # adventure JSON they belong to, so a commit ships the art to every install.
@@ -55,18 +55,22 @@ _EXT = {"png": "png", "jpeg": "jpg", "jpg": "jpg", "webp": "webp"}
 # machinery (llm.DEFAULT_ART_STYLE). Every image prompt is style + task framing
 # + the encounter's own prose.
 _SCENE_TASK = (
-    "Paint the battlefield BACKDROP for a tactical card-combat encounter. "
-    "Environment only — no creatures, no people, no monsters (the combatants are "
-    "rendered separately as cards laid over this backdrop). Wide landscape "
-    "composition, painted edge to edge, with an uncluttered middle ground the "
-    "action can sit on.\n\nThe setting:\n"
+    "Paint a battlefield BACKDROP for a tactical fantasy combat encounter. "
+    "Create ONLY the ENVIRONMENT.  That means NO creatures, NO people, NO "
+    "monsters, NO characters, NO subjects. Wide landscape composition, painted "
+    "edge to edge, with an uncluttered middle ground. Use scale, lighting, and "
+    "atmospheric details to create a sense of place.\n\nThe setting:\n"
 )
 
 _ENEMY_TASK = (
-    "Paint a single enemy creature portrait for a card in a tactical card-combat "
-    "game. ONE creature only, full body or three-quarter view, centred, against a "
-    "dark atmospheric background that fades toward black at the edges. Square "
-    "composition.\n\n"
+    "Paint a single portrait for an enemy card in a tactical card-combat game. "
+    "ONE subject only, full body or three-quarter view, centred, facing centre or "
+    "left in an action pose, taking up the full frame.  Background is atmospheric "
+    "falling off into a dark vignette to emphasize the subject.\n\n"
+    "Your subject is captured at an instant of intensity - from pose, expression, "
+    "movement or stillness - the frame is caught at the peak of its energy. "
+    "Aggressive foreshortening, low sweeping camera angle, bold diagonals, powerful "
+    "posing.\n\n"
 )
 
 
@@ -113,7 +117,7 @@ def enemy_prompt(enc: Dict[str, Any], enemy: Dict[str, Any],
     desc = (override_text or enemy.get("description") or "").strip()
     if not desc:
         desc = f'A dark fantasy creature called "{name}".'
-    parts = [f"{_style()}\n\n{_ENEMY_TASK}The creature — {name}:\n{desc}"]
+    parts = [f"{_style()}\n\n{_ENEMY_TASK}The subject — {name}:\n{desc}"]
     scene = str(enc.get("scene") or "").strip()
     if scene:
         parts.append(f"\n\nIt is encountered here (match the mood and palette; "

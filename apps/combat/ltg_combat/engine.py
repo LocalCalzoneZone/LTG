@@ -152,6 +152,20 @@ def _advance(st: GameState) -> None:
                 st.reacted_window = []
             return
 
+        # The presentation settle (paced games only): a resolution just
+        # emptied the stack — STOP before the turn structure takes its next
+        # automatic step, so the next enemy's declaration or the phase flip
+        # arrives as its own beat instead of fused into this one. Priority
+        # seeds so a legal (synthetic-only) "settle" action exists; the
+        # server's paced drain submits it after the viewing beat.
+        if st.settle:
+            holder = _party_ordered(st)
+            if not holder:
+                st.settle = False  # nobody left to hold the beat — play on
+            else:
+                st.priority = holder[0].id
+                return
+
         # Stack empty -> walk the turn structure (GDD §4.2).
         if st.phase == "upkeep":
             _begin_turn(st)
@@ -375,8 +389,10 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
         item.needs_target = _trigger_pick_effect(item) is not None
     st.priority = None  # fresh window — re-seeded by _advance
     st.passes = 0
+    ch.fires = getattr(ch, "fires", 0) + 1
     _log(st, "channel_trigger",
-         f"{name}'s trigger goes on the stack.", source=holder.id, label=name)
+         f"{name}'s trigger goes on the stack.", source=holder.id, label=name,
+         card=getattr(card, "id", None))
     _raise_next_trigger_pick(st)
 
 
@@ -1527,6 +1543,7 @@ def _expire_keywords(combatant) -> None:
 def _apply(st: GameState, action: Action) -> None:
     handler = {
         "pass": _do_pass,
+        "settle": _do_settle,
         "end_turn": _do_end_turn,
         "attack": _do_attack,
         "cast": _do_cast,
@@ -1544,6 +1561,13 @@ def _apply(st: GameState, action: Action) -> None:
         "stance_ability": _do_stance_ability,
     }[action.kind]
     handler(st, action)
+
+
+def _do_settle(st: GameState, action: Action) -> None:
+    """Release a paced game's settle stop: the resolution has been watched;
+    the automatic flow (next declaration / phase flip) may take its next step."""
+    st.settle = False
+    st.priority = None
 
 
 def _do_choose_mana(st: GameState, action: Action) -> None:
@@ -2039,7 +2063,7 @@ def _do_use_skill(st: GameState, action: Action) -> None:
                         # that merely CARRY a channeled card, e.g. a stance's
                         # replaced ability).
                         starts_channel=(card.timing == Timing.channeled),
-                        cast_mode="action"))
+                        cast_mode="action", heroic="skill"))
     _open_window(st, actor.id, reactive=False)
     tgt = st.combatant(action.target_id)
     _log(st, "skill", f"{actor.name} uses their Skill — {card.name}"
@@ -2062,7 +2086,7 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
                         label=f"{card.name} (Ultimate)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card=card, mode=action.mode, cast_mode="action",
-                        is_ultimate=True))
+                        is_ultimate=True, heroic="ultimate"))
     _open_window(st, actor.id, reactive=False)
     tgt = st.combatant(action.target_id)
     _log(st, "ultimate", f"{actor.name} unleashes their Ultimate — {card.name}"
@@ -2103,9 +2127,13 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     name = repl.name or f"{slot.title()}"
     # The stance's card rides along so slot refs ("$T1") and their descriptors
     # (splash scope, corpse state) resolve during the replacement's resolution.
+    # `targets` carries the per-site picks for a replacement whose effects target
+    # independently (Counter-Attack: the action it cancels AND whom it hits), so
+    # `_new_ctx` can bind each site; empty for the single-target shape.
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{name} (stance)", effects=list(repl.effects),
-                        target_id=action.target_id, card=_stance_card(actor),
+                        target_id=action.target_id, targets=tuple(action.targets),
+                        card=_stance_card(actor), stance_slot=slot,
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
@@ -2151,8 +2179,18 @@ def _next_priority_after(st: GameState, actor_id: str) -> str:
 def _resolve_top(st: GameState) -> StackItem:
     """Resolve and return the popped top item (the caller reads it to build the
     post-resolution reaction context — §F-7.4)."""
+    if st.paced:
+        st.settle = True  # a paced game pauses to WATCH this land (see _advance)
     item = st.stack.pop()
-    _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id)
+    _log(st, "resolve", f"{item.label} resolves.", label=item.label, source=item.source_id,
+         # Presentation payload (the panel-animation picker reads these; no
+         # rules do): what kind of item this was and which card it carried.
+         kind=item.kind, side=item.source_side,
+         card=item.card_id or (item.card.id if item.card is not None else None),
+         heroic=item.heroic, stance_slot=item.stance_slot,
+         channeled=bool(item.card is not None
+                        and item.card.timing == Timing.channeled
+                        and (item.kind == "spell" or item.starts_channel)))
     if item.kind == "move":  # a voluntary Move resolves: the body relocates NOW (§L-2.2)
         mover = st.combatant(item.source_id)
         if mover is not None and getattr(mover, "alive", True) and item.target_id:
@@ -2924,7 +2962,10 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
                 _resolve_effect(st, item, sub, ctx)
         else:
             _log(st, "condition_false",
-                 f"{item.label}: condition not met — skipped.", kind="conditional")
+                 f"{item.label}: condition not met — skipped.", kind="conditional",
+                 source=item.source_id, card=item.card_id,
+                 cast_mode=item.cast_mode,
+                 condition=getattr(effect.condition, "kind", None))
         return
 
     handler = RESOLVERS.get(effect.kind)
@@ -4971,6 +5012,10 @@ def _legal(st: GameState) -> List[Action]:
     actor = st.character(st.priority)
     if actor is None:
         return []
+    # A paced game paused at a settle stop: the ONLY move is the synthetic
+    # settle (the server's drain submits it after the viewing beat).
+    if st.settle and not st.stack:
+        return [Action("settle", actor.id, label="Settle")]
     if st.phase == "capacity" and not st.stack:
         return _legal_capacity(st, actor)
     return _legal_react(st, actor) if st.stack else _legal_main(st, actor)
@@ -5065,11 +5110,31 @@ def _stance_actions(st: GameState, actor: CharacterState, slot: str,
     target enumeration over the replacement's leaf effects. `card_id` carries the
     slot name so `_do_stance_ability` finds the replacement again at apply time.
     The stance's own card rides along so a replacement aimed at a shared slot
-    ("$T1") resolves the slot's side instead of enumerating nothing."""
+    ("$T1") resolves the slot's side instead of enumerating nothing.
+
+    A replacement whose effects target INDEPENDENTLY (≥2 sites — a Counter-Attack's
+    "cancel that action" plus its own damage) offers one action per combination of
+    per-site picks, exactly like a multi-site cast; a site with no legal option
+    makes the replacement unusable right now."""
     name = repl.name or f"{slot.title()} (stance)"
+    card = _stance_card(actor)
+    effects = list(repl.effects)
     out = []
-    for tid, tlabel in _target_options_for(st, list(repl.effects),
-                                           _stance_card(actor)):
+    sites = _target_sites(effects, card)
+    if len(sites) >= 2:
+        per_site = [_site_options(st, side, targeted, kind, state)
+                    for _key, side, targeted, kind, state in sites]
+        if not all(per_site):
+            return []  # a required site has nothing to name — not offerable
+        for combo in itertools.product(*per_site):
+            tids = tuple(tid for tid, _ in combo)
+            labels = ", ".join(tl for _, tl in combo if tl)
+            out.append(Action("stance_ability", actor.id, card_id=slot,
+                              target_id=tids[0], targets=tids,
+                              label=f"{name} (stance)"
+                                    + (f" on {labels}" if labels else "")))
+        return out
+    for tid, tlabel in _target_options_for(st, effects, card):
         label = f"{name} (stance)" + (f" on {tlabel}" if tlabel else "")
         out.append(Action("stance_ability", actor.id, card_id=slot,
                           target_id=tid, label=label))
@@ -5306,20 +5371,8 @@ def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
         # uncastable — matching "you can't choose a mode you can't target".
         sites = _target_sites(effects, card)
         if len(sites) >= 2:
-            per_site = []
-            for _key, side, targeted, kind, state in sites:
-                if isinstance(side, str) and side.startswith("stack"):
-                    # "stack:<filt>" = enemy actions only (a counter);
-                    # "stack_any:<filt>" = either side's (a copy_spell).
-                    any_side = side.startswith("stack_any:")
-                    filt = side.split(":", 1)[1]
-                    opts = [(f"#{s.uid}", s.label) for s in st.stack
-                            if (any_side or s.source_side == "enemy")
-                            and _filter_matches(filt, s)
-                            and (kind != "redirect" or _stack_redirectable(st, s))]
-                else:
-                    opts = _pick_options(st, side, targeted, kind, state)
-                per_site.append(opts)
+            per_site = [_site_options(st, side, targeted, kind, state)
+                        for _key, side, targeted, kind, state in sites]
             if not all(per_site):
                 continue  # a required site has no legal pick — combo uncastable
             for combo in itertools.product(*per_site):
@@ -5398,6 +5451,24 @@ def _counter_filter(effects) -> Optional[str]:
         if e.kind == "counter":
             return e.filter
     return None
+
+
+def _site_options(st: GameState, side, targeted: bool, kind: Optional[str],
+                  state=None):
+    """The legal picks for ONE independent target site of a multi-site action
+    (a cast or a stance replacement): stack actions when the site names the
+    stack, creatures otherwise.
+
+    "stack:<filt>" = enemy actions only (a counter); "stack_any:<filt>" =
+    either side's (a copy_spell, or a redirect turning an ally's action)."""
+    if isinstance(side, str) and side.startswith("stack"):
+        any_side = side.startswith("stack_any:")
+        filt = side.split(":", 1)[1]
+        return [(f"#{s.uid}", s.label) for s in st.stack
+                if (any_side or s.source_side == "enemy")
+                and _filter_matches(filt, s)
+                and (kind != "redirect" or _stack_redirectable(st, s))]
+    return _pick_options(st, side, targeted, kind, state)
 
 
 def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
@@ -5698,6 +5769,11 @@ def auto_pass_action(state: GameState) -> Optional[Action]:
     _advance(st)
     if st.result is not None or st.priority is None or st.pending_choice is not None:
         return None
+    # A settle stop is ALWAYS synthetic — checked before every other guard
+    # (a channeler's standing decision doesn't apply; nothing is decidable
+    # here, the game is simply being watched).
+    if st.settle and not st.stack:
+        return Action("settle", st.priority, auto=True, label="Settle (auto)")
     if st.phase == "capacity" and not st.stack:
         return None  # the capacity colour is a mandatory real choice
     actor = st.character(st.priority)

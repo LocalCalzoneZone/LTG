@@ -122,9 +122,57 @@ def prepare_scenario(content: Dict[str, Any], party_size: int,
 # --------------------------------------------------------------------------- #
 # The drive loop
 # --------------------------------------------------------------------------- #
+
+# Decision points that carry player agency — castability is tallied only here,
+# never inside forced sub-decision windows (choose_target and friends), where
+# an untallied hand would read as "unaffordable".
+_AGENCY_KINDS = frozenset({"cast", "attack", "defend", "end_turn", "pass",
+                           "mitigate", "use_skill", "use_ultimate",
+                           "stance_ability", "drop_channels", "move"})
+
+
+def _tally_decision(telemetry: Dict[str, Any], st: GameState,
+                    acts: List[Any]) -> None:
+    """Per agency decision: for every card in the actor's hand, was a cast of
+    it OFFERED (affordable + legal) right now? The castability autopsy (§D13)
+    divides dead cards into never-castable vs castable-but-declined on this."""
+    kinds = {a.kind for a in acts}
+    if not (kinds & _AGENCY_KINDS) or any(k.startswith("choose_") for k in kinds):
+        return
+    actor_id = acts[0].actor_id
+    char = st.character(actor_id)
+    if char is None:
+        return
+    slot = telemetry.setdefault(actor_id, {"rules": {}, "cards": {}})
+    offered = {a.card_id for a in acts if a.kind == "cast"}
+    for card in char.hand:
+        c = slot["cards"].setdefault(card.id, {"hand": 0, "offered": 0,
+                                               "cast_rules": {}})
+        c["hand"] += 1
+        if card.id in offered:
+            c["offered"] += 1
+
+
+def _tally_choice(telemetry: Dict[str, Any], act: Any,
+                  rule: Optional[str]) -> None:
+    """After the policy chooses: attribute the decision (and a cast's card) to
+    the ladder rule that made it (Policy.last_rule)."""
+    if rule is None:
+        return
+    slot = telemetry.setdefault(act.actor_id, {"rules": {}, "cards": {}})
+    slot["rules"][rule] = slot["rules"].get(rule, 0) + 1
+    if act.kind == "cast" and act.card_id:
+        c = slot["cards"].setdefault(act.card_id, {"hand": 0, "offered": 0,
+                                                   "cast_rules": {}})
+        c["cast_rules"][rule] = c["cast_rules"].get(rule, 0) + 1
+
+
 def _drive(st: GameState, policy: Policy, rng: random.Random,
-           round_cap: int) -> Tuple[GameState, Optional[str]]:
-    """Play to completion. Returns (final state, anomaly or None)."""
+           round_cap: int, telemetry: Optional[Dict[str, Any]] = None
+           ) -> Tuple[GameState, Optional[str]]:
+    """Play to completion. Returns (final state, anomaly or None). `telemetry`
+    (when given) receives per-decision castability and rule-attribution
+    tallies — collection is read-only and never influences play."""
     actions = 0
     while st.result is None:
         if st.turn > round_cap:
@@ -132,7 +180,11 @@ def _drive(st: GameState, policy: Policy, rng: random.Random,
         acts = legal_actions(st)
         if not acts:
             return st, "no_actions"
+        if telemetry is not None:
+            _tally_decision(telemetry, st, acts)
         act = policy.choose(st, acts, rng)
+        if telemetry is not None:
+            _tally_choice(telemetry, act, getattr(policy, "last_rule", None))
         st, _ = apply_action(st, act)
         actions += 1
         if actions >= ACTION_CAP:
@@ -167,7 +219,23 @@ def _zero_char() -> Dict[str, Any]:
             "channels_ended": 0, "dead_in_hand": 0,
             # Per-card {card_id: [times_drawn, times_cast]} — the Tester's
             # cast-vs-held screening reads this (§D13-1.2).
-            "card_events": {}}
+            "card_events": {},
+            # Per-card count of `condition_false` resolutions — casts whose
+            # conditional skipped (the cast-into-a-whiff read).
+            "condition_whiffs": {},
+            # Per-card channel economy: starts / triggers fired / turns held /
+            # reserved mana × turns held / voluntary drops.
+            "channel_stats": {},
+            # Filled from drive telemetry (when the runner collects it):
+            # decision counts per policy ladder rule, and per-card castability
+            # {card_id: {hand, offered, cast_rules}}.
+            "decision_rules": {},
+            "card_flow": {}}
+
+
+def _zero_channel() -> Dict[str, int]:
+    return {"starts": 0, "triggers": 0, "turns_held": 0,
+            "reserved_manaturns": 0, "drops": 0}
 
 
 def _collect_metrics(st: GameState, spec: Dict[str, Any],
@@ -183,6 +251,9 @@ def _collect_metrics(st: GameState, spec: Dict[str, Any],
     enemies: Dict[str, Dict[str, Any]] = {}
     costs = _card_costs(spec)
     enemy_channels_broken = 0
+    # (character, card) → (start turn, reserved mana) for channels still held —
+    # closed out at fight end so turns-held includes the final hold.
+    open_channels: Dict[Tuple[str, str], Tuple[int, int]] = {}
     turn = 1
     for ev in st.log:
         d = ev.data
@@ -230,16 +301,49 @@ def _collect_metrics(st: GameState, spec: Dict[str, Any],
             cid = d.get("character")
             if cid in chars:
                 chars[cid]["channels_started"] += 1
+                if d.get("card"):
+                    cs = chars[cid]["channel_stats"].setdefault(
+                        d["card"], _zero_channel())
+                    cs["starts"] += 1
+                    open_channels[(cid, d["card"])] = (
+                        turn, len(d.get("reserved") or []))
+        elif ev.type == "channel_trigger":
+            cid = d.get("source")
+            if cid in chars and d.get("card"):
+                cs = chars[cid]["channel_stats"].setdefault(
+                    d["card"], _zero_channel())
+                cs["triggers"] += 1
         elif ev.type == "channel_end":
             cid = d.get("character")
             if cid in chars:
                 chars[cid]["channels_ended"] += 1
+                if d.get("card"):
+                    cs = chars[cid]["channel_stats"].setdefault(
+                        d["card"], _zero_channel())
+                    started, reserved = open_channels.pop(
+                        (cid, d["card"]), (turn, 0))
+                    held = max(0, turn - started)
+                    cs["turns_held"] += held
+                    cs["reserved_manaturns"] += reserved * max(1, held)
+                    if d.get("reason") == "voluntary":
+                        cs["drops"] += 1
             elif d.get("enemy"):
                 enemy_channels_broken += 1
+        elif ev.type == "condition_false":
+            cid = d.get("source")
+            if cid in chars and d.get("card"):
+                w = chars[cid]["condition_whiffs"]
+                w[d["card"]] = w.get(d["card"], 0) + 1
         elif ev.type == "enemy_died":
             eid = d.get("enemy")
             if eid:
                 enemies.setdefault(eid, {})["died_round"] = turn
+    # Channels still held when the fight ended: count the hold to the end.
+    for (cid, card_id), (started, reserved) in open_channels.items():
+        cs = chars[cid]["channel_stats"].setdefault(card_id, _zero_channel())
+        held = max(0, st.turn - started)
+        cs["turns_held"] += held
+        cs["reserved_manaturns"] += reserved * max(1, held)
     for c in st.party:
         m = chars[c.id]
         m["dead_in_hand"] = len(c.hand) + len(c.library)
@@ -275,7 +379,8 @@ def run_one(spec: Dict[str, Any], policy: Policy, seed: int,
     rng = _policy_rng(h, policy, seed)
     st = state_from_dict(spec, seed=seed)
     opening = {c.id: [card.id for card in c.hand] for c in st.party}
-    st, anomaly = _drive(st, policy, rng, round_cap)
+    telemetry: Dict[str, Any] = {}
+    st, anomaly = _drive(st, policy, rng, round_cap, telemetry)
     record = {
         "kind": "encounter",
         "content": label or spec.get("name", ""),
@@ -292,7 +397,16 @@ def run_one(spec: Dict[str, Any], policy: Policy, seed: int,
         "rounds": st.turn,
     }
     record.update(_collect_metrics(st, spec, opening))
+    _merge_telemetry(record["characters"], telemetry)
     return record
+
+
+def _merge_telemetry(chars: Dict[str, Dict[str, Any]],
+                     telemetry: Dict[str, Any]) -> None:
+    for cid, t in telemetry.items():
+        if cid in chars:
+            chars[cid]["decision_rules"] = t["rules"]
+            chars[cid]["card_flow"] = t["cards"]
 
 
 # --------------------------------------------------------------------------- #
@@ -356,13 +470,15 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
             _apply_carry(st, carry, heals,
                          random.Random(f"{h}:{seed}:carry:{i}"))
         entering = {c.id: c.hp for c in st.party}
-        st, act_anomaly = _drive(st, policy, rng, round_cap)
+        telemetry: Dict[str, Any] = {}
+        st, act_anomaly = _drive(st, policy, rng, round_cap, telemetry)
         rec = {"act": i + 1, "name": act.get("name", f"Act {i + 1}"),
                "result": st.result or "anomaly", "anomaly": act_anomaly,
                "rounds": st.turn, "entering_hp": entering,
                "spend_plan": policy.spend_plan,
                "banked": dict(banked)}
         rec.update(_collect_metrics(st, spec))
+        _merge_telemetry(rec["characters"], telemetry)
         act_records.append(rec)
         rounds_total += st.turn
         if act_anomaly is not None:

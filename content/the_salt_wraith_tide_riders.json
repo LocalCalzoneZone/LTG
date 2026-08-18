@@ -1,7 +1,7 @@
 {
   "name": "The Salt-Wraith Tide-Riders",
   "scene": "A wind-scoured tidal flat under a bruised evening sky, where the sea has withdrawn to a mirror-thin sheen over cracked mud and the bleached ribs of a wrecked galleon jut like a cage. Crusted salt-pillars glitter faintly, and a low keening rises from the pools as pale shapes gather between the wrecks.",
-  "scene_image": "/art/the_salt_wraith_tide_riders/scene-07f6e648.png",
+  "scene_image": "/art/the_salt_wraith_tide_riders/scene-39ca1e5d.png",
   "enemies": [
     {
       "id": "tide_caller",
@@ -64,7 +64,7 @@
           ]
         }
       ],
-      "image": "/art/the_salt_wraith_tide_riders/tide_caller-b50ffdb6.png"
+      "image": "/art/the_salt_wraith_tide_riders/tide_caller-ad6f4ee8.png"
     },
     {
       "id": "brine_warden",
@@ -124,7 +124,7 @@
           ]
         }
       ],
-      "image": "/art/the_salt_wraith_tide_riders/brine_warden-c628d140.png"
+      "image": "/art/the_salt_wraith_tide_riders/brine_warden-709dd3ef.png"
     },
     {
       "id": "drag_hook_wraith",
@@ -235,7 +235,7 @@
           ]
         }
       ],
-      "image": "/art/the_salt_wraith_tide_riders/salt_husk-4aa59d4d.png"
+      "image": "/art/the_salt_wraith_tide_riders/salt_husk-6e02cc77.png"
     }
   ],
   "tokens": {},

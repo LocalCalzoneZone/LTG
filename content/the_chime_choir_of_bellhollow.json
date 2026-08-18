@@ -1,7 +1,7 @@
 {
   "name": "The Chime-Choir of Bellhollow",
   "scene": "A canyon monastery of hanging bronze bells, thousands of them strung on rusted chains between red sandstone spires, humming and swaying in a hot dry wind. At the canyon's heart a great cracked bell hangs over a pit of glowing embers, its rim etched with singing runes; the ringing never stops.",
-  "scene_image": "/art/the_chime_choir_of_bellhollow/scene-c98eecee.png",
+  "scene_image": "/art/the_chime_choir_of_bellhollow/scene-0ab72e5d.png",
   "enemies": [
     {
       "id": "grand_carillon",
@@ -120,7 +120,7 @@
           ]
         }
       ],
-      "image": "/art/the_chime_choir_of_bellhollow/grand_carillon-33a8efc5.png"
+      "image": "/art/the_chime_choir_of_bellhollow/grand_carillon-e6bab96b.png"
     },
     {
       "id": "choirmaster_seraf",
@@ -239,7 +239,7 @@
           ]
         }
       ],
-      "image": "/art/the_chime_choir_of_bellhollow/bell_warden-298723c5.png"
+      "image": "/art/the_chime_choir_of_bellhollow/bell_warden-1614638e.png"
     },
     {
       "id": "chime_sprite",
@@ -288,7 +288,7 @@
           ]
         }
       ],
-      "image": "/art/the_chime_choir_of_bellhollow/chime_sprite-42fb6f84.png"
+      "image": "/art/the_chime_choir_of_bellhollow/chime_sprite-08be5ffc.png"
     },
     {
       "id": "knell_caller",
@@ -345,7 +345,7 @@
           ]
         }
       ],
-      "image": "/art/the_chime_choir_of_bellhollow/knell_caller-e811b500.png"
+      "image": "/art/the_chime_choir_of_bellhollow/knell_caller-5b0e7048.png"
     }
   ],
   "tokens": {},

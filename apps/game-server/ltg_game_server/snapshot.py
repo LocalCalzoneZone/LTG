@@ -99,7 +99,8 @@ def _mana_block(char_dict: Dict[str, Any], raw_char, pending_capacity: bool) -> 
 
 def _character_snapshot(view: GameState, char, controlled: bool,
                         holder_id: Optional[str], kind: Optional[str],
-                        portrait: str = "", description: str = "") -> Dict[str, Any]:
+                        portrait: str = "", description: str = "",
+                        anims: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     cd = _character_dict(view, char)  # reuse the cockpit's stat/mana/channel accessors
     is_holder = holder_id == char.id
     pending_capacity = is_holder and kind == "mana_choice"
@@ -109,6 +110,9 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "archetype": cd["archetype"],
         "portrait": portrait,  # loadout art (data URL / image URL), "" if none
         "description": description,  # the loadout's character blurb ("" if none)
+        # Panel animations (Update 16): clips + per-card picks; None when the
+        # loadout has none, and the client falls back to the static portrait.
+        "anims": anims if anims and anims.get("animations") else None,
         "row": cd["row"],
         "power": _power_block(cd["power"], cd["base_power"], cd["power_bonus"]),
         # `current` is the EFFECTIVE hp (hp + temp_mod), mirroring current_power —
@@ -314,7 +318,8 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
     characters = [
         _character_snapshot(view, c, c.id in controlled_ids, holder_id, kind,
                             portraits.get(c.id, ""),
-                            art.get("char_descriptions", {}).get(c.id, ""))
+                            art.get("char_descriptions", {}).get(c.id, ""),
+                            art.get("char_anims", {}).get(c.id))
         for c in view.party
     ]
     creatures = [_creature_snapshot(view, e, art) for e in view.living_enemies()]

@@ -425,13 +425,18 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                     continue
                 async with session.lock():
                     try:
-                        session.apply_index(client_id, index, mana)
+                        # drain=False: the player's own action lands instantly;
+                        # the synthetic follow-up (auto-passes, resolutions,
+                        # enemy steps) drains PACED — one broadcast per step,
+                        # a beat between the ones worth watching.
+                        session.apply_index(client_id, index, mana, drain=False)
                     except ValueError as exc:
                         await _send(ws, {"type": "error", "message": str(exc)})
                         # Re-sync just this client so its optimistic arming reverts.
                         await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
                         continue
                 await _broadcast(session)
+                session.start_pacer(_broadcast)
 
             elif mtype == "confirm_level_up":
                 # The between-acts gate (Update 10 §D10-3.3): one confirmation
@@ -474,6 +479,21 @@ def serve_art(image_path: str) -> FileResponse:
         if p.is_relative_to(base.resolve()) and p.is_file():
             return FileResponse(p)
     raise HTTPException(status_code=404, detail="no such image")
+
+
+# Panel animation clips (Update 16): uploaded through the deckbuilder into the
+# gitignored loadouts/anim/<char>/ folder; content/anim/ is a tracked fallback
+# for clips shipped with the repo. Same URL scheme as the deckbuilder's preview.
+ANIM_DIRS = (content.LOADOUTS_DIR / "anim", content.CONTENT_DIR / "anim")
+
+
+@app.get("/anim/{clip_path:path}")
+def serve_anim(clip_path: str) -> FileResponse:
+    for base in ANIM_DIRS:
+        p = (base / clip_path).resolve()
+        if p.is_relative_to(base.resolve()) and p.is_file():
+            return FileResponse(p)
+    raise HTTPException(status_code=404, detail="no such animation")
 
 
 _PLACEHOLDER = """<!doctype html><html><head><meta charset="utf-8">

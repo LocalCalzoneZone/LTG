@@ -95,7 +95,7 @@ def test_scene_prompt_carries_style_and_scene_text(loadouts, encounter):
     enc = content.encounter_detail(encounter)
     p = art.scene_prompt(enc)
     assert "ruined chapel" in p                       # the encounter's own prose
-    assert "heroic realism" in p                      # the default style wrapper
+    assert "dark fantasy realism" in p                # the default style wrapper
     assert "no creatures" in p.lower()                # backdrop framing
 
 def test_enemy_prompt_uses_description_and_hints_scene(loadouts, encounter):
@@ -289,7 +289,7 @@ def test_comfyui_backend_queues_injected_workflow(loadouts, encounter, mock_comf
     text = wf["6"]["inputs"]["text"]
     assert text.startswith("masterpiece, ") and text.endswith(", sharp focus")
     assert "ruined chapel" in text and "%prompt%" not in text
-    assert (wf["5"]["inputs"]["width"], wf["5"]["inputs"]["height"]) == (1344, 768)
+    assert (wf["5"]["inputs"]["width"], wf["5"]["inputs"]["height"]) == (1792, 1024)
     # And the image was fetched through /view with the history's coordinates.
     view = [c for c in mock_comfy["get"] if c[0].endswith("/view")][0]
     assert view[1]["filename"] == "LTG_0001_.png"
