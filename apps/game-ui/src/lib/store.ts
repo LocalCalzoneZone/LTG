@@ -182,7 +182,11 @@ interface StoreState {
   // only after the previous one's choreography has landed, so the WORLD
   // advances beat by beat instead of batches overlapping.
   _snapQueue: GameSnapshot[];
-  _applySnapshot: (snap: GameSnapshot) => number;
+  // Pre-roll (Update 16): the queued state whose opening panel clip is
+  // already playing on the OLD board, and how far into its timeline the
+  // world state applies (the clip's impact moment). Null when not pre-rolling.
+  _preroll: { snap: GameSnapshot; ms: number } | null;
+  _applySnapshot: (snap: GameSnapshot, prerollMs?: number) => number;
   _drainPresent: () => void;
 
   // lifecycle
@@ -253,6 +257,7 @@ export const useGame = create<StoreState>((set, get) => ({
   holdUntil: 0,
   _holdTick: 0,
   _snapQueue: [],
+  _preroll: null,
 
   connect: (sessionId) => {
     get().socket?.close();
@@ -260,7 +265,7 @@ export const useGame = create<StoreState>((set, get) => ({
     set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
           passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null,
           fx: [], departures: {}, lastLogSeq: null, _stackModes: {},
-          holdUntil: 0, _snapQueue: [] });
+          holdUntil: 0, _snapQueue: [], _preroll: null });
   },
 
   disconnect: () => {
@@ -329,7 +334,7 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   // internal — not part of the public interface but kept on the object for reuse
-  _applySnapshot: (snap) => {
+  _applySnapshot: (snap, prerollMs = 0) => {
     const lastSeq = get().lastLogSeq;
     const synced = syncSeq(lastSeq, snap.log);
     let fxState: Partial<StoreState> = { lastLogSeq: synced };
@@ -337,6 +342,13 @@ export const useGame = create<StoreState>((set, get) => ({
     if (lastSeq != null && synced === lastSeq) {
       const r = fxFromLog(snap, lastSeq, get()._stackModes);
       fired = r.events;
+      if (prerollMs > 0) {
+        // The opening clip already fired on the old board (see
+        // _drainPresent); everything else lands relative to the impact.
+        fired = fired
+          .filter((e) => !(e.kind === "panel" && !(e.delayMs && e.delayMs > 0)))
+          .map((e) => ({ ...e, delayMs: Math.max(0, (e.delayMs ?? 0) - prerollMs) }));
+      }
       // The timeline scheduler: an event with a beat delay mounts LATER —
       // impact follows delivery, response follows impact. Only beat-zero
       // events ride in with the snapshot itself.
@@ -438,7 +450,38 @@ export const useGame = create<StoreState>((set, get) => ({
     if (!q.length) return;
     const snap = q[0];
     set({ _snapQueue: q.slice(1) });
-    let dur = get()._applySnapshot(snap);
+    // Pre-roll (Update 16): if this batch OPENS with a hero's panel clip, the
+    // clip must lead the world — play it now over the OLD board, hold the
+    // state (HP, deaths, hit flashes) until the clip's impact moment, then
+    // apply. Without this the enemy visibly dies before the swing.
+    const pre = get()._preroll;
+    let prerollMs = 0;
+    if (pre && pre.snap === snap) {
+      prerollMs = pre.ms;
+      set({ _preroll: null });
+    } else {
+      const lastSeq = get().lastLogSeq;
+      const synced = syncSeq(lastSeq, snap.log);
+      if (lastSeq != null && synced === lastSeq) {
+        const peek = fxFromLog(snap, lastSeq, get()._stackModes);
+        if (peek.preroll > 0) {
+          const leadEvents = peek.events.filter(
+            (e) => e.kind === "panel" && !(e.delayMs && e.delayMs > 0));
+          set((s) => ({ fx: [...s.fx, ...leadEvents], _preroll: { snap, ms: peek.preroll },
+                        _snapQueue: [snap, ...s._snapQueue], holdUntil: Date.now() + peek.preroll }));
+          for (const e of leadEvents) {
+            window.setTimeout(
+              () => set((s) => ({ fx: s.fx.filter((x) => x.key !== e.key) })), FX_TTL[e.kind]);
+          }
+          window.setTimeout(() => {
+            set({ _holdTick: Date.now() });
+            get()._drainPresent();
+          }, peek.preroll + 20);
+          return;
+        }
+      }
+    }
+    let dur = get()._applySnapshot(snap, prerollMs);
     // Backlog collapse: if the queue is deep (a long Pass-All chain, a
     // reconnect), shorten each beat so presentation lag stays bounded.
     if (get()._snapQueue.length > 3) dur = Math.min(dur, 600);

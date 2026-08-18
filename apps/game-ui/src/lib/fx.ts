@@ -158,7 +158,11 @@ export function fxFromLog(
   snapshot: GameSnapshot,
   lastSeq: number,
   modes: Record<string, string>,
-): { events: FxEvent[]; departures: Record<string, DepartKind>; maxSeq: number } {
+): { events: FxEvent[]; departures: Record<string, DepartKind>; maxSeq: number;
+     // Pre-roll (Update 16): when the batch OPENS with a hero's panel clip, the
+     // ms the world state should wait before applying — the clip plays on the
+     // old board and the blow (HP, death, hit flash) lands at its impact.
+     preroll: number } {
   const entries = [...snapshot.log]
     .filter((e) => e.seq != null)
     .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)); // oldest → newest
@@ -178,6 +182,13 @@ export function fxFromLog(
   // `cursor` is the running end of everything scheduled so far.
   let beat = 0;
   let cursor = 0;
+  // Panel clips (Update 16) stretch the timeline: a clip that fires for a
+  // resolving action LEADS — the board's effects for that resolution wait for
+  // the clip's impact moment. The lead is added to the cap so a long chain
+  // still clamps, but never ahead of a clip that is mid-swing.
+  let capExtra = 0;
+  const cap = () => BEAT_CAP + capExtra;
+  let preroll = 0;
 
   for (const e of entries) {
     const seq = e.seq ?? -1;
@@ -195,22 +206,37 @@ export function fxFromLog(
         downed: BEAT_IMPACT,
         absorb: BEAT_RESPONSE,
       };
-      const delayMs = Math.min(beat + (offsets[kind] ?? BEAT_IMPACT / 2), BEAT_CAP);
+      const delayMs = Math.min(beat + (offsets[kind] ?? BEAT_IMPACT / 2), cap());
       events.push({ key: `${seq}:${events.length}`, kind, entityId, delayMs,
                     ...extra });
       if (offsets[kind] === BEAT_IMPACT) {
-        cursor = Math.max(cursor, Math.min(beat + BEAT_SCENE, BEAT_CAP));
+        cursor = Math.max(cursor, Math.min(beat + BEAT_SCENE, cap()));
       }
     };
     // A hero's panel clip for `trigger`, if the loadout wired one. Only party
     // members have panels; the picker returns nothing for anyone else.
+    // Returns the clip so a resolution can read its impact lead.
     const panel = (
       charId: string, trigger: AnimTrigger,
       opts: { cardId?: string; stance?: boolean; channeled?: boolean } = {},
       extra: Partial<FxEvent> = {},
-    ) => {
+    ): PanelAnimation | undefined => {
       const anim = pickPanelAnim(partyIds.get(charId)?.anims, trigger, opts);
       if (anim) push("panel", charId, { label: anim.id, ...extra });
+      return anim;
+    };
+    // The actor's clip for a resolving action: fire it on the scene's beat, then
+    // move the beat to the clip's impact moment so the lunge / hit / numbers
+    // that follow in this batch land WITH the blow, not before it.
+    const lead = (anim: PanelAnimation | undefined) => {
+      if (!anim) return;
+      const ms = Math.max(0, Math.round((anim.impact_s ?? 1.5) * 1000));
+      if (!ms) return;
+      // A clip that opens the batch pre-rolls the whole world state.
+      if (beat === 0 && events.length === 1 && preroll === 0) preroll = ms;
+      capExtra += ms;
+      beat += ms;
+      cursor = Math.max(cursor, beat);
     };
 
     switch (e.type) {
@@ -224,16 +250,16 @@ export function fxFromLog(
           const cardId = str(d.card) || undefined;
           const channeled = d.channeled === true;
           if (kind === "attack") {
-            panel(src, "attack");
+            lead(panel(src, "attack"));
           } else if (kind === "spell") {
-            panel(src, channeled ? "channel" : "cast", { cardId });
+            lead(panel(src, channeled ? "channel" : "cast", { cardId }));
           } else if (kind === "activated") {
             const heroic = str(d.heroic);
             const slot = str(d.stance_slot);
             if (heroic === "skill" || heroic === "ultimate") {
-              panel(src, heroic, { cardId, channeled });
+              lead(panel(src, heroic, { cardId, channeled }));
             } else if (slot === "attack") {
-              panel(src, "attack", { cardId, stance: true });
+              lead(panel(src, "attack", { cardId, stance: true }));
             } else if (slot === "defend" || slot === "mitigate") {
               panel(src, slot);
             }
@@ -256,7 +282,7 @@ export function fxFromLog(
           if (anim) {
             events.push({ key: `${seq}:${events.length}`, kind: "panel",
                           entityId: target, label: anim.id,
-                          delayMs: Math.min(beat + BEAT_IMPACT, BEAT_CAP) });
+                          delayMs: Math.min(beat + BEAT_IMPACT, cap()) });
           }
         }
         // A heavy blow on a hero bleeds onto the screen's edges.
@@ -306,7 +332,7 @@ export function fxFromLog(
         break;
       case "draw": {
         push("draw", str(d.character), { label: str(d.card) });
-        cursor = Math.min(cursor + 120, BEAT_CAP); // draws riffle, not clump
+        cursor = Math.min(cursor + 120, cap()); // draws riffle, not clump
         beat = cursor;
         break;
       }
@@ -317,7 +343,7 @@ export function fxFromLog(
         // room to breathe instead of firing "out of nowhere".
         if (d.auto) {
           push("passed", str(d.character), { label: "passes" });
-          cursor = Math.min(cursor + 300, BEAT_CAP);
+          cursor = Math.min(cursor + 300, cap());
           beat = cursor;
         }
         break;
@@ -326,7 +352,7 @@ export function fxFromLog(
         // the single most jarring "suddenly you are being asked" instant.
         // The card flares and steps forward, and the timeline holds a beat.
         push("enemyact", str(d.enemy), { label: str(d.label) });
-        cursor = Math.min(cursor + 260, BEAT_CAP);
+        cursor = Math.min(cursor + 260, cap());
         beat = cursor;
         break;
       case "win":
@@ -369,7 +395,7 @@ export function fxFromLog(
       case "incapacitated":
         push("downed", str(d.character));
         // The death clip lands with the downed flash, on the impact beat.
-        panel(str(d.character), "death", {}, { delayMs: Math.min(beat + BEAT_IMPACT, BEAT_CAP) });
+        panel(str(d.character), "death", {}, { delayMs: Math.min(beat + BEAT_IMPACT, cap()) });
         break;
       case "countered":
         push("countered", str(d.source));
@@ -415,7 +441,7 @@ export function fxFromLog(
         break;
     }
   }
-  return { events, departures, maxSeq };
+  return { events, departures, maxSeq, preroll };
 }
 
 /** New-entry bookkeeping across snapshots. Returns lastSeq to use: the log

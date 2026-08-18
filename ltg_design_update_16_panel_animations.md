@@ -13,7 +13,7 @@ A **panel animation** is a short pre-generated clip (MiniMax H3 image-to-video, 
 ## A-2. The data (schema)
 
 ```
-PanelAnimation { id, title, file, trigger, alternate, speed, duration_s }
+PanelAnimation { id, title, file, trigger, alternate, speed, duration_s, impact_s }
 Character.animations: [PanelAnimation]           # the character's clip list
 Card.animation: anim_id | null                    # per-card pick (deck, Skill, Ultimate)
 StanceReplacement.animation: anim_id | null       # per-stance pick for a replaced attack
@@ -35,7 +35,7 @@ For a resolving action by a party character:
 
 ## A-4. When it plays (engine → client)
 
-The engine's `resolve` log entry now carries `kind`, `side`, `card`, `heroic` (`skill`/`ultimate`), `stance_slot` and `channeled` — presentation tags read off the resolving `StackItem` (two new tag fields, `heroic` and `stance_slot`, no rules read them). The client's FX layer (`fxFromLog`) maps `resolve` (party side), `defend`, `mitigate`, `damage` (target = hero) and `incapacitated` onto a `panel` effect carrying the chosen clip id, scheduled on the existing choreography beats (the actor's clip leads its delivery; hit and death land on the impact beat).
+The engine's `resolve` log entry now carries `kind`, `side`, `card`, `heroic` (`skill`/`ultimate`), `stance_slot` and `channeled` — presentation tags read off the resolving `StackItem` (two new tag fields, `heroic` and `stance_slot`, no rules read them). The client's FX layer (`fxFromLog`) maps `resolve` (party side), `defend`, `mitigate`, `damage` (target = hero) and `incapacitated` onto a `panel` effect carrying the chosen clip id, scheduled on the existing choreography beats. **The clip leads:** when a batch opens with a hero's clip, the presentation queue **pre-rolls** — the clip plays over the *previous* board state and the new snapshot (HP, deaths, the lunge, hit flash and damage numbers) is held until the clip's `impact_s` (default 1.5 s — *when the blow lands in the clip*), so the world changes WITH the blow rather than before it. A later resolution in the same batch shifts by the same lead. Hit and death clips land on the impact beat of the enemy's action.
 
 ## A-5. Playback rules (client)
 

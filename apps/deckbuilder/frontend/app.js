@@ -157,6 +157,7 @@ function renderAnimations() {
           ${video
             ? `<label class="inline" title="Playback rate — leave at 1 to play the clip as authored">speed ×<input type="number" class="anim-speed" data-i="${i}" min="0.25" max="4" step="0.25" value="${a.speed ?? 1}" /></label>`
             : `<label class="inline" title="Animated images can't be retimed by the browser — how long to show the clip">shows for <input type="number" class="anim-dur" data-i="${i}" min="0.5" max="30" step="0.5" value="${a.duration_s ?? 5}" /> s</label>`}
+          <label class="inline" title="When the action lands in the clip (seconds from its start) — the board's hit / damage effects wait for this moment so the clip leads. Only used for attack / cast / channel / skill / ultimate clips.">impact at <input type="number" class="anim-impact" data-i="${i}" min="0" max="10" step="0.1" value="${a.impact_s ?? 1.5}" /> s</label>
           <span class="anim-file" title="${escapeAttr(a.file)}">${escapeHtml((a.file || "").split("/").pop())}</span>
           <button class="small danger anim-remove" data-i="${i}" title="Remove this clip (deletes the file)">×</button>
         </div>
@@ -175,6 +176,9 @@ function renderAnimations() {
   });
   host.querySelectorAll(".anim-speed").forEach((inp) => {
     inp.onchange = () => { anims[+inp.dataset.i].speed = Math.max(0.25, +inp.value || 1); };
+  });
+  host.querySelectorAll(".anim-impact").forEach((inp) => {
+    inp.onchange = () => { anims[+inp.dataset.i].impact_s = Math.max(0, +inp.value || 0); };
   });
   host.querySelectorAll(".anim-dur").forEach((inp) => {
     inp.onchange = () => { anims[+inp.dataset.i].duration_s = Math.max(0.5, +inp.value || 5); };
@@ -254,7 +258,7 @@ function bindAnimationUpload() {
           id: "anim_" + Math.random().toString(36).slice(2, 10),
           title: file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "),
           file: res.file, trigger: "cast", alternate: false,
-          speed: 1.0, duration_s: 5.0,
+          speed: 1.0, duration_s: 5.0, impact_s: 1.5,
         });
         status.hidden = true;
         renderAnimations();

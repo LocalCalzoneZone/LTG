@@ -1512,6 +1512,12 @@ class PanelAnimation(BaseModel):
     # For animated images only: how long (s) the clip shows before the panel
     # swaps back to the portrait. Video clips end themselves.
     duration_s: float = 5.0
+    # When, in seconds from the clip's start, the action LANDS (the slash
+    # connects, the spell bursts). The game holds the board's effects for the
+    # resolving action — lunge, hit flash, damage numbers — until this moment,
+    # so the clip leads and the impact answers it. Only read for clips fired
+    # by a resolving action (attack / cast / channel / skill / ultimate).
+    impact_s: float = 1.5
 
     @field_validator("speed")
     @classmethod

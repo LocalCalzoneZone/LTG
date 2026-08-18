@@ -89,7 +89,8 @@ Three mechanisms, layered strongest-first:
 - **Deckbuilder → Animations button** (under the portrait) opens the clip modal: add a clip, give it a title,
   set the action type it **plays on** by default, tick **alternate** to keep it
   out of the defaults (offered as a per-card / per-stance pick instead), set
-  speed (video) or duration (animated image). Files upload to
+  **impact at** (seconds into the clip when the blow lands — the board's hit
+  effects wait for it), speed (video) or duration (animated image). Files upload to
   `loadouts/anim/<char>/`; the row's thumbnail previews on click.
 - **Card editor → Panel animation**: any card (deck, Skill, Ultimate) can pick a
   specific clip; blank = the default for its kind (Cast / Channel / Skill /

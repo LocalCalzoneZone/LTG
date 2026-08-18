@@ -92,6 +92,7 @@ export interface PanelAnimation {
   alternate: boolean; // offered as a per-card / per-stance pick, never a default
   speed: number; // video playback rate (ignored for animated images)
   duration_s: number; // animated images only: how long to show the clip
+  impact_s: number; // when the action lands in the clip — the board's effects wait for it
 }
 
 export interface PanelAnimBundle {
