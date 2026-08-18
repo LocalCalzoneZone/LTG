@@ -539,4 +539,8 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
         "characters": phase_records[-1]["characters"] if phase_records else {},
         "objective": next((r["objective"] for r in phase_records
                            if r.get("objective")), None),
+        # The leveled builds as they leave the adventure (Update 17: a scenario
+        # chains adventures — the next one starts from these; earned_points ride
+        # inside them). Not part of the spec hash.
+        "final_builds": [copy.deepcopy(lo.get("character", {})) for lo in loadouts],
     }
