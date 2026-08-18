@@ -443,6 +443,8 @@ export interface GameSnapshot {
   quest_log?: QuestLogView;
   party_sheet?: PartySheetRow[];
   confirm?: ConfirmView | null;
+  rewards?: RewardsView | null;
+  gear_editable?: boolean;
 }
 
 export interface SeatsMsg {
@@ -702,7 +704,58 @@ export interface PartySheetRow {
     hp: number; starting_mana: Color[]; starting_cards: number; power_bought: number;
     keyword: string | null; attack_mode: "melee" | "ranged"; colors: Color[]; description: string;
   };
-  gear: { primary: unknown; secondary: unknown; accessory: unknown; belt: unknown[]; inventory: unknown[] };
+  gear: GearView;
+  worn_points?: number;
+  effective_level?: number;
+}
+// Items (Update 17 §D17-4)
+export interface ItemView {
+  id: string;
+  name: string;
+  slot: "weapon" | "accessory" | "consumable";
+  rarity: "common" | "uncommon" | "rare" | "mythic";
+  level_min: number;
+  points_price: number;
+  flavor: string;
+  art_desc: string;
+  art_url: string;
+  summary?: string;
+  sell_price?: number;
+  buy_price?: number;
+  statics?: unknown[];
+  effects?: unknown[];
+  consumable?: { timing: "instant" | "sorcery" } | null;
+  template?: string | null;
+  affixes?: string[];
+}
+export interface GearView {
+  primary: ItemView | null;
+  secondary: ItemView | null;
+  accessory: ItemView | null;
+  belt: ItemView[];
+  inventory: { gear: ItemView[]; consumables: ItemView[] };
+}
+export interface ShopView {
+  location_id: string;
+  name: string;
+  function: string;
+  stock: ItemView[];
+  sell_mult: number;
+  buy_mult: number;
+}
+export interface RewardsView {
+  items: ItemView[];
+  assign: Record<string, string>;            // index → character id | "discard"
+  room: Record<string, Record<string, boolean>>;
+  all_assigned: boolean;
+  characters: { id: string; name: string }[];
+}
+export interface TradeView {
+  from: string; to: string; item_id: string | null; gold: number; offered_by: string; to_owner: string;
+}
+export interface ItemMeta {
+  id: string; name: string; slot: string; rarity: string; level_min: number; points_price: number;
+  flavor: string; art_url: string; source: string; summary: string;
 }
 export interface ScenarioInfo {
   title: string;
@@ -758,6 +811,9 @@ export interface TownSnapshot {
   flags: Record<string, boolean>;
   run: { run_id: string | null; last_save: { label?: string; kind?: string; error?: string } | null };
   confirm: ConfirmView | null;
+  shop: ShopView | null;
+  trade: TradeView | null;
+  gear_editable: boolean;
 }
 
 export interface TownDetail {

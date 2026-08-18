@@ -12,6 +12,7 @@ import type {
 } from "../lib/types";
 import { ManaIcon } from "./Pips";
 import { IconSigil, IconX } from "./Icons";
+import { GearSheet, ShopModal } from "./Items";
 
 const SMALL_BTN =
   "caps-label border border-line px-2.5 py-1 text-[9px] tracking-[0.14em] text-mist transition " +
@@ -41,10 +42,11 @@ export function TownScreen() {
   const setQuestLog = useGame((s) => s.setQuestLog);
   const [inspect, setInspect] = useState<{ kind: "location"; item: TownLocationView } | { kind: "npc"; item: TownNpcView } | null>(null);
   const [splashSeen, setSplashSeen] = useState<string>("");
+  const [showShop, setShowShop] = useState(false);
 
   // Close inspect when the screen changes underneath it.
   const screenKey = town ? `${town.location?.id ?? "map"}:${town.scenario.act_number}` : "";
-  useEffect(() => setInspect(null), [screenKey]);
+  useEffect(() => { setInspect(null); setShowShop(false); }, [screenKey]);
 
   if (!town) return null;
 
@@ -121,11 +123,13 @@ export function TownScreen() {
           onClose={() => setInspect(null)}
           onVisit={(id) => { sendTown("visit", { location_id: id }); setInspect(null); }}
           onTalk={(id) => { sendTown("talk", { npc_id: id }); setInspect(null); }}
+          onShop={town.shop ? () => { setInspect(null); setShowShop(true); } : undefined}
         />
       )}
+      {showShop && town.shop && <ShopModal shop={town.shop} party={town.party_sheet} onClose={() => setShowShop(false)} />}
+      {town.trade && <TradeOffer town={town} />}
       {town.conversation && <DialogueModal town={town} conv={town.conversation} />}
       {showQuestLog && <QuestLogPanel log={town.quest_log} onClose={() => setQuestLog(false)} />}
-      <CharacterSheetModal rows={town.party_sheet} />
       {showSplash && (
         <TownSplash town={town} onContinue={() => setSplashSeen(splashKey)} />
       )}
@@ -235,11 +239,12 @@ function TownConsole({ town }: { town: TownSnapshot }) {
   );
 }
 
-function InspectSheet({ inspect, onClose, onVisit, onTalk }: {
+function InspectSheet({ inspect, onClose, onVisit, onTalk, onShop }: {
   inspect: { kind: "location"; item: TownLocationView } | { kind: "npc"; item: TownNpcView };
   onClose: () => void;
   onVisit: (id: string) => void;
   onTalk: (id: string) => void;
+  onShop?: () => void;
 }) {
   const item = inspect.item;
   const art = item.art_url;
@@ -278,7 +283,7 @@ function InspectSheet({ inspect, onClose, onVisit, onTalk }: {
             {isNpc ? (
               <>
                 {npc!.merchant && (
-                  <button className={SMALL_BTN} title="Shops arrive with the next update — wares are listed read-only for now" disabled>
+                  <button className={SMALL_BTN} onClick={onShop} disabled={!onShop} title="Browse this act's stock">
                     See their wares
                   </button>
                 )}
@@ -423,21 +428,18 @@ function QuestLogPanel({ log, onClose }: { log: QuestLogView; onClose: () => voi
 /** The character sheet (§D17-5.2): stats and build, level and points-to-next,
  * gold, and the gear slots (cards arrive with Phase 2). Read-only in combat;
  * edit affordances are Phase 2's. */
-export function CharacterSheetModal({ rows }: { rows: PartySheetRow[] }) {
+export function CharacterSheetModal({ rows, editable = false, inTown = false }: {
+  rows: PartySheetRow[]; editable?: boolean; inTown?: boolean;
+}) {
   const sheetFor = useGame((s) => s.sheetFor);
   const setSheetFor = useGame((s) => s.setSheetFor);
   const row = rows.find((r) => r.id === sheetFor);
   if (!row) return null;
   const b = row.build;
   const basePower = b.attack_mode === "melee" ? 2 : 1;
-  const Slot = ({ label }: { label: string }) => (
-    <div className="flex h-20 w-16 flex-col items-center justify-end border border-dashed border-line/70 pb-1">
-      <span className="caps-label text-[8px] tracking-[0.14em] text-dimmed">{label}</span>
-    </div>
-  );
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={() => setSheetFor(null)}>
-      <div className="panel-ticks flex w-[min(94vw,820px)] gap-5 border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="panel-ticks flex max-h-[90vh] w-[min(94vw,940px)] gap-5 overflow-y-auto border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="w-[200px] shrink-0">
           <div className="aspect-[3/4] w-full border border-line bg-ink-0">
             {row.portrait ? (
@@ -458,6 +460,14 @@ export function CharacterSheetModal({ rows }: { rows: PartySheetRow[] }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start gap-3">
             <div className="caps-label text-[14px] tracking-[0.22em] text-brass">{row.name}</div>
+            <span className="flex gap-1">
+              {rows.length > 1 && rows.map((r) => (
+                <button key={r.id} onClick={() => setSheetFor(r.id)}
+                        className={`caps-label border px-2 py-0.5 text-[8px] tracking-[0.12em] ${r.id === row.id ? "border-brass text-brass" : "border-line text-mist hover:text-parch"}`}>
+                  {r.name}
+                </button>
+              ))}
+            </span>
             <span className="h-px flex-1 self-center bg-line" />
             <button onClick={() => setSheetFor(null)} className="text-mist hover:text-parch"><IconX size={14} /></button>
           </div>
@@ -470,15 +480,7 @@ export function CharacterSheetModal({ rows }: { rows: PartySheetRow[] }) {
             <Stat label="Keyword" value={b.keyword ?? "—"} />
             <Stat label="Colours" value={<span className="flex gap-0.5">{b.colors.map((c, i) => <ManaIcon key={i} color={c} size={13} />)}</span>} />
           </div>
-          <div className="mt-5">
-            <div className="caps-label text-[10px] tracking-[0.2em] text-mist">Gear</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Slot label="Primary" /><Slot label="Secondary" /><Slot label="Accessory" />
-              <span className="w-3" />
-              <Slot label="Belt 1" /><Slot label="Belt 2" /><Slot label="Belt 3" />
-            </div>
-            <div className="mt-2 text-[10px] font-light text-dimmed">Gear and consumables arrive with the economy update; slots shown for the sheet's shape.</div>
-          </div>
+          <GearSheet row={row} editable={editable} inTown={inTown} party={rows} />
         </div>
       </div>
     </div>
@@ -558,6 +560,24 @@ export function ConfirmOverlay({ confirm }: { confirm: ConfirmView | null | unde
         ) : (
           <span className="caps-label text-[9px] tracking-[0.16em] text-dimmed">Waiting…</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TradeOffer({ town }: { town: TownSnapshot }) {
+  const sendTown = useGame((s) => s.sendTown);
+  const t = town.trade!;
+  const from = town.party_sheet.find((p) => p.id === t.from)?.name ?? t.from;
+  const to = town.party_sheet.find((p) => p.id === t.to)?.name ?? t.to;
+  return (
+    <div className="absolute inset-x-0 top-24 z-40 flex justify-center">
+      <div className="panel-ticks flex items-center gap-4 border border-brass/60 bg-ink-2/95 px-5 py-3 shadow-2xl">
+        <div className="text-[11px] font-light text-parch">
+          {from} offers {to}{t.item_id ? " an item" : ""}{t.item_id && t.gold ? " and" : ""}{t.gold ? ` ${t.gold} gold` : ""}.
+        </div>
+        <button className={BRASS_BTN} onClick={() => sendTown("trade_answer", { yes: true })}>Accept</button>
+        <button className={SMALL_BTN} onClick={() => sendTown("trade_answer", { yes: false })}>Decline</button>
       </div>
     </div>
   );

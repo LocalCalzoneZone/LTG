@@ -10,6 +10,7 @@ import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { LoadGameModal } from "./components/LoadGameModal";
 import { CharacterSheetModal, ConfirmOverlay, TownScreen } from "./components/TownScreen";
+import { RewardsModal } from "./components/Items";
 import { OptionsModal } from "./components/OptionsModal";
 import {
   CardPickPrompt,
@@ -160,11 +161,17 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
           {town ? (
-            <TownScreen />
+            <>
+              <TownScreen />
+              <CharacterSheetModal rows={town.party_sheet} editable inTown />
+            </>
           ) : snapshot ? (
             <>
               <Battlefield />
-              {snapshot.party_sheet && <CharacterSheetModal rows={snapshot.party_sheet} />}
+              {snapshot.party_sheet && (
+                <CharacterSheetModal rows={snapshot.party_sheet} editable={!!snapshot.gear_editable} inTown={false} />
+              )}
+              {snapshot.rewards && <RewardsModal rewards={snapshot.rewards} />}
               <ConfirmOverlay confirm={snapshot.confirm} />
             </>
           ) : (

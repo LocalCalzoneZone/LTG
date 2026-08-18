@@ -9,6 +9,8 @@ import type {
   EncounterOption,
   LlmSettings,
   LlmSettingsPatch,
+  ItemMeta,
+  ItemView,
   ScenarioDetail,
   ScenarioOption,
   SetupOptions,
@@ -231,8 +233,9 @@ export async function generateAdventure(
 }
 
 // ---- The art queue ("Generate all art", §D10-6.4) --------------------------- //
-export type ArtTarget = { encounterId?: string; adventureId?: string; townId?: string };
+export type ArtTarget = { encounterId?: string; adventureId?: string; townId?: string; items?: boolean };
 function artQueueUrl(target: ArtTarget): string {
+  if (target.items) return "/api/items/art/all";
   if (target.townId) return `/api/towns/${encodeURIComponent(target.townId)}/art/all`;
   return target.adventureId
     ? `/api/adventures/${encodeURIComponent(target.adventureId)}/art/all`
@@ -432,4 +435,40 @@ export async function generateScenario(townId: string, difficulty: string, note:
 export async function deleteScenario(id: string): Promise<void> {
   const res = await fetch(`/api/scenarios/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+}
+
+
+// ---- Equipment (Update 17 §D17-4.3 — Options → Equipment) ------------------- //
+export async function fetchItems(): Promise<ItemMeta[]> {
+  const res = await fetch("/api/items");
+  if (!res.ok) throw new Error(`items load failed: ${res.status}`);
+  return (await res.json()).items;
+}
+export async function fetchItem(id: string): Promise<ItemView & { source: string }> {
+  const res = await fetch(`/api/items/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`item load failed: ${res.status}`);
+  return res.json();
+}
+export async function saveItem(item: Record<string, unknown>, id?: string): Promise<ItemMeta> {
+  const res = await fetch("/api/items", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id ?? null, item }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : `save failed: ${res.status}`);
+  }
+  return (await res.json()).item;
+}
+export async function deleteItem(id: string): Promise<void> {
+  const res = await fetch(`/api/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+}
+export async function generateItemArt(id: string): Promise<{ url: string }> {
+  const res = await fetch(`/api/items/${encodeURIComponent(id)}/art`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `art failed: ${res.status}`);
+  }
+  return res.json();
 }

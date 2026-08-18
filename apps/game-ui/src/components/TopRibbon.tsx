@@ -35,6 +35,7 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   const clientId = useGame((s) => s.clientId);
   const claim = useGame((s) => s.claim);
   const release = useGame((s) => s.release);
+  const setSheetFor = useGame((s) => s.setSheetFor);
   const connected = useGame((s) => s.connected);
   const [copied, setCopied] = useState(false);
 
@@ -177,6 +178,15 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
           {town.town.name} · Act {roman(town.scenario.act_number)} / {roman(town.scenario.acts_total)}
         </span>
       )}
+      {(snapshot?.party_sheet?.length || town?.party_sheet?.length) ? (
+        <button
+          onClick={() => setSheetFor((snapshot?.party_sheet ?? town?.party_sheet ?? [])[0]?.id ?? null)}
+          className="caps-label ml-2 border border-line px-2 py-[3px] text-[9px] tracking-[0.16em] text-mist transition hover:border-line2 hover:text-parch"
+          title="Character sheets — stats, build, gear (read-only in combat)"
+        >
+          Sheet
+        </button>
+      ) : null}
 
       {/* turn tracker — centred */}
       {snapshot && (

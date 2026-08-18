@@ -45,7 +45,7 @@ export function ArtQueueButton({ target, subject, disabled, disabledTitle, onIma
     poll();
     return () => window.clearTimeout(timer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target.encounterId, target.adventureId, target.townId]);
+  }, [target.encounterId, target.adventureId, target.townId, target.items]);
 
   const run = async () => {
     if (disabled) return;

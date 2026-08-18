@@ -1,17 +1,23 @@
 import { useEffect, useState } from "react";
 import {
+  deleteItem,
   deleteScenario,
   deleteTown,
+  fetchItem,
+  fetchItems,
   fetchScenario,
   fetchScenarios,
   fetchTown,
   fetchTowns,
+  generateItemArt,
   generateScenario,
   generateTown,
   generateTownArt,
+  saveItem,
 } from "../lib/api";
-import type { ScenarioDetail, ScenarioOption, TownDetail, TownOption } from "../lib/types";
+import type { ItemMeta, ItemView, ScenarioDetail, ScenarioOption, TownDetail, TownOption } from "../lib/types";
 import { ArtQueueButton } from "./ArtQueueButton";
+import { ItemCard } from "./Items";
 import { DifficultyTag } from "./DifficultyTag";
 import { IconCanvas, IconSigil, IconX } from "./Icons";
 
@@ -288,6 +294,197 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Options → Equipment (§D17-4.3): the base catalogue + user items — list, New /
+// edit (a compact item editor: statics for gear, effects JSON for consumables),
+// per-item art, Generate all missing.
+// --------------------------------------------------------------------------- //
+
+const STATIC_KINDS = ["attack_mode", "power_bonus", "keyword", "stat", "ability"] as const;
+
+type Draft = {
+  id?: string; name: string; slot: "weapon" | "accessory" | "consumable"; rarity: string;
+  level_min: number; points_price: number; flavor: string; art_desc: string;
+  statics: { kind: string; mode?: string; amount?: number; keyword?: string; stat?: string; card?: string }[];
+  effects_json: string; timing: "instant" | "sorcery";
+};
+
+function emptyDraft(): Draft {
+  return { name: "", slot: "weapon", rarity: "common", level_min: 1, points_price: 0, flavor: "", art_desc: "",
+           statics: [{ kind: "attack_mode", mode: "melee" }], effects_json: "[]", timing: "instant" };
+}
+
+function draftFromItem(it: ItemView): Draft {
+  return {
+    id: it.id, name: it.name, slot: it.slot, rarity: it.rarity, level_min: it.level_min,
+    points_price: it.points_price, flavor: it.flavor, art_desc: it.art_desc,
+    statics: ((it.statics ?? []) as Draft["statics"]).map((s) => ({
+      ...s, card: s.card ? JSON.stringify(s.card) : undefined,
+    })),
+    effects_json: JSON.stringify(it.effects ?? [], null, 1),
+    timing: it.consumable?.timing ?? "instant",
+  };
+}
+
+export function EquipmentPanel() {
+  const [list, setList] = useState<ItemMeta[] | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "weapon" | "accessory" | "consumable">("all");
+
+  const refresh = async () => {
+    try { setList(await fetchItems()); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  };
+  useEffect(() => { void refresh(); }, []);
+
+  const save = async () => {
+    if (!draft) return;
+    setBusy(true); setErr(null);
+    try {
+      const body: Record<string, unknown> = {
+        name: draft.name, slot: draft.slot, rarity: draft.rarity, level_min: draft.level_min,
+        points_price: draft.points_price, flavor: draft.flavor, art_desc: draft.art_desc,
+      };
+      if (draft.slot === "consumable") {
+        body.effects = JSON.parse(draft.effects_json || "[]");
+        body.consumable = { timing: draft.timing };
+      } else {
+        body.statics = draft.statics.map((s) => {
+          const out: Record<string, unknown> = { kind: s.kind };
+          if (s.kind === "attack_mode") out.mode = s.mode ?? "melee";
+          if (s.kind === "power_bonus" || s.kind === "stat") out.amount = Number(s.amount ?? 1);
+          if (s.kind === "stat") out.stat = s.stat ?? "hp";
+          if (s.kind === "keyword") out.keyword = s.keyword ?? "reach";
+          if (s.kind === "ability") out.card = JSON.parse(s.card || "{}");
+          return out;
+        });
+      }
+      await saveItem(body, draft.id);
+      setDraft(null);
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(false); }
+  };
+
+  const paint = async (id: string) => {
+    setBusy(true); setErr(null);
+    try { await generateItemArt(id); await refresh(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
+
+  if (draft) {
+    const d = draft;
+    const set = (patch: Partial<Draft>) => setDraft({ ...d, ...patch });
+    return (
+      <div className="flex min-h-0 flex-col">
+        <div className="mb-3 flex items-center gap-3">
+          <button className={SMALL_BTN} onClick={() => setDraft(null)}>← Equipment</button>
+          <span className="caps-label text-[12px] tracking-[0.2em] text-brass">{d.id ? "Edit item" : "New item"}</span>
+          <span className="h-px flex-1 bg-line" />
+          <button className={GHOST_BTN} onClick={save} disabled={busy || !d.name}>{busy ? "Saving…" : "Save item"}</button>
+        </div>
+        {err && <div className="mb-2 border border-blood/50 bg-blood/10 px-3 py-2 text-sm font-light text-blood">{err}</div>}
+        <div className="scroll-thin grid min-h-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 overflow-y-auto pr-1 text-sm">
+          <label className="flex flex-col gap-1 text-[10px] text-mist">Name<input value={d.name} onChange={(e) => set({ name: e.target.value })} className={FIELD} /></label>
+          <label className="flex flex-col gap-1 text-[10px] text-mist">Slot
+            <select value={d.slot} onChange={(e) => set({ slot: e.target.value as Draft["slot"] })} className={FIELD}>
+              {["weapon", "accessory", "consumable"].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select></label>
+          <label className="flex flex-col gap-1 text-[10px] text-mist">Rarity
+            <select value={d.rarity} onChange={(e) => set({ rarity: e.target.value })} className={FIELD}>
+              {["common", "uncommon", "rare", "mythic"].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select></label>
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-[10px] text-mist">Level min<input type="number" min={1} value={d.level_min} onChange={(e) => set({ level_min: Number(e.target.value) })} className={FIELD} /></label>
+            <label className="flex flex-1 flex-col gap-1 text-[10px] text-mist">Points price<input type="number" min={0} value={d.points_price} onChange={(e) => set({ points_price: Number(e.target.value) })} className={FIELD} /></label>
+          </div>
+          <label className="col-span-2 flex flex-col gap-1 text-[10px] text-mist">Flavour (one line)<input value={d.flavor} onChange={(e) => set({ flavor: e.target.value })} className={FIELD} /></label>
+          <label className="col-span-2 flex flex-col gap-1 text-[10px] text-mist">Art description<textarea rows={2} value={d.art_desc} onChange={(e) => set({ art_desc: e.target.value })} className={FIELD} /></label>
+          {d.slot === "consumable" ? (
+            <>
+              <label className="flex flex-col gap-1 text-[10px] text-mist">Timing
+                <select value={d.timing} onChange={(e) => set({ timing: e.target.value as Draft["timing"] })} className={FIELD}>
+                  <option value="instant">instant</option><option value="sorcery">sorcery</option>
+                </select></label>
+              <label className="col-span-2 flex flex-col gap-1 text-[10px] text-mist">Effects (card vocabulary, JSON list)
+                <textarea rows={6} value={d.effects_json} onChange={(e) => set({ effects_json: e.target.value })} className={`${FIELD} font-mono text-xs`} /></label>
+            </>
+          ) : (
+            <div className="col-span-2 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="caps-label text-[10px] tracking-[0.2em] text-mist">Statics</span>
+                <button className={SMALL_BTN} onClick={() => set({ statics: [...d.statics, { kind: "stat", stat: "hp", amount: 2 }] })}>+ static</button>
+              </div>
+              {d.statics.map((st, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 border border-line/60 p-2">
+                  <select value={st.kind} onChange={(e) => { const s = [...d.statics]; s[i] = { kind: e.target.value }; set({ statics: s }); }} className={FIELD}>
+                    {STATIC_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                  {st.kind === "attack_mode" && (
+                    <select value={st.mode ?? "melee"} onChange={(e) => { const s = [...d.statics]; s[i] = { ...st, mode: e.target.value }; set({ statics: s }); }} className={FIELD}>
+                      <option value="melee">melee</option><option value="ranged">ranged</option>
+                    </select>
+                  )}
+                  {(st.kind === "power_bonus" || st.kind === "stat") && (
+                    <input type="number" value={st.amount ?? 1} onChange={(e) => { const s = [...d.statics]; s[i] = { ...st, amount: Number(e.target.value) }; set({ statics: s }); }} className={`${FIELD} w-20`} />
+                  )}
+                  {st.kind === "stat" && (
+                    <select value={st.stat ?? "hp"} onChange={(e) => { const s = [...d.statics]; s[i] = { ...st, stat: e.target.value }; set({ statics: s }); }} className={FIELD}>
+                      <option value="hp">hp</option><option value="mana">mana</option><option value="cards">cards</option>
+                    </select>
+                  )}
+                  {st.kind === "keyword" && (
+                    <input value={st.keyword ?? ""} placeholder="reach / trample / hexproof …" onChange={(e) => { const s = [...d.statics]; s[i] = { ...st, keyword: e.target.value }; set({ statics: s }); }} className={FIELD} />
+                  )}
+                  {st.kind === "ability" && (
+                    <textarea rows={3} value={st.card ?? ""} placeholder='card JSON, e.g. {"id":"sip","name":"Sip","source_name":"Sip","rarity":"common","level":1,"type":"Ability","timing":"instant","effects":[…]}'
+                              onChange={(e) => { const s = [...d.statics]; s[i] = { ...st, card: e.target.value }; set({ statics: s }); }} className={`${FIELD} min-w-[320px] flex-1 font-mono text-xs`} />
+                  )}
+                  <button className={SMALL_BTN} onClick={() => set({ statics: d.statics.filter((_, j) => j !== i) })}><IconX size={9} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const shown = (list ?? []).filter((m) => filter === "all" || m.slot === filter);
+  return (
+    <div className="flex min-h-0 flex-col">
+      <div className="mb-3 flex flex-wrap items-center gap-2 border border-line bg-black/25 p-3">
+        {(["all", "weapon", "accessory", "consumable"] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)}
+                  className={`caps-label border px-2 py-0.5 text-[9px] tracking-[0.14em] transition ${filter === f ? "border-brass text-brass" : "border-line text-mist hover:text-parch"}`}>
+            {f}
+          </button>
+        ))}
+        <span className="h-px flex-1 bg-line" />
+        <ArtQueueButton target={{ items: true }} subject="every item without art" onImage={refresh} />
+        <button className={GHOST_BTN} onClick={() => setDraft(emptyDraft())}>New item</button>
+      </div>
+      {err && <div className="mb-2 border border-blood/50 bg-blood/10 px-3 py-2 text-sm font-light text-blood">{err}</div>}
+      <div className="scroll-thin flex min-h-0 flex-1 flex-wrap content-start gap-3 overflow-y-auto pr-1">
+        {shown.map((m) => (
+          <ItemCard key={m.id} item={{ ...m, slot: m.slot as ItemView["slot"], rarity: m.rarity as ItemView["rarity"], art_desc: "" }}
+                    footer={
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <button className={SMALL_BTN} onClick={() => fetchItem(m.id).then((it) => setDraft(draftFromItem(it)))}>Edit</button>
+                        <button className={SMALL_BTN} onClick={() => paint(m.id)} disabled={busy}>{m.art_url ? "Repaint" : "Paint"}</button>
+                        <button className={SMALL_BTN} onClick={async () => { await deleteItem(m.id); refresh(); }} title={m.source === "catalogue" ? "Hide this catalogue item" : "Delete"}><IconX size={9} /></button>
+                      </div>
+                    } />
+        ))}
+        {list && list.length === 0 && <div className="text-xs font-light text-dimmed">No items.</div>}
       </div>
     </div>
   );
