@@ -37,7 +37,7 @@ ART_MODEL = llm.ART_MODEL
 COMFY_TIMEOUT = 300.0
 COMFY_POLL_INTERVAL = 1.0
 # Pixel sizes injected for the %width%/%height% placeholders, per aspect.
-COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024)}
+COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024), "3:4": (896, 1152)}
 
 # Generated images write into the tracked content dir, beside the encounter /
 # adventure JSON they belong to, so a commit ships the art to every install.
@@ -400,12 +400,20 @@ _TOWN_TASK = (
     "coming home to). Environment and architecture only: NO people, NO "
     "creatures. Warm light, painted edge to edge.\n\nThe town:\n"
 )
-_LOCATION_TASK = (
-    "Paint the interior or frontage of ONE location in a fantasy town, as a "
-    "backdrop for a painterly tactical card game — classic high fantasy, "
-    "welcoming rather than grim. Environment only: NO people, NO creatures. "
-    "Wide composition, uncluttered middle ground, warm atmospheric light."
-    "\n\nThe place:\n"
+_EXTERIOR_TASK = (
+    "Paint the EXTERIOR of ONE building in a fantasy town — its frontage seen "
+    "from the street — as the card art for a location on a town map, in a "
+    "painterly tactical card game (classic high fantasy, welcoming rather than "
+    "grim). The building fills the frame, portrait composition; NO people, NO "
+    "creatures. Warm light.\n\nThe building:\n"
+)
+_INTERIOR_TASK = (
+    "Paint the INTERIOR of ONE location in a fantasy town from the eye level of "
+    "someone standing inside it — the room around them — as a wide backdrop for "
+    "a painterly tactical card game (classic high fantasy, welcoming rather than "
+    "grim). Environment only: NO people, NO creatures. Wide composition, an "
+    "uncluttered middle ground where figures will stand, warm atmospheric light."
+    "\n\nWhat they see:\n"
 )
 _NPC_TASK = (
     "Paint a single character portrait for a townsperson card in a painterly "
@@ -418,8 +426,9 @@ _NPC_TASK = (
 def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
                       text: str = "") -> Dict[str, Any]:
     """Town art (Update 17 §D17-5.1): ``kind`` town (the map scene) /
-    location / npc. Writes under ``content/art/towns/<town_id>/`` and updates
-    the town JSON's ``art_url``. Returns ``{"url"}``."""
+    location_exterior (the map card) / location_interior (the backdrop; alias
+    "location") / npc. Writes under ``content/art/towns/<town_id>/`` and updates
+    the town JSON. Returns ``{"url"}``."""
     from . import scenario_content as sc
     town = sc.town_detail(town_id)
     if town is None:
@@ -428,12 +437,20 @@ def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
     if kind == "town":
         prompt = f"{style}\n\n{_TOWN_TASK}{text or town.get('scene', '')}"
         aspect, slot = "16:9", "town"
-    elif kind == "location":
+    elif kind in ("location", "location_interior"):
         loc = sc.find_location(town, str(target_id))
         if loc is None:
             raise ValueError(f"unknown location: {target_id}")
-        prompt = f"{style}\n\n{_LOCATION_TASK}{text or loc.get('scene', '')}"
+        prompt = f"{style}\n\n{_INTERIOR_TASK}{text or loc.get('interior_scene') or loc.get('scene', '')}"
         aspect, slot = "16:9", f"loc-{loc['id']}"
+    elif kind == "location_exterior":
+        loc = sc.find_location(town, str(target_id))
+        if loc is None:
+            raise ValueError(f"unknown location: {target_id}")
+        if not (text or loc.get("exterior_scene")):
+            raise ValueError(f"{loc['name']} has no exterior scene to paint from")
+        prompt = f"{style}\n\n{_EXTERIOR_TASK}{loc['name']}. {text or loc.get('exterior_scene', '')}"
+        aspect, slot = "3:4", f"ext-{loc['id']}"
     elif kind == "npc":
         found = sc.find_npc(town, str(target_id))
         if found is None:
@@ -447,8 +464,12 @@ def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
     url = paint(prompt, aspect, f"towns/{town_id}", slot)
     if kind == "town":
         town["art_url"] = url
-    elif kind == "location":
-        sc.find_location(town, str(target_id))["art_url"] = url
+    elif kind in ("location", "location_interior"):
+        loc = sc.find_location(town, str(target_id))
+        loc["interior_art_url"] = url
+        loc["art_url"] = url
+    elif kind == "location_exterior":
+        sc.find_location(town, str(target_id))["exterior_art_url"] = url
     else:
         sc.find_npc(town, str(target_id))[1]["art_url"] = url
     town.pop("id", None)
@@ -471,7 +492,9 @@ def town_art_items(town_id: str) -> List[Dict[str, Any]]:
             fresh = sc.town_detail(town_id) or {}
             if kind == "town" and fresh.get("art_url"):
                 return
-            if kind == "location" and (sc.find_location(fresh, target) or {}).get("art_url"):
+            if kind == "location_interior" and (sc.find_location(fresh, target) or {}).get("interior_art_url"):
+                return
+            if kind == "location_exterior" and (sc.find_location(fresh, target) or {}).get("exterior_art_url"):
                 return
             if kind == "npc":
                 found = sc.find_npc(fresh, target)
@@ -483,8 +506,10 @@ def town_art_items(town_id: str) -> List[Dict[str, Any]]:
     if not town.get("art_url"):
         items.append(item(f"{name} — town map", "town", None))
     for loc in town.get("locations") or []:
-        if not loc.get("art_url"):
-            items.append(item(f"{name} — {loc['name']}", "location", loc["id"]))
+        if loc.get("exterior_scene") and not loc.get("exterior_art_url"):
+            items.append(item(f"{name} — {loc['name']} (exterior)", "location_exterior", loc["id"]))
+        if not loc.get("interior_art_url"):
+            items.append(item(f"{name} — {loc['name']} (interior)", "location_interior", loc["id"]))
     for loc in town.get("locations") or []:
         for npc in loc.get("npcs") or []:
             if not npc.get("art_url"):

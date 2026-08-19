@@ -660,8 +660,12 @@ class ScenarioRun:
                 "scene": self.town.get("scene", ""), "art_url": self.town.get("art_url", ""),
                 "locations": [
                     {"id": l["id"], "name": l["name"], "function": l.get("function", ""),
-                     "description": l.get("description", ""), "art_url": l.get("art_url", ""),
-                     "scene": l.get("scene", ""),
+                     "description": l.get("description", ""),
+                     # The map card shows the EXTERIOR (frontage); the interior
+                     # backdrop rides along for the inspect view.
+                     "art_url": l.get("exterior_art_url") or "",
+                     "interior_art_url": l.get("interior_art_url") or l.get("art_url", ""),
+                     "scene": l.get("exterior_scene") or l.get("interior_scene") or l.get("scene", ""),
                      "questgiver": any(n["id"] == outline["questgiver_npc"] for n in l["npcs"]),
                      "has_dialogue": any(n["id"] in dialogues for n in l["npcs"]),
                      "npc_count": len(l["npcs"])}
@@ -670,7 +674,10 @@ class ScenarioRun:
             },
             "location": None if loc is None else {
                 "id": loc["id"], "name": loc["name"], "function": loc.get("function", ""),
-                "scene": loc.get("scene", ""), "art_url": loc.get("art_url", ""),
+                # Inside: the INTERIOR is the backdrop.
+                "scene": loc.get("interior_scene") or loc.get("scene", ""),
+                "art_url": loc.get("interior_art_url") or loc.get("art_url", ""),
+                "exterior_art_url": loc.get("exterior_art_url", ""),
                 "description": loc.get("description", ""),
                 "npcs": [
                     {"id": n["id"], "name": n["name"], "role": n.get("role", ""),

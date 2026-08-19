@@ -1657,10 +1657,13 @@ Rules:
 - Plus 1–3 FLAVOUR locations that host questgivers and go-betweens — pick from:
   tavern, shrine, witch_hut, guard_post, market, docks, library, graveyard, gate,
   manor, well, chapel, stables. Use those words for "function".
-- Every location has: "name", "function", "scene" (2–3 sentences of painterly
-  setting for a backdrop — environment only, no people), "description" (one or
-  two lines the party reads when they consider visiting), and "npcs": 1–2
-  RESIDENT NPCs.
+- Every location has: "name", "function", "description" (one or two lines the
+  party reads when they consider visiting), "exterior_scene" (2 sentences: the
+  building's FRONTAGE as seen from the street — its shape, sign, doorway,
+  materials; this paints the map card), "interior_scene" (2–3 sentences: ONLY
+  what a character STANDING INSIDE would see — the room around them, its light,
+  furnishings, smells made visible; not the whole building, no people), and
+  "npcs": 1–2 RESIDENT NPCs.
 - Every NPC has: "name", "role" (innkeeper, smith, priestess, retired ranger…),
   "persona" (3–5 sentences of PROSE: manner, voice, what they care about, a
   quirk or a story of their own — this text is reused verbatim to write their
@@ -1676,7 +1679,8 @@ Rules:
 
 Output contract:
 {"name": "...", "region_flavor": "...", "scene": "...",
- "locations": [{"name": "...", "function": "inn", "scene": "...", "description": "...",
+ "locations": [{"name": "...", "function": "inn", "description": "...",
+                "exterior_scene": "...", "interior_scene": "...",
                 "npcs": [{"name": "...", "role": "...", "persona": "...", "portrait_desc": "..."}]}, ...]}
 """
 

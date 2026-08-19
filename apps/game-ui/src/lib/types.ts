@@ -656,7 +656,8 @@ export interface TownLocationView {
   name: string;
   function: string;
   description: string;
-  art_url: string;
+  art_url: string;          // the EXTERIOR (map card)
+  interior_art_url: string; // the backdrop once inside
   scene: string;
   questgiver: boolean;
   has_dialogue: boolean;
@@ -823,7 +824,10 @@ export interface TownSnapshot {
 
 export interface TownDetail {
   id: string; name: string; region_flavor: string; scene: string; art_url: string;
-  locations: { id: string; name: string; function: string; scene: string; description: string; art_url: string;
+  locations: { id: string; name: string; function: string; description: string;
+               exterior_scene: string; exterior_art_url: string;
+               interior_scene: string; interior_art_url: string;
+               scene?: string; art_url?: string; // legacy aliases of the interior
                npcs: { id: string; name: string; role: string; persona: string; portrait_desc: string; art_url: string }[] }[];
 }
 export interface ScenarioDetail {

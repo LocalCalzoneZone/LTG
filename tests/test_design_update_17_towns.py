@@ -127,6 +127,17 @@ def test_town_validation_and_registry():
     assert sc.find_npc(t, "sister_aud")[1]["name"] == "Sister Aud"
     assert sc.location_of_function(t, "inn")["id"] == "the_drowned_lantern"
     assert [x["id"] for x in sc.list_towns()] == ["hollowmere"]
+    # Legacy `scene` loads as the INTERIOR (the backdrop inside); the exterior
+    # (the map card) is separate and may be added later.
+    inn = t["locations"][0]
+    assert inn["interior_scene"] == inn["scene"] and inn["exterior_scene"] == ""
+    raw = town_raw()
+    raw["locations"][0]["exterior_scene"] = "A low stone inn with a lantern over the door."
+    raw["locations"][0]["interior_scene"] = "A peat fire, nets from the beams, a scarred bar."
+    del raw["locations"][0]["scene"]
+    cleaned = sc.validate_town(raw)
+    assert cleaned["locations"][0]["exterior_scene"].startswith("A low stone inn")
+    assert cleaned["locations"][0]["scene"] == cleaned["locations"][0]["interior_scene"]
     sc.delete_town("hollowmere")
     assert sc.list_towns() == []
 

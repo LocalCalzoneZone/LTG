@@ -79,9 +79,12 @@ def _write(d: Path, item_id: str, raw: Dict[str, Any]) -> None:
 # --------------------------------------------------------------------------- #
 def validate_town(raw: Dict[str, Any]) -> Dict[str, Any]:
     """§D17-5.1 town validation: the four functions present (one each), 1–3
-    flavour locations, every location has a scene and 1–2 NPCs, every NPC a
-    portrait_desc and persona. Returns the cleaned town (ids slugged, unknown
-    keys dropped). Raises ValueError with a human message."""
+    flavour locations, every location has an INTERIOR scene (what a character
+    standing inside sees — the location backdrop) and an EXTERIOR scene (its
+    frontage — the town-map card), 1–2 NPCs, every NPC a portrait_desc and
+    persona. Returns the cleaned town (ids slugged, unknown keys dropped).
+    Legacy towns with a single `scene`/`art_url` load them as the interior.
+    Raises ValueError with a human message."""
     if not isinstance(raw, dict):
         raise ValueError("town must be an object")
     name = str(raw.get("name") or "").strip()
@@ -117,9 +120,12 @@ def validate_town(raw: Dict[str, Any]) -> Dict[str, Any]:
         if lid in seen_ids:
             lid = f"{lid}_{i}"
         seen_ids.add(lid)
-        lscene = str(loc.get("scene") or "").strip()
-        if not lscene:
-            raise ValueError(f"location '{lname}' needs a scene")
+        interior = str(loc.get("interior_scene") or loc.get("scene") or "").strip()
+        exterior = str(loc.get("exterior_scene") or "").strip()
+        if not interior:
+            raise ValueError(f"location '{lname}' needs an interior scene (what a visitor sees inside)")
+        interior_art = str(loc.get("interior_art_url") or loc.get("art_url") or "")
+        exterior_art = str(loc.get("exterior_art_url") or "")
         npcs_raw = loc.get("npcs")
         if not isinstance(npcs_raw, list) or not (1 <= len(npcs_raw) <= 2):
             raise ValueError(f"location '{lname}' needs 1–2 resident NPCs")
@@ -146,9 +152,12 @@ def validate_town(raw: Dict[str, Any]) -> Dict[str, Any]:
                 "art_url": str(npc.get("art_url") or ""),
             })
         locations.append({
-            "id": lid, "name": lname, "function": fn, "scene": lscene,
+            "id": lid, "name": lname, "function": fn,
             "description": str(loc.get("description") or "").strip(),
-            "art_url": str(loc.get("art_url") or ""),
+            "exterior_scene": exterior, "exterior_art_url": exterior_art,
+            "interior_scene": interior, "interior_art_url": interior_art,
+            # Legacy readers (`scene` / `art_url`) see the interior.
+            "scene": interior, "art_url": interior_art,
             "npcs": npcs,
         })
     missing = [fn for fn in REQUIRED_FUNCTIONS if fn not in seen_fn]
@@ -180,7 +189,8 @@ def _town_meta(tid: str, raw: Dict[str, Any]) -> Dict[str, Any]:
         "art_url": raw.get("art_url", ""),
         "location_count": len(locs),
         "npc_count": sum(len(l.get("npcs") or []) for l in locs),
-        "art_missing": sum(1 for l in locs if not l.get("art_url"))
+        "art_missing": sum(1 for l in locs if not (l.get("interior_art_url") or l.get("art_url")))
+                       + sum(1 for l in locs if l.get("exterior_scene") and not l.get("exterior_art_url"))
                        + sum(1 for l in locs for n in (l.get("npcs") or []) if not n.get("art_url"))
                        + (0 if raw.get("art_url") else 1),
     }

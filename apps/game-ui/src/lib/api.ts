@@ -411,7 +411,8 @@ export async function saveTown(town: Record<string, unknown>, id?: string): Prom
   }
   return (await res.json()).town;
 }
-export async function generateTownArt(townId: string, kind: "town" | "location" | "npc", targetId?: string): Promise<{ url: string }> {
+export type TownArtKind = "town" | "location_exterior" | "location_interior" | "npc";
+export async function generateTownArt(townId: string, kind: TownArtKind, targetId?: string): Promise<{ url: string }> {
   const res = await fetch(`/api/towns/${encodeURIComponent(townId)}/art`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ kind, target_id: targetId ?? null }),

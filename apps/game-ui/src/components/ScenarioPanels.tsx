@@ -15,6 +15,7 @@ import {
   generateTownArt,
   saveItem,
   saveTown,
+  type TownArtKind,
 } from "../lib/api";
 import type { ItemMeta, ItemView, ScenarioDetail, ScenarioOption, TownDetail, TownOption } from "../lib/types";
 import { ArtQueueButton } from "./ArtQueueButton";
@@ -64,7 +65,7 @@ export function TownsPanel() {
     } finally { setBusy(false); }
   };
 
-  const paint = async (kind: "town" | "location" | "npc", targetId?: string) => {
+  const paint = async (kind: TownArtKind, targetId?: string) => {
     if (!open) return;
     setBusy(true); setErr(null);
     try {
@@ -460,7 +461,7 @@ const AREA = `${FIELD} w-full font-light`;
 function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
   town: TownDetail; busy: boolean; err: string | null;
   onBack: () => void; onChange: (t: TownDetail) => void;
-  onPaint: (kind: "town" | "location" | "npc", targetId?: string) => void;
+  onPaint: (kind: TownArtKind, targetId?: string) => void;
   onSave: () => void;
 }) {
   const set = (patch: Partial<TownDetail>) => onChange({ ...town, ...patch });
@@ -473,7 +474,8 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
   });
   const removeNpc = (i: number, k: number) => setLoc(i, { npcs: town.locations[i].npcs.filter((_, m) => m !== k) });
   const addLocation = () => set({
-    locations: [...town.locations, { id: "", name: "New Place", function: "tavern", scene: "", description: "", art_url: "",
+    locations: [...town.locations, { id: "", name: "New Place", function: "tavern", description: "",
+                                     exterior_scene: "", exterior_art_url: "", interior_scene: "", interior_art_url: "",
                                      npcs: [{ id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }] }],
   });
   const removeLocation = (i: number) => set({ locations: town.locations.filter((_, j) => j !== i) });
@@ -509,9 +511,27 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
         {town.locations.map((l, i) => (
           <div key={l.id || `new-${i}`} className="mb-2 border border-line bg-black/25 p-3">
             <div className="flex gap-3">
-              <div className="h-20 w-32 shrink-0 border border-line bg-ink-0">
-                {l.art_url ? <img src={l.art_url} alt="" className="h-full w-full object-cover" />
-                  : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={18} /></div>}
+              <div className="flex shrink-0 gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="h-24 w-[72px] border border-line bg-ink-0" title="Exterior — the map card">
+                    {l.exterior_art_url ? <img src={l.exterior_art_url} alt="" className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={16} /></div>}
+                  </div>
+                  <button className={SMALL_BTN} onClick={() => onPaint("location_exterior", l.id)}
+                          disabled={busy || !l.id || !l.exterior_scene} title={!l.id ? "Save first" : !l.exterior_scene ? "Write an exterior scene first" : "Paint the map card"}>
+                    {l.exterior_art_url ? "Repaint" : "Paint"} ext.
+                  </button>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="h-24 w-40 border border-line bg-ink-0" title="Interior — the backdrop inside">
+                    {(l.interior_art_url || l.art_url) ? <img src={l.interior_art_url || l.art_url} alt="" className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={18} /></div>}
+                  </div>
+                  <button className={SMALL_BTN} onClick={() => onPaint("location_interior", l.id)} disabled={busy || !l.id}
+                          title={l.id ? "Paint the interior backdrop" : "Save first"}>
+                    {(l.interior_art_url || l.art_url) ? "Repaint" : "Paint"} int.
+                  </button>
+                </div>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -522,17 +542,16 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
                     {FUNCTIONS.map((f) => <option key={f} value={f}>{f.replace(/_/g, " ")}</option>)}
                   </select>
                   <span className="h-px flex-1 bg-line" />
-                  <button className={SMALL_BTN} onClick={() => onPaint("location", l.id)} disabled={busy || !l.id}
-                          title={l.id ? "" : "Save first"}>
-                    {l.art_url ? "Repaint" : "Paint"}
-                  </button>
                   <button className={SMALL_BTN} onClick={() => removeLocation(i)} title="Remove this location"><IconX size={9} /></button>
                 </div>
                 <textarea rows={2} value={l.description} onChange={(e) => setLoc(i, { description: e.target.value })}
                           placeholder="Description — what the party reads when they consider visiting"
                           className={`${AREA} mt-1 text-xs`} />
-                <textarea rows={2} value={l.scene} onChange={(e) => setLoc(i, { scene: e.target.value })}
-                          placeholder="Scene — the painted backdrop (environment only)"
+                <textarea rows={2} value={l.exterior_scene} onChange={(e) => setLoc(i, { exterior_scene: e.target.value })}
+                          placeholder="Exterior scene — the building's frontage from the street (paints the map card)"
+                          className={`${AREA} mt-1 text-xs italic`} />
+                <textarea rows={2} value={l.interior_scene || l.scene || ""} onChange={(e) => setLoc(i, { interior_scene: e.target.value })}
+                          placeholder="Interior scene — only what a character standing inside sees (paints the backdrop)"
                           className={`${AREA} mt-1 text-xs italic`} />
               </div>
             </div>
@@ -576,7 +595,7 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
         ))}
         <button className={GHOST_BTN} onClick={addLocation}>+ Location</button>
         <div className="mt-2 text-[10px] font-light text-dimmed">
-          A town needs one inn, weaponsmith, artificer, and apothecary, plus 1–3 other places; every location 1–2 residents with a persona and a portrait description. Save checks all of it.
+          A town needs one inn, weaponsmith, artificer, and apothecary, plus 1–3 other places; every location an interior scene and 1–2 residents with a persona and a portrait description. Save checks all of it.
         </div>
       </div>
     </div>
