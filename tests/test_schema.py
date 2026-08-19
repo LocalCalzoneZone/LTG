@@ -132,11 +132,11 @@ def test_price_curve_and_level_thresholds():
     assert price_list("mana", 7) == [15, 15, 20, 25, 30, 35, 40]
     assert price_list("card", 6) == [15, 15, 20, 25, 30, 35]
     assert price_list("power", 6) == [10, 10, 15, 20, 25, 30]
-    assert price_list("hp_step", 10) == [5, 5, 5, 5, 6, 6, 7, 7, 8, 8]
+    assert price_list("hp_step", 10) == [4, 4, 5, 5, 6, 6, 7, 7, 8, 8]
     assert stat_price("hp_step", 11) == 9
-    assert stat_cost("hp_step", 6) == 32
+    assert stat_cost("hp_step", 6) == 30
     # Creation is the first steps of the same curve: 12 HP / 2 mana / 2 cards / +1 Power
-    assert creation_points(12, 2, 2, 1, None) == 10 + 15 + 15 + 10
+    assert creation_points(12, 2, 2, 1, None) == 8 + 15 + 15 + 10
     # Level derives from cumulative earned points.
     assert level_for_points(0) == 1
     assert level_for_points(29) == 1

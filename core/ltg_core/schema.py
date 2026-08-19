@@ -1434,9 +1434,9 @@ BASE_POWER = {AttackMode.melee: 2, AttackMode.ranged: 1}  # §P-1
 # T-79: the escalating price curve — the price of the nth purchase of each stat
 # (1-based). The listed prices are explicit; past the list, mana/cards/Power rise
 # by PRICE_TAIL_STEP per purchase and an HP pair rises by +1 every two purchases
-# (5,5,5,5,6,6,7,7,8,8,…). "hp_step" is one +2 HP pair.
+# (4,4,5,5,6,6,7,7,8,8,…). "hp_step" is one +2 HP pair.
 PRICE_CURVE = {
-    "hp_step": (5, 5, 5, 5),
+    "hp_step": (4, 4, 5, 5, 6, 6),
     "mana": (15, 15, 20, 25, 30),
     "card": (15, 15, 20, 25, 30),
     "power": (10, 10, 15, 20, 25),
@@ -1453,7 +1453,7 @@ def stat_price(stat: str, n: int) -> int:
     if n <= len(curve):
         return curve[n - 1]
     if stat == "hp_step":
-        return 6 + (n - 5) // 2
+        return 7 + (n - 7) // 2
     return curve[-1] + PRICE_TAIL_STEP * (n - len(curve))
 
 

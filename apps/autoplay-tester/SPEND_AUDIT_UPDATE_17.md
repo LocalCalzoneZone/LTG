@@ -8,7 +8,9 @@
 .venv/bin/python -m ltg_autoplay_tester.spend_audit --seeds 12 --stages 3
 ```
 
-## Default T-79 (10/10/15/20/25 Power · 15/15/20/25/30 mana & cards · 5/5/5/5/6/6… HP)
+## Default T-79 as first shipped (10/10/15/20/25 Power · 15/15/20/25/30 mana & cards · 5/5/5/5/6/6… HP)
+
+> Post-audit change (2026-08-18, playtest feedback): the HP pair curve is now **4/4/5/5/6/6, then 7/7/8/8…** so a classic 20 HP / 2 mana / 2 cards / +1 Power build prices at exactly 70. Mana/cards/Power unchanged; the audit's conclusion (the stick, not the prices) stands.
 
 | plan | stage 1 (L1–3) | stage 2 (→L4) | stage 3 (→L5) |
 |---|---|---|---|

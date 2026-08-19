@@ -255,8 +255,8 @@ def test_level_up_budget_is_the_available_pool():
 
 def test_leveled_build_passes_schema_validation():
     """A level-3 build spending 70+60 validates (T-57 budget, T-60 cap). On the
-    T-79 curve: 6 HP pairs 5+5+5+5+6+6 = 32, +2 mana 15+15 = 30, +2 cards 30,
-    +4 Power 10+10+15+20 = 55 → 147 against a 130 budget: ADVISORY over by 17
+    T-79 curve: 6 HP pairs 4+4+5+5+6+6 = 30, +2 mana 15+15 = 30, +2 cards 30,
+    +4 Power 10+10+15+20 = 55 → 145 against a 130 budget: ADVISORY over by 15
     (Update 17 §D17-2.2), never a validation error."""
     c = Character.model_validate({
         **_fresh_char(), "level": 3,
@@ -264,8 +264,8 @@ def test_leveled_build_passes_schema_validation():
         "starting_mana": ["U", "B", "U"],
     })
     assert c.points_budget == 130          # 70 + the 60 a level-3 build has earned (T-78)
-    assert c.points_spent == 147
-    assert c.points_over == 17
+    assert c.points_spent == 145
+    assert c.points_over == 15
     # Recorded earnings raise the budget (a run copy mid-adventure 3, still L5).
     c2 = Character.model_validate({**_fresh_char(), "level": 5, "earned_points": 180})
     assert c2.points_budget == 250
