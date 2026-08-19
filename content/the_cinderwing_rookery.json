@@ -231,7 +231,8 @@
               "uses": "next",
               "target": {
                 "mode": "self"
-              }
+              },
+              "combat_kind": "all"
             }
           ]
         }

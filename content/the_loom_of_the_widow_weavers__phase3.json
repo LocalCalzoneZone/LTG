@@ -271,7 +271,8 @@
                 "mode": "chosen",
                 "side": "ally",
                 "targeted": true
-              }
+              },
+              "combat_kind": "all"
             }
           ]
         },

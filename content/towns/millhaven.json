@@ -1,0 +1,219 @@
+{
+  "kind": "town",
+  "name": "Millhaven",
+  "region_flavor": "Millhaven sits where the golden barley downs of the Ardsmere tumble down to a sheltered blue bay, and the sea wind that never sleeps turns forty white sails on forty windmill towers.",
+  "scene": "From the coast road the town appears all at once: tiers of whitewashed cottages with slate-blue roofs stacked down a green headland to a crescent harbour, and above them the windmills — some on the cliff, some out among the barley — their canvas sails turning in slow bright unison. Gull-cries, the creak of gears and the deep boom of the Mill Bell mingle over streets dusted pale with flour, where carts of grain go up and carts of meal come down. Beyond the breakwater the bay lies bright as hammered tin, and far inland the hills climb blue toward country nobody sensible walks alone.",
+  "art_url": "/art/towns/millhaven/town-f556c114.png",
+  "locations": [
+    {
+      "id": "the_sail_and_sheaf",
+      "name": "The Sail and Sheaf",
+      "function": "inn",
+      "description": "The largest of the old mills, retired from grinding and turned to lodging, with beds in the round and the best chowder on the coast. Sleep here, and the sails still turn overhead all night.",
+      "exterior_scene": "A broad stone windmill tower, whitewashed and belted with a wooden gallery, its four great sails kept turning for show above a slate roof of cottage additions bolted to its base. The green-painted door stands under a hanging sign carved as a sheaf of barley crossed with a mill-sail, and window boxes of sea-pinks flank the step.",
+      "exterior_art_url": "/art/towns/millhaven/ext-the_sail_and_sheaf-17307636.png",
+      "interior_scene": "The common room is round, its curving plaster wall hung with old canvas sail-cloth and copper pans, and a stair spirals up the inner stone to the sleeping galleries. A driftwood fire snaps in a wide hearth; the air is warm with fish stew, baking bread and a faint sweetness of ground grain that never quite leaves the stones. High above, the shaft of the old mill-gear still turns with a soft patient groan, and daylight comes in slanting through narrow deep-set windows.",
+      "interior_art_url": "/art/towns/millhaven/loc-the_sail_and_sheaf-4f4f1a8a.png",
+      "scene": "The common room is round, its curving plaster wall hung with old canvas sail-cloth and copper pans, and a stair spirals up the inner stone to the sleeping galleries. A driftwood fire snaps in a wide hearth; the air is warm with fish stew, baking bread and a faint sweetness of ground grain that never quite leaves the stones. High above, the shaft of the old mill-gear still turns with a soft patient groan, and daylight comes in slanting through narrow deep-set windows.",
+      "art_url": "/art/towns/millhaven/loc-the_sail_and_sheaf-4f4f1a8a.png",
+      "npcs": [
+        {
+          "id": "bessa_cobblewick",
+          "name": "Bessa Cobblewick",
+          "role": "innkeeper",
+          "persona": "Bessa is a halfling of enormous good cheer who runs the Sail and Sheaf as though every guest were a cousin returned from war. She talks while she works and works constantly, and her voice carries up the whole spiral stair, warm and bossy and impossible to argue with. She believes firmly that no problem in the world has ever been improved by an empty stomach, and she will settle a traveller with a bowl before she asks their name. Her private pride is the recipe book she keeps under the bar, forty years of chowders in her mother's hand and her own, and she is forever trying one more thing in it — last month it was sea-fennel, which she now admits was a mistake. She keeps count of who has not come back down the coast road yet, and says nothing about it, but she keeps their rooms.",
+          "portrait_desc": "A halfling woman in her sixties, round-cheeked and ruddy, with grey-brown curls escaping a linen cap. She wears a flour-dusted blue apron over a russet dress, sleeves rolled to the elbow, and stands with both fists comfortably on her hips.",
+          "art_url": "/art/towns/millhaven/npc-bessa_cobblewick-e0327634.png"
+        },
+        {
+          "id": "perrin_ashlow",
+          "name": "Perrin Ashlow",
+          "role": "stable-lad and errand runner",
+          "persona": "Perrin is fourteen, human, and the fastest pair of legs in Millhaven, a fact he will find some way to mention. He is relentlessly curious about adventurers — their scars, their maps, their horses, what a wyvern actually smells like — and asks questions in strings without waiting for the answers. He is saving his errand-coppers in a tin behind the oat bin toward a real sword, and has meanwhile learned to fence quite badly with a broom. Bessa half-raised him and he would fight a dragon for her, which is exactly what worries her.",
+          "portrait_desc": "A lanky human boy of fourteen with a thatch of straw-blond hair and a peeling sunburnt nose. He wears a too-large canvas jerkin, patched breeches and no shoes, and holds a bridle over one shoulder as though it were a trophy.",
+          "art_url": "/art/towns/millhaven/npc-perrin_ashlow-88657b58.png"
+        }
+      ]
+    },
+    {
+      "id": "grendorn_s_ironworks",
+      "name": "Grendorn's Ironworks",
+      "function": "weaponsmith",
+      "description": "A dwarf-built forge wedged against the cliff, where the sea wind is trapped in a great pipe and made to feed the fire. Blades, hafts, and honest opinions on your grip.",
+      "exterior_scene": "A low, thick-walled forge of dark cliff stone with a slate roof and a squat chimney trailing smoke sideways in the breeze, and beside it a tall wooden wind-scoop like a mill's head that funnels the gale down into the bellows. The double doors stand open all day, and above them hangs a plain iron sign shaped as an anvil with a gull perched on it, welded on by way of a joke.",
+      "exterior_art_url": "/art/towns/millhaven/ext-grendorn_s_ironworks-406eb843.png",
+      "interior_scene": "Inside it is red-lit and roaring, the forge fire leaping as the wind-pipe breathes into it, and every wall is racked with hafts, blanks and finished blades in oiled rows. The floor is stone, swept, scattered with black scale; the air tastes of hot iron, quench-water steam and coal, and a slate wall by the door is chalked over with measurements in a small tidy hand. A barrel of sea-water for quenching sits under the one high window, its surface shivering with the tremor of the hammer.",
+      "interior_art_url": "/art/towns/millhaven/loc-grendorn_s_ironworks-fbdc9e2f.png",
+      "scene": "Inside it is red-lit and roaring, the forge fire leaping as the wind-pipe breathes into it, and every wall is racked with hafts, blanks and finished blades in oiled rows. The floor is stone, swept, scattered with black scale; the air tastes of hot iron, quench-water steam and coal, and a slate wall by the door is chalked over with measurements in a small tidy hand. A barrel of sea-water for quenching sits under the one high window, its surface shivering with the tremor of the hammer.",
+      "art_url": "/art/towns/millhaven/loc-grendorn_s_ironworks-fbdc9e2f.png",
+      "npcs": [
+        {
+          "id": "grendorn_haleblack",
+          "name": "Grendorn Haleblack",
+          "role": "master smith",
+          "persona": "Grendorn is a dwarf of tremendous professional vanity and equally tremendous generosity, and he sees no contradiction in this. He speaks slowly and loudly, having gone half deaf beside his own anvil, and he will hold a customer's chosen weapon up to the light and tell them at length what is wrong with how they are holding it. He came to the coast eighty years ago on a dare from a cousin who claimed no dwarf could stand the smell of fish, and stayed because he fell in love with wind — free, endless, unpaid-for bellows-breath, which he considers the finest invention of any race. He refuses to make a blade for anyone who cannot tell him what they intend to do with it, and he remembers every weapon he has ever forged, by name.",
+          "portrait_desc": "A broad dwarf of two hundred-odd years, barrel-chested, with a plaited iron-grey beard tucked into his belt and eyebrows singed short. He wears a scorched leather apron over bare brown arms ringed with old burn-marks, and stands square as a doorpost with a hammer resting on his shoulder.",
+          "art_url": "/art/towns/millhaven/npc-grendorn_haleblack-9a04eea1.png"
+        },
+        {
+          "id": "idrel_fenn",
+          "name": "Idrel Fenn",
+          "role": "journeyman smith",
+          "persona": "Idrel is quiet, precise and dryly funny, the sort who lets Grendorn finish his speech and then tells you the useful half of it in one sentence. She came from a family of harbour clerks and treats smithing as a kind of arithmetic she can hit, keeping the shop's chalk ledgers immaculate and its stock tidier than the master ever managed. What she truly loves is repair work — a notched heirloom sword brought in by a farmer's grandson interests her far more than any new commission. She is patient with nervous first-time buyers and merciless with braggarts, and she has never yet raised her voice.",
+          "portrait_desc": "A slender half-elf woman of perhaps forty, tall, with copper-red hair bound up in a kerchief and pale freckled arms. She wears a short leather apron over a sleeveless grey tunic and holds a pair of tongs the way a scribe holds a pen.",
+          "art_url": "/art/towns/millhaven/npc-idrel_fenn-5033ad61.png"
+        }
+      ]
+    },
+    {
+      "id": "the_cog_and_cormorant",
+      "name": "The Cog and Cormorant",
+      "function": "artificer",
+      "description": "Half clockmaker, half curiosity shop, in a mill whose sails drive a wall of whirring gears. Charms, lenses, compasses, and rings that hum when the weather turns.",
+      "exterior_scene": "A slim brick tower mill converted to a workshop, its sails geared not to millstones but to a bristling brass shaft that vanishes through the wall, and every windowsill crowded with spinning tin whirligigs and hanging glass. The shopfront below has a bowed bay window of small green panes, and its sign is a copper cormorant with a clockwork eye that clicks around as you pass beneath.",
+      "exterior_art_url": "/art/towns/millhaven/ext-the_cog_and_cormorant-ad971b1c.png",
+      "interior_scene": "The room is a warm clutter of shelves, drawers and hanging brass, lit by lamplight thrown through coloured lenses so that small rainbows slide slowly across the ceiling. One whole wall is a face of exposed gearing that turns with the sails outside, ticking and sighing, driving little bellows and polishing wheels along the bench. It smells of oil, hot metal and the sharp clean bite of etching salts, and every flat surface holds something half-finished under a glass dome.",
+      "interior_art_url": "/art/towns/millhaven/loc-the_cog_and_cormorant-08b8de99.png",
+      "scene": "The room is a warm clutter of shelves, drawers and hanging brass, lit by lamplight thrown through coloured lenses so that small rainbows slide slowly across the ceiling. One whole wall is a face of exposed gearing that turns with the sails outside, ticking and sighing, driving little bellows and polishing wheels along the bench. It smells of oil, hot metal and the sharp clean bite of etching salts, and every flat surface holds something half-finished under a glass dome.",
+      "art_url": "/art/towns/millhaven/loc-the_cog_and_cormorant-08b8de99.png",
+      "npcs": [
+        {
+          "id": "ilvenna_wrys",
+          "name": "Ilvenna Wrys",
+          "role": "artificer and clock-keeper",
+          "persona": "Ilvenna is an elf who has been fiddling with small mechanisms for four hundred years and is still delighted by it, and she talks about her work the way other people talk about a beloved rascal of a child. She is scatterbrained about names and appointments and absolutely exact about everything under a lens; she will forget a customer is standing there, then apologise with such genuine warmth that nobody minds. She keeps the town's mill-gears and the Mill Bell's clockwork as an unpaid duty, because she says a town that loses track of its hours starts losing track of worse things. Her long project is a compass that points not north but home, and she has got it as far as pointing vaguely toward whatever the holder most misses, which she considers a bug.",
+          "portrait_desc": "A tall, willowy elf woman of ageless middle years, silver-blonde hair pinned up with three brass pins and one forgotten screwdriver. She wears a grey work-coat over a plum-coloured gown, sleeves buttoned tight, and a jeweller's loupe pushed up onto her brow above sharp bright eyes.",
+          "art_url": "/art/towns/millhaven/npc-ilvenna_wrys-12548e17.png"
+        },
+        {
+          "id": "doff_bellamy",
+          "name": "Doff Bellamy",
+          "role": "apprentice",
+          "persona": "Doff is a gnome of nineteen with more enthusiasm than judgement and the singed eyebrows to prove it. He explains things at galloping speed, using his hands, and tends to promise that the thing he is building will absolutely work by Thursday. He idolises Ilvenna and mimics her habit of pushing up a loupe he does not wear. His one real gift is for tiny music-boxes, and he gives them away to children at the market rather than sell them, which he thinks is a secret and everyone in town knows.",
+          "portrait_desc": "A gnome youth barely three feet tall, with wiry chestnut hair standing up in tufts and soot on one cheek. He wears an oversized leather work-apron folded twice at the hem, its many pockets crammed with springs and wire, and grins with his whole face.",
+          "art_url": "/art/towns/millhaven/npc-doff_bellamy-9b0b93dc.png"
+        }
+      ]
+    },
+    {
+      "id": "mother_havelock_s_green_door",
+      "name": "Mother Havelock's Green Door",
+      "function": "apothecary",
+      "description": "A cottage under a thatch of drying herbs where remedies are ground on a small wind-driven stone. Salves, tonics, travelling-draughts, and firm instructions on taking them.",
+      "exterior_scene": "A crooked whitewashed cottage with a deep thatched eave, its low green door set beneath a hanging bundle of dried lavender and sea-holly, and its garden fenced with driftwood staves. On the roof-ridge a small four-sailed wind-wheel turns, its shaft dropping through the thatch to work the grinding stone inside.",
+      "exterior_art_url": "/art/towns/millhaven/ext-mother_havelock_s_green_door-67cbabe1.png",
+      "interior_scene": "The room is dim, cool and crowded, its beams so thickly hung with drying bunches that one must duck, and the light comes green through a window screened by the garden. Shelves of stoppered blue and amber glass climb every wall, each labelled in looping ink, and in the corner the little wind-driven pestle grinds around and around in its bowl with a soft gritty rhythm. It smells overwhelmingly of mint, tallow salve, honey and something faintly resinous burning in a dish.",
+      "interior_art_url": "/art/towns/millhaven/loc-mother_havelock_s_green_door-cd2ee5a3.png",
+      "scene": "The room is dim, cool and crowded, its beams so thickly hung with drying bunches that one must duck, and the light comes green through a window screened by the garden. Shelves of stoppered blue and amber glass climb every wall, each labelled in looping ink, and in the corner the little wind-driven pestle grinds around and around in its bowl with a soft gritty rhythm. It smells overwhelmingly of mint, tallow salve, honey and something faintly resinous burning in a dish.",
+      "art_url": "/art/towns/millhaven/loc-mother_havelock_s_green_door-cd2ee5a3.png",
+      "npcs": [
+        {
+          "id": "mother_ysolde_havelock",
+          "name": "Mother Ysolde Havelock",
+          "role": "apothecary and midwife",
+          "persona": "Ysolde is a human woman of seventy-odd who has physicked three generations of Millhaven and buried none of them she could help, and she carries herself with the calm authority of someone who has seen every complaint before. Her manner is brisk, dry and secretly very fond; she scolds patients into health and refuses payment from anyone who cannot spare it, taking eggs, mending or nothing at all. She distrusts heroism as a medical condition and will lecture any adventurer at length on eating properly, sleeping, and not walking on a wound. She keeps a locked cabinet of the truly dangerous preparations and a small book of the recipes her own teacher would not write down, and she is quietly looking for someone patient enough to inherit both.",
+          "portrait_desc": "A stout human woman in her seventies with white hair coiled in a heavy braid and shrewd dark eyes behind small round spectacles. She wears a grey wool dress with a wide pocketed apron of unbleached linen, sleeves pinned back, and stands very straight for her age.",
+          "art_url": "/art/towns/millhaven/npc-mother_ysolde_havelock-b17f4c08.png"
+        },
+        {
+          "id": "tullow_bramblebrook",
+          "name": "Tullow Bramblebrook",
+          "role": "herb-gatherer",
+          "persona": "Tullow is a halfling of middle years who walks the cliffs and downs at dawn with a wicker pack, and he knows every hedgerow within nine miles by name and temperament. He is soft-spoken to the point of mumbling, happiest when describing a plant, and prone to trailing off mid-thought to look at a bird. He grew up terrified of the sea and has never once been on a boat, but he will cheerfully climb a cliff face for a particular yellow lichen. He brings Ysolde news from the outlying farms along with the baskets, and he notices when the wild things have moved down out of the hills.",
+          "portrait_desc": "A halfling man of about fifty with sunburnt cheeks, sandy curls and grass-stained knees. He wears a moss-green coat too heavy for the weather, a wide wicker pack on his back, and carries a bunch of stems loosely in one earth-dark hand.",
+          "art_url": "/art/towns/millhaven/npc-tullow_bramblebrook-20fe4e75.png"
+        }
+      ]
+    },
+    {
+      "id": "coalhaul_quay",
+      "name": "Coalhaul Quay",
+      "function": "docks",
+      "description": "Millhaven's crescent harbour, where grain ships come in and barrels of flour go out. News from the whole coast lands here first, usually shouted.",
+      "exterior_scene": "A long stone quay curves out behind a mossy breakwater, ranked with bollards, tar-black net poles and a tall crane of oak timbers with a wind-vane at its peak. At the landward end squats the harbourmaster's flint-and-slate hut, its door painted harbour-blue, a brass bell on a bracket beside it and chalked tide-numbers on the wall.",
+      "exterior_art_url": "/art/towns/millhaven/ext-coalhaul_quay-38646035.png",
+      "interior_scene": "The harbourmaster's hut is one small room, warm from a tin stove, its window looking straight out along the quay through salt-blurred glass. Charts and cargo-tallies are pinned in overlapping layers to the plank walls, weighted rope coils hang from pegs, and a great ledger lies open on a sloped desk under a swinging lamp. The floor is gritty with sand and spilled grain, and the whole room smells of tar, wet hemp and tea gone cold.",
+      "interior_art_url": "/art/towns/millhaven/loc-coalhaul_quay-688b2dc4.png",
+      "scene": "The harbourmaster's hut is one small room, warm from a tin stove, its window looking straight out along the quay through salt-blurred glass. Charts and cargo-tallies are pinned in overlapping layers to the plank walls, weighted rope coils hang from pegs, and a great ledger lies open on a sloped desk under a swinging lamp. The floor is gritty with sand and spilled grain, and the whole room smells of tar, wet hemp and tea gone cold.",
+      "art_url": "/art/towns/millhaven/loc-coalhaul_quay-688b2dc4.png",
+      "npcs": [
+        {
+          "id": "harbourmaster_odile_kerrick",
+          "name": "Harbourmaster Odile Kerrick",
+          "role": "harbourmaster",
+          "persona": "Odile is a broad-shouldered human woman in her fifties who sailed the coast trade for twenty years before taking the quay, and she still gives directions as though shouting over weather. She is loud, fair, and entirely unimpressed by titles, ranking people instead by whether they coil a rope properly. She loves this harbour with a fierce practical love and keeps the tide-book, the pilot lamps and the rescue boat in flawless order. Every captain from here to the Saltmarch owes her a favour or a drink, which makes her the best-informed person in Millhaven, and she trades that news freely to anyone she has decided is useful.",
+          "portrait_desc": "A weather-tanned human woman of fifty-five, thickset, with cropped grey-black hair and a jaw like a ship's prow. She wears a navy oilskin coat over a knitted jersey, brass buttons, and a battered spyglass on a lanyard at her chest.",
+          "art_url": "/art/towns/millhaven/npc-harbourmaster_odile_kerrick-3c48689e.png"
+        },
+        {
+          "id": "sarn_kelleway",
+          "name": "Sarn Kelleway",
+          "role": "retired ranger, now ferryman",
+          "persona": "Sarn spent his younger years walking the hill-marches for the crown's wardens and now rows passengers across the bay for coppers, which he says is a promotion. He is easy, unhurried and full of small jokes, and he tells stories about the wild country with the edges sanded off so as not to frighten the children who ride free. He knows the old paths inland, which ruins are merely old and which are still occupied, and he will draw a map in charcoal on the gunwale for anyone who asks seriously. He does not talk about how he got the limp, but he has kept his bow oiled and strung on a peg in the boathouse for eleven years.",
+          "portrait_desc": "A lean human man in his late fifties with close-cropped grey hair, a broken nose and laugh-lines cut deep. He wears a faded green ranger's cloak gone soft with age over fisherman's canvas, and leans on a boathook like a walking staff.",
+          "art_url": "/art/towns/millhaven/npc-sarn_kelleway-84afbfb5.png"
+        }
+      ]
+    },
+    {
+      "id": "the_mealmarket",
+      "name": "The Mealmarket",
+      "function": "market",
+      "description": "The flour-dusted square beneath the Mill Bell, loud with barrows and bargains six days a week. If you need a rumour, a guide, or a hundredweight of oats, it is here.",
+      "exterior_scene": "A cobbled square ringed with striped awnings and trestle stalls, its centre held by a stepped stone cross where the weighing-scales hang and a rope runs up to the great Mill Bell in its little slate cote. Sacks are stacked man-high against the walls, and the cobbles between them are pale with drifted flour, printed over with cart-tracks and gull feet.",
+      "exterior_art_url": "/art/towns/millhaven/ext-the_mealmarket-1cb89cea.png",
+      "interior_scene": "Standing under the awnings you are boxed in by colour: bins of barley, rye and yellow meal at knee height, baskets of samphire and crab, ropes of onions and smoked fish overhead. Light comes down striped and warm through the canvas, hazy with floating grain dust, and the trestle boards are worn shiny in the middle and sticky at the corners with honey. It smells of new bread, fish, wet cobbles and the tarred rope of the bell-pull hanging within arm's reach.",
+      "interior_art_url": "/art/towns/millhaven/loc-the_mealmarket-61b60c36.png",
+      "scene": "Standing under the awnings you are boxed in by colour: bins of barley, rye and yellow meal at knee height, baskets of samphire and crab, ropes of onions and smoked fish overhead. Light comes down striped and warm through the canvas, hazy with floating grain dust, and the trestle boards are worn shiny in the middle and sticky at the corners with honey. It smells of new bread, fish, wet cobbles and the tarred rope of the bell-pull hanging within arm's reach.",
+      "art_url": "/art/towns/millhaven/loc-the_mealmarket-61b60c36.png",
+      "npcs": [
+        {
+          "id": "alderman_cobb_trethaway",
+          "name": "Alderman Cobb Trethaway",
+          "role": "grain-factor and town alderman",
+          "persona": "Cobb buys the barley, sells the flour, and has somehow ended up running most of Millhaven's civic business by virtue of never once leaving a meeting early. He is genial, portly and prone to formal little speeches that he cannot stop once begun, and he genuinely adores his town in a fussy, ledger-keeping way. He worries constantly and out loud about roads, prices, and whether the western farms are getting their carts through, and he is the man who hires help when the town has trouble it cannot mill away. His weakness is his own pastry — he keeps a tin under the weighing-scales and shares it with anyone who will listen to him.",
+          "portrait_desc": "A round, rosy human man in his sixties, balding, with impressive white side-whiskers. He wears a good brown coat straining at its brass buttons, a chain of office worn slightly crooked, and carries a bundle of papers under one arm.",
+          "art_url": "/art/towns/millhaven/npc-alderman_cobb_trethaway-57b6d3dd.png"
+        },
+        {
+          "id": "nib_sowerby",
+          "name": "Nib Sowerby",
+          "role": "baker's daughter, market runner",
+          "persona": "Nib is eleven, human, and knows everyone's business in Millhaven because she delivers everyone's bread. She is bright, forward and completely without shyness, greeting armoured strangers as though they were customers, which they usually become. She has an ambition to be a ship's cook and has begun a notebook of every foreign word she hears on the quay, most of them misspelled and one of them rude. She will guide anyone anywhere in town for a copper or for free if they let her ask questions, and her questions are excellent.",
+          "portrait_desc": "A small human girl of eleven with dark hair in two uneven plaits and flour on her nose. She wears a patched pinafore over a red dress and clogs, and carries a wide basket of loaves balanced on her hip.",
+          "art_url": "/art/towns/millhaven/npc-nib_sowerby-05c95108.png"
+        }
+      ]
+    },
+    {
+      "id": "the_shrine_of_the_turning_wind",
+      "name": "The Shrine of the Turning Wind",
+      "function": "shrine",
+      "description": "A little clifftop shrine to the wind that feeds the town, where sailors and millers alike leave a knot of ribbon before a journey. Quiet, bright, and always breezy.",
+      "exterior_scene": "A small round chapel of pale weathered stone on the cliff edge, roofless at its centre and open to the sky, its low arched doorway framed by hundreds of faded ribbons tied to iron rings. A single bronze weathervane in the shape of a mill-sail turns above the lintel, and the path to it is worn white through the sea-grass.",
+      "exterior_art_url": "/art/towns/millhaven/ext-the_shrine_of_the_turning_wind-e932eeaf.png",
+      "interior_scene": "Inside there is no roof but a ring of sky, and the wind comes down cool and constant, setting a hoop of hanging bronze chimes murmuring. The floor is a mosaic of blue and cream pebbles spiralling inward to a shallow basin of rainwater, and the curved walls are covered to shoulder height in tied ribbons of every faded colour. It smells of salt, wet stone and the crushed thyme growing in the wall cracks.",
+      "interior_art_url": "/art/towns/millhaven/loc-the_shrine_of_the_turning_wind-19a56906.png",
+      "scene": "Inside there is no roof but a ring of sky, and the wind comes down cool and constant, setting a hoop of hanging bronze chimes murmuring. The floor is a mosaic of blue and cream pebbles spiralling inward to a shallow basin of rainwater, and the curved walls are covered to shoulder height in tied ribbons of every faded colour. It smells of salt, wet stone and the crushed thyme growing in the wall cracks.",
+      "art_url": "/art/towns/millhaven/loc-the_shrine_of_the_turning_wind-19a56906.png",
+      "npcs": [
+        {
+          "id": "priestess_ammeline_roke",
+          "name": "Priestess Ammeline Roke",
+          "role": "priestess of the Turning Wind",
+          "persona": "Ammeline is a young human priestess, not yet thirty, who took this small windy shrine over a comfortable city posting and has never regretted it out loud. She is thoughtful, plainspoken and surprisingly funny, treating her faith as a practical craft rather than a mystery — she blesses ropes, hinges and cooking pots as readily as swords. She listens far more than she speaks, which is why half the town confesses things to her they never meant to, and she keeps every one of them. She is teaching herself the old cliff-tongue from inscriptions in the shrine floor and has worked out that the last two lines are a warning about something buried further along the headland, which she has told nobody.",
+          "portrait_desc": "A human woman of twenty-eight, slight and windburnt, with short dark hair blown permanently sideways. She wears undyed wool robes belted with rope, a bronze mill-sail pendant, and a heavy grey travelling cloak whose hem is always damp.",
+          "art_url": "/art/towns/millhaven/npc-priestess_ammeline_roke-dbfaad51.png"
+        },
+        {
+          "id": "elder_thistlewaite",
+          "name": "Elder Thistlewaite",
+          "role": "shrine elder and town lore-keeper",
+          "persona": "Old Thistlewaite is a halfling of ninety-one who sits on the shrine bench most fine days with a blanket over his knees, and he is the last man alive who remembers the Long Gale and what came ashore with it. He speaks slowly, with long pauses that trap the impatient, and he mixes genuine ancient history with cheerful invention in proportions only he can judge. He cares about being listened to, and rewards it richly: the names of ruins, the reason nobody farms the north field, which of the standing stones to walk around. He carves little wooden mill-sails for visiting children and claims each one is lucky, which so far nobody has disproved.",
+          "portrait_desc": "A tiny, bald halfling of ninety-one with white side-whiskers and hands like knotted rope. He wears three waistcoats against the wind, a red blanket across his lap, and holds a half-carved wooden toy and a pocket knife.",
+          "art_url": "/art/towns/millhaven/npc-elder_thistlewaite-886783e6.png"
+        }
+      ]
+    }
+  ]
+}

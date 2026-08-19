@@ -8,7 +8,7 @@
   "points_price": 12,
   "flavor": "One line. Nothing crosses it.",
   "art_desc": "A stub of white chalk wrapped in a scrap of blessed cloth.",
-  "art_url": "",
+  "art_url": "/art/items/wardens_chalk/item-0bb583e6.png",
   "statics": [],
   "effects": [
     {
@@ -21,7 +21,8 @@
         "exclude_self": false,
         "targeted": false
       },
-      "duration": "this_turn"
+      "duration": "this_turn",
+      "combat_kind": "all"
     }
   ],
   "targets": {},

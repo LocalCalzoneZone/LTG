@@ -236,6 +236,14 @@ def _mana_by_color(char) -> List[Dict[str, Any]]:
     return out
 
 
+def _lane_text(parameter: str, combat_kind: str = "all") -> str:
+    """A damage lane + its combat qualifier as a status-tag word: `combat_damage`
+    with combat_kind melee → "melee combat_damage"; everything else is the lane."""
+    if parameter == "combat_damage" and combat_kind in ("melee", "ranged"):
+        return f"{combat_kind} {parameter}"
+    return parameter
+
+
 def _status_tags(char) -> List[str]:
     tags = []
     if getattr(char, "temp_mod", 0):
@@ -244,18 +252,19 @@ def _status_tags(char) -> List[str]:
         tags.append(f"reduce {char.prevent_pool}")
     for tag in getattr(char, "prevent_tags", []):
         span = "next " if tag.uses is not None else ""
-        tags.append(f"prevent {span}{tag.parameter}")
+        tags.append(f"prevent {span}{_lane_text(tag.parameter, getattr(tag, 'combat_kind', 'all'))}")
     for tag in getattr(char, "amplify_tags", []):
         boost = (f"×{tag.multiplier}" if tag.multiplier > 1 else "") + \
                 (f"+{tag.bonus}" if tag.bonus else "")
-        what = {"heal": "heal"}.get(tag.event, tag.event.replace("_", " "))
+        what = {"heal": "heal"}.get(
+            tag.event, _lane_text(tag.event, getattr(tag, "combat_kind", "all")).replace("_", " "))
         tags.append(f"next {what} {boost}")
     for filt in getattr(char, "double_next", []):
         tags.append(f"next {filt} ×2 resolve")
     if getattr(char, "power_bonus", 0):
         tags.append(f"{'+' if char.power_bonus >= 0 else ''}{char.power_bonus} Power")
-    if getattr(char, "protection", 0):
-        tags.append(f"protection ×{char.protection}")
+    for ptag in getattr(char, "protection_tags", []):
+        tags.append(f"protection ({_lane_text(ptag.parameter, ptag.combat_kind)})")
     if getattr(char, "poison_counters", 0):
         tags.append(f"poison ×{char.poison_counters}")
     if getattr(char, "regen_counters", 0):
@@ -417,9 +426,13 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "zone": "in_hand" if enemy.in_hand else ("exile" if enemy.exiled else "in_play"),
         "temp_mod": enemy.temp_mod,
         "prevent_pool": enemy.prevent_pool,
-        "prevent_tags": [f"{'next ' if t.uses is not None else ''}{t.parameter}"
+        "prevent_tags": [f"{'next ' if t.uses is not None else ''}"
+                         f"{_lane_text(t.parameter, getattr(t, 'combat_kind', 'all'))}"
                          for t in enemy.prevent_tags],
-        "protection": enemy.protection,
+        # A count (what the clients render as "protection ×N") plus the lanes.
+        "protection": len(enemy.protection_tags),
+        "protection_tags": [_lane_text(t.parameter, t.combat_kind)
+                            for t in enemy.protection_tags],
         "stunned": enemy.stunned,
         "power_bonus": enemy.power_bonus,
         "keywords": list(enemy.keywords.keys()),

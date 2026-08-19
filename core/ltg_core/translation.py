@@ -503,10 +503,13 @@ def _render_add_mana(e) -> str:
     return f"Add {e.amount} {colour} to your pool this turn."
 
 
-def _prevent_phrase(parameter: str) -> str:
+def _prevent_phrase(parameter: str, combat_kind: str = "all") -> str:
     """A `prevent [parameter]` nullification, in player-facing words (R-11).
     Combat damage covers attacks AND activated abilities; spell damage covers
-    spells and triggered abilities; all damage covers everything."""
+    spells and triggered abilities; all damage covers everything. A melee/ranged
+    `combat_kind` narrows combat damage to one reach."""
+    if parameter == "combat_damage" and combat_kind in ("melee", "ranged"):
+        return f"{combat_kind} combat damage ({combat_kind} attacks & abilities)"
     return {"combat_damage": "combat damage (attacks & abilities)",
             "spell_damage": "spell damage (spells & triggers)",
             "all_damage": "damage",
@@ -515,15 +518,38 @@ def _prevent_phrase(parameter: str) -> str:
             "attack": "attacks"}.get(parameter, parameter.replace("_", " "))
 
 
+def _lane_phrase(e) -> str:
+    """The lane phrase of any verb carrying `parameter` (+ optional `combat_kind`)."""
+    return _prevent_phrase(e.parameter, getattr(e, "combat_kind", "all") or "all")
+
+
+def _protection_phrase(e) -> str:
+    """What a `protection` charge negates: "the next damaging spell or attack"
+    (all_damage) / "the next combat damage …" / "the next spell damage …"."""
+    param = getattr(e, "parameter", "all_damage") or "all_damage"
+    if param == "all_damage":
+        return "the next damaging spell, attack or ability"
+    return f"the next {_lane_phrase(e)}"
+
+
 def _render_prevent(e) -> str:
     """A full `prevent` sentence that spells out its span so an "all this turn"
     shield (Fog) never reads the same as a one-shot (Gods Willing) — R-11."""
     if e.parameter in ("attack",):  # an action shield, not damage prevention
         return f"{_tgt(e.target).capitalize()} can't attack."
-    phrase = _prevent_phrase(e.parameter)
+    phrase = _lane_phrase(e)
     if getattr(e, "uses", "all") == "next":
         return f"Prevent the next {phrase} to {_tgt(e.target)}."
     return f"Prevent all {phrase} this turn to {_tgt(e.target)}."
+
+
+def _render_protection(e) -> str:
+    """A `protection` charge: negates the next matching hit whenever it comes
+    (no clock — it persists until spent)."""
+    subj = _tgt(e.target)
+    pron = ("you" if subj == "yourself"
+            else "them" if _plural(e.target, _RENDER_TARGETS.get()) else "it")
+    return f"Give {subj} protection: {_protection_phrase(e)} against {pron} is negated."
 
 
 # Counter filter → player-facing phrase (filter matches a node + its descendants).
@@ -832,6 +858,13 @@ def _render_move(e) -> str:
     return f"Move {_tgt(e.target)} {_MOVE_DIR_PHRASE.get(e.direction, e.direction)} (immediately)."
 
 
+def _amplify_what(e) -> str:
+    ck = getattr(e, "combat_kind", "all") or "all"
+    if e.event == "combat_damage" and ck in ("melee", "ranged"):
+        return f"{ck} combat damage dealt"
+    return _AMPLIFY_WHAT.get(e.event, e.event)
+
+
 _AMPLIFY_WHAT = {"combat_damage": "combat damage dealt",
                  "spell_damage": "spell damage dealt",
                  "any_damage": "damage dealt",
@@ -864,7 +897,7 @@ def _amplify_subject(e) -> str:
 
 def _render_amplify(e) -> str:
     return (f"{_amplify_subject(e).capitalize()} next "
-            f"{_AMPLIFY_WHAT.get(e.event, e.event)} is {_amplify_boost(e)}.")
+            f"{_amplify_what(e)} is {_amplify_boost(e)}.")
 
 
 _DOUBLE_NOUN = {"spell": "spell", "ability": "ability", "action": "action"}
@@ -929,7 +962,7 @@ RENDERERS = {
     "wound": _render_wound,
     "counters": _render_counters,
     "prevent": _render_prevent,
-    "protection": lambda e: f"Give {_tgt(e.target)} protection ({e.scope}).",
+    "protection": _render_protection,
     "amplify": _render_amplify,
     "copy_spell": lambda e: ("Copy a spell on the stack — you assign the copy's "
                              "target as it resolves."),
@@ -1000,7 +1033,7 @@ _CLAUSE = {
     "strip_intent": lambda e: "lose their telegraphed intent",
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
-    "protection": lambda e: f"gain protection ({e.scope})",
+    "protection": lambda e: f"gain protection ({_protection_phrase(e)} against them is negated)",
     "counters": lambda e: (
         f"gain {_stat_pair(e.power, e.toughness, 'attack', 'HP')}"
         if _is_phrase_ref(e.power) or _is_phrase_ref(e.toughness)
@@ -1009,8 +1042,8 @@ _CLAUSE = {
     "prevent": lambda e: (
         "can't attack" if e.parameter == "attack"
         else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
-             f"{_prevent_phrase(e.parameter)} prevented"),
-    "amplify": lambda e: (f"have their next {_AMPLIFY_WHAT.get(e.event, e.event)} "
+             f"{_lane_phrase(e)} prevented"),
+    "amplify": lambda e: (f"have their next {_amplify_what(e)} "
                           f"{_amplify_boost(e)}"),
     "double_next": lambda e: (f"have their next {_DOUBLE_NOUN.get(e.filter, e.filter)} "
                               f"resolve twice"),
@@ -1116,10 +1149,11 @@ def _channeled_body(e, targets) -> str:
         if e.parameter == "attack":
             return f"{_subject(e.target, targets, True)} can't attack"
         span = "the next" if getattr(e, "uses", "all") == "next" else "all"
-        return (f"prevent {span} {_prevent_phrase(e.parameter)} "
+        return (f"prevent {span} {_lane_phrase(e)} "
                 f"to {_subject(e.target, targets, True)}")
     if k == "protection":
-        return f"{_subject(e.target, targets, True)} has protection"
+        return (f"{_subject(e.target, targets, True)} has protection "
+                f"({_protection_phrase(e)} is negated)")
     if k == "stun":
         subj, verb = _subject_conj(e.target, "are", "is", channeled=True)
         return f"{subj} {verb} stunned"

@@ -464,8 +464,15 @@ Notable semantics:
   cancels its lifegain.
 - **`counters` (+1/+1, persistent)** — a permanent buff (more Power, more max HP), lasting
   until removed or the encounter ends.
-- **`prevent`** nullifies a **named parameter** (e.g. `prevent combat_damage`). The old
-  `disable` primitive was retired in its favour.
+- **`prevent`** nullifies a **named parameter** (e.g. `prevent combat_damage`) for a
+  **duration** — all (or the next) matching damage until the duration ends; the shield is
+  wiped at the End step. `combat_damage` takes a `combat_kind` qualifier (`all` | `melee` |
+  `ranged`, default `all`): a basic attack's own reach, an ability's owner reach, a fight is
+  melee. The old `disable` primitive was retired in its favour.
+- **`protection`** is a one-shot **charge** with no clock: it negates the next matching
+  damaging spell / attack / ability whenever it comes, persisting across turns until spent
+  (charges stack). `parameter` ∈ `all_damage` (default) | `combat_damage` | `spell_damage`,
+  plus the same `combat_kind` qualifier when the lane is combat damage.
 - **`counter`** carries a `filter` and targets an action on the stack, not a creature.
 - **`move_card`** is the general card-logistics primitive (`draw` is its common special
   case): move cards between zones, optionally filtered by type or level, optionally
@@ -548,7 +555,7 @@ keyword's identifier, display name, gloss, grantability, and params. `grant_keyw
 | **lifelink** | heals equal to the damage it deals |
 | **hexproof** | can't be **targeted** by enemy spells and abilities — but **basic attacks still land**, in both directions |
 | **indestructible** | damage can't drop it below 1 HP; exile or a −X/−X to effective HP ≤ 0 still kills it |
-| **protection** | prevents the next spell or attack against it (optional `from` param) |
+| **protection** | one `all_damage` protection charge — negates the next damaging spell/attack/ability, whenever it comes (the `protection` effect's keyword form; optional `from` param) |
 
 **Retired** (menace, ward, convoke) are rejected for granting with a clear error, as are
 unknown keywords.

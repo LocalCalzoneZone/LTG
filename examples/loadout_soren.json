@@ -44,7 +44,8 @@
             "exclude_self": false,
             "targeted": true
           },
-          "duration": "this_turn"
+          "duration": "this_turn",
+          "combat_kind": "all"
         }
       ],
       "targets": {},

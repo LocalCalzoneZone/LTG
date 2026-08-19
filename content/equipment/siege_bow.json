@@ -8,7 +8,7 @@
   "points_price": 30,
   "flavor": "It does not care what stands in front.",
   "art_desc": "A great recurved bow of horn and sinew, arrows thick as thumbs with barbed heads.",
-  "art_url": "",
+  "art_url": "/art/items/siege_bow/item-cbab54de.png",
   "statics": [
     {
       "kind": "attack_mode",

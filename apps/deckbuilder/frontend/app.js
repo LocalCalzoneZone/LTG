@@ -782,6 +782,7 @@ function newBlankCard() {
     id: `custom_${Date.now()}`,
     name: "New Card",
     source_name: "New Card",
+    ignore_source: true,   // authored from scratch — no MTG lineage to show
     rarity: "common",
     level: 0,
     type: "Sorcery",
@@ -836,12 +837,18 @@ function openPreview(m) {
 let sortState = { key: null, dir: 1 };
 
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, mythic: 3 };
+const RARITIES = Object.keys(RARITY_RANK);
+
+// "Custom card — ignore source": the table shows " - " instead of the MTG
+// source, and duplicate detection keys on the card's own name instead.
+function sourceLabel(card) { return card.ignore_source ? "<span class='meta'> - </span>" : escapeHtml(card.source_name); }
+function sourceKey(card) { return card.ignore_source ? `name:${card.name}` : `src:${card.source_name}`; }
 
 function cardSortValue(card, key) {
   switch (key) {
     case "cost": return card.level;
     case "rarity": return RARITY_RANK[card.rarity] ?? -1;
-    case "source_name": return card.source_name.toLowerCase();
+    case "source_name": return card.ignore_source ? "" : card.source_name.toLowerCase();
     case "type": return card.type.toLowerCase();
     default: return (card.name || "").toLowerCase();
   }
@@ -906,7 +913,7 @@ function cardIssues(card) {
   const identity = new Set(state.character.colors);
   const offColors = Object.keys(card.cost.colors || {}).filter((c) => !identity.has(c));
   if (offColors.length) issues.push({ cls: "bad", text: `⛔ off-colour (${offColors.join("")})` });
-  const dupes = state.cards.filter((c) => c.source_name === card.source_name).length;
+  const dupes = state.cards.filter((c) => sourceKey(c) === sourceKey(card)).length;
   if (dupes > 1) issues.push({ cls: "warn", text: "duplicate" });
   if (card.needs_translation) issues.push({ cls: "flag", text: "⚑ needs translation" });
   if ((card._lints || []).length) issues.push({ cls: "warn", text: `${card._lints.length} lint${card._lints.length > 1 ? "s" : ""}` });
@@ -924,7 +931,7 @@ function renderDeck() {
     if (issues.some((i) => i.cls === "bad")) tr.classList.add("row-illegal");
     tr.innerHTML = `
       <td class="deck-name">${escapeHtml(card.name)}</td>
-      <td>${card.source_name}</td>
+      <td>${sourceLabel(card)}</td>
       <td>${costIconsHtml(card.cost)}</td>
       <td>${card.type}</td>
       <td>${card.rarity}</td>
@@ -1520,6 +1527,9 @@ function effectRowHtml(e, i, card, depth = 0) {
     !(e.kind === "move_card" && p.name === "filter_level" && (e.filter_level_compare ?? "any") === "any")
     // A stance is always continuous — a recurring stance is rejected (§D9-2.2).
     && !(e.kind === "stance" && p.name === "trigger")
+    // A conditionally-shown param (e.g. the melee/ranged `combat_kind` qualifier,
+    // which only means something once `parameter`/`event` is combat_damage).
+    && !(p.show_when && !(p.show_when.values || []).includes(e[p.show_when.field]))
   ).map((p) => {
     if (p.name === "target" && p.control === "action_target") {
       const who = (e.target?.side || p.default?.side) === "any" ? "a stack action (either side)" : "an enemy action";
@@ -1578,11 +1588,16 @@ function openDetail(idx) {
       ${TYPE_OPTIONS.map(([t, label]) =>
         `<option value="${t}" ${card.timing === t ? "selected" : ""}>${label}</option>`).join("")}
     </select>`;
+  // Rarity is editable too — it drives the deck's rarity quotas, so a custom
+  // card (or a mis-ranked import) can be re-ranked without touching JSON.
+  const raritySel = `<select id="detail-rarity" title="Rarity — counts toward the deck's rarity quotas">
+      ${RARITIES.map((r) => `<option value="${r}" ${card.rarity === r ? "selected" : ""}>${r}</option>`).join("")}
+    </select>`;
   const sub = heroic
     ? (idx === "skill"
         ? "Skill — an activated ability · once per encounter · consumes your action (vigilance lifts) · may cost mana (D8-3.1)"
         : "Ultimate — an action · once per encounter · needs a full gauge · never costs mana (D8-3.2)")
-    : `${card.source_name} · ${typeSel} · ${card.rarity} · Level ${card.level}`;
+    : `<span id="detail-source">${sourceLabel(card)}</span> · ${typeSel} · ${raritySel} · Level ${card.level}`;
 
   // The Skill's form is its own prominent control (not buried in the subtitle):
   // an Action (resolves once) or a Channeled effect (held — enables stances).
@@ -1623,7 +1638,11 @@ function openDetail(idx) {
     ${skillFormBlock}
 
     <div class="block">
-      <div class="label">Flavour name — editable</div>
+      <div class="label-row">
+        <div class="label">Flavour name — editable</div>
+        ${heroic ? "" : `<label class="inline small" title="Authored from scratch (or drifted far from its MTG source): the deck table shows the source as ' - ' and the singleton rule keys on this card's own name">
+          <input type="checkbox" id="detail-ignore-source" ${card.ignore_source ? "checked" : ""}/> Custom card — ignore source</label>`}
+      </div>
       <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
       <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
       <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
@@ -1705,6 +1724,22 @@ function wireDetail(idx) {
   const card = cardAt(idx);
 
   $("#detail-name").oninput = (e) => { card.name = e.target.value; renderDeck(); };
+  if ($("#detail-rarity")) {
+    $("#detail-rarity").onchange = (e) => {
+      card.rarity = e.target.value;
+      renderDeck();
+      scheduleValidate();  // the rarity quotas in Deck Status move
+    };
+  }
+  if ($("#detail-ignore-source")) {
+    $("#detail-ignore-source").onchange = (e) => {
+      card.ignore_source = e.target.checked;
+      const src = $("#detail-source");
+      if (src) src.innerHTML = sourceLabel(card);
+      renderDeck();
+      scheduleValidate();  // duplicate detection keys change
+    };
+  }
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
   const animSel = $("#detail-anim");
   if (animSel) animSel.onchange = () => { card.animation = animSel.value || null; };
@@ -1767,7 +1802,10 @@ function wireDetail(idx) {
         : spec.control === "float" ? (parseFloat(inp.value) || 0)
         : (spec.control === "enum" && spec.optional && inp.value === "") ? null
         : inp.value;
-      commitEffects(idx, p === "trigger" || p === "duration" || p === "filter_level_compare");
+      // Re-render when a param gates the visibility of another (the combat
+      // qualifier appears/disappears as the damage lane changes).
+      const gates = (EFFECT_SPECS[editorItems[i].kind].params || []).some((x) => x.show_when && x.show_when.field === p);
+      commitEffects(idx, p === "trigger" || p === "duration" || p === "filter_level_compare" || gates);
     };
   });
   document.querySelectorAll(".kw-check").forEach((cb) => {

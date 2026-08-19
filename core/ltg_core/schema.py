@@ -366,7 +366,7 @@ KEYWORDS = {
     "infect": {"display": "Infect", "gloss": "its damage that connects also poisons the victim — a −0/−1 per Upkeep until cured by any healing (D8-2.5)", "grantable": True, "params": []},
     "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
     "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
-    "protection": {"display": "Protection", "gloss": "prevents the next spell or attack", "grantable": True, "params": ["from"]},
+    "protection": {"display": "Protection", "gloss": "a one-shot charge that negates the next damaging spell or attack against it, whenever it comes (persists across turns until spent) — the keyword form of the `protection` effect with all_damage", "grantable": True, "params": ["from"]},
     # Enemy-only (§L-6.2) — authored on enemy JSON, never granted by player cards.
     "relentless": {"display": "Relentless", "gloss": "its intents never redirect — they pursue the declared target wherever it stands (L-6.2); enemy-only", "grantable": False, "params": []},
     # Retired — not grantable.
@@ -574,6 +574,13 @@ class Counters(EffectBase):
 # the target from attacking at all.
 PreventParameter = Literal["combat_damage", "spell_damage", "all_damage", "attack"]
 
+# The combat-damage sub-lane qualifier, shared by every verb that can name
+# `combat_damage` (prevent / protection / amplify). `all` is every physical blow;
+# `melee` / `ranged` narrow it to one reach: a basic attack's own declared mode,
+# an activated/component ability's OWNER reach (an enemy's "Claw" is narratively
+# its attack), and a fight is always melee.
+CombatKind = Literal["all", "melee", "ranged"]
+
 
 class Prevent(EffectBase):
     """Nullify a named thing for a duration (R-11): `prevent [parameter]` — e.g.
@@ -592,6 +599,8 @@ class Prevent(EffectBase):
 
     kind: Literal["prevent"] = "prevent"
     parameter: PreventParameter = "combat_damage"
+    # Only read when parameter == combat_damage: which reach the shield covers.
+    combat_kind: CombatKind = "all"
     uses: Literal["all", "next"] = "all"
     target: TargetOrSlot
     duration: Duration = Duration.this_turn
@@ -611,10 +620,43 @@ class Prevent(EffectBase):
         return data
 
 
+# What a `protection` charge negates — the damage lanes of `prevent`, minus the
+# action shield (`attack`), which is prevent-only.
+ProtectionParameter = Literal["all_damage", "combat_damage", "spell_damage"]
+
+
 class Protection(EffectBase):
+    """A one-shot bodyguard CHARGE: negate the next matching damaging spell or
+    attack against the target, WHENEVER it comes. Protection vs prevent:
+
+      * `prevent` is a duration-bound shield — it nullifies all (or the next)
+        matching damage until its duration ends (this turn by default, or for as
+        long as a channel holds) and is wiped at the End step whether or not it
+        was hit (Fog / Holy Day).
+      * `protection` is a charge with no clock — it rides the target across turns
+        until a matching hit spends it (Gods Willing's bodyguard, a Ward's
+        "the next blow against the boy is negated"). Charges stack: two
+        protections negate the next two matching hits.
+
+    `parameter` names the lane it answers (all_damage by default — any damaging
+    spell, attack or ability; combat_damage — the physical lane; spell_damage —
+    the arcane lane) and `combat_kind` narrows combat_damage to melee or ranged."""
+
     kind: Literal["protection"] = "protection"
+    parameter: ProtectionParameter = "all_damage"
+    # Only read when parameter == combat_damage: which reach the charge answers.
+    combat_kind: CombatKind = "all"
     target: TargetOrSlot
-    scope: str = "next_spell_or_attack"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_scope(cls, data):
+        """Pre-Update-17 protections carried a free-text `scope` (always
+        "next_spell_or_attack" in practice) — that is today's all_damage."""
+        if isinstance(data, dict) and "scope" in data:
+            data = {k: v for k, v in data.items() if k != "scope"}
+            data.setdefault("parameter", "all_damage")
+        return data
 
 
 # What an `amplify` primes. The damage lanes deliberately mirror the `prevent`
@@ -633,6 +675,8 @@ class Amplify(EffectBase):
 
     kind: Literal["amplify"] = "amplify"
     event: AmplifyEvent = "any_damage"
+    # Only read when event == combat_damage: which reach of outgoing blow it primes.
+    combat_kind: CombatKind = "all"
     multiplier: int = 2
     bonus: int = 0
     target: TargetOrSlot = Field(default_factory=t_self)
@@ -1211,6 +1255,11 @@ def effect_specs() -> dict:
                 })
                 continue
             spec = {"name": fname, **_control_for(finfo.annotation)}
+            if fname == "combat_kind":
+                # The melee/ranged qualifier is only meaningful when the verb
+                # names combat damage — the editor shows it conditionally.
+                lane_field = "event" if kind == "amplify" else "parameter"
+                spec["show_when"] = {"field": lane_field, "values": ["combat_damage"]}
             default = finfo.default
             if default is PydanticUndefined and finfo.default_factory is not None:
                 default = finfo.default_factory()
@@ -1263,6 +1312,11 @@ class Card(BaseModel):
     id: str
     name: str
     source_name: str
+    # "Custom card — ignore source": the card was authored from scratch (or has
+    # drifted far enough from its MTG source that the lineage is noise). The
+    # deckbuilder shows the source as " - " and the singleton rule keys on the
+    # card's own name instead of `source_name`.
+    ignore_source: bool = False
     rarity: Rarity
     level: int
     type: str
@@ -1947,7 +2001,8 @@ def deck_status(loadout: Loadout) -> dict:
 
     seen: Dict[str, int] = {}
     for c in cards:
-        seen[c.source_name] = seen.get(c.source_name, 0) + 1
+        key = c.name if c.ignore_source else c.source_name
+        seen[key] = seen.get(key, 0) + 1
     duplicates = sorted(name for name, n in seen.items() if n > 1)
 
     identity = {c.value for c in loadout.character.colors}

@@ -37,7 +37,8 @@
                 "side": "ally",
                 "targeted": true
               },
-              "duration": "this_turn"
+              "duration": "this_turn",
+              "combat_kind": "all"
             }
           ],
           "validated": true

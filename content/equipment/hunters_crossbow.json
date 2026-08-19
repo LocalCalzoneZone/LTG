@@ -8,7 +8,7 @@
   "points_price": 15,
   "flavor": "Wind it. Wait. Do not breathe.",
   "art_desc": "A stout crossbow of black walnut and horn, iron stirrup, bolts bundled with red thread.",
-  "art_url": "",
+  "art_url": "/art/items/hunters_crossbow/item-1b723717.png",
   "statics": [
     {
       "kind": "attack_mode",

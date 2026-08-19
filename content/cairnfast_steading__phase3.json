@@ -1,0 +1,509 @@
+{
+  "name": "The Cellar Under Ice",
+  "scene": "A vaulted cider-cellar lit blue through a ceiling of ice, burst barrels frozen mid-spill into fans of pale gold, and a wall of clear frost down one side where the steading's families stand upright and asleep with their hands still raised. Frost-flowers crawl the stone; the only warm colour is a guttering lantern someone left on the bottom step, its flame frozen into a small orange bead.",
+  "scene_image": "/art/cairnfast_steading__phase3/scene-ff82007e.png",
+  "enemies": [
+    {
+      "id": "shepherd_boy_herald",
+      "name": "The Shepherd-Boy Herald",
+      "flavor": "Aurech's small crowned herald: shields the sleepers, calls the winter, and turns terrible when cornered.",
+      "description": "A boy of perhaps eleven in a frost-stiffened drover's coat three sizes too large, a crown of hoar-thorn grown through his hair and into his temples, eyes gone the flat white of pond-ice. He carries a lambing crook taller than himself, and where he sets it down the stone blooms with frost-flowers; when he sings, his breath falls as glittering snow around his boots.",
+      "hp": 32,
+      "power": 3,
+      "level": 6,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "ranged",
+      "is_boss": true,
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "the_shepherds_carol",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "phase": "pre_enrage",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "The Shepherd's Carol \u2014 a held winter: the party at -1/-1 and a hero frosts deeper each turn",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "poison",
+              "amount": 1,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "crook_of_the_cold",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 26,
+          "target_rule": "highest_threat",
+          "telegraph": "Crook of the Cold \u2014 7 damage to the party's strongest arm",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "the_glacier_answers",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "action_type": "spell",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 16,
+          "target_row": "front",
+          "telegraph": "The Glacier Answers \u2014 the ceiling calves onto the front of the party for 6 each",
+          "target_rule": "valuation",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "hoarcrown_lament",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "action_type": "spell",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "valuation",
+          "telegraph": "Hoarcrown Lament \u2014 4 to a hero and everyone near them, and they are held fast",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "blast"
+              }
+            },
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "i_am_sorry_i_am_sorry",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "I'M SORRY, I'M SORRY \u2014 the crown takes him: +3/+3, the cellar bursts for 4, and the sleepers stir",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "create_token",
+              "token_id": "stirred_sleeper",
+              "count": 2,
+              "hp": 4,
+              "power": 2
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase3/shepherd_boy_herald-f5b87849.png"
+    },
+    {
+      "id": "frost_sealed_kin",
+      "name": "Frost-Sealed Kin",
+      "flavor": "Desperation made flesh: when it is nearly alone, it stops holding back.",
+      "description": "A farm-wife sealed to the ribs in a pillar of clear ice, arms free and reaching, her sleeves and hair sheeted white; the pillar drags with her as she steps, grinding across the cellar floor.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "last_of_the_household",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "condition": {
+            "kind": "ally_count",
+            "op": "<",
+            "value": 2
+          },
+          "cooldown": 2,
+          "priority": 24,
+          "target_rule": "self",
+          "telegraph": "Last of the Household \u2014 +2/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ice_splits",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 14,
+          "target_rule": "trigger_source",
+          "telegraph": "Ice Splits \u2014 the pillar shatters outward for 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase3/frost_sealed_kin-aecffb9c.png"
+    },
+    {
+      "id": "cellar_warden_of_rime",
+      "name": "Cellar Warden of Rime",
+      "flavor": "Guards the boy while he sings; when bloodied it stops guarding and starts killing.",
+      "description": "A cooper in a barrel-hooper's apron, both forearms encased in blunt clubs of ice, shoulders humped with a mantle of frost; he plants himself in front of the stair and does not move.",
+      "hp": 10,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "stand_before_the_boy",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Stand Before the Boy \u2014 the next spell or blow against an ally is negated",
+          "verbs": [
+            {
+              "kind": "protection",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              },
+              "parameter": "all_damage"
+            }
+          ]
+        },
+        {
+          "id": "no_more_guarding",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "condition": {
+            "kind": "self_hp_pct",
+            "op": "<",
+            "value": 50
+          },
+          "cooldown": 2,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "No More Guarding \u2014 5 damage to a hero and their whole row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "row"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase3/cellar_warden_of_rime-466bd455.png"
+    },
+    {
+      "id": "glazed_orchard_hound",
+      "name": "Glazed Orchard Hound",
+      "flavor": "Cuts the carry down; grows vicious the moment it is hurt.",
+      "description": "A long-legged hound sheathed in a skin of ice so thin its dark hide shows through, jaws rimed open, claws scoring bright lines across the frozen floor.",
+      "hp": 6,
+      "power": 3,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "hamstring_the_strong",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Hamstring the Strong \u2014 5 damage to the party's hardest hitter",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "wounded_thing",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_self_below_50",
+          "once_per_encounter": true,
+          "priority": 14,
+          "target_rule": "self",
+          "telegraph": "Wounded Thing \u2014 +2/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase3/glazed_orchard_hound-74901876.png"
+    },
+    {
+      "id": "snowvoice_acolyte",
+      "name": "Snowvoice Acolyte",
+      "flavor": "Mends the boy's guards, and when he is nearly alone he hushes the party's magic.",
+      "description": "A thin figure in a choirboy's smock frozen to a bell shape, throat swollen with visible ice, hands folded and blue; snow sifts from his cuffs when he moves.",
+      "hp": 6,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "knit_the_frost",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "action_type": "spell",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "wounded_ally",
+          "telegraph": "Knit the Frost \u2014 heal the most wounded ally 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "alone_and_shrill",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "action_type": "spell",
+          "condition": {
+            "kind": "ally_count",
+            "op": "<",
+            "value": 3
+          },
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "channeling_player",
+          "telegraph": "Alone and Shrill \u2014 the hero mid-incantation is frozen and loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase3/snowvoice_acolyte-73e7c228.png"
+    },
+    {
+      "id": "cider_husk_thrall",
+      "name": "Cider-Husk Thrall",
+      "flavor": "Cheap frozen labour with one last bloodied lunge.",
+      "description": "A hand from the pressing floor, apron black with frozen cider, skin crusted in sweet amber ice; it shuffles with a stave-hook hanging from a hand it can no longer open.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "sweet_frozen_grip",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Sweet Frozen Grip \u2014 a hero is held and must answer it",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "last_lunge",
+          "archetype": "Burst",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 16,
+          "target_rule": "trigger_source",
+          "telegraph": "Last Lunge \u2014 4 damage to the one who broke it",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase3/cider_husk_thrall-d11bc855.png"
+    }
+  ],
+  "tokens": {
+    "stirred_sleeper": {
+      "name": "Stirred Sleeper",
+      "hp": 4,
+      "power": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/cairnfast_steading__phase3/stirred_sleeper-47fd5e8b.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "shepherd_boy_herald",
+      "cellar_warden_of_rime"
+    ],
+    "2": [
+      "shepherd_boy_herald",
+      "cellar_warden_of_rime",
+      "glazed_orchard_hound",
+      "cider_husk_thrall"
+    ],
+    "3": [
+      "shepherd_boy_herald",
+      "cellar_warden_of_rime",
+      "glazed_orchard_hound",
+      "snowvoice_acolyte",
+      "frost_sealed_kin",
+      "cider_husk_thrall",
+      "cider_husk_thrall"
+    ],
+    "4": [
+      "shepherd_boy_herald",
+      "cellar_warden_of_rime",
+      "cellar_warden_of_rime",
+      "glazed_orchard_hound",
+      "glazed_orchard_hound",
+      "snowvoice_acolyte",
+      "frost_sealed_kin",
+      "frost_sealed_kin",
+      "cider_husk_thrall"
+    ]
+  }
+}
