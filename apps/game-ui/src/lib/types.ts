@@ -622,6 +622,7 @@ export interface LlmSettings {
   model_tasks: LlmModel[];             // {id,label}: encounters / adventures / towns / scenarios
   instructions: string;
   art_style: string; // the aesthetic wrapper for image generation
+  scenario_tone: string; // the tone brief for towns / arcs / acts (Update 17)
   art_backend: string; // "openrouter" | "comfyui"
   art_backends: LlmModel[]; // {id,label} options for the backend picker
   art_model: string; // the fixed OpenRouter image-model slug (display only)
@@ -640,6 +641,7 @@ export interface LlmSettingsPatch {
   task_models?: Record<string, string>;
   instructions?: string | null;
   art_style?: string | null;
+  scenario_tone?: string | null;
   art_backend?: string;
   comfyui_url?: string;
   comfyui_workflow?: string;

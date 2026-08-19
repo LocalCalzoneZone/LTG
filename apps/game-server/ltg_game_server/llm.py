@@ -751,6 +751,7 @@ def _default_settings() -> Dict[str, Any]:
     return {"api_key": "", "model": MODELS[0]["id"],
             "task_models": {t["id"]: "" for t in MODEL_TASKS},
             "instructions": DEFAULT_INSTRUCTIONS, "art_style": DEFAULT_ART_STYLE,
+            "scenario_tone": DEFAULT_SCENARIO_TONE,
             "art_backend": "openrouter", "comfyui_url": "", "comfyui_workflow": ""}
 
 
@@ -761,7 +762,7 @@ def load_settings() -> Dict[str, Any]:
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         if isinstance(data, dict):
-            for k in ("api_key", "model", "instructions", "art_style",
+            for k in ("api_key", "model", "instructions", "art_style", "scenario_tone",
                       "art_backend", "comfyui_url", "comfyui_workflow"):
                 if isinstance(data.get(k), str) and data[k] != "":
                     out[k] = data[k]
@@ -791,6 +792,7 @@ def public_settings() -> Dict[str, Any]:
         "model_tasks": MODEL_TASKS,
         "instructions": s["instructions"],
         "art_style": s["art_style"],
+        "scenario_tone": s["scenario_tone"],
         "art_backend": s["art_backend"],
         "art_backends": ART_BACKENDS,
         "art_model": ART_MODEL,
@@ -841,6 +843,12 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
             cur["art_style"] = DEFAULT_ART_STYLE         # explicit reset
         elif isinstance(style, str) and style.strip():
             cur["art_style"] = style
+    if "scenario_tone" in patch:
+        tone = patch["scenario_tone"]
+        if tone is None:
+            cur["scenario_tone"] = DEFAULT_SCENARIO_TONE  # explicit reset
+        elif isinstance(tone, str) and tone.strip():
+            cur["scenario_tone"] = tone
     if "art_backend" in patch and isinstance(patch["art_backend"], str) and patch["art_backend"]:
         if patch["art_backend"] not in {b["id"] for b in ART_BACKENDS}:
             raise ValueError(f"unknown art backend: {patch['art_backend']}")
@@ -863,6 +871,8 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
         on_disk["instructions"] = ""       # "" == follow the (upgradeable) default
     if on_disk["art_style"] == DEFAULT_ART_STYLE:
         on_disk["art_style"] = ""
+    if on_disk["scenario_tone"] == DEFAULT_SCENARIO_TONE:
+        on_disk["scenario_tone"] = ""
     SETTINGS_PATH.write_text(json.dumps(on_disk, indent=2))
     return public_settings()
 
@@ -1627,10 +1637,18 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
 SCENARIO_MAX_TOKENS = 12000
 SCENARIO_TIMEOUT = 300.0
 
+# The editable TONE brief for Scenario Mode's writers (towns, arcs, acts) —
+# Options → LLM → Scenario tone. Classic high fantasy by default; a saved
+# setting replaces it verbatim.
+DEFAULT_SCENARIO_TONE = """CLASSIC HIGH FANTASY — think The Lord of the Rings, Dungeons & Dragons, Final Fantasy. Warm and wondrous, not grim: hearth-fires and market bells, elves and dwarves and halflings beside humans, old magic, ancient ruins, dragons and dark lords out in the wild. Towns are places worth saving — welcoming, lived-in, a little quaint, with humour and hope. Peril belongs to the villain and the road, not to the townsfolk's daily lives. Heroic register, PG rating: no gore, no misery-porn, no cynicism."""
+
 TOWN_INSTRUCTIONS = r"""
-You are the world-builder for LTG, a grim, painterly tactical fantasy card game
-("Brasswork & Ink": lantern-lit, weathered, no whimsy). Design ONE small frontier
-TOWN that will be the home base for many campaigns. Return ONLY JSON.
+You are the world-builder for LTG, a painterly tactical fantasy card game. Design
+ONE TOWN that will be the home base for many campaigns — the place heroes ride
+out from and come home to. Return ONLY JSON.
+
+TONE:
+%TONE%
 
 Rules:
 - The town has EXACTLY these REQUIRED locations, one each, "function" set to the
@@ -1643,11 +1661,15 @@ Rules:
   setting for a backdrop — environment only, no people), "description" (one or
   two lines the party reads when they consider visiting), and "npcs": 1–2
   RESIDENT NPCs.
-- Every NPC has: "name", "role" (innkeeper, smith, priestess, drunk veteran…),
-  "persona" (3–5 sentences of PROSE: manner, voice, wants, a secret or a scar —
-  this text is reused verbatim to write their dialogue later, so make it a
-  character sheet in prose, no dialogue lines), and "portrait_desc" (2–3
-  sentences of physical appearance for a portrait painter).
+- Every NPC has: "name", "role" (innkeeper, smith, priestess, retired ranger…),
+  "persona" (3–5 sentences of PROSE: manner, voice, what they care about, a
+  quirk or a story of their own — this text is reused verbatim to write their
+  dialogue later, so make it a character sheet in prose, no dialogue lines), and
+  "portrait_desc" (2–3 sentences of physical appearance for a portrait painter —
+  race, age, dress, bearing).
+- Vary the folk: not every NPC is human, weathered, or sad. Give the town a
+  cheerful innkeeper, a proud smith, a curious child-apprentice, a wise elder —
+  the classic ensemble — with the tone above.
 - NO dialogue, NO shop inventories, NO quests here — those come per campaign.
 - "region_flavor": one sentence on the land the town sits in.
 - "scene": 2–3 sentences of the town seen whole (the map backdrop).
@@ -1659,11 +1681,14 @@ Output contract:
 """
 
 ARC_INSTRUCTIONS = r"""
-You are the campaign writer for LTG, a grim, painterly tactical fantasy card game.
+You are the campaign writer for LTG, a painterly tactical fantasy card game.
 Given a TOWN (with its NPCs' personas) and a PARTY, write the ARC of one
 SCENARIO: a villain, the stakes, and THREE ACT OUTLINES. Each act is one town
 visit followed by one three-phase adventure (a dungeon-run against one place).
 Return ONLY JSON.
+
+TONE:
+%TONE%
 
 Rules:
 - The villain is ONE named antagonist (a person, a cult, a beast-lord) whose
@@ -1688,10 +1713,13 @@ Output contract:
 """
 
 ACT_INSTRUCTIONS = r"""
-You write the TOWN PORTION of one act for LTG, a grim, painterly tactical fantasy
-card game. You get the town (NPC personas — reuse them verbatim in spirit and
-voice), the arc, THIS act's outline, the party's state, and what happened in the
-previous act. Return ONLY JSON.
+You write the TOWN PORTION of one act for LTG, a painterly tactical fantasy card
+game. You get the town (NPC personas — reuse them verbatim in spirit and voice),
+the arc, THIS act's outline, the party's state, and what happened in the previous
+act. Return ONLY JSON.
+
+TONE:
+%TONE%
 
 Write:
 1. "quest": {"title", "text"} — the quest as the journal shows it (2–4 sentences).
@@ -1768,6 +1796,7 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
     settings = load_settings()
     if not settings["api_key"]:
         raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    system = system.replace("%TONE%", settings.get("scenario_tone") or DEFAULT_SCENARIO_TONE)
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},

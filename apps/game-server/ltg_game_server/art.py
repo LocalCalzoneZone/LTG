@@ -395,16 +395,17 @@ def paint(prompt: str, aspect: str, folder: str, slot: str) -> str:
 
 
 _TOWN_TASK = (
-    "Paint a wide establishing view of a small fantasy frontier town for a "
-    "painterly tactical card game — the TOWN MAP backdrop. Environment and "
-    "architecture only: NO people, NO creatures. Lantern-lit, weathered, "
-    "atmospheric; painted edge to edge.\n\nThe town:\n"
+    "Paint a wide establishing view of a fantasy town for a painterly tactical "
+    "card game — the TOWN MAP backdrop, classic high fantasy (a place worth "
+    "coming home to). Environment and architecture only: NO people, NO "
+    "creatures. Warm light, painted edge to edge.\n\nThe town:\n"
 )
 _LOCATION_TASK = (
-    "Paint the interior or frontage of ONE location in a fantasy frontier town, "
-    "as a backdrop for a painterly tactical card game. Environment only: NO "
-    "people, NO creatures. Wide composition, uncluttered middle ground, "
-    "atmospheric light.\n\nThe place:\n"
+    "Paint the interior or frontage of ONE location in a fantasy town, as a "
+    "backdrop for a painterly tactical card game — classic high fantasy, "
+    "welcoming rather than grim. Environment only: NO people, NO creatures. "
+    "Wide composition, uncluttered middle ground, warm atmospheric light."
+    "\n\nThe place:\n"
 )
 _NPC_TASK = (
     "Paint a single character portrait for a townsperson card in a painterly "

@@ -451,6 +451,7 @@ class LlmSettingsBody(BaseModel):
     task_models: Optional[Dict[str, Optional[str]]] = None   # per-task overrides ("" = default)
     instructions: Optional[str] = None
     art_style: Optional[str] = None
+    scenario_tone: Optional[str] = None
     art_backend: Optional[str] = None
     comfyui_url: Optional[str] = None
     comfyui_workflow: Optional[str] = None

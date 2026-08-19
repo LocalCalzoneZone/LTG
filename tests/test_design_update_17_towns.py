@@ -237,7 +237,7 @@ def mocked_llm(monkeypatch):
 
 
 def test_generate_town_arc_and_act(mocked_llm):
-    mocked_llm["Design ONE small frontier"] = town_raw("Bellhollow")
+    mocked_llm["Design\nONE TOWN"] = town_raw("Bellhollow")
     meta = llm.generate_town("a bell-foundry town")
     assert meta["id"] == "bellhollow"
     town = sc.town_detail("bellhollow")
