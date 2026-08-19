@@ -168,7 +168,7 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={onClose}>
       <div
         className={`panel-ticks flex max-h-[85vh] flex-col border border-line2 bg-ink-2 p-5 shadow-2xl ${
-          tab === "characters" ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
+          ["characters", "towns", "scenarios", "equipment"].includes(tab) ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
         }`}
         onClick={(e) => e.stopPropagation()}
       >

@@ -447,149 +447,195 @@ const FUNCTIONS = ["inn", "weaponsmith", "artificer", "apothecary", "tavern", "s
                    "chapel", "stables", "flavor"];
 const AREA = `${FIELD} w-full font-light`;
 
-/** The town editor: every field editable in place — the town's name / region /
- * scene, each location's name / function / scene / description, each NPC's
- * name / role / persona / portrait description (1–2 NPCs per location) — and
- * Save re-validates server-side (§D17-5.1). Ids are kept so painted art stays
- * attached. */
+/** The town editor — master/detail: the town, its locations, and their NPCs
+ * as a tree on the left; the selected thing's full-width editor on the right
+ * (large art, tall text). Save re-validates server-side (§D17-5.1). Ids are
+ * kept so painted art stays attached. */
+type Sel = { kind: "town" } | { kind: "loc"; i: number } | { kind: "npc"; i: number; k: number };
+
 function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
   town: TownDetail; busy: boolean; err: string | null;
   onBack: () => void; onChange: (t: TownDetail) => void;
   onPaint: (kind: TownArtKind, targetId?: string) => void;
   onSave: () => void;
 }) {
+  const [sel, setSel] = useState<Sel>({ kind: "town" });
   const set = (patch: Partial<TownDetail>) => onChange({ ...town, ...patch });
   const setLoc = (i: number, patch: Partial<TownDetail["locations"][number]>) =>
     set({ locations: town.locations.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
   const setNpc = (i: number, k: number, patch: Partial<TownDetail["locations"][number]["npcs"][number]>) =>
     setLoc(i, { npcs: town.locations[i].npcs.map((n, m) => (m === k ? { ...n, ...patch } : n)) });
-  const addNpc = (i: number) => setLoc(i, {
-    npcs: [...town.locations[i].npcs, { id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }],
-  });
-  const removeNpc = (i: number, k: number) => setLoc(i, { npcs: town.locations[i].npcs.filter((_, m) => m !== k) });
-  const addLocation = () => set({
-    locations: [...town.locations, { id: "", name: "New Place", function: "tavern", description: "",
-                                     exterior_scene: "", exterior_art_url: "", interior_scene: "", interior_art_url: "",
-                                     npcs: [{ id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }] }],
-  });
-  const removeLocation = (i: number) => set({ locations: town.locations.filter((_, j) => j !== i) });
+  const addNpc = (i: number) => {
+    setLoc(i, { npcs: [...town.locations[i].npcs, { id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }] });
+    setSel({ kind: "npc", i, k: town.locations[i].npcs.length });
+  };
+  const removeNpc = (i: number, k: number) => { setLoc(i, { npcs: town.locations[i].npcs.filter((_, m) => m !== k) }); setSel({ kind: "loc", i }); };
+  const addLocation = () => {
+    set({ locations: [...town.locations, { id: "", name: "New Place", function: "tavern", description: "",
+                                           exterior_scene: "", exterior_art_url: "", interior_scene: "", interior_art_url: "",
+                                           npcs: [{ id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }] }] });
+    setSel({ kind: "loc", i: town.locations.length });
+  };
+  const removeLocation = (i: number) => { set({ locations: town.locations.filter((_, j) => j !== i) }); setSel({ kind: "town" }); };
+
+  const treeBtn = (on: boolean, extra = "") =>
+    `flex w-full items-center gap-2 border px-2 py-1.5 text-left transition ${on ? "border-brass bg-brass/10" : "border-line bg-white/[0.02] hover:border-line2"} ${extra}`;
+  const thumb = (url: string, cls: string) => (
+    <span className={`shrink-0 overflow-hidden border border-line bg-ink-0 ${cls}`}>
+      {url ? <img src={url} alt="" className="h-full w-full object-cover object-top" />
+        : <span className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={10} /></span>}
+    </span>
+  );
+
+  const loc = sel.kind !== "town" ? town.locations[sel.i] : null;
+  const npc = sel.kind === "npc" && loc ? loc.npcs[sel.k] : null;
 
   return (
     <div className="flex min-h-0 flex-col">
       <div className="mb-3 flex items-center gap-3">
         <button className={SMALL_BTN} onClick={onBack}>← Towns</button>
-        <input value={town.name} onChange={(e) => set({ name: e.target.value })}
-               className={`${FIELD} caps-label w-[240px] tracking-[0.14em] text-brass`} />
-        <input value={town.region_flavor} onChange={(e) => set({ region_flavor: e.target.value })}
-               placeholder="Region flavour — one sentence on the land around it"
-               className={`${FIELD} min-w-0 flex-1 italic`} />
+        <span className="caps-label text-[12px] tracking-[0.2em] text-brass">{town.name}</span>
+        <span className="h-px flex-1 bg-line" />
         <ArtQueueButton target={{ townId: town.id }} subject="the town, every location and NPC"
                         onImage={() => fetchTown(town.id).then(onChange).catch(() => {})} />
         <button className={GHOST_BTN} onClick={onSave} disabled={busy}>{busy ? "Saving…" : "Save town"}</button>
       </div>
       {err && <div className="mb-2 border border-blood/50 bg-blood/10 px-3 py-2 text-sm font-light text-blood">{err}</div>}
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto pr-1">
-        <div className="mb-3 flex gap-3 border border-line bg-black/25 p-3">
-          <div className="h-24 w-40 shrink-0 border border-line bg-ink-0">
-            {town.art_url ? <img src={town.art_url} alt="" className="h-full w-full object-cover" />
-              : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={20} /></div>}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="caps-label text-[10px] tracking-[0.2em] text-mist">Town map — scene</div>
-            <textarea rows={2} value={town.scene} onChange={(e) => set({ scene: e.target.value })} className={`${AREA} mt-1 text-xs`} />
-            <button className={`${GHOST_BTN} mt-2`} onClick={() => onPaint("town")} disabled={busy}>
-              <IconCanvas size={10} /> {town.art_url ? "Repaint" : "Paint"} the map
-            </button>
-          </div>
-        </div>
-        {town.locations.map((l, i) => (
-          <div key={l.id || `new-${i}`} className="mb-2 border border-line bg-black/25 p-3">
-            <div className="flex gap-3">
-              <div className="flex shrink-0 gap-2">
-                <div className="flex flex-col items-center gap-1">
-                  <div className="h-24 w-[72px] border border-line bg-ink-0" title="Exterior — the map card">
-                    {l.exterior_art_url ? <img src={l.exterior_art_url} alt="" className="h-full w-full object-cover" />
-                      : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={16} /></div>}
-                  </div>
-                  <button className={SMALL_BTN} onClick={() => onPaint("location_exterior", l.id)}
-                          disabled={busy || !l.id || !l.exterior_scene} title={!l.id ? "Save first" : !l.exterior_scene ? "Write an exterior scene first" : "Paint the map card"}>
-                    {l.exterior_art_url ? "Repaint" : "Paint"} ext.
-                  </button>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <div className="h-24 w-40 border border-line bg-ink-0" title="Interior — the backdrop inside">
-                    {(l.interior_art_url || l.art_url) ? <img src={l.interior_art_url || l.art_url} alt="" className="h-full w-full object-cover" />
-                      : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={18} /></div>}
-                  </div>
-                  <button className={SMALL_BTN} onClick={() => onPaint("location_interior", l.id)} disabled={busy || !l.id}
-                          title={l.id ? "Paint the interior backdrop" : "Save first"}>
-                    {(l.interior_art_url || l.art_url) ? "Repaint" : "Paint"} int.
-                  </button>
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <input value={l.name} onChange={(e) => setLoc(i, { name: e.target.value })}
-                         className={`${FIELD} caps-label w-[220px] tracking-[0.12em] text-parch`} />
-                  <select value={l.function} onChange={(e) => setLoc(i, { function: e.target.value })}
-                          className={`${FIELD} caps-label text-[10px] tracking-[0.12em] text-brass`}>
-                    {FUNCTIONS.map((f) => <option key={f} value={f}>{f.replace(/_/g, " ")}</option>)}
-                  </select>
-                  <span className="h-px flex-1 bg-line" />
-                  <button className={SMALL_BTN} onClick={() => removeLocation(i)} title="Remove this location"><IconX size={9} /></button>
-                </div>
-                <textarea rows={2} value={l.description} onChange={(e) => setLoc(i, { description: e.target.value })}
-                          placeholder="Description — what the party reads when they consider visiting"
-                          className={`${AREA} mt-1 text-xs`} />
-                <textarea rows={2} value={l.exterior_scene} onChange={(e) => setLoc(i, { exterior_scene: e.target.value })}
-                          placeholder="Exterior scene — the building's frontage from the street (paints the map card)"
-                          className={`${AREA} mt-1 text-xs italic`} />
-                <textarea rows={2} value={l.interior_scene || l.scene || ""} onChange={(e) => setLoc(i, { interior_scene: e.target.value })}
-                          placeholder="Interior scene — only what a character standing inside sees (paints the backdrop)"
-                          className={`${AREA} mt-1 text-xs italic`} />
-              </div>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2 pl-[140px]">
+      <div className="flex min-h-0 flex-1 gap-4">
+        {/* Tree */}
+        <div className="scroll-thin flex w-[260px] shrink-0 flex-col gap-1 overflow-y-auto pr-1">
+          <button className={treeBtn(sel.kind === "town")} onClick={() => setSel({ kind: "town" })}>
+            {thumb(town.art_url, "h-8 w-12")}
+            <span className="min-w-0 flex-1">
+              <span className="caps-label block truncate text-[10px] tracking-[0.12em] text-parch">{town.name}</span>
+              <span className="block truncate text-[9px] font-light text-mist">town map</span>
+            </span>
+          </button>
+          {town.locations.map((l, i) => (
+            <div key={l.id || `new-${i}`} className="flex flex-col gap-1">
+              <button className={treeBtn(sel.kind === "loc" && sel.i === i, "mt-1")} onClick={() => setSel({ kind: "loc", i })}>
+                {thumb(l.exterior_art_url, "h-10 w-8")}
+                <span className="min-w-0 flex-1">
+                  <span className="caps-label block truncate text-[10px] tracking-[0.12em] text-parch">{l.name}</span>
+                  <span className="block truncate text-[9px] font-light text-brass">{l.function.replace(/_/g, " ")}</span>
+                </span>
+              </button>
               {l.npcs.map((n, k) => (
-                <div key={n.id || `new-${k}`} className="flex w-[420px] gap-2 border border-line/60 p-2">
-                  <div className="flex w-16 shrink-0 flex-col gap-1">
-                    <div className="h-16 w-16 border border-line bg-ink-0">
-                      {n.art_url ? <img src={n.art_url} alt="" className="h-full w-full object-cover object-top" />
-                        : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={14} /></div>}
-                    </div>
-                    <button className={SMALL_BTN} onClick={() => onPaint("npc", n.id)} disabled={busy || !n.id}
-                            title={n.id ? "" : "Save first"}>
-                      {n.art_url ? "Repaint" : "Paint"}
-                    </button>
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <div className="flex items-center gap-1">
-                      <input value={n.name} onChange={(e) => setNpc(i, k, { name: e.target.value })}
-                             className={`${FIELD} caps-label min-w-0 flex-1 text-[10px] tracking-[0.12em] text-parch`} />
-                      <input value={n.role} onChange={(e) => setNpc(i, k, { role: e.target.value })} placeholder="role"
-                             className={`${FIELD} w-[120px] text-[10px] italic`} />
-                      {l.npcs.length > 1 && (
-                        <button className={SMALL_BTN} onClick={() => removeNpc(i, k)} title="Remove this NPC"><IconX size={9} /></button>
-                      )}
-                    </div>
-                    <textarea rows={3} value={n.persona} onChange={(e) => setNpc(i, k, { persona: e.target.value })}
-                              placeholder="Persona — prose: manner, voice, wants, a quirk (reused verbatim to write their dialogue)"
-                              className={`${AREA} text-[11px]`} />
-                    <textarea rows={2} value={n.portrait_desc} onChange={(e) => setNpc(i, k, { portrait_desc: e.target.value })}
-                              placeholder="Portrait description — physical appearance for the painter"
-                              className={`${AREA} text-[11px] italic`} />
-                  </div>
-                </div>
+                <button key={n.id || `new-${k}`} className={treeBtn(sel.kind === "npc" && sel.i === i && sel.k === k, "ml-5")}
+                        onClick={() => setSel({ kind: "npc", i, k })}>
+                  {thumb(n.art_url, "h-8 w-8")}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[10px] font-light text-parch">{n.name}</span>
+                    <span className="block truncate text-[9px] font-light italic text-mist">{n.role}</span>
+                  </span>
+                </button>
               ))}
               {l.npcs.length < 2 && (
-                <button className={`${SMALL_BTN} self-start`} onClick={() => addNpc(i)}>+ NPC</button>
+                <button className={`${SMALL_BTN} ml-5 self-start`} onClick={() => addNpc(i)}>+ NPC</button>
               )}
             </div>
+          ))}
+          <button className={`${GHOST_BTN} mt-2 self-start`} onClick={addLocation}>+ Location</button>
+          <div className="mt-2 text-[10px] font-light leading-relaxed text-dimmed">
+            One inn, weaponsmith, artificer, apothecary; 1–3 other places; every location an interior scene and 1–2 residents with a persona and a portrait description.
           </div>
-        ))}
-        <button className={GHOST_BTN} onClick={addLocation}>+ Location</button>
-        <div className="mt-2 text-[10px] font-light text-dimmed">
-          A town needs one inn, weaponsmith, artificer, and apothecary, plus 1–3 other places; every location an interior scene and 1–2 residents with a persona and a portrait description. Save checks all of it.
+        </div>
+
+        {/* Detail */}
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto pr-1">
+          {sel.kind === "town" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3">
+                <label className="flex flex-1 flex-col gap-1 text-[10px] text-mist">Name
+                  <input value={town.name} onChange={(e) => set({ name: e.target.value })} className={`${FIELD} caps-label tracking-[0.14em] text-brass`} /></label>
+                <label className="flex flex-[2] flex-col gap-1 text-[10px] text-mist">Region flavour
+                  <input value={town.region_flavor} onChange={(e) => set({ region_flavor: e.target.value })} className={`${FIELD} italic`} /></label>
+              </div>
+              <div className="aspect-[16/9] w-full border border-line bg-ink-0">
+                {town.art_url ? <img src={town.art_url} alt="" className="h-full w-full object-cover" />
+                  : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={32} /></div>}
+              </div>
+              <button className={`${GHOST_BTN} self-start`} onClick={() => onPaint("town")} disabled={busy}>
+                <IconCanvas size={10} /> {town.art_url ? "Repaint" : "Paint"} the map
+              </button>
+              <label className="flex flex-col gap-1 text-[10px] text-mist">Town map — scene (the whole town seen at once)
+                <textarea rows={6} value={town.scene} onChange={(e) => set({ scene: e.target.value })} className={`${AREA} text-sm leading-relaxed`} /></label>
+            </div>
+          )}
+
+          {sel.kind === "loc" && loc && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <input value={loc.name} onChange={(e) => setLoc(sel.i, { name: e.target.value })}
+                       className={`${FIELD} caps-label min-w-0 flex-1 tracking-[0.12em] text-parch`} />
+                <select value={loc.function} onChange={(e) => setLoc(sel.i, { function: e.target.value })}
+                        className={`${FIELD} caps-label text-[10px] tracking-[0.12em] text-brass`}>
+                  {FUNCTIONS.map((f) => <option key={f} value={f}>{f.replace(/_/g, " ")}</option>)}
+                </select>
+                <button className={DANGER_BTN} onClick={() => removeLocation(sel.i)}>Remove location</button>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex w-[220px] shrink-0 flex-col gap-1">
+                  <div className="aspect-[3/4] w-full border border-line bg-ink-0" title="Exterior — the map card">
+                    {loc.exterior_art_url ? <img src={loc.exterior_art_url} alt="" className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={28} /></div>}
+                  </div>
+                  <button className={SMALL_BTN} onClick={() => onPaint("location_exterior", loc.id)}
+                          disabled={busy || !loc.id || !loc.exterior_scene}
+                          title={!loc.id ? "Save first" : !loc.exterior_scene ? "Write an exterior scene first" : "Paint the map card"}>
+                    {loc.exterior_art_url ? "Repaint" : "Paint"} exterior
+                  </button>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="aspect-[16/9] w-full border border-line bg-ink-0" title="Interior — the backdrop inside">
+                    {(loc.interior_art_url || loc.art_url) ? <img src={loc.interior_art_url || loc.art_url} alt="" className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={28} /></div>}
+                  </div>
+                  <button className={`${SMALL_BTN} self-start`} onClick={() => onPaint("location_interior", loc.id)} disabled={busy || !loc.id}
+                          title={loc.id ? "Paint the interior backdrop" : "Save first"}>
+                    {(loc.interior_art_url || loc.art_url) ? "Repaint" : "Paint"} interior
+                  </button>
+                </div>
+              </div>
+              <label className="flex flex-col gap-1 text-[10px] text-mist">Description — what the party reads before visiting
+                <textarea rows={3} value={loc.description} onChange={(e) => setLoc(sel.i, { description: e.target.value })} className={`${AREA} text-sm leading-relaxed`} /></label>
+              <label className="flex flex-col gap-1 text-[10px] text-mist">Exterior scene — the frontage from the street (paints the map card)
+                <textarea rows={4} value={loc.exterior_scene} onChange={(e) => setLoc(sel.i, { exterior_scene: e.target.value })} className={`${AREA} text-sm italic leading-relaxed`} /></label>
+              <label className="flex flex-col gap-1 text-[10px] text-mist">Interior scene — only what a character standing inside sees (paints the backdrop)
+                <textarea rows={4} value={loc.interior_scene || loc.scene || ""} onChange={(e) => setLoc(sel.i, { interior_scene: e.target.value })} className={`${AREA} text-sm italic leading-relaxed`} /></label>
+            </div>
+          )}
+
+          {sel.kind === "npc" && loc && npc && (
+            <div className="flex gap-4">
+              <div className="flex w-[260px] shrink-0 flex-col gap-1">
+                <div className="aspect-square w-full border border-line bg-ink-0">
+                  {npc.art_url ? <img src={npc.art_url} alt="" className="h-full w-full object-cover object-top" />
+                    : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={32} /></div>}
+                </div>
+                <button className={SMALL_BTN} onClick={() => onPaint("npc", npc.id)} disabled={busy || !npc.id}
+                        title={npc.id ? "Paint the portrait" : "Save first"}>
+                  {npc.art_url ? "Repaint" : "Paint"} portrait
+                </button>
+                <div className="mt-2 text-[10px] font-light text-dimmed">Lives at {loc.name}</div>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <input value={npc.name} onChange={(e) => setNpc(sel.i, sel.k, { name: e.target.value })}
+                         className={`${FIELD} caps-label min-w-0 flex-1 tracking-[0.12em] text-parch`} />
+                  <input value={npc.role} onChange={(e) => setNpc(sel.i, sel.k, { role: e.target.value })} placeholder="role"
+                         className={`${FIELD} w-[200px] italic`} />
+                  {loc.npcs.length > 1 && (
+                    <button className={DANGER_BTN} onClick={() => removeNpc(sel.i, sel.k)}>Remove</button>
+                  )}
+                </div>
+                <label className="flex flex-col gap-1 text-[10px] text-mist">Persona — prose: manner, voice, wants, a quirk (reused verbatim to write their dialogue)
+                  <textarea rows={9} value={npc.persona} onChange={(e) => setNpc(sel.i, sel.k, { persona: e.target.value })} className={`${AREA} text-sm leading-relaxed`} /></label>
+                <label className="flex flex-col gap-1 text-[10px] text-mist">Portrait description — physical appearance for the painter
+                  <textarea rows={4} value={npc.portrait_desc} onChange={(e) => setNpc(sel.i, sel.k, { portrait_desc: e.target.value })} className={`${AREA} text-sm italic leading-relaxed`} /></label>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
