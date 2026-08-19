@@ -400,6 +400,17 @@ export async function deleteTown(id: string): Promise<void> {
   const res = await fetch(`/api/towns/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`delete failed: ${res.status}`);
 }
+export async function saveTown(town: Record<string, unknown>, id?: string): Promise<TownOption> {
+  const res = await fetch("/api/towns", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id ?? null, town }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : `save failed: ${res.status}`);
+  }
+  return (await res.json()).town;
+}
 export async function generateTownArt(townId: string, kind: "town" | "location" | "npc", targetId?: string): Promise<{ url: string }> {
   const res = await fetch(`/api/towns/${encodeURIComponent(townId)}/art`, {
     method: "POST", headers: { "Content-Type": "application/json" },
