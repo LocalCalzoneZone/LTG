@@ -33,7 +33,7 @@ New register entries: **T-64** = enemy Power bump (+2 minion / +4 boss). Items 1
 
 ### D12-1.1 The objective object
 
-An encounter (and therefore an act) may carry **at most one** optional `objective`. No objective = the standard game, byte-identical to today — the scripted §A/§C scenarios carry none and must replay unchanged.
+An encounter (and therefore an phase) may carry **at most one** optional `objective`. No objective = the standard game, byte-identical to today — the scripted §A/§C scenarios carry none and must replay unchanged.
 
 ```
 objective = {
@@ -45,7 +45,7 @@ objective = {
 Standing rules, all kinds:
 
 - **Objectives are fully public.** They are the mission, not an intent — no veiling, ever. The UI shows the objective and its countdown from turn 1 (§D12-1.5).
-- **Adventures:** objectives may appear on **Acts I and II only**; **Act III is always the standard boss kill** (the climax stays a fight). At most **one** objective per adventure. Adventure-level validation enforces all three; standalone hand-authored encounters may carry any objective.
+- **Adventures:** objectives may appear on **Phases I and II only**; **Phase III is always the standard boss kill** (the climax stays a fight). At most **one** objective per adventure. Adventure-level validation enforces all three; standalone hand-authored encounters may carry any objective.
 - **Defeat by wipe is unchanged** — a fully incapacitated party always loses, objective or not.
 - **Timers count rounds** and tick at the **completion of each End Step**. All objective state (rounds elapsed, wave index, marked target) lives in `GameState` and is engine-owned — deterministic, serialized, time-travellable.
 
@@ -56,7 +56,7 @@ Standing rules, all kinds:
   reinforcements?: [ { turn: k, layouts: {"1": […], …} }, … ] }
 ```
 
-- **Victory:** at the completion of round N's End Step, the party wins the act — surviving enemies withdraw (a log/flavour event; no kill credit, no death triggers). Killing everything early also wins, as always.
+- **Victory:** at the completion of round N's End Step, the party wins the phase — surviving enemies withdraw (a log/flavour event; no kill credit, no death triggers). Killing everything early also wins, as always.
 - **Reinforcements** (optional, recommended — survival must not be passive): each entry deploys at the **start of the Enemy Intents step** of round *k*, on the entering enemies' home rows, declaring intents that same step. Entries use the standard per-party-size layout map; ids reference the encounter pool; repeats clone.
 - Undeployed reinforcements sit in the **reserve zone**: off the battlefield, untargetable, and — unlike waves below — they do **not** block the timer victory (the party wins at round N even with reinforcements still unarrived; withdrawal covers them).
 - **No failure shape:** failing to survive *is* the wipe.
@@ -72,7 +72,7 @@ Standing rules, all kinds:
 - Later waves wait in the **reserve zone**: off the battlefield, untargetable, **not defeated** — victory reads zones as always, so reserves block the win by construction. This is the bounce/"in hand" pattern, reused.
 - **Deployment:** when every enemy of the current wave is defeated, the next wave deploys at the **start of the next round's Enemy Intents step** — the party always gets the End Step and an Upkeep breather between waves. Deploy on home rows, fresh intents same step.
 - **Victory:** all waves defeated (the standard zone read — no special case).
-- **Bodies and budget:** each wave fields at least **1× party size** bodies, total across waves at least the standing 2× (T-66); the summed Level budget may run to **1.5× the act's standard budget** — staggered arrival pays for the excess (T-67). A mini-boss, if any, appears in the **final** wave (validation).
+- **Bodies and budget:** each wave fields at least **1× party size** bodies, total across waves at least the standing 2× (T-66); the summed Level budget may run to **1.5× the phase's standard budget** — staggered arrival pays for the excess (T-67). A mini-boss, if any, appears in the **final** wave (validation).
 - **No failure shape:** waves are a pacing structure, not a clock.
 
 ### D12-1.4 `race` — the doom clock
@@ -86,23 +86,23 @@ Standing rules, all kinds:
 The DPS check. One enemy in the pool is the **marked target** (the ritualist, the summoner); the party must **defeat it — graveyard or exile — before the clock runs out**.
 
 - **The clock is an objective, not an intent.** It ticks at each End Step regardless of anything done *to* the marked enemy short of defeating it: stun does not pause it, strip does not touch it, bounce does not (the enemy is alive, in hand), `control` does not (controlled is not defeated — and a controlled marked enemy snapping back at the fail moment is working as designed). **Kill it or exile it. Nothing else counts.**
-- **Objective complete:** the marked enemy is defeated before the End Step of round N finishes. The clock vanishes; the act continues to standard victory (mop up).
+- **Objective complete:** the marked enemy is defeated before the End Step of round N finishes. The clock vanishes; the phase continues to standard victory (mop up).
 - **Objective failed** (clock expires, marked enemy undefeated):
-  - `fail: "defeat"` — the act is lost on the spot. Use sparingly; in an adventure this ends the run.
+  - `fail: "defeat"` — the phase is lost on the spot. Use sparingly; in an adventure this ends the run.
   - `fail: "escalate"` — the **escalation payload** fires: an enrage-shaped, multi-verb eruption (2–3 verbs — counters on the enemy side, an AoE, a token wave, a granted keyword) executed **on the stack**, sourced from the marked enemy, answerable like an enrage (mitigating it is fair play; its arrival is not preventable). The fight then continues under standard victory. The payload is budget-free, like an enrage (T-68). If the marked enemy is somehow already gone from play but undefeated (bounced/controlled) at expiry, it returns/reverts first, then the payload fires.
 - The marked enemy carries a visible **doom-clock badge**; killing it is kill-priority made diegetic. Generated clock range: **3–5 rounds** (T-68). Generation guidance: prefer `escalate` — `defeat` is for hand-authored set pieces.
-- Design note: the clock is deliberately **not** implemented as charge counters — charge is an enemy component with its own reset/counter rules; the objective clock is engine state. The two may coexist on one enemy (a gathering ritualist under a doom clock is a fine act).
+- Design note: the clock is deliberately **not** implemented as charge counters — charge is an enemy component with its own reset/counter rules; the objective clock is engine state. The two may coexist on one enemy (a gathering ritualist under a doom clock is a fine phase).
 
 ### D12-1.5 UI
 
 - **The objective banner:** the pinned **first line of the intents window** — "Survive: 3 rounds remain" · "Wave 2 of 3" · "The rite completes in 2 rounds — slay the Bonechanter." Updated each End Step; present from turn 1.
 - The **marked enemy** renders its doom-clock badge (count in brass; the frame-state precedence of the design system is unchanged).
 - **Reserve-zone enemies do not render** on the battlefield (like bounced enemies); the banner carries the wave count instead.
-- Victory/defeat splashes state the objective outcome ("The rite completes…" / "You held the line"). In adventures, the act's `narration` should reference the objective — generation guidance, not validation.
+- Victory/defeat splashes state the objective outcome ("The rite completes…" / "You held the line"). In adventures, the phase's `narration` should reference the objective — generation guidance, not validation.
 
 ### D12-1.6 Generation (`llm.py`)
 
-The adventure prompt gains an **objectives block**: the three kinds with their JSON shapes, the standing rules (one per adventure, Acts I–II only, never Act III), the T-65/T-67/T-68 ranges and budget allowances, and per-kind guidance — *survive* wants scheduled reinforcements and a defensible theme; *waves* wants a war-band theme with distinct wave compositions (vary roles, don't clone one statline thrice); *race* wants a ritualist/summoner marked target with real HP, a Ward bodyguard, and an escalation that transforms the fight. Standalone encounter generation is unchanged (objectives are adventure flavour; the encounter prompt does not learn them in this update).
+The adventure prompt gains an **objectives block**: the three kinds with their JSON shapes, the standing rules (one per adventure, Phases I–II only, never Phase III), the T-65/T-67/T-68 ranges and budget allowances, and per-kind guidance — *survive* wants scheduled reinforcements and a defensible theme; *waves* wants a war-band theme with distinct wave compositions (vary roles, don't clone one statline thrice); *race* wants a ritualist/summoner marked target with real HP, a Ward bodyguard, and an escalation that transforms the fight. Standalone encounter generation is unchanged (objectives are adventure flavour; the encounter prompt does not learn them in this update).
 
 ---
 
@@ -158,7 +158,7 @@ Two policies and four spend plans are the whole launch surface. Resist adding cl
 
 `run_one(spec, policy, seed) -> RunRecord`, with the invariant that identical `(spec, policy version, seed)` yields an identical record — asserted by a test that runs the same fight twice. Batches fan out across processes; a **round cap of 50** (T-71) flags non-terminating fights as anomalies rather than hanging. Every record carries the full repro key `(spec hash, policy version, seed)` — because the engine is deterministic, **the repro *is* the key**: any crash or anomaly replays exactly from those three values.
 
-Per-run metrics: result and end round; per-character damage dealt/taken/healed, cards cast vs. dead-in-hand, mana spent vs. wasted (unspent at End Step), gauge fill rate and ultimate round, channels held/broken (suffered and inflicted); objective margin (rounds to spare, or short); per-enemy survival rounds; for adventures, per-act snapshots of all of the above plus entering HP and spend-plan state.
+Per-run metrics: result and end round; per-character damage dealt/taken/healed, cards cast vs. dead-in-hand, mana spent vs. wasted (unspent at End Step), gauge fill rate and ultimate round, channels held/broken (suffered and inflicted); objective margin (rounds to spare, or short); per-enemy survival rounds; for adventures, per-phase snapshots of all of the above plus entering HP and spend-plan state.
 
 ### D12-3.5 Reports and the diff
 
@@ -185,7 +185,7 @@ A pytest-marked **smoke slice** (`ltg-autoplay` over a 2-cell matrix, ~20 seeds,
 
 | system | where |
 |---|---|
-| objective schema | `core/ltg_core/schema.py` — the `objective` object on encounters; adventure validation (one per adventure, Acts I–II only, never Act III; waves: mini-boss in final wave, per-wave body minimums) in `content.save_adventure` |
+| objective schema | `core/ltg_core/schema.py` — the `objective` object on encounters; adventure validation (one per adventure, Phases I–II only, never Phase III; waves: mini-boss in final wave, per-wave body minimums) in `content.save_adventure` |
 | objective state & rules | `apps/combat/ltg_combat/state.py` (`GameState.objective`, rounds elapsed, wave index, marked target, reserve zone on `EnemyState`) and `engine.py`: the win/loss check variants, End-Step tick, wave/reinforcement deployment in the Enemy Intents step, race expiry + escalation-payload push |
 | reserve zone | `EnemyState` flag beside `in_hand`/`exiled`; excluded from `living_enemies()`; blocks victory for `waves`, not for `survive` reinforcements |
 | objective UI | game-ui intents window banner (pinned first line), doom-clock badge on the marked enemy, splash outcome lines; snapshot additions in `snapshot.py` (objectives are public — no seat filtering) |
@@ -206,7 +206,7 @@ A pytest-marked **smoke slice** (`ltg-autoplay` over a 2-cell matrix, ~20 seeds,
 | T-64 | +2 minion / +4 boss | the Update 11 enemy Power bump (recorded, §D12-0) |
 | T-65 | 4–6 rounds | generated `survive` timer range |
 | T-66 | ≥ 1× party size per wave; ≥ 2× total | wave body minimums |
-| T-67 | ≤ 1.5× act budget | summed Level budget across waves |
+| T-67 | ≤ 1.5× phase budget | summed Level budget across waves |
 | T-68 | 3–5 rounds; escalation budget-free | generated `race` clock range and payload pricing |
 | T-69 | gauge ≥ 80; tag = 2 pts, gauge = 1 pt | primed-threat valuation threshold and scoring |
 | T-70 | boss-only, once per encounter | `counter` on the `on_ultimate_cast` trigger |
@@ -217,7 +217,7 @@ A pytest-marked **smoke slice** (`ltg-autoplay` over a 2-cell matrix, ~20 seeds,
 
 ## D12-6. Glossary deltas *(amends GDD §13)*
 
-- **Objective** — an optional, fully public encounter goal from the closed set survive / waves / race; at most one per adventure, Acts I–II only.
+- **Objective** — an optional, fully public encounter goal from the closed set survive / waves / race; at most one per adventure, Phases I–II only.
 - **Reserve zone** — where undeployed wave/reinforcement enemies wait: off the battlefield, untargetable; blocks victory for `waves`, not for `survive`.
 - **Marked target** — the enemy a `race` objective demands defeated before its clock expires; wears the doom-clock badge; only graveyard/exile satisfies the clock.
 - **Escalation payload** — the enrage-shaped, budget-free, multi-verb eruption a failed `escalate` race fires onto the stack from its marked enemy.

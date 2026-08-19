@@ -1,0 +1,326 @@
+{
+  "name": "The Rimed Orchard",
+  "scene": "Terraced apple rows glazed root to crown in blue-white hoar, each branch bearded with icicles that chime when the frost shifts. Below the wall the summer meadow still shines green and gold in full sun; above it the grass is white and brittle and the light comes back off it too bright to look at. A leaning scarecrow at the top of the rows wears a collar of frozen fruit, and windfall apples lie in the ice like eyes.",
+  "scene_image": "/art/cairnfast_steading__phase1/scene-1c534295.png",
+  "enemies": [
+    {
+      "id": "hoar_blind_ewe",
+      "name": "Hoar-Blind Ewe",
+      "flavor": "Frightened fodder that bolts and drags a hero after it \u2014 worth more dead to the drover than alive.",
+      "description": "A hill ewe whose fleece has frozen into a crust of grey-white spikes, eyes filmed over milky and blind, hooves clacking on ice as it staggers in half-circles.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "panicked_rush",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 35,
+          "target_rule": "valuation",
+          "telegraph": "Panicked Rush \u2014 the ewe bulls into a hero, who must answer it",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "bolt_uphill",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 45,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Bolt Uphill \u2014 the ewe scrambles back among the trees"
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase1/hoar_blind_ewe-437da94f.png"
+    },
+    {
+      "id": "rime_locked_ram",
+      "name": "Rime-Locked Ram",
+      "flavor": "One stunning charge, and a horn-crack for whoever wounds it.",
+      "description": "A heavy-shouldered blackface ram sheathed in clear ice like a lacquer, its curled horns grown over with frost until they look like carved bone lanterns.",
+      "hp": 4,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "stone_headed_charge",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Stone-Headed Charge \u2014 a hero is knocked flat and loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "horn_crack",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Horn-Crack \u2014 3 damage to the one who struck it",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase1/rime_locked_ram-1ddfd6d7.png"
+    },
+    {
+      "id": "hoarbound_drover",
+      "name": "Hoarbound Drover",
+      "flavor": "The avenger: every ewe, ram or hoarling that dies makes him permanently bigger.",
+      "description": "A rangy hill-drover frozen mid-stride, coat white with rime and stiff as plank, one arm locked around a crook of ice-welded ash; frost feathers grow visibly along his shoulders as the flock thins.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "the_flock_thins",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "The Flock Thins \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "crook_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Crook-Hook \u2014 the strongest hero is dragged into the drover's reach",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase1/hoarbound_drover-3d851412.png"
+    },
+    {
+      "id": "rimed_scarecrow",
+      "name": "Rimed Scarecrow",
+      "flavor": "Sheds hoarlings from its ribs \u2014 expendable bodies that feed the drover when they fall.",
+      "description": "A pole-and-sackcloth figure sagging under a hand's depth of hoar, straw guts bristling with icicles, a collar of frozen apples strung at its neck; it flings splinters of ice with a lazy swing of one stuffed arm.",
+      "hp": 5,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "shed_hoarlings",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "self",
+          "telegraph": "Shed Hoarlings \u2014 two little frost-things drop from its ribs",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "hoarling",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            }
+          ]
+        },
+        {
+          "id": "burst_of_straw_and_ice",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Burst of Straw and Ice \u2014 4 damage to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase1/rimed_scarecrow-a3b67cb0.png"
+    },
+    {
+      "id": "winterfall_chanter",
+      "name": "Winterfall Chanter",
+      "flavor": "Holds a cold hymn: the party numbs, and one hero frosts over a little more each turn.",
+      "description": "A rime-thrall in a farmwife's shawl gone stiff and silver, mouth open in a note that never ends, ice growing from her lips down the front of her dress in a long glittering bib.",
+      "hp": 6,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "winterfall_hymn",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Winterfall Hymn \u2014 a held cold: the party fights at -1/-0 and one hero frosts over each turn",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "poison",
+              "amount": 1,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "the_cold_holds_her_up",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "The Cold Holds Her Up \u2014 heal 5",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase1/winterfall_chanter-04ab7687.png"
+    }
+  ],
+  "tokens": {
+    "hoarling": {
+      "name": "Hoarling",
+      "hp": 3,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/cairnfast_steading__phase1/hoarling-d2f57dd2.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "hoar_blind_ewe",
+      "hoarbound_drover"
+    ],
+    "2": [
+      "hoar_blind_ewe",
+      "hoar_blind_ewe",
+      "hoarbound_drover",
+      "rimed_scarecrow"
+    ],
+    "3": [
+      "hoar_blind_ewe",
+      "hoar_blind_ewe",
+      "rime_locked_ram",
+      "rime_locked_ram",
+      "hoarbound_drover",
+      "rimed_scarecrow"
+    ],
+    "4": [
+      "hoar_blind_ewe",
+      "hoar_blind_ewe",
+      "hoar_blind_ewe",
+      "hoar_blind_ewe",
+      "rime_locked_ram",
+      "hoarbound_drover",
+      "rimed_scarecrow",
+      "winterfall_chanter"
+    ]
+  }
+}

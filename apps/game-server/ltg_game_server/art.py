@@ -37,7 +37,7 @@ ART_MODEL = llm.ART_MODEL
 COMFY_TIMEOUT = 300.0
 COMFY_POLL_INTERVAL = 1.0
 # Pixel sizes injected for the %width%/%height% placeholders, per aspect.
-COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024)}
+COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024), "3:4": (896, 1152)}
 
 # Generated images write into the tracked content dir, beside the encounter /
 # adventure JSON they belong to, so a commit ships the art to every install.
@@ -372,12 +372,196 @@ def generate(encounter_id: str, kind: str, enemy_id: Optional[str] = None,
     return {"url": url}
 
 
+def paint(prompt: str, aspect: str, folder: str, slot: str) -> str:
+    """Generate ONE image from a finished prompt with the configured backend
+    and persist it under ``content/art/<folder>/<slot>-<token>.<ext>``;
+    returns the URL. The generic path behind town / location / NPC / item art
+    (Update 17) — encounter art keeps its own prompt assembly above."""
+    settings = llm.load_settings()
+    if settings.get("art_backend") == "comfyui":
+        if not settings["comfyui_url"]:
+            raise ValueError("No ComfyUI server address set. Add one in "
+                             "Options → LLM → Art Generation.")
+        if not settings["comfyui_workflow"]:
+            raise ValueError("No ComfyUI workflow set. Paste your API-format "
+                             "workflow export in Options → LLM → Art Generation.")
+        raw, ext = _request_comfyui(settings["comfyui_url"],
+                                    settings["comfyui_workflow"], prompt, aspect)
+    else:
+        if not settings["api_key"]:
+            raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+        raw, ext = _request_image(settings["api_key"], prompt, aspect)
+    return _write_image(folder, slot, raw, ext)
+
+
+_TOWN_TASK = (
+    "Paint a wide establishing view of a fantasy town for a painterly tactical "
+    "card game — the TOWN MAP backdrop, classic high fantasy (a place worth "
+    "coming home to). Environment and architecture only: NO people, NO "
+    "creatures. Warm light, painted edge to edge.\n\nThe town:\n"
+)
+_EXTERIOR_TASK = (
+    "Paint the EXTERIOR of ONE building in a fantasy town — its frontage seen "
+    "from the street — as the card art for a location on a town map, in a "
+    "painterly tactical card game (classic high fantasy, welcoming rather than "
+    "grim). The building fills the frame, portrait composition; NO people, NO "
+    "creatures. Warm light.\n\nThe building:\n"
+)
+_INTERIOR_TASK = (
+    "Paint the INTERIOR of ONE location in a fantasy town from the eye level of "
+    "someone standing inside it — the room around them — as a wide backdrop for "
+    "a painterly tactical card game (classic high fantasy, welcoming rather than "
+    "grim). Environment only: NO people, NO creatures. Wide composition, an "
+    "uncluttered middle ground where figures will stand, warm atmospheric light."
+    "\n\nWhat they see:\n"
+)
+_NPC_TASK = (
+    "Paint a single character portrait for a townsperson card in a painterly "
+    "tactical fantasy card game. ONE subject, three-quarter view, centred, calm "
+    "or characterful pose (this is a townsperson, not a monster), background "
+    "falling off into a dark vignette.\n\nThe person:\n"
+)
+
+
+def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
+                      text: str = "") -> Dict[str, Any]:
+    """Town art (Update 17 §D17-5.1): ``kind`` town (the map scene) /
+    location_exterior (the map card) / location_interior (the backdrop; alias
+    "location") / npc. Writes under ``content/art/towns/<town_id>/`` and updates
+    the town JSON. Returns ``{"url"}``."""
+    from . import scenario_content as sc
+    town = sc.town_detail(town_id)
+    if town is None:
+        raise ValueError(f"unknown town: {town_id}")
+    style = _style()
+    if kind == "town":
+        prompt = f"{style}\n\n{_TOWN_TASK}{text or town.get('scene', '')}"
+        aspect, slot = "16:9", "town"
+    elif kind in ("location", "location_interior"):
+        loc = sc.find_location(town, str(target_id))
+        if loc is None:
+            raise ValueError(f"unknown location: {target_id}")
+        prompt = f"{style}\n\n{_INTERIOR_TASK}{text or loc.get('interior_scene') or loc.get('scene', '')}"
+        aspect, slot = "16:9", f"loc-{loc['id']}"
+    elif kind == "location_exterior":
+        loc = sc.find_location(town, str(target_id))
+        if loc is None:
+            raise ValueError(f"unknown location: {target_id}")
+        if not (text or loc.get("exterior_scene")):
+            raise ValueError(f"{loc['name']} has no exterior scene to paint from")
+        prompt = f"{style}\n\n{_EXTERIOR_TASK}{loc['name']}. {text or loc.get('exterior_scene', '')}"
+        aspect, slot = "3:4", f"ext-{loc['id']}"
+    elif kind == "npc":
+        found = sc.find_npc(town, str(target_id))
+        if found is None:
+            raise ValueError(f"unknown npc: {target_id}")
+        npc = found[1]
+        prompt = (f"{style}\n\n{_NPC_TASK}{npc.get('name', '')}, {npc.get('role', '')}. "
+                  f"{text or npc.get('portrait_desc', '')}")
+        aspect, slot = "1:1", f"npc-{npc['id']}"
+    else:
+        raise ValueError(f"unknown town art kind: {kind}")
+    url = paint(prompt, aspect, f"towns/{town_id}", slot)
+    if kind == "town":
+        town["art_url"] = url
+    elif kind in ("location", "location_interior"):
+        loc = sc.find_location(town, str(target_id))
+        loc["interior_art_url"] = url
+        loc["art_url"] = url
+    elif kind == "location_exterior":
+        sc.find_location(town, str(target_id))["exterior_art_url"] = url
+    else:
+        sc.find_npc(town, str(target_id))[1]["art_url"] = url
+    town.pop("id", None)
+    sc.save_town(town, town_id)
+    return {"url": url}
+
+
+def town_art_items(town_id: str) -> List[Dict[str, Any]]:
+    """Every still-missing town image as generic queue items: the map first,
+    then each location backdrop, then each NPC portrait."""
+    from . import scenario_content as sc
+    town = sc.town_detail(town_id)
+    if town is None:
+        return []
+    items: List[Dict[str, Any]] = []
+    name = town.get("name", town_id)
+
+    def item(label: str, kind: str, target: Optional[str]) -> Dict[str, Any]:
+        def _paint(kind=kind, target=target) -> None:
+            fresh = sc.town_detail(town_id) or {}
+            if kind == "town" and fresh.get("art_url"):
+                return
+            if kind == "location_interior" and (sc.find_location(fresh, target) or {}).get("interior_art_url"):
+                return
+            if kind == "location_exterior" and (sc.find_location(fresh, target) or {}).get("exterior_art_url"):
+                return
+            if kind == "npc":
+                found = sc.find_npc(fresh, target)
+                if found and found[1].get("art_url"):
+                    return
+            generate_town_art(town_id, kind, target)
+        return {"label": label, "paint": _paint, "refresh_key": f"town:{town_id}"}
+
+    if not town.get("art_url"):
+        items.append(item(f"{name} — town map", "town", None))
+    for loc in town.get("locations") or []:
+        if loc.get("exterior_scene") and not loc.get("exterior_art_url"):
+            items.append(item(f"{name} — {loc['name']} (exterior)", "location_exterior", loc["id"]))
+        if not loc.get("interior_art_url"):
+            items.append(item(f"{name} — {loc['name']} (interior)", "location_interior", loc["id"]))
+    for loc in town.get("locations") or []:
+        for npc in loc.get("npcs") or []:
+            if not npc.get("art_url"):
+                items.append(item(f"{name} — {npc['name']}", "npc", npc["id"]))
+    return items
+
+
+_ITEM_TASK = (
+    "Paint a single ITEM for a card in a painterly tactical fantasy card game: "
+    "the object alone, centred, on a dark atmospheric ground falling off into a "
+    "vignette — no people, no hands, no creatures. Rich material detail: metal, "
+    "leather, glass, wax, cloth.\n\nThe item:\n"
+)
+
+
+def generate_item_art(item_id: str, text: str = "") -> Dict[str, Any]:
+    """Item art (Update 17 §D17-4.3): ``content/art/items/<item_id>/``; the
+    item's JSON gets its art_url. Returns ``{"url"}``."""
+    from . import items as _items
+    item = _items.get_item(item_id)
+    if item is None:
+        raise ValueError(f"unknown item: {item_id}")
+    prompt = f"{_style()}\n\n{_ITEM_TASK}{item.name}. {text or item.art_desc or item.flavor}"
+    url = paint(prompt, "1:1", f"items/{item_id}", "item")
+    _items.set_item_art(item_id, url)
+    return {"url": url}
+
+
+def item_art_items() -> List[Dict[str, Any]]:
+    """Every catalogue / user item without art, as generic queue items."""
+    from . import items as _items
+    out: List[Dict[str, Any]] = []
+    for meta in _items.list_items():
+        if meta.get("art_url"):
+            continue
+        iid = meta["id"]
+
+        def _paint(iid=iid) -> None:
+            fresh = _items.get_item(iid)
+            if fresh is None or fresh.art_url:
+                return
+            generate_item_art(iid)
+        out.append({"label": f"item — {meta['name']}", "paint": _paint, "refresh_key": "items"})
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # The art queue — "Generate all art" (Design Update 10 §D10-6.4)
 # --------------------------------------------------------------------------- #
 class ArtQueue:
     """Sequential generate-all jobs, one per content id (an encounter, or an
-    adventure covering its acts in order). One generation in flight per job;
+    adventure covering its phases in order). One generation in flight per job;
     each completion — success or failure — fires the next: a failure is logged
     and skipped, never blocking the queue. Enqueueing is idempotent (only what
     is still missing joins), and every landed image broadcasts to connected
@@ -388,7 +572,31 @@ class ArtQueue:
 
     @staticmethod
     def _item_key(item: Dict[str, Any]) -> "tuple":
+        if item.get("paint") is not None:
+            return ("generic", item.get("label"))
         return (item["encounter_id"], item["kind"], item["enemy_id"])
+
+    def start_items(self, key: str, items: List[Dict[str, Any]],
+                    refresh: Callable[[str], Awaitable[None]]) -> Dict[str, Any]:
+        """Queue prebuilt GENERIC items (each ``{"label", "paint": callable,
+        "refresh_key"?}``) under ``key`` — the town / scenario art queues
+        (Update 17). Same idempotence and skip-on-failure as `start`."""
+        job = self._jobs.get(key)
+        if job and job["running"]:
+            queued = {self._item_key(i) for i in job["pending"]}
+            if job["current"] is not None:
+                queued.add(self._item_key(job["current"]))
+            fresh = [i for i in items if self._item_key(i) not in queued]
+            job["pending"].extend(fresh)
+            job["total"] += len(fresh)
+            return self.status(key)
+        job = {"pending": list(items), "total": len(items), "done": 0,
+               "failed": 0, "running": bool(items), "current": None,
+               "errors": []}
+        self._jobs[key] = job
+        if items:
+            asyncio.get_running_loop().create_task(self._run(key, refresh))
+        return self.status(key)
 
     @staticmethod
     def _missing(encounter_ids: List[str]) -> List[Dict[str, Any]]:
@@ -421,7 +629,7 @@ class ArtQueue:
     def start(self, key: str, encounter_ids: List[str],
               refresh: Callable[[str], Awaitable[None]]) -> Dict[str, Any]:
         """Queue every still-missing image for the given encounters (an
-        adventure passes its acts in order) and start the runner if idle.
+        adventure passes its phases in order) and start the runner if idle.
         Pressing again while running only adds what is newly missing."""
         missing = self._missing(encounter_ids)
         job = self._jobs.get(key)
@@ -449,6 +657,13 @@ class ArtQueue:
                 item = job["pending"].pop(0)
                 job["current"] = item
                 try:
+                    if item.get("paint") is not None:
+                        # A generic item (town / location / NPC / item art —
+                        # Update 17): its own painter decides freshness.
+                        await asyncio.to_thread(item["paint"])
+                        await refresh(item.get("refresh_key") or key)
+                        job["done"] += 1
+                        continue
                     # Re-check on execution: an image may have landed since the
                     # enqueue (a manual Paint, or an overlapping press).
                     current = content.encounter_art(item["encounter_id"])

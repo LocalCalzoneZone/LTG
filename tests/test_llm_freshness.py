@@ -101,13 +101,13 @@ def test_encounter_request_rolls_two_signatures(monkeypatch):
     assert llm.SIGNATURE_POOL[0] in block and llm.SIGNATURE_POOL[1] in block
 
 
-def test_adventure_request_rolls_one_signature_per_act(monkeypatch):
+def test_adventure_request_rolls_one_signature_per_phase(monkeypatch):
     _fake_library(monkeypatch, [], [])
     monkeypatch.setattr(llm.random, "sample", lambda pool, k: list(pool)[:k])
     block = llm._adventure_request_block(_PARTY, "standard", "")
     assert "SIGNATURE MECHANICS" in block
     for i in range(1, 4):
-        assert f"Act {i}: {llm.SIGNATURE_POOL[i - 1]}" in block
+        assert f"Phase {i}: {llm.SIGNATURE_POOL[i - 1]}" in block
 
 
 def test_signature_rolls_are_distinct():

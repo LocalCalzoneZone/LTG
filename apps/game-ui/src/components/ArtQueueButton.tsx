@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { artQueueStatus, startArtQueue } from "../lib/api";
+import { artQueueStatus, startArtQueue, type ArtTarget } from "../lib/api";
 import type { ArtQueueStatus } from "../lib/types";
 import { IconCanvas } from "./Icons";
 
@@ -7,11 +7,11 @@ const POLL_MS = 2500;
 
 /** "Generate all art" (§D10-6.4): queues every missing image — the backdrop
  * plus every undrawn enemy — and runs it sequentially server-side (an
- * adventure's queue covers its acts in order). Shows `n / m` while running;
+ * adventure's queue covers its phases in order). Shows `n / m` while running;
  * pressing again queues only what is still missing. */
 export function ArtQueueButton({ target, subject, disabled, disabledTitle, onImage }: {
-  target: { encounterId?: string; adventureId?: string };
-  subject: string; // tooltip subject, e.g. "this encounter" / "all three acts"
+  target: ArtTarget;
+  subject: string; // tooltip subject, e.g. "this encounter" / "all three phases"
   disabled?: boolean;
   disabledTitle?: string;
   onImage?: () => void; // fires as progress lands, so editors can refetch art
@@ -45,7 +45,7 @@ export function ArtQueueButton({ target, subject, disabled, disabledTitle, onIma
     poll();
     return () => window.clearTimeout(timer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target.encounterId, target.adventureId]);
+  }, [target.encounterId, target.adventureId, target.townId, target.items]);
 
   const run = async () => {
     if (disabled) return;

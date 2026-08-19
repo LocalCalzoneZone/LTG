@@ -151,7 +151,7 @@ def test_import_loadout_roundtrip_and_portrait_flows_to_game():
     raw["character"]["name"] = "Portrait Test Zzz"
     raw["character"]["portrait"] = "data:image/png;base64,AAAA"
     meta = content.save_loadout(raw)
-    path = content.CONTENT_DIR / f"{meta['id']}.json"
+    path = content.LOADOUTS_DIR / f"{meta['id']}.json"  # save_loadout writes characters here
     try:
         # Now discoverable as an available character, with its portrait.
         assert any(c["id"] == meta["id"] for c in content.list_characters())
@@ -172,7 +172,7 @@ def test_delete_imported_character_removes_its_file():
     raw = content.loadout_for("loadout_soren")
     raw["character"]["name"] = "Deletable Zzz"
     meta = content.save_loadout(raw)
-    path = content.CONTENT_DIR / f"{meta['id']}.json"
+    path = content.LOADOUTS_DIR / f"{meta['id']}.json"  # save_loadout writes characters here
     try:
         assert any(c["id"] == meta["id"] for c in content.list_characters())
         content.delete_loadout(meta["id"])
@@ -216,7 +216,7 @@ def test_bundled_example_encounters_are_offered():
 
 def test_save_edit_delete_user_encounter_roundtrip():
     meta = content.save_encounter(_simple_encounter())
-    path = content.CONTENT_DIR / f"{meta['id']}.json"
+    path = content.LOADOUTS_DIR / f"{meta['id']}.json"  # save_loadout writes characters here
     try:
         assert any(e["id"] == meta["id"] for e in content.list_encounters())
         # Edit: bump the goblin's HP and confirm it persists.

@@ -77,7 +77,7 @@ def list_gauntlets() -> List[Dict[str, Any]]:
 
 def load_gauntlet(gauntlet_id: str) -> Dict[str, Any]:
     """The full gauntlet: manifest fields, hash, encounter dicts (in manifest
-    order), the inline-acts adventure (assembled from act_files), and the
+    order), the inline-phases adventure (assembled from phase_files), and the
     sparring-partner loadout if the manifest names one."""
     gdir = GAUNTLET_DIR / gauntlet_id
     mpath = gdir / "manifest.json"
@@ -92,9 +92,10 @@ def load_gauntlet(gauntlet_id: str) -> Dict[str, Any]:
         encounters.append(enc)
     adventure = None
     adv = manifest.get("adventure")
-    if isinstance(adv, dict) and adv.get("act_files"):
+    files = (adv.get("phase_files") or adv.get("act_files")) if isinstance(adv, dict) else None  # act_files: frozen pre-17 manifests
+    if files:
         adventure = {"name": adv.get("name", "Adventure"),
-                     "acts": [_read(gdir / n) for n in adv["act_files"]]}
+                     "phases": [_read(gdir / n) for n in files]}
     partner = None
     if manifest.get("sparring_partner"):
         partner = _read(gdir / manifest["sparring_partner"])

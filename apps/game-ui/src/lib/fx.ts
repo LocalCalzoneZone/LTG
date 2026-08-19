@@ -445,7 +445,7 @@ export function fxFromLog(
 }
 
 /** New-entry bookkeeping across snapshots. Returns lastSeq to use: the log
- * resets on a new session or an adventure act transition — history must not
+ * resets on a new session or an adventure phase transition — history must not
  * replay as effects. */
 export function syncSeq(lastSeq: number | null, log: LogEntry[]): number {
   const seqs = log.map((e) => e.seq ?? -1);

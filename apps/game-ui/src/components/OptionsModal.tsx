@@ -8,6 +8,7 @@ import {
 } from "../lib/api";
 import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
 import { AdventurePanel } from "./AdventurePanel";
+import { EquipmentPanel, ScenariosPanel, TownsPanel } from "./ScenarioPanels";
 import { ArtQueueButton } from "./ArtQueueButton";
 import { DifficultyTag } from "./DifficultyTag";
 import { EncounterEditor } from "./EncounterEditor";
@@ -16,11 +17,14 @@ import { SettingsPanel } from "./SettingsPanel";
 import { ManaIcon } from "./Pips";
 import { IconEdit, IconPlus, IconSigil, IconUpload, IconX } from "./Icons";
 
-type Tab = "characters" | "encounters" | "adventures" | "llm" | "settings";
+type Tab = "characters" | "encounters" | "adventures" | "towns" | "scenarios" | "equipment" | "llm" | "settings";
 const TAB_LABELS: Record<Tab, string> = {
   characters: "Characters",
   encounters: "Encounters",
   adventures: "Adventures",
+  towns: "Towns",
+  scenarios: "Scenarios",
+  equipment: "Equipment",
   llm: "LLM",
   settings: "Settings",
 };
@@ -164,13 +168,13 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={onClose}>
       <div
         className={`panel-ticks flex max-h-[85vh] flex-col border border-line2 bg-ink-2 p-5 shadow-2xl ${
-          tab === "characters" ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
+          ["characters", "towns", "scenarios", "equipment"].includes(tab) ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center gap-3">
           <div className="flex gap-4">
-            {(["characters", "encounters", "adventures", "llm", "settings"] as Tab[]).map((t) => (
+            {(["characters", "encounters", "adventures", "towns", "scenarios", "equipment", "llm", "settings"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -246,6 +250,11 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="text-xs font-light text-mist">
                   {c.card_count} cards
+                  {(c.points_over ?? 0) > 0 && (
+                    <span className="ml-2 text-blood" title="Over-spends its points budget on the escalating price curve — advisory; trim in the Deckbuilder.">
+                      · over budget by {c.points_over}
+                    </span>
+                  )}
                 </div>
                 {c.description && (
                   <div className="line-clamp-2 text-[11px] font-light text-dimmed">{c.description}</div>
@@ -358,9 +367,12 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
         )}
 
         {tab === "adventures" && (
-          <AdventurePanel onEditAct={(act) => setEditing(act)} />
+          <AdventurePanel onEditPhase={(phase) => setEditing(phase)} />
         )}
 
+        {tab === "towns" && <TownsPanel />}
+        {tab === "scenarios" && <ScenariosPanel />}
+        {tab === "equipment" && <EquipmentPanel />}
         {tab === "llm" && <LlmSettingsPanel />}
         {tab === "settings" && <SettingsPanel />}
       </div>

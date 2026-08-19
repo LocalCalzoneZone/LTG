@@ -8,6 +8,9 @@ import { AdventureFlow } from "./components/AdventureFlow";
 import { ScreenFx } from "./components/FxLayer";
 import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
+import { LoadGameModal } from "./components/LoadGameModal";
+import { CharacterSheetModal, ConfirmOverlay, DefeatSplash, TownScreen } from "./components/TownScreen";
+import { RewardsModal } from "./components/Items";
 import { OptionsModal } from "./components/OptionsModal";
 import {
   CardPickPrompt,
@@ -99,12 +102,14 @@ export default function App() {
   const openZone = useGame((s) => s.openZone);
   const setInspect = useGame((s) => s.setInspect);
   const snapshot = useGame((s) => s.snapshot);
+  const town = useGame((s) => s.town);
   const connected = useGame((s) => s.connected);
 
   const [sessionId, setSessionId] = useState<string | null>(sessionFromUrl());
   // Start on an empty battlefield — the player opens New Game / Options themselves.
   const [showNewGame, setShowNewGame] = useState<boolean>(false);
   const [showOptions, setShowOptions] = useState<boolean>(false);
+  const [showLoadGame, setShowLoadGame] = useState<boolean>(false);
 
   // Pane sizes (persisted). consoleH 0 = "use the responsive default clamp".
   const [sideW, setSideW, resetSideW] = usePaneSize("ltg_side_w", SIDE_DEFAULT, clampSide);
@@ -142,16 +147,37 @@ export default function App() {
     history.pushState({}, "", url);
     setSessionId(sid);
     setShowNewGame(false);
+    setShowLoadGame(false);
   };
 
   return (
     <div className="flex h-full flex-col bg-ink-1">
-      <TopRibbon onNewGame={() => setShowNewGame(true)} onOptions={() => setShowOptions(true)} />
+      <TopRibbon
+        onNewGame={() => setShowNewGame(true)}
+        onOptions={() => setShowOptions(true)}
+        onLoadGame={() => setShowLoadGame(true)}
+      />
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1">
-          {snapshot ? (
-            <Battlefield />
+        <div className="relative min-w-0 flex-1">
+          {town ? (
+            <>
+              <TownScreen />
+              <CharacterSheetModal rows={town.party_sheet} editable inTown />
+            </>
+          ) : snapshot ? (
+            <>
+              <Battlefield />
+              {snapshot.party_sheet && (
+                <CharacterSheetModal rows={snapshot.party_sheet} editable={!!snapshot.gear_editable} inTown={false} />
+              )}
+              {snapshot.rewards && <RewardsModal rewards={snapshot.rewards} />}
+              {snapshot.defeat_pending && (
+                <DefeatSplash adventureName={snapshot.adventure_name ?? snapshot.adventure?.name ?? ""}
+                              hardcore={!!snapshot.scenario?.options.hardcore} />
+              )}
+              <ConfirmOverlay confirm={snapshot.confirm} />
+            </>
           ) : (
             <div className="field-scene flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               {sessionId ? (
@@ -198,6 +224,9 @@ export default function App() {
         <NewGameModal onClose={() => setShowNewGame(false)} onStarted={onStarted} />
       )}
       {showOptions && <OptionsModal onClose={() => setShowOptions(false)} />}
+      {showLoadGame && (
+        <LoadGameModal onClose={() => setShowLoadGame(false)} onStarted={onStarted} />
+      )}
       {/* Portrait inspection — under the gameplay prompts, which must stay on top */}
       <InspectModal />
       <ChooseModeModal />
@@ -205,7 +234,7 @@ export default function App() {
       <CardPickPrompt />
       {/* Full-screen combat FX (ultimates, boss enrage) — under the modals */}
       <ScreenFx />
-      {/* Adventure act flow (Update 10): victory splash → level-up → narration */}
+      {/* Adventure phase flow (Update 10): victory splash → level-up → narration */}
       <AdventureFlow />
       <GameOverOverlay
         onNewGame={() => setShowNewGame(true)}

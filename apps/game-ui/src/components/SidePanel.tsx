@@ -3,6 +3,7 @@ import { actionModeColor } from "../lib/format";
 import { armedTargetIdSet, useGame } from "../lib/store";
 import type { CardView, LogEntry } from "../lib/types";
 import { HandCard } from "./Hand";
+import { JournalEntries } from "./TownScreen";
 
 /** `text` with the card name dotted-underlined (the hover-a-card affordance). */
 function withCardName(text: string, name: string | undefined) {
@@ -45,6 +46,7 @@ function logTint(type: string): string {
 
 export function SidePanel() {
   const snapshot = useGame((s) => s.snapshot);
+  const town = useGame((s) => s.town);
   const armed = useGame((s) => s.armed);
   const pickTargetId = useGame((s) => s.pickTargetId);
   // The card a hovered log line references, floated at a FIXED position (the
@@ -62,6 +64,35 @@ export function SidePanel() {
 
   // A counter arms with stack-ref targets ("#<uid>"): those rows become clickable.
   const targetIds = armedTargetIdSet(armed);
+
+  if (!snapshot && town) {
+    // Town mode (Update 17): the journal at a glance — the arc, this act's
+    // quest, and where the story points next.
+    const log = town.quest_log;
+    return (
+      <div className="flex h-full flex-col gap-2 bg-ink-2 p-2.5">
+        <Panel title="Journal">
+          <div className="text-xs font-light">
+            <div className="caps-label text-[9px] tracking-[0.16em] text-mist">{log.arc_title} · Act {log.act_number} — {log.act_title}</div>
+            <div className="mt-2"><JournalEntries log={log} /></div>
+            {log.quest.title && (
+              <div className="caps-label mt-2 text-[9px] tracking-[0.16em] text-brass">Quest: {log.quest.title} · {log.quest.status}</div>
+            )}
+          </div>
+        </Panel>
+        <Panel title="Party">
+          <div className="flex flex-col gap-1 text-xs font-light">
+            {town.party_sheet.map((p) => (
+              <div key={p.id} className="flex items-center justify-between">
+                <span className="text-parch">{p.name}</span>
+                <span className="text-mist">L{p.level} · {p.gold} gold{p.hp != null && p.max_hp ? ` · ${p.hp}/${p.max_hp} HP` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+    );
+  }
 
   if (!snapshot) {
     return (

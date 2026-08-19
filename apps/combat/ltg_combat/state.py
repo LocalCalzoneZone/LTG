@@ -52,6 +52,7 @@ class AmplifyTag:
     event: str = "any_damage"   # combat_damage | spell_damage | any_damage | heal
     multiplier: int = 1
     bonus: int = 0
+    combat_kind: str = "all"    # all | melee | ranged — read only for combat_damage
 
 
 @dataclass
@@ -68,6 +69,19 @@ class PreventTag:
 
     parameter: str
     uses: Optional[int] = None
+    combat_kind: str = "all"    # all | melee | ranged — read only for combat_damage
+
+
+@dataclass
+class ProtectionTag:
+    """One `protection` CHARGE riding a combatant: negates the next matching
+    damaging spell/attack/ability whenever it comes — no clock, it persists across
+    turns until spent (unlike a `prevent` shield, which is wiped at the End step).
+    `parameter` is the lane (all_damage | combat_damage | spell_damage) and
+    `combat_kind` narrows combat_damage to melee | ranged (`all` = either)."""
+
+    parameter: str = "all_damage"
+    combat_kind: str = "all"
 
 
 # --------------------------------------------------------------------------- #
@@ -207,7 +221,7 @@ class CharacterState:
     # read by the `*_last_damage` value refs. 0 until first hit.
     last_damage_taken: int = 0
     power_bonus: int = 0      # temporary Power (pump +, wound −)
-    protection: int = 0       # negates the next N spells/attacks (protection)
+    protection_tags: List[ProtectionTag] = field(default_factory=list)  # one-shot charges
     # Granted keyword statics: {keyword: duration}. Duration drives expiry at the
     # end step (this_turn) or channel break (while_channeled); 'encounter'
     # / 'permanent' persist. The engine reads these for keyword behaviour (GDD §7).
@@ -330,7 +344,7 @@ class TokenState:
     amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
     double_next: List[str] = field(default_factory=list)
     last_damage_taken: int = 0
-    protection: int = 0
+    protection_tags: List[ProtectionTag] = field(default_factory=list)  # one-shot charges
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
     counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
@@ -526,7 +540,7 @@ class EnemyState:
     amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
     double_next: List[str] = field(default_factory=list)
     last_damage_taken: int = 0
-    protection: int = 0
+    protection_tags: List[ProtectionTag] = field(default_factory=list)  # one-shot charges
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)
     counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)

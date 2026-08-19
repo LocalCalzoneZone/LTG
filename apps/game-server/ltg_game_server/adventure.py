@@ -1,9 +1,9 @@
-"""Adventure runs — the three-act session layer (Design Update 10).
+"""Adventure runs — the three-phase session layer (Design Update 10).
 
-The combat engine is untouched: every act is an ordinary encounter to it. This
-module owns everything the adventure adds around the engine — the act sequence,
-the carry-over rules at an act boundary (§D10-2), the adventure-local level-up
-and its validation (§D10-3), and composing the next act's `GameState` through
+The combat engine is untouched: every phase is an ordinary encounter to it. This
+module owns everything the adventure adds around the engine — the phase sequence,
+the carry-over rules at a phase boundary (§D10-2), the adventure-local level-up
+and its validation (§D10-3), and composing the next phase's `GameState` through
 the exact `compose_spec`/`state_from_dict` path a standalone encounter takes.
 
 An `AdventureRun` rides its `Session`; a session without one behaves byte-
@@ -17,52 +17,62 @@ import random
 from typing import Any, Dict, List, Optional
 
 from ltg_core.schema import (
-    COST_CARD,
-    COST_HP_STEP,
-    COST_MANA,
-    COST_POWER,
+    BASELINE_CARDS,
+    BASELINE_HP,
+    BASELINE_MANA,
     Character,
+    LEVEL_THRESHOLDS,
     LEVEL_UP_POINTS,
+    MAX_LEVEL,
     MAX_POWER_BOUGHT,
+    PRICE_STATS,
     creation_points,
+    level_for_points,
+    points_to_next_level,
+    price_list,
 )
 from ltg_combat.state import GameState
 
 from . import content
 
 # Rebalance Register (Update 10 §D10-8)
-HP_FLOOR_PCT = 25          # T-59: act-start HP floor, max(current, ceil(25% max))
-GAUGE_CARRY = 0.5          # T-58: ultimate-gauge carry across acts (floored)
+HP_FLOOR_PCT = 25          # T-59: phase-start HP floor, max(current, ceil(25% max))
+GAUGE_CARRY = 0.5          # T-58: ultimate-gauge carry across phases (floored)
 POINTS_PER_LEVEL = LEVEL_UP_POINTS  # T-57
 
 
 def _points(char: Character) -> int:
-    """The build's spend against the flat price table (legacy builds included —
-    their odd baselines price consistently, only the deltas matter here)."""
+    """The build's spend on the T-79 curve (legacy builds included — their odd
+    baselines price consistently, only the deltas matter here)."""
     return creation_points(char.hp, char.mana_capacity, char.starting_cards,
                            char.power_bought, char.keyword)
 
 
 def price_table() -> Dict[str, Any]:
     """The points-buy prices, shipped to the level-up screen so the client
-    renders costs without knowing any rules."""
+    renders costs without knowing any rules. Update 17 §D17-2.2: prices are
+    the escalating T-79 curve — ``curve[stat][n-1]`` is the price of the nth
+    purchase of that stat counted from baseline (an HP step is one +2 pair)."""
     return {
-        "hp_step": COST_HP_STEP,        # per +2 HP
-        "mana": COST_MANA,              # per +1 mana capacity
-        "card": COST_CARD,              # per +1 starting card
-        "power": COST_POWER,            # per +1 bought Power
+        "curve": {stat: price_list(stat) for stat in PRICE_STATS},
+        "baseline": {"hp": BASELINE_HP, "mana": BASELINE_MANA, "cards": BASELINE_CARDS},
         "power_cap_per_level": MAX_POWER_BOUGHT,   # T-60: bought Power ≤ 2 × level
+        "level_thresholds": list(LEVEL_THRESHOLDS),  # T-78 (index = level)
+        "max_level": MAX_LEVEL,
     }
 
 
 def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
-                      new_level: int, available: int) -> "tuple[Dict[str, Any], int]":
+                      new_level: int, available: int,
+                      earned_points: Optional[int] = None) -> "tuple[Dict[str, Any], int]":
     """Validate one character's level-up (§D10-3.1) and price it.
 
     ``old_raw`` is the entering character dict (the loadout's ``character``);
     ``patch`` the client's proposed build fields (hp, starting_mana,
     starting_cards, power_bought); ``available`` the spendable points
-    (banked + the 30 grant). Returns ``(new_character_dict, points_spent)`` or
+    (banked + the 30 grant); ``new_level`` the derived level the build now
+    holds (T-78) and ``earned_points`` its cumulative grants (both written to
+    the run copy). Returns ``(new_character_dict, points_spent)`` or
     raises ValueError with a human message. Everything not in the points-buy
     (colours, attack mode, row, cards, heroics, the keyword — keywords are
     character-creation only) is locked to the old build.
@@ -111,9 +121,11 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
                "hp": hp, "starting_mana": mana,
                "starting_cards": starting_cards, "power_bought": power_bought,
                "keyword": keyword, "level": new_level}
+    if earned_points is not None:
+        new_raw["earned_points"] = int(earned_points)
     try:
-        # The schema enforces the rest: HP parity, the T-60 Power cap
-        # (2 × level), and the level budget (70 + 30/level).
+        # The schema enforces the rest: HP parity and the T-60 Power cap
+        # (2 × derived level). Spend is limited against ``available`` below.
         new = Character.model_validate(new_raw)
     except Exception as exc:
         raise ValueError(str(exc)) from exc
@@ -128,24 +140,34 @@ def validate_level_up(old_raw: Dict[str, Any], patch: Dict[str, Any],
 
 
 class AdventureRun:
-    """The adventure-specific state riding one session: act sequencing, the
+    """The adventure-specific state riding one session: phase sequencing, the
     per-character adventure-local builds, the carry snapshot, and the level-up
     gate. All mutation happens under the session's lock (the app layer's)."""
 
-    def __init__(self, adventure_id: str) -> None:
-        detail = content.adventure_detail(adventure_id)
+    def __init__(self, adventure_id: str,
+                 detail: Optional[Dict[str, Any]] = None) -> None:
+        """``detail`` (optional) is a FROZEN adventure detail — a run's
+        content-store copy (Update 17 §D17-3.3) — used instead of the live
+        registry so a loaded save replays the exact adventure it pointed at."""
+        if detail is None:
+            detail = content.adventure_detail(adventure_id)
         if detail is None:
             raise ValueError(f"unknown adventure: {adventure_id}")
         self.adventure_id = adventure_id
+        self.detail: Dict[str, Any] = copy.deepcopy(detail)
+        # Update 17: the RUN's difficulty. A pre-generated adventure was written
+        # at its own (stamped) difficulty; at play the enemy HP is rescaled by
+        # the ratio so the scenario's chosen difficulty applies to every act.
+        self.difficulty: Optional[str] = None
         self.name: str = detail["name"]
         self.flavor: str = detail["flavor"]
-        # [{encounter_id, narration, name}] in act order.
-        self.acts: List[Dict[str, Any]] = [
+        # [{encounter_id, narration, name}] in phase order.
+        self.phases: List[Dict[str, Any]] = [
             {"encounter_id": a["encounter_id"], "narration": a["narration"],
              "name": a["name"]}
-            for a in detail["acts"]
+            for a in detail["phases"]
         ]
-        self.act_index = 0
+        self.phase_index = 0
         self.complete = False
         # Filled by start(): the picked roster ids, the run's loadouts (deep
         # copies — the adventure-local builds live in loadouts[i]["character"]
@@ -154,21 +176,50 @@ class AdventureRun:
         self.loadouts: List[Dict[str, Any]] = []
         self.live_ids: List[str] = []
         self.banked: Dict[str, int] = {}      # live id -> unspent points pool
-        # The level-up gate (None outside an act boundary):
+        # live id -> cumulative level-up points GRANTED (Update 17 §D17-2.1);
+        # the character's level is derived from it (T-78).
+        self.earned: Dict[str, int] = {}
+        # The level-up gate (None outside a phase boundary):
         # live id -> {"confirmed": bool, "spent": int, "heal": int}
         self.level_up: Optional[Dict[str, Dict[str, Any]]] = None
         self.carry: Dict[str, Dict[str, Any]] = {}
 
-    # -- act composition ------------------------------------------------------ #
-    def start(self, character_ids: List[str], seed: Optional[int] = None
+    # -- phase composition ------------------------------------------------------ #
+    def _scenario(self, phase_index: int) -> Dict[str, Any]:
+        """The frozen encounter behind a phase (the detail embeds each phase's
+        full encounter), in the build path's shape — enemy HP rescaled from the
+        adventure's stamped difficulty to the run's (see `difficulty`)."""
+        scen = content.scenario_from_detail(self.detail["phases"][phase_index])
+        made_at = str(self.detail.get("difficulty") or "standard")
+        if self.difficulty and self.difficulty != made_at:
+            from .llm import ENEMY_HP_MULT
+            mult = ENEMY_HP_MULT.get(self.difficulty, 1.2) / ENEMY_HP_MULT.get(made_at, 1.2)
+            if abs(mult - 1.0) > 1e-9:
+                def bump(v: Any) -> Any:
+                    try:
+                        return max(1, -(-int(v) * mult // 1))
+                    except (TypeError, ValueError):
+                        return v
+                for e in scen.get("enemies", []):
+                    if isinstance(e, dict) and "hp" in e:
+                        e["hp"] = int(bump(e["hp"]))
+                for t in (scen.get("tokens") or {}).values():
+                    if isinstance(t, dict) and "hp" in t:
+                        t["hp"] = int(bump(t["hp"]))
+        return scen
+
+    def start(self, character_ids: List[str], seed: Optional[int] = None,
+              loadouts: Optional[List[Dict[str, Any]]] = None
               ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
-        """Build Act I from the base (saved) loadouts. Returns
-        ``(state, portraits, art, act_encounter_id)``."""
+        """Build Phase I from the base (saved) loadouts — or from ``loadouts``
+        supplied directly (a run's frozen party copies). Returns
+        ``(state, portraits, art, phase_encounter_id)``."""
         self.character_ids = list(character_ids)
-        self.loadouts = content.loadouts_for(character_ids)  # deep copies
-        eid = self.acts[0]["encounter_id"]
+        self.loadouts = (copy.deepcopy(loadouts) if loadouts is not None
+                         else content.loadouts_for(character_ids))  # deep copies
+        eid = self.phases[0]["encounter_id"]
         state, portraits, art = content.build_state_from_loadouts(
-            self.loadouts, eid, seed=seed)
+            self.loadouts, eid, seed=seed, scenario=self._scenario(0))
         self.live_ids = [c.id for c in state.party]
         # The unspent pool opens with whatever creation left over (§D10-3:
         # points are "added to the character's unspent pool").
@@ -176,31 +227,33 @@ class AdventureRun:
             try:
                 char = Character.model_validate(lo["character"])
                 self.banked[live_id] = max(0, char.points_remaining) if not char.legacy else 0
+                self.earned[live_id] = int(char.earned_points)
             except Exception:
                 self.banked[live_id] = 0
+                self.earned[live_id] = 0
         return state, portraits, art, eid
 
-    def current_act(self) -> Dict[str, Any]:
-        return self.acts[self.act_index]
+    def current_phase(self) -> Dict[str, Any]:
+        return self.phases[self.phase_index]
 
-    def is_final_act(self) -> bool:
-        return self.act_index >= len(self.acts) - 1
+    def is_final_phase(self) -> bool:
+        return self.phase_index >= len(self.phases) - 1
 
-    # -- the act boundary ------------------------------------------------------ #
+    # -- the phase boundary ------------------------------------------------------ #
     def on_state_change(self, state: GameState) -> None:
         """Called after every engine state change: opens the level-up gate the
-        moment a non-final act is won, and marks the run complete when the
+        moment a non-final phase is won, and marks the run complete when the
         finale is."""
         if state.result != "victory":
             return
-        if self.is_final_act():
+        if self.is_final_phase():
             self.complete = True
             return
         if self.level_up is None:
             self._begin_level_up(state)
 
     def suppresses_result(self, result: Optional[str]) -> bool:
-        """A non-final act victory is an ACT boundary, not a game over — the
+        """A non-final phase victory is an PHASE boundary, not a game over — the
         client sees the level-up gate instead. Defeat and the finale's victory
         pass through untouched."""
         return result == "victory" and not self.complete
@@ -211,7 +264,7 @@ class AdventureRun:
         for c in state.party:
             # Everything shuffles up together at the boundary — hand, library,
             # graveyard, and the cards of silently-dropped channels — and the
-            # next act opens on a FRESH hand of starting-cards (first-playtest
+            # next phase opens on a FRESH hand of starting-cards (first-playtest
             # amendment: carrying the literal hand let cards accumulate).
             cards = (list(c.hand) + list(c.library) + list(c.graveyard)
                      + [ch.card for ch in c.channels])
@@ -226,9 +279,15 @@ class AdventureRun:
             for live_id in self.live_ids
         }
 
-    def next_level(self) -> int:
-        """The level this boundary's level-up reaches (Act I → 2, Act II → 3)."""
-        return self.act_index + 2
+    def next_level(self, live_id: Optional[str] = None) -> int:
+        """The level this boundary's level-up reaches, derived from cumulative
+        earned points (T-78): every phase grants 30, so a lone adventure still
+        walks 1 → 2 → 3, but a run that has earned more reads higher, and past
+        level 10 the number may not tick at all. ``live_id`` None = the party's
+        first character (all characters in one run earn in lockstep)."""
+        lid = live_id if live_id is not None else (self.live_ids[0] if self.live_ids else None)
+        earned = self.earned.get(lid, 0) if lid is not None else 0
+        return level_for_points(earned + LEVEL_UP_POINTS)
 
     def confirm_level_up(self, live_id: str, build: Dict[str, Any]) -> None:
         """Validate + apply one character's level-up; banking the remainder.
@@ -243,11 +302,14 @@ class AdventureRun:
         slot = self.live_ids.index(live_id)
         old_raw = self.loadouts[slot]["character"]
         available = self.banked.get(live_id, 0) + POINTS_PER_LEVEL
+        earned = self.earned.get(live_id, 0) + POINTS_PER_LEVEL
         new_raw, spent = validate_level_up(old_raw, build or {},
-                                           self.next_level(), available)
+                                           self.next_level(live_id), available,
+                                           earned_points=earned)
         heal = int(new_raw["hp"]) - int(old_raw.get("hp", new_raw["hp"]))
         self.loadouts[slot]["character"] = new_raw
         self.banked[live_id] = available - spent
+        self.earned[live_id] = earned
         entry.update(confirmed=True, spent=spent, heal=heal)
 
     def all_confirmed(self) -> bool:
@@ -256,32 +318,41 @@ class AdventureRun:
 
     def advance(self, seed: Optional[int] = None
                 ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
-        """Compose the next act: leveled builds through the standard build path,
+        """Compose the next phase: leveled builds through the standard build path,
         then the §D10-2 carry rules applied on top. Returns
-        ``(state, portraits, art, act_encounter_id)``."""
+        ``(state, portraits, art, phase_encounter_id)``."""
         if not self.all_confirmed():
             raise ValueError("not every character has confirmed the level-up")
         heals = {lid: e["heal"] for lid, e in (self.level_up or {}).items()}
-        self.act_index += 1
+        self.phase_index += 1
         self.level_up = None
-        eid = self.acts[self.act_index]["encounter_id"]
+        eid = self.phases[self.phase_index]["encounter_id"]
         state, portraits, art = content.build_state_from_loadouts(
-            self.loadouts, eid, seed=seed)
+            self.loadouts, eid, seed=seed, scenario=self._scenario(self.phase_index))
         rng = random.Random(seed)
         for c in state.party:
             cy = self.carry.get(c.id)
             if cy is None:
                 continue
             # HP: carry, heal by the bought max (+2 max is +2 current), then the
-            # act-start floor — one rule for everyone (T-59). The incapacitated
+            # phase-start floor — one rule for everyone (T-59). The incapacitated
             # stand back up at the floor; the barely-alive are lifted to it.
             floor = -(-c.max_hp * HP_FLOOR_PCT // 100)  # ceil(25% of max)
             c.hp = min(c.max_hp, max(cy["hp"] + heals.get(c.id, 0), floor))
+            # Belt consumables and granted cards (Update 17): the freshly
+            # composed hand dealt them above the draw; keep the ones not yet
+            # used (a used consumable sits in exile with its item id) and put
+            # them back above the reshuffled hand.
+            used = {k.consumable_id for k in cy["exile"] if getattr(k, "consumable_id", None)}
+            extras = [k for k in c.hand
+                      if (getattr(k, "consumable_id", None) and k.consumable_id not in used)
+                      or getattr(k, "granted_by", None)]
             # Shuffle up completely — hand, library, graveyard as one pool —
             # and draw a fresh hand of starting-cards. Exile is forever.
-            cards = list(cy["cards"])
+            cards = [k for k in cy["cards"]
+                     if not getattr(k, "consumable_id", None) and not getattr(k, "granted_by", None)]
             rng.shuffle(cards)
-            c.hand = cards[:c.hand_size]
+            c.hand = extras + cards[:c.hand_size]
             c.library = cards[c.hand_size:]
             c.graveyard = []
             c.exile = list(cy["exile"])
@@ -290,21 +361,99 @@ class AdventureRun:
         self.carry = {}
         return state, portraits, art, eid
 
+    # -- run saves (Update 17 §D17-3) ------------------------------------------ #
+    def boundary_snapshot(self) -> Dict[str, Any]:
+        """The JSON-safe party/progress block a run save holds at a save point:
+        the run copies of the characters (leveled builds), the unspent and
+        earned pools, and — at a phase boundary — the §D10-2 carry plus the
+        level-up heals so the next phase composes IDENTICALLY on reload.
+        Called at adventure start (no carry), when the level-up gate closes
+        (before `advance`), and at adventure end."""
+        heals = ({lid: int(e.get("heal", 0)) for lid, e in self.level_up.items()}
+                 if self.level_up is not None else {})
+        carry = {
+            lid: {
+                "hp": cy["hp"],
+                "cards": [c.model_dump(mode="json") for c in cy["cards"]],
+                "exile": [c.model_dump(mode="json") for c in cy["exile"]],
+                "gauge": cy["gauge"],
+            }
+            for lid, cy in self.carry.items()
+        }
+        return {
+            "character_ids": list(self.character_ids),
+            "live_ids": list(self.live_ids),
+            "loadouts": copy.deepcopy(self.loadouts),
+            "banked": dict(self.banked),
+            "earned": dict(self.earned),
+            "carry": carry,
+            "heals": heals,
+            # At adventure start: 0 (Phase I about to begin). At a boundary: the
+            # index of the phase just won (the next composes on restore). At the
+            # end: the finale's index with `complete` set.
+            "phase_index": self.phase_index,
+            "complete": self.complete,
+        }
+
+    def restore(self, block: Dict[str, Any], seed: Optional[int] = None
+                ) -> "tuple[GameState, Dict[str, str], Dict[str, Any], str]":
+        """Rebuild the composed phase-start state from a `boundary_snapshot`
+        block: adventure start replays `start`; a phase boundary replays
+        `advance` (carry + heals applied) with the saved seed. Returns the same
+        tuple those do."""
+        from ltg_core.schema import Card as _Card
+        self.character_ids = list(block.get("character_ids", []))
+        self.banked = {k: int(v) for k, v in (block.get("banked") or {}).items()}
+        self.earned = {k: int(v) for k, v in (block.get("earned") or {}).items()}
+        self.complete = bool(block.get("complete"))
+        phase_index = int(block.get("phase_index", 0))
+        carry = block.get("carry") or {}
+        if not carry:  # adventure start (or end): no boundary carry recorded
+            out = self.start(self.character_ids, seed=seed,
+                             loadouts=block.get("loadouts") or [])
+            self.phase_index = phase_index
+            # start() re-derives banked/earned from the loadouts; a save's
+            # recorded pools win (they include this run's history).
+            if block.get("banked"):
+                self.banked = {k: int(v) for k, v in block["banked"].items()}
+            if block.get("earned"):
+                self.earned = {k: int(v) for k, v in block["earned"].items()}
+            return out
+        self.loadouts = copy.deepcopy(block.get("loadouts") or [])
+        self.live_ids = list(block.get("live_ids") or [])
+        self.carry = {
+            lid: {
+                "hp": int(cy["hp"]),
+                "cards": [_Card.model_validate(c) for c in cy.get("cards", [])],
+                "exile": [_Card.model_validate(c) for c in cy.get("exile", [])],
+                "gauge": int(cy.get("gauge", 0)),
+            }
+            for lid, cy in carry.items()
+        }
+        heals = {k: int(v) for k, v in (block.get("heals") or {}).items()}
+        # Re-open a fully-confirmed gate so `advance` finds its heals and the
+        # boundary bookkeeping is byte-identical to the live path.
+        self.level_up = {lid: {"confirmed": True, "spent": 0, "heal": heals.get(lid, 0)}
+                         for lid in self.live_ids}
+        # A boundary save records the phase just WON; `advance` composes the next.
+        self.phase_index = phase_index
+        return self.advance(seed=seed)
+
     # -- snapshot -------------------------------------------------------------- #
     def snapshot_block(self, state: GameState,
                        controlled_ids: "set[str]") -> Dict[str, Any]:
         """The per-client adventure block riding the state snapshot. The
         level-up gate is per-seat: your own characters carry their entering
         build and points; everyone else is just a confirmed/waiting light."""
-        act = self.current_act()
+        phase = self.current_phase()
         block: Dict[str, Any] = {
             "id": self.adventure_id,
             "name": self.name,
             "flavor": self.flavor,
-            "act": self.act_index + 1,
-            "acts_total": len(self.acts),
-            "act_name": act["name"],
-            "narration": act["narration"],
+            "phase": self.phase_index + 1,
+            "phases_total": len(self.phases),
+            "phase_name": phase["name"],
+            "narration": phase["narration"],
             "character_ids": list(self.character_ids),
             "complete": self.complete,
             "level_up": None,
@@ -338,6 +487,14 @@ class AdventureRun:
                     }
                     row["locked"] = spent
                     row["banked"] = self.banked.get(live_id, 0)
+                    # Progression readout (T-78): points earned so far (after this
+                    # boundary's grant once confirmed) and the distance to the
+                    # next level number.
+                    earned_now = (self.earned.get(live_id, 0)
+                                  + (0 if entry.get("confirmed") else POINTS_PER_LEVEL))
+                    row["earned_points"] = earned_now
+                    row["next_level"] = level_for_points(earned_now)
+                    row["points_to_next_level"] = points_to_next_level(earned_now)
                     row["available"] = (self.banked.get(live_id, 0)
                                         + (0 if entry.get("confirmed")
                                            else POINTS_PER_LEVEL))

@@ -10,10 +10,10 @@ because the engine is deterministic, the repro IS the key.
 A round cap of 50 (T-71) flags non-terminating fights as anomalies rather than
 hanging; an action cap backstops pathological in-turn loops the same way.
 
-``run_adventure`` replicates the game server's act carry-over and level-up
+``run_adventure`` replicates the game server's phase carry-over and level-up
 rules (§D10-2/3) locally — the session layer is not imported. The magnitudes
 mirror the Rebalance Register: T-57 (30 points per level), T-58 (gauge carries
-at 50%, floored), T-59 (act-start HP floor at 25% of max).
+at 50%, floored), T-59 (phase-start HP floor at 25% of max).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import random
 from math import ceil
 from typing import Any, Dict, List, Optional, Tuple
 
-from ltg_core.schema import Character, LEVEL_UP_POINTS
+from ltg_core.schema import Character, LEVEL_UP_POINTS, level_for_points
 
 from ..engine import apply_action, legal_actions
 from ..scenario import compose_spec, scale_encounter, state_from_dict
@@ -108,7 +108,7 @@ def _bump_enemy_power(scenario: Dict[str, Any]) -> None:
 def prepare_scenario(content: Dict[str, Any], party_size: int,
                      difficulty: str = "standard",
                      power_bump: bool = True) -> Dict[str, Any]:
-    """One act/encounter shaped exactly as the server's build path shapes it:
+    """One phase/encounter shaped exactly as the server's build path shapes it:
     difficulty HP ratio → per-size layout resolution (objectives included) →
     the T-64 Power bump."""
     scenario = copy.deepcopy(content)
@@ -132,19 +132,19 @@ _AGENCY_KINDS = frozenset({"cast", "attack", "defend", "end_turn", "pass",
 
 
 def _tally_decision(telemetry: Dict[str, Any], st: GameState,
-                    acts: List[Any]) -> None:
+                    phases: List[Any]) -> None:
     """Per agency decision: for every card in the actor's hand, was a cast of
     it OFFERED (affordable + legal) right now? The castability autopsy (§D13)
     divides dead cards into never-castable vs castable-but-declined on this."""
-    kinds = {a.kind for a in acts}
+    kinds = {a.kind for a in phases}
     if not (kinds & _AGENCY_KINDS) or any(k.startswith("choose_") for k in kinds):
         return
-    actor_id = acts[0].actor_id
+    actor_id = phases[0].actor_id
     char = st.character(actor_id)
     if char is None:
         return
     slot = telemetry.setdefault(actor_id, {"rules": {}, "cards": {}})
-    offered = {a.card_id for a in acts if a.kind == "cast"}
+    offered = {a.card_id for a in phases if a.kind == "cast"}
     for card in char.hand:
         c = slot["cards"].setdefault(card.id, {"hand": 0, "offered": 0,
                                                "cast_rules": {}})
@@ -177,12 +177,12 @@ def _drive(st: GameState, policy: Policy, rng: random.Random,
     while st.result is None:
         if st.turn > round_cap:
             return st, "round_cap"
-        acts = legal_actions(st)
-        if not acts:
+        phases = legal_actions(st)
+        if not phases:
             return st, "no_actions"
         if telemetry is not None:
-            _tally_decision(telemetry, st, acts)
-        act = policy.choose(st, acts, rng)
+            _tally_decision(telemetry, st, phases)
+        act = policy.choose(st, phases, rng)
         if telemetry is not None:
             _tally_choice(telemetry, act, getattr(policy, "last_rule", None))
         st, _ = apply_action(st, act)
@@ -410,7 +410,7 @@ def _merge_telemetry(chars: Dict[str, Dict[str, Any]],
 
 
 # --------------------------------------------------------------------------- #
-# run_adventure — the three-act run, session rules replicated (§D10-2/3)
+# run_adventure — the three-phase run, session rules replicated (§D10-2/3)
 # --------------------------------------------------------------------------- #
 def _carry_snapshot(st: GameState) -> Dict[str, Dict[str, Any]]:
     out = {}
@@ -443,13 +443,13 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
                   policy: Policy, seed: int, difficulty: str = "standard",
                   power_bump: bool = True, label: str = "",
                   round_cap: int = ROUND_CAP) -> Dict[str, Any]:
-    """Play an adventure (a dict with inline ``acts``: complete encounter
+    """Play an adventure (a dict with inline ``phases``: complete encounter
     objects) through the §D10-2/3 boundary rules: full-pool shuffle-up + fresh
     hand, HP floor, 50% gauge carry, and a 30-point level-up spent by the
-    policy's spend plan. Returns one RunRecord with per-act snapshots."""
-    acts = adventure.get("acts") or []
-    if not acts:
-        raise ValueError("adventure has no acts")
+    policy's spend plan. Returns one RunRecord with per-phase snapshots."""
+    phases = adventure.get("phases") or adventure.get("acts") or []  # "acts": pre-17 alias
+    if not phases:
+        raise ValueError("adventure has no phases")
     loadouts = copy.deepcopy(loadouts)
     h = spec_hash({"adventure": adventure, "party": [
         lo.get("character", {}).get("name", "") for lo in loadouts]})
@@ -457,12 +457,12 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
     banked: Dict[str, int] = {}
     carry: Optional[Dict[str, Dict[str, Any]]] = None
     heals: Dict[str, int] = {}
-    act_records: List[Dict[str, Any]] = []
+    phase_records: List[Dict[str, Any]] = []
     result, anomaly, rounds_total = None, None, 0
     party_label = ""
 
-    for i, act in enumerate(acts):
-        scenario = prepare_scenario(act, len(loadouts), difficulty, power_bump)
+    for i, phase in enumerate(phases):
+        scenario = prepare_scenario(phase, len(loadouts), difficulty, power_bump)
         spec = compose_spec(loadouts, scenario)
         party_label = "+".join(p["id"] for p in spec["party"])
         st = state_from_dict(spec, seed=seed * 1000003 + i)
@@ -471,36 +471,39 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
                          random.Random(f"{h}:{seed}:carry:{i}"))
         entering = {c.id: c.hp for c in st.party}
         telemetry: Dict[str, Any] = {}
-        st, act_anomaly = _drive(st, policy, rng, round_cap, telemetry)
-        rec = {"act": i + 1, "name": act.get("name", f"Act {i + 1}"),
-               "result": st.result or "anomaly", "anomaly": act_anomaly,
+        st, phase_anomaly = _drive(st, policy, rng, round_cap, telemetry)
+        rec = {"phase": i + 1, "name": phase.get("name", f"Phase {i + 1}"),
+               "result": st.result or "anomaly", "anomaly": phase_anomaly,
                "rounds": st.turn, "entering_hp": entering,
                "spend_plan": policy.spend_plan,
                "banked": dict(banked)}
         rec.update(_collect_metrics(st, spec))
         _merge_telemetry(rec["characters"], telemetry)
-        act_records.append(rec)
+        phase_records.append(rec)
         rounds_total += st.turn
-        if act_anomaly is not None:
-            result, anomaly = "anomaly", act_anomaly
+        if phase_anomaly is not None:
+            result, anomaly = "anomaly", phase_anomaly
             break
         if st.result != "victory":
             result = st.result
             break
-        if i == len(acts) - 1:
+        if i == len(phases) - 1:
             result = "victory"
             break
 
-        # The act boundary (§D10-3): level up through the policy's spend plan.
+        # The phase boundary (§D10-3): level up through the policy's spend plan.
         carry = _carry_snapshot(st)
         heals = {}
         live_ids = [c.id for c in st.party]
         for slot, lo in enumerate(loadouts):
             live_id = live_ids[slot] if slot < len(live_ids) else None
             old = dict(lo.get("character", {}))
-            new_level = i + 2
+            # Level is derived from cumulative earned points (Update 17 T-78);
+            # a lone adventure still walks 1 → 2 → 3.
+            earned = int(old.get("earned_points", 0)) + LEVEL_UP_POINTS
+            new_level = level_for_points(earned)
             available = banked.get(live_id, 0) + LEVEL_UP_POINTS
-            candidate = {**old, "level": new_level}
+            candidate = {**old, "level": new_level, "earned_points": earned}
             new_char, spent = policy.spend_level_up(candidate, available)
             try:
                 Character.model_validate(new_char)
@@ -532,8 +535,12 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
         "result": result or "anomaly",
         "anomaly": anomaly,
         "rounds": rounds_total,
-        "acts": act_records,
-        "characters": act_records[-1]["characters"] if act_records else {},
-        "objective": next((r["objective"] for r in act_records
+        "phases": phase_records,
+        "characters": phase_records[-1]["characters"] if phase_records else {},
+        "objective": next((r["objective"] for r in phase_records
                            if r.get("objective")), None),
+        # The leveled builds as they leave the adventure (Update 17: a scenario
+        # chains adventures — the next one starts from these; earned_points ride
+        # inside them). Not part of the spec hash.
+        "final_builds": [copy.deepcopy(lo.get("character", {})) for lo in loadouts],
     }

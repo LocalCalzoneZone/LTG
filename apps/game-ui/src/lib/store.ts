@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { GameSocket } from "./ws";
-import type { CardView, GameSnapshot, LegalAction } from "./types";
+import type { CardView, GameSnapshot, LegalAction, TownSnapshot } from "./types";
 import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choices } from "./choices";
 import {
   FX_TTL,
@@ -123,6 +123,11 @@ interface StoreState {
   connected: boolean;
 
   snapshot: GameSnapshot | null;
+  // Scenario Mode (Update 17): the town-mode state (the session has no engine
+  // state); null while a fight is on. Set directly — no choreography queue.
+  town: TownSnapshot | null;
+  showQuestLog: boolean;
+  sheetFor: string | null; // character sheet modal: a character id, or null
   seats: Record<string, string | null>;
   you: string[];
 
@@ -192,6 +197,12 @@ interface StoreState {
   // lifecycle
   connect: (sessionId: string) => void;
   disconnect: () => void;
+  sendTown: (verb: string, payload?: Record<string, unknown>) => void;
+  answerConfirm: (id: number, yes: boolean) => void;
+  cancelConfirm: (id: number) => void;
+  retryJob: () => void;
+  setQuestLog: (open: boolean) => void;
+  setSheetFor: (id: string | null) => void;
   handle: (msg: any) => void;
 
   // seats
@@ -250,6 +261,9 @@ export const useGame = create<StoreState>((set, get) => ({
   _lastAutoPassKey: null,
   error: null,
   gameOver: null,
+  town: null,
+  showQuestLog: false,
+  sheetFor: null,
   fx: [],
   departures: {},
   lastLogSeq: null,
@@ -263,6 +277,7 @@ export const useGame = create<StoreState>((set, get) => ({
     get().socket?.close();
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
     set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
+          town: null, showQuestLog: false, sheetFor: null,
           passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null,
           fx: [], departures: {}, lastLogSeq: null, _stackModes: {},
           holdUntil: 0, _snapQueue: [], _preroll: null });
@@ -270,7 +285,7 @@ export const useGame = create<StoreState>((set, get) => ({
 
   disconnect: () => {
     get().socket?.close();
-    set({ socket: null, sessionId: null, connected: false, snapshot: null });
+    set({ socket: null, sessionId: null, connected: false, snapshot: null, town: null });
   },
 
   handle: (msg) => {
@@ -289,6 +304,15 @@ export const useGame = create<StoreState>((set, get) => ({
         get()._recomputeFocus();
         break;
       case "state": {
+        if (msg.mode === "town" || msg.mode === "complete") {
+          // Town mode (Update 17): no engine state, no choreography — the
+          // town screen renders straight from the message. Leaving a fight
+          // for town clears the battlefield and any queued beats.
+          set({ town: msg as TownSnapshot, snapshot: null, gameOver: null,
+                _snapQueue: [], holdUntil: 0, fx: [], armed: null });
+          break;
+        }
+        if (get().town) set({ town: null }); // riding out: the fight takes over
         // THE PRESENTATION QUEUE: states are not applied on arrival — they
         // are applied in order, each held until the PREVIOUS state's
         // choreography has fully landed. Without this, every batch's effect
@@ -511,6 +535,13 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   claim: (ids) => get().socket?.send({ type: "claim_seat", character_ids: ids }),
+  // Scenario Mode (Update 17): town verbs, the all-players confirmation, jobs.
+  sendTown: (verb, payload) => get().socket?.send({ type: "town", verb, payload: payload ?? {} }),
+  answerConfirm: (id, yes) => get().socket?.send({ type: "confirm", id, yes }),
+  cancelConfirm: (id) => get().socket?.send({ type: "confirm", id, cancel: true }),
+  retryJob: () => get().socket?.send({ type: "retry_job" }),
+  setQuestLog: (open) => set({ showQuestLog: open }),
+  setSheetFor: (id) => set({ sheetFor: id }),
   release: (ids) => get().socket?.send({ type: "release_seat", character_ids: ids }),
 
   confirmLevelUp: (characterId, build) =>

@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "Cairnfast Steading",
+  "flavor": "Ride the north track to a hill farm where high summer stops at a hard white line \u2014 and something is singing the orchard into ice.",
+  "phases": [
+    {
+      "narration": "Nim Fennick holds the gate for you and does not say a word, which is the loudest thing she has done all week. The ponies take the north track at a walk, warm grass hissing at their fetlocks, and then \u2014 a line across the hillside as straight as a drawn blade \u2014 the green simply stops. Beyond it the post box stands frosted to its hinges, eleven days of letters stiff as shingles inside, and the apple rows above are white and ringing faintly in windless air. Your breath goes to smoke. Something in the orchard is moving toward you through the rime.",
+      "encounter_id": "cairnfast_steading__phase1"
+    },
+    {
+      "narration": "Past the last apple row the track opens into Cairnfast's yard, and the yard is a white bowl. Cattle low somewhere close and wrong \u2014 behind you, under you \u2014 until you find them: dark shapes standing patient inside the byre wall, sealed behind a foot of clear ice like fish in a pond. The cider-cellar doors at the yard's end are being glazed shut even now, a rime-thrall standing before them singing the ice thicker, hand over hand, and from beneath those doors comes a knocking. Whatever is down there is still alive. It will not be for long if she finishes her hymn.",
+      "encounter_id": "cairnfast_steading__phase2"
+    },
+    {
+      "narration": "The cellar stair goes down out of the glare into blue. Cider barrels stand burst and shining, their spilled apple-gold frozen mid-splash into bright fans, and along the far wall the folk of Cairnfast are standing \u2014 upright, sleeping, sealed to the shoulders in eleven days of clear frost. On the bottom step sits a boy in a frost-stiff coat with a crown of hoar grown into his hair, a lambing crook across his knees. He looks up at you, and he looks so sorry, and he keeps singing anyway.",
+      "encounter_id": "cairnfast_steading__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

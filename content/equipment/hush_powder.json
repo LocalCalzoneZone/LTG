@@ -1,0 +1,29 @@
+{
+  "kind": "item",
+  "id": "hush_powder",
+  "name": "Hush Powder",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 12,
+  "flavor": "Throw it in their face and take the moment.",
+  "art_desc": "A paper twist of grey powder, faintly glittering.",
+  "art_url": "/art/items/hush_powder/item-63e15092.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "strip_intent",
+      "target": {
+        "mode": "chosen",
+        "side": "enemy",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "sorcery"
+  },
+  "affixes": []
+}

@@ -1,0 +1,415 @@
+{
+  "name": "The Frozen Byre-Yard",
+  "scene": "A steading yard packed with old snow in high summer: byre and cart-shed roofs bowed under white, a well capped with a lens of ice, and dark cattle frozen upright behind the byre's glazed wall. Blue shadow pools in every doorway; the cider-cellar's double doors at the far end run with a slow, thickening white glaze, and a small hand-shaped hollow in the ice shows where someone knocked from inside.",
+  "scene_image": "/art/cairnfast_steading__phase2/scene-ae5a4f3c.png",
+  "enemies": [
+    {
+      "id": "hoar_hymnist",
+      "name": "Hoar-Hymnist of the Byre",
+      "flavor": "She is sealing the cellar. Break her hymn \u2014 or break her \u2014 before it closes.",
+      "description": "A tall thrall in a milkmaid's apron turned to frosted linen board, arms raised palms-out at the cellar doors, ice spilling from her sleeves in slow sheets; her jaw hangs open on one endless note.",
+      "hp": 10,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "sealing_hymn",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Sealing Hymn \u2014 the glaze thickens: 3 damage to a hero each turn and the party at -0/-1",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 0,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "the_note_carries_her",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "The Note Carries Her \u2014 heal 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase2/hoar_hymnist-85a38f19.png"
+    },
+    {
+      "id": "byre_warden",
+      "name": "Byre Warden",
+      "flavor": "The wall in front of the hymn: shields her, then drags her attackers onto himself.",
+      "description": "A broad steading-man in a frozen leather jerkin, arms and beard hung with icicles, holding a byre door torn off its hinges as a shield of grey oak and rime.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "door_over_the_singer",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Door Over the Singer \u2014 the next blow against an ally is turned aside",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "uses": "next",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              },
+              "combat_kind": "all"
+            }
+          ]
+        },
+        {
+          "id": "step_between",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Step Between \u2014 the attacker must answer the warden instead",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase2/byre_warden-89002e07.png"
+    },
+    {
+      "id": "rimefang_hound",
+      "name": "Rimefang Hound",
+      "flavor": "Reads the party and goes for the hardest hitter; slips away when hunted.",
+      "description": "A lean farm-dog turned white to the bone, ribs showing through a coat of frost needles, breath steaming blue; it moves in short skidding rushes and never barks.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "cut_the_sword_arm",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Cut the Sword Arm \u2014 4 damage to the party's hardest hitter",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "skid_away",
+          "archetype": "Evasive",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Skid Away \u2014 the hound slides out of reach across the ice"
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase2/rimefang_hound-68c021d7.png"
+    },
+    {
+      "id": "frostbound_whisperer",
+      "name": "Frostbound Whisperer",
+      "flavor": "Hunts rituals: freezes the hero mid-incantation, and can hush one spell outright.",
+      "description": "A stooped figure in a carter's hood, face a mask of clear ice with the features still visible beneath, one finger perpetually raised to where its lips used to be.",
+      "hp": 5,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "hush_the_working",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "action_type": "spell",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "channeling_player",
+          "telegraph": "Hush the Working \u2014 the hero mid-incantation freezes and loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "one_word_taken",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 3,
+          "priority": 12,
+          "action_type": "spell",
+          "target_rule": "trigger_source",
+          "telegraph": "One Word Taken \u2014 the spell is countered",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase2/frostbound_whisperer-6a9b2b75.png"
+    },
+    {
+      "id": "icicle_lancer",
+      "name": "Icicle Lancer",
+      "flavor": "Shatters a lance of eave-ice across a hero and everyone near them.",
+      "description": "A gaunt thrall balanced on the byre's ridgepole, cradling a six-foot spear of roof-ice in both frozen hands, hair standing out in a stiff white corona.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "shattering_lance",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 26,
+          "target_rule": "valuation",
+          "telegraph": "Shattering Lance \u2014 3 damage to a hero, their row and the rows beside it",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "blast"
+              }
+            }
+          ]
+        },
+        {
+          "id": "falling_eaves",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "once_per_encounter": true,
+          "priority": 18,
+          "target_rule": "trigger_source",
+          "telegraph": "Falling Eaves \u2014 4 damage to whoever marked it",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase2/icicle_lancer-ffb18369.png"
+    },
+    {
+      "id": "frost_stiff_farmhand",
+      "name": "Frost-Stiff Farmhand",
+      "flavor": "Slow, cold hands that grab once and hard.",
+      "description": "A young hand in shirtsleeves, skin blue-grey and dusted with crystal, moving in the jerky careful way of someone whose joints have frozen half shut; a pitchfork is welded to his palm by ice.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "cold_grip",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 32,
+          "target_rule": "valuation",
+          "telegraph": "Cold Grip \u2014 a hero is held and must answer him",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "splintering",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 28,
+          "target_rule": "trigger_source",
+          "telegraph": "Splintering \u2014 3 damage to the attacker as he cracks",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/cairnfast_steading__phase2/frost_stiff_farmhand-ee5690c8.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "hoar_hymnist",
+      "byre_warden"
+    ],
+    "2": [
+      "hoar_hymnist",
+      "byre_warden",
+      "rimefang_hound",
+      "frost_stiff_farmhand"
+    ],
+    "3": [
+      "hoar_hymnist",
+      "byre_warden",
+      "rimefang_hound",
+      "frostbound_whisperer",
+      "icicle_lancer",
+      "frost_stiff_farmhand"
+    ],
+    "4": [
+      "hoar_hymnist",
+      "byre_warden",
+      "byre_warden",
+      "rimefang_hound",
+      "rimefang_hound",
+      "frostbound_whisperer",
+      "icicle_lancer",
+      "frost_stiff_farmhand"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "hoar_hymnist",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Doors Seal \u2014 the hymn closes over the cellar and the cold turns on you",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 3,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "nonlethal": false
+        }
+      ]
+    },
+    "resolved": false
+  }
+}

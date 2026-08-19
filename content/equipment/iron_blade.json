@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "iron_blade",
+  "name": "Iron Blade",
+  "slot": "weapon",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 0,
+  "flavor": "Honest steel, honestly worn.",
+  "art_desc": "A plain broad-bladed shortsword with a leather-wrapped grip, nicked but keen.",
+  "art_url": "/art/items/iron_blade/item-2339195b.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

@@ -60,6 +60,7 @@ from .state import (
     Intent,
     PendingChoice,
     PreventTag,
+    ProtectionTag,
     StackItem,
     TokenState,
 )
@@ -217,7 +218,7 @@ def _advance(st: GameState) -> None:
                 return
             # Objective timers tick at the completion of each End Step
             # (§D12-1.1): a `survive` timer may win here; an expired `race`
-            # clock loses the act or pushes its escalation payload (the window
+            # clock loses the encounter or pushes its escalation payload (the window
             # opens next loop iteration, with the turn already advanced).
             _objective_tick(st)
             if st.result is not None:
@@ -311,7 +312,7 @@ def _tick_stirring(st: GameState) -> None:
         e.hp = max(1, e.max_hp // 2)
         e.temp_mod = e.power_bonus = e.prevent_pool = 0
         e.prevent_tags = []
-        e.protection = 0
+        e.protection_tags = []
         e.poison_effects = []
         e.regen_effects = []
         e.stunned = 0
@@ -600,8 +601,8 @@ def _deploy_reserve(st: GameState, eid: str) -> Optional[str]:
 
 def _objective_tick(st: GameState) -> None:
     """The objective timer tick, at the completion of each End Step (§D12-1.1).
-    `survive` wins the act when round N completes; an expired `race` clock
-    loses the act (`fail: defeat`) or fires the escalation payload."""
+    `survive` wins the encounter when round N completes; an expired `race` clock
+    loses the encounter (`fail: defeat`) or fires the escalation payload."""
     obj = st.objective
     if obj is None or st.result is not None:
         return
@@ -644,7 +645,7 @@ def _race_expire(st: GameState, obj) -> None:
     obj.status = "failed"
     if obj.fail == "defeat":
         st.result = "defeat"
-        _log(st, "loss", "The clock runs out — the act is lost.",
+        _log(st, "loss", "The clock runs out — the encounter is lost.",
              result="defeat", objective="race", target=obj.target_id)
         return
     # `escalate`: if the marked enemy is out of play but undefeated, it
@@ -1911,7 +1912,14 @@ def _do_cast(st: GameState, action: Action) -> None:
     x = max(0, int(action.x or 0))
     paid = _pay(actor, card, action.mana, x=x)
     actor.hand.remove(card)
-    actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
+    # Update 17 §D17-4.4: a carried consumable is CONSUMED — exiled, never
+    # reshuffled — and stacks as an activated ability (a spell-counter can't
+    # stop you drinking; a broad ability/action counter can).
+    consumable = bool(getattr(card, "consumable_id", None))
+    if consumable:
+        actor.exile.append(card)
+    else:
+        actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
     if card.timing in _SORCERY_SPEED and not reactive:
         if actor.acted_mode is None:
             _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
@@ -1920,7 +1928,8 @@ def _do_cast(st: GameState, action: Action) -> None:
     # charges its reserved cost once, at cast) — D8-3.3.
     _gain_gauge(st, actor, len(paid))
     reserved = list(paid) if card.timing == Timing.channeled else []
-    _push(st, StackItem(kind="spell", source_id=actor.id, source_side="party",
+    _push(st, StackItem(kind="ability" if consumable else "spell",
+                        source_id=actor.id, source_side="party",
                         label=card.name, effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card_id=card.id,
@@ -1928,7 +1937,8 @@ def _do_cast(st: GameState, action: Action) -> None:
                         cast_mode="reaction" if reactive else "action"))
     _open_window(st, actor.id, reactive=reactive)
     tgt = st.combatant(action.target_id)
-    _log(st, "cast", f"{actor.name} casts {card.name}"
+    verb = "uses" if consumable else "casts"
+    _log(st, "cast", f"{actor.name} {verb} {card.name}"
          + (f" on {tgt.name}" if tgt else "") + f". Mana: {_mana_str(actor.pool)}.",
          character=actor.id, card=card.id, target=action.target_id)
     # `spells_cast` conditions count this cast; on-cast channel triggers fire now
@@ -2599,9 +2609,11 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
         # End step and re-asserted here (see _reapply_channel_stats), mirroring the
         # stat auras. Removal on break lifts one matching shield.
         param = effect.parameter
+        ck = getattr(effect, "combat_kind", "all") or "all"
         if sign > 0:
-            if not any(t.parameter == param for t in target.prevent_tags):
-                target.prevent_tags.append(PreventTag(param, None))
+            if not any(t.parameter == param and t.combat_kind == ck
+                       for t in target.prevent_tags):
+                target.prevent_tags.append(PreventTag(param, None, ck))
             # Pacifying an enemy also cancels any attack intent it already declared.
             if param in _ACTION_PREVENT and isinstance(target, EnemyState):
                 target.intent = None
@@ -2611,12 +2623,21 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
                      target=_tid(target), parameter=param)
         else:
             for t in list(target.prevent_tags):
-                if t.parameter == param:
+                if t.parameter == param and t.combat_kind == ck:
                     target.prevent_tags.remove(t)
                     break
         return
     if k == "grant_keyword":
         for kw in effect.keywords:
+            if kw == "protection":
+                # A channeled Protection keeps ONE all_damage charge standing on
+                # the target while the channel holds (re-asserted each turn as
+                # the channel re-applies; a spent charge comes back next turn).
+                if sign > 0 and not target.protection_tags:
+                    target.protection_tags.append(ProtectionTag("all_damage", "all"))
+                elif sign < 0 and target.protection_tags:
+                    target.protection_tags.pop()
+                continue
             if sign > 0:
                 target.keywords[kw] = "while_channeled"
             else:
@@ -3276,7 +3297,8 @@ def _r_deal_damage(st, item, effect, target, ctx):
         # Mitigate answers attack-type hits only (Update 02 §M-A.1)
         target, amount = _apply_mitigation(st, item, target, amount)
     overkill = _deal_damage(st, target, amount, source=item.label,
-                            source_obj=source_obj, damage_kind=item.kind)
+                            source_obj=source_obj, damage_kind=item.kind,
+                            attack_mode=item.attack_mode)
     # Trample: if the blow felled the target, the excess cleaves onto ONE more creature.
     if (item.kind == "attack" and overkill > 0 and source_obj is not None
             and _has_kw(source_obj, "trample")):
@@ -3315,7 +3337,7 @@ def _trample_cleave(st: GameState, attacker, primary, excess: int,
          source=getattr(attacker, "id", None), target=_tid(carry), amount=excess)
     # damage_kind="attack" so it stays combat damage; no further cleave (single carry).
     _deal_damage(st, carry, excess, source=f"{label} (trample)",
-                 source_obj=attacker, damage_kind="attack")
+                 source_obj=attacker, damage_kind="attack", attack_mode=mode)
 
 
 def _r_heal(st, item, effect, target, ctx):
@@ -3822,20 +3844,24 @@ def _r_prevent_only(st, item, effect, target, ctx):
     # `uses="all"` (None) shields every matching instance until the tag expires;
     # `uses="next"` (1) is a one-shot shield spent by the first matching thing.
     uses = None if getattr(effect, "uses", "all") == "all" else 1
-    target.prevent_tags.append(PreventTag(effect.parameter, uses))
+    ck = getattr(effect, "combat_kind", "all") or "all"
+    target.prevent_tags.append(PreventTag(effect.parameter, uses, ck))
     span = "all" if uses is None else "the next"
-    _log(st, "prevent", f"{target.name} will prevent {span} {effect.parameter} "
+    _log(st, "prevent", f"{target.name} will prevent {span} "
+         f"{_lane_label(effect.parameter, ck)} "
          f"({'this turn' if uses is None else 'once'}).",
-         target=_tid(target), parameter=effect.parameter, uses=uses)
+         target=_tid(target), parameter=effect.parameter, uses=uses, combat_kind=ck)
 
 
 def _r_amplify(st, item, effect, target, ctx):
     # The combo verb: prime the target's next outgoing damage (or heal). The tag
     # holds until spent — a primed combo does not fizzle at end of turn.
+    ck = getattr(effect, "combat_kind", "all") or "all"
     target.amplify_tags.append(AmplifyTag(event=effect.event,
                                           multiplier=effect.multiplier,
-                                          bonus=effect.bonus))
-    what = {"combat_damage": "combat damage dealt", "spell_damage": "spell damage dealt",
+                                          bonus=effect.bonus, combat_kind=ck))
+    what = {"combat_damage": f"{_lane_label('combat_damage', ck)} dealt",
+            "spell_damage": "spell damage dealt",
             "any_damage": "damage dealt", "heal": "heal"}.get(effect.event, effect.event)
     mult = f"×{effect.multiplier}" if effect.multiplier > 1 else ""
     plus = f"+{effect.bonus}" if effect.bonus else ""
@@ -3946,9 +3972,14 @@ def _r_double_next(st, item, effect, target, ctx):
 
 
 def _r_protection(st, item, effect, target, ctx):
-    target.protection += 1
-    _log(st, "protection", f"{target.name} gains protection ({effect.scope}).",
-         target=_tid(target))
+    # A one-shot charge (no clock): negates the next matching hit whenever it
+    # comes, persisting across turns until spent. Charges stack.
+    param = getattr(effect, "parameter", "all_damage") or "all_damage"
+    ck = getattr(effect, "combat_kind", "all") or "all"
+    target.protection_tags.append(ProtectionTag(param, ck))
+    _log(st, "protection", f"{target.name} gains protection "
+         f"(negates the next {_lane_label(param, ck)}).",
+         target=_tid(target), parameter=param, combat_kind=ck)
 
 
 def _r_taunt(st, item, effect, target, ctx):
@@ -4178,6 +4209,13 @@ def _tick_control(st: GameState) -> None:
 def _r_grant_keyword(st, item, effect, target, ctx):
     dur = _duration_value(effect)
     for kw in effect.keywords:
+        if kw == "protection":
+            # The keyword form of `protection`: one all_damage charge (the
+            # gloss — "negates the next spell or attack"). It is a charge, not a
+            # static, so it lives in protection_tags and is spent by the hit
+            # rather than expiring with the grant's duration.
+            target.protection_tags.append(ProtectionTag("all_damage", "all"))
+            continue
         target.keywords[kw] = dur
     _log(st, "grant_keyword", f"{target.name} gains {', '.join(effect.keywords)}.",
          target=_tid(target), keywords=list(effect.keywords), duration=dur)
@@ -4511,41 +4549,77 @@ _COMBAT_DAMAGE_KINDS = frozenset({"attack", "activated", "ability", "fight"})
 _SPELL_DAMAGE_KINDS = frozenset({"spell", "triggered"})
 
 
-def _prevent_match(parameter: str, damage_kind: str) -> bool:
+def _lane_label(parameter: str, combat_kind: str = "all") -> str:
+    """Log wording for a damage lane + its combat qualifier: "melee combat damage"."""
+    base = {"combat_damage": "combat damage", "spell_damage": "spell damage",
+            "all_damage": "damage", "damage": "damage", "all": "damage",
+            "any_damage": "damage"}.get(parameter, parameter)
+    if parameter == "combat_damage" and combat_kind in ("melee", "ranged"):
+        return f"{combat_kind} combat damage"
+    return base
+
+
+def _combat_mode(damage_kind: str, source_obj, attack_mode: Optional[str]) -> str:
+    """The reach of a physical-lane hit, for a melee/ranged `combat_kind`: a basic
+    attack's own declared mode; an activated/component ability wears its OWNER's
+    reach (an enemy's "Claw" is narratively its attack); a fight is always melee."""
+    if damage_kind == "fight":
+        return "melee"
+    if attack_mode in ("melee", "ranged"):
+        return attack_mode
+    return getattr(source_obj, "attack_mode", None) or "melee"
+
+
+def _combat_kind_match(combat_kind: str, damage_kind: str, source_obj,
+                       attack_mode: Optional[str]) -> bool:
+    """Does a combat_damage qualifier (all | melee | ranged) admit this hit?"""
+    if combat_kind in (None, "", "all"):
+        return True
+    return _combat_mode(damage_kind, source_obj, attack_mode) == combat_kind
+
+
+def _prevent_match(parameter: str, damage_kind: str, combat_kind: str = "all",
+                   source_obj=None, attack_mode: Optional[str] = None) -> bool:
     """Does a `prevent [parameter]` tag nullify this incoming damage (R-11)? Action
-    shields (e.g. `prevent attack`) block the actor, not damage — they never match."""
+    shields (e.g. `prevent attack`) block the actor, not damage — they never match.
+    A combat_damage shield may further name a reach (`combat_kind` melee/ranged)."""
     if parameter in _ACTION_PREVENT:
         return False
     if parameter in ("all_damage", "damage", "all"):  # legacy spellings included
         return True
     if parameter == "combat_damage":
-        return damage_kind in _COMBAT_DAMAGE_KINDS
+        return (damage_kind in _COMBAT_DAMAGE_KINDS
+                and _combat_kind_match(combat_kind, damage_kind, source_obj, attack_mode))
     if parameter == "spell_damage":
         return damage_kind in _SPELL_DAMAGE_KINDS
     return parameter == damage_kind
 
 
-def _amplify_match(event: str, damage_kind: str) -> bool:
+def _amplify_match(event: str, damage_kind: str, combat_kind: str = "all",
+                   source_obj=None, attack_mode: Optional[str] = None) -> bool:
     """Does an `amplify` tag prime this outgoing damage? (The `heal` event never
     matches damage — it is consumed by `_heal` instead.)"""
     if event == "any_damage":
         return True
     if event == "combat_damage":
-        return damage_kind in _COMBAT_DAMAGE_KINDS
+        return (damage_kind in _COMBAT_DAMAGE_KINDS
+                and _combat_kind_match(combat_kind, damage_kind, source_obj, attack_mode))
     if event == "spell_damage":
         return damage_kind in _SPELL_DAMAGE_KINDS
     return False
 
 
 def _apply_amplify(st: GameState, source_obj, amount: int, damage_kind: str,
-                   source: str) -> int:
+                   source: str, attack_mode: Optional[str] = None) -> int:
     """Spend the source's first matching `amplify` tag on this outgoing hit:
     amount × multiplier + bonus. One-shot — the tag is consumed by the match."""
     tags = getattr(source_obj, "amplify_tags", None)
     if not tags:
         return amount
     for tag in list(tags):
-        if tag.event != "heal" and _amplify_match(tag.event, damage_kind):
+        if tag.event != "heal" and _amplify_match(
+                tag.event, damage_kind, getattr(tag, "combat_kind", "all"),
+                source_obj, attack_mode):
             tags.remove(tag)
             boosted = amount * max(1, tag.multiplier) + tag.bonus
             _log(st, "amplified",
@@ -4558,7 +4632,7 @@ def _apply_amplify(st: GameState, source_obj, amount: int, damage_kind: str,
 
 
 def _deal_damage(st: GameState, target, amount: int, source: str = "", source_obj=None,
-                 damage_kind: str = "spell") -> int:
+                 damage_kind: str = "spell", attack_mode: Optional[str] = None) -> int:
     """Damage is answered, in order, by: a matching `prevent` tag (nullifies it),
     `protection` (negates a whole spell/attack), Parry's numeric reduction, then any
     **positive** temporary HP (the Defend/pump buffer soaks the blow before base HP —
@@ -4574,37 +4648,49 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
 
     # A primed combo (`amplify`) multiplies/boosts the SOURCE's outgoing hit
     # before the target's defences answer it.
-    amount = _apply_amplify(st, source_obj, amount, damage_kind, source)
+    amount = _apply_amplify(st, source_obj, amount, damage_kind, source, attack_mode)
 
     # R-11 prevent: a matching shield cancels the hit outright. A one-shot shield
     # (`uses="next"`) is spent by it; an "all" shield (uses=None) keeps standing and
     # nullifies every matching hit until it expires at End step (Fog).
     for tag in list(getattr(target, "prevent_tags", [])):
-        if _prevent_match(tag.parameter, damage_kind):
+        ck = getattr(tag, "combat_kind", "all")
+        if _prevent_match(tag.parameter, damage_kind, ck, source_obj, attack_mode):
             if tag.uses is not None:
                 tag.uses -= 1
                 if tag.uses <= 0:
                     target.prevent_tags.remove(tag)
             _log(st, "prevented", f"{source or 'the hit'} on {target.name} is prevented "
-                 f"({tag.parameter}).", target=_tid(target), parameter=tag.parameter)
+                 f"({_lane_label(tag.parameter, ck)}).", target=_tid(target),
+                 parameter=tag.parameter, combat_kind=ck)
             return 0
     # Shields stood but none matched (e.g. Holy Day's combat_damage vs a Drain's
-    # ability damage): say WHY the hit landed, or the player reads it as a bug.
+    # ability damage, or a melee-only shield vs a ranged volley): say WHY the hit
+    # landed, or the player reads it as a bug.
     standing = sorted({t.parameter for t in getattr(target, "prevent_tags", [])
                        if t.parameter not in _ACTION_PREVENT})
     if standing:
+        labels = sorted({_lane_label(t.parameter, getattr(t, "combat_kind", "all"))
+                         for t in getattr(target, "prevent_tags", [])
+                         if t.parameter not in _ACTION_PREVENT})
+        kind_word = damage_kind
+        if damage_kind in _COMBAT_DAMAGE_KINDS:
+            kind_word = f"{_combat_mode(damage_kind, source_obj, attack_mode)} {damage_kind}"
         _log(st, "not_prevented",
-             f"{source or 'The hit'} is {damage_kind} damage — {target.name}'s "
-             f"prevent ({', '.join(standing)}) does not cover it.",
+             f"{source or 'The hit'} is {kind_word} damage — {target.name}'s "
+             f"prevent ({', '.join(labels)}) does not cover it.",
              target=_tid(target), damage_kind=damage_kind, shields=standing)
 
-    # Protection negates the next incoming spell/attack outright (GDD §7).
-    if getattr(target, "protection", 0) > 0 and damage_kind in (
-            "attack", "spell", "ability", "activated", "triggered"):
-        target.protection -= 1
-        _log(st, "protected", f"{target.name}'s protection negates {source or 'the hit'}.",
-             target=_tid(target))
-        return 0
+    # Protection: a one-shot charge negates the next matching damaging spell /
+    # attack / ability outright (GDD §7) — spent by the hit, whenever it comes.
+    for ptag in list(getattr(target, "protection_tags", [])):
+        pck = getattr(ptag, "combat_kind", "all")
+        if _prevent_match(ptag.parameter, damage_kind, pck, source_obj, attack_mode):
+            target.protection_tags.remove(ptag)
+            _log(st, "protected", f"{target.name}'s protection negates {source or 'the hit'} "
+                 f"({_lane_label(ptag.parameter, pck)}).",
+                 target=_tid(target), parameter=ptag.parameter, combat_kind=pck)
+            return 0
 
     # Parry / numeric prevention reduces the hit before it lands.
     reduced = min(target.prevent_pool, amount)
@@ -4879,7 +4965,7 @@ def _check_end(st: GameState) -> None:
     if st.result is not None:
         return
     # A race objective completes the moment its marked enemy is defeated
-    # (§D12-1.4): the doom clock vanishes; the act continues to standard victory.
+    # (§D12-1.4): the doom clock vanishes; the encounter continues to standard victory.
     obj = st.objective
     if (obj is not None and obj.kind == "race" and obj.status == "active"
             and _race_target_defeated(st, obj.target_id)):

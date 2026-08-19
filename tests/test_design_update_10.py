@@ -1,8 +1,8 @@
-"""Design Update 10 — Adventures: the three-act run.
+"""Design Update 10 — Adventures: the three-phase run.
 
 Covers the adventure layers around the untouched combat engine: the content
 object and its validation (§D10-4), the carry-over rules (§D10-2), the
-adventure-local level-up (§D10-3), and the session's act transitions (§D10-6.3
+adventure-local level-up (§D10-3), and the session's phase transitions (§D10-6.3
 server side). Single-encounter play staying byte-identical is asserted by the
 whole rest of the suite continuing to pass.
 """
@@ -32,7 +32,7 @@ def _enemy(eid, name, level, hp=4, boss=False):
     return e
 
 
-def _act(name, enemies, boss_id=None, narration="You arrive. The test begins."):
+def _phase(name, enemies, boss_id=None, narration="You arrive. The test begins."):
     ids = [e["id"] for e in enemies if not e.get("is_boss")]
     filler = ids[0]
     layouts = {}
@@ -49,10 +49,10 @@ def _adventure():
     return {
         "name": "Test Keep",
         "flavor": "Three rooms, one tyrant.",
-        "acts": [
-            _act("The Gate", [_enemy("guard", "Guard", 1)]),
-            _act("The Courtyard", [_enemy("knight", "Knight", 2)]),
-            _act("The Throne Room",
+        "phases": [
+            _phase("The Gate", [_enemy("guard", "Guard", 1)]),
+            _phase("The Courtyard", [_enemy("knight", "Knight", 2)]),
+            _phase("The Throne Room",
                  [_enemy("footman", "Footman", 1),
                   _enemy("tyrant", "Tyrant", 4, hp=20, boss=True)],
                  boss_id="tyrant"),
@@ -62,7 +62,7 @@ def _adventure():
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path):
-    """Keep every saved adventure/act/hidden file out of the developer's real
+    """Keep every saved adventure/phase/hidden file out of the developer's real
     content + loadouts state: remember what exists, delete anything new after."""
     dirs = [content.CONTENT_DIR, content.LOADOUTS_DIR]
     before = {d: ({p.name for p in d.glob("*.json")} if d.is_dir() else set())
@@ -88,45 +88,45 @@ def _isolate(tmp_path):
 # --------------------------------------------------------------------------- #
 # §D10-4 — the adventure content object
 # --------------------------------------------------------------------------- #
-def test_save_adventure_persists_wrapper_and_act_files():
+def test_save_adventure_persists_wrapper_and_phase_files():
     meta = content.save_adventure(_adventure())
     aid = meta["id"]
     assert meta["name"] == "Test Keep"
-    assert meta["act_names"] == ["The Gate", "The Courtyard", "The Throne Room"]
-    # The wrapper and the three act encounter files exist.
+    assert meta["phase_names"] == ["The Gate", "The Courtyard", "The Throne Room"]
+    # The wrapper and the three phase encounter files exist.
     assert (content.CONTENT_DIR / f"{aid}.json").exists()
     for n in (1, 2, 3):
-        assert (content.CONTENT_DIR / f"{aid}__act{n}.json").exists()
+        assert (content.CONTENT_DIR / f"{aid}__phase{n}.json").exists()
     detail = content.adventure_detail(aid)
-    assert [a["narration"] for a in detail["acts"]] != ["", "", ""]
-    assert detail["acts"][2]["enemies"][1]["is_boss"] is True
+    assert [a["narration"] for a in detail["phases"]] != ["", "", ""]
+    assert detail["phases"][2]["enemies"][1]["is_boss"] is True
 
 
-def test_act_encounters_hidden_from_the_encounter_list():
+def test_phase_encounters_hidden_from_the_encounter_list():
     aid = content.save_adventure(_adventure())["id"]
     listed = {e["id"] for e in content.list_encounters()}
     for n in (1, 2, 3):
-        assert content.act_encounter_id(aid, n) not in listed
+        assert content.phase_encounter_id(aid, n) not in listed
     # …but they resolve as encounters (editor / art / game-build path).
-    assert content.encounter_detail(content.act_encounter_id(aid, 1)) is not None
+    assert content.encounter_detail(content.phase_encounter_id(aid, 1)) is not None
     # And the adventure is listed.
     assert aid in {a["id"] for a in content.list_adventures()}
 
 
 def test_adventure_validation_rules():
-    # Not three acts.
+    # Not three phases.
     bad = _adventure()
-    bad["acts"] = bad["acts"][:2]
-    with pytest.raises(ValueError, match="exactly 3 acts"):
+    bad["phases"] = bad["phases"][:2]
+    with pytest.raises(ValueError, match="exactly 3 phases"):
         content.save_adventure(bad)
-    # No boss in Act III.
+    # No boss in Phase III.
     bad = _adventure()
-    bad["acts"][2] = _act("Finale", [_enemy("footman", "Footman", 1)])
+    bad["phases"][2] = _phase("Finale", [_enemy("footman", "Footman", 1)])
     with pytest.raises(ValueError, match="exactly one boss"):
         content.save_adventure(bad)
     # A mini-boss must sit strictly below the finale boss's level.
     bad = _adventure()
-    bad["acts"][0] = _act("The Gate",
+    bad["phases"][0] = _phase("The Gate",
                           [_enemy("guard", "Guard", 1),
                            _enemy("warden", "Warden", 4, boss=True)],
                           boss_id="warden")
@@ -134,43 +134,43 @@ def test_adventure_validation_rules():
         content.save_adventure(bad)
     # No enemy anywhere may out-level the finale boss.
     bad = _adventure()
-    bad["acts"][1] = _act("The Courtyard", [_enemy("giant", "Giant", 9)])
+    bad["phases"][1] = _phase("The Courtyard", [_enemy("giant", "Giant", 9)])
     with pytest.raises(ValueError, match="highest-level"):
         content.save_adventure(bad)
     # Missing narration.
     bad = _adventure()
-    bad["acts"][0]["narration"] = "  "
+    bad["phases"][0]["narration"] = "  "
     with pytest.raises(ValueError, match="narration"):
         content.save_adventure(bad)
-    # Missing layouts (acts are held to the generated-encounter bar).
+    # Missing layouts (phases are held to the generated-encounter bar).
     bad = _adventure()
-    del bad["acts"][0]["layouts"]
+    del bad["phases"][0]["layouts"]
     with pytest.raises(ValueError, match="layouts"):
         content.save_adventure(bad)
 
 
-def test_editing_an_act_reruns_adventure_validation():
+def test_editing_an_phase_reruns_adventure_validation():
     aid = content.save_adventure(_adventure())["id"]
-    act1_id = content.act_encounter_id(aid, 1)
+    act1_id = content.phase_encounter_id(aid, 1)
     act1 = content.encounter_detail(act1_id)
-    # Sneak a second boss ABOVE the finale's level into Act I via the ordinary
+    # Sneak a second boss ABOVE the finale's level into Phase I via the ordinary
     # encounter save path: the adventure gate must reject it before persisting.
     act1["enemies"].append(_enemy("usurper", "Usurper", 9, boss=True))
     for roster in act1["layouts"].values():
         roster[0] = "usurper"
     with pytest.raises(ValueError, match="strictly"):
         content.save_encounter(act1, act1_id)
-    # The on-disk act is untouched.
+    # The on-disk phase is untouched.
     fresh = content.encounter_detail(act1_id)
     assert [e["id"] for e in fresh["enemies"]] == ["guard"]
 
 
-def test_delete_adventure_removes_act_files():
+def test_delete_adventure_removes_phase_files():
     aid = content.save_adventure(_adventure())["id"]
     content.delete_adventure(aid)
     assert content.adventure_detail(aid) is None
     for n in (1, 2, 3):
-        assert not (content.CONTENT_DIR / f"{aid}__act{n}.json").exists()
+        assert not (content.CONTENT_DIR / f"{aid}__phase{n}.json").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -234,11 +234,12 @@ def test_level_up_keyword_is_creation_only():
 
 def test_level_up_power_cap_scales_with_level():
     old = _fresh_char()
-    # Level 2 allows +4 bought (T-60): +3 more over the entering +1 = 30 pts.
-    new, spent = validate_level_up(old, {"power_bought": 4}, 2, 30)
-    assert spent == 30 and new["power_bought"] == 4
+    # Level 2 allows +4 bought (T-60): +3 more over the entering +1 — on the
+    # T-79 curve the 2nd/3rd/4th Power purchases cost 10+15+20 = 45 pts.
+    new, spent = validate_level_up(old, {"power_bought": 4}, 2, 45)
+    assert spent == 45 and new["power_bought"] == 4
     with pytest.raises(ValueError, match="Power cap"):
-        validate_level_up(old, {"power_bought": 5}, 2, 60)
+        validate_level_up(old, {"power_bought": 5}, 2, 90)
 
 
 def test_level_up_budget_is_the_available_pool():
@@ -253,18 +254,25 @@ def test_level_up_budget_is_the_available_pool():
 
 
 def test_leveled_build_passes_schema_validation():
-    """A level-3 build spending 70+60 validates (T-57 budget, T-60 cap)."""
+    """A level-3 build spending 70+60 validates (T-57 budget, T-60 cap). On the
+    T-79 curve: 6 HP pairs 4+4+5+5+6+6 = 30, +2 mana 15+15 = 30, +2 cards 30,
+    +4 Power 10+10+15+20 = 55 → 145 against a 130 budget: ADVISORY over by 15
+    (Update 17 §D17-2.2), never a validation error."""
     c = Character.model_validate({
         **_fresh_char(), "level": 3,
         "hp": 20, "starting_cards": 3, "power_bought": 4,
         "starting_mana": ["U", "B", "U"],
     })
-    assert c.points_budget == 130
-    assert c.points_spent == 130
+    assert c.points_budget == 130          # 70 + the 60 a level-3 build has earned (T-78)
+    assert c.points_spent == 145
+    assert c.points_over == 15
+    # Recorded earnings raise the budget (a run copy mid-adventure 3, still L5).
+    c2 = Character.model_validate({**_fresh_char(), "level": 5, "earned_points": 180})
+    assert c2.points_budget == 250
 
 
 # --------------------------------------------------------------------------- #
-# §D10-2 / §D10-6.3 — the run: carry-over and act transitions
+# §D10-2 / §D10-6.3 — the run: carry-over and phase transitions
 # --------------------------------------------------------------------------- #
 def _start_run():
     aid = content.save_adventure(_adventure())["id"]
@@ -273,15 +281,15 @@ def _start_run():
     return run, state, eid
 
 
-def test_run_starts_on_act_one():
+def test_run_starts_on_phase_one():
     run, state, eid = _start_run()
-    assert run.act_index == 0 and eid.endswith("__act1")
+    assert run.phase_index == 0 and eid.endswith("__phase1")
     assert [e.name for e in state.enemies] == ["Guard", "Guard 2", "Guard 3", "Guard 4"]
     assert run.suppresses_result("victory") is True
     assert run.suppresses_result("defeat") is False
 
 
-def test_carry_over_across_the_act_boundary():
+def test_carry_over_across_the_phase_boundary():
     run, state, _eid = _start_run()
     soren = state.party[0]
     ys = state.party[1]
@@ -302,7 +310,7 @@ def test_carry_over_across_the_act_boundary():
     run.confirm_level_up(soren.id, {})           # bank everything
     run.confirm_level_up(ys.id, {"hp": 17})      # +2 HP heals (+2 current)
     new_state, _portraits, _art, eid = run.advance(seed=12)
-    assert eid.endswith("__act2") and run.act_index == 1
+    assert eid.endswith("__phase2") and run.phase_index == 1
 
     s2 = new_state.character(soren.id)
     y2 = new_state.character(ys.id)
@@ -313,7 +321,7 @@ def test_carry_over_across_the_act_boundary():
     # Gauge carries at 50%, floored (T-58).
     assert s2.ultimate_gauge == 50 and y2.ultimate_gauge == 22
     # Full reshuffle at the boundary: hand + library + graveyard become one
-    # pool, and the act opens on a FRESH hand of starting-cards.
+    # pool, and the phase opens on a FRESH hand of starting-cards.
     assert len(s2.hand) + len(s2.library) == 6
     assert s2.graveyard == [] and y2.graveyard == []
     assert len(y2.hand) + len(y2.library) == ys_cards
@@ -322,7 +330,7 @@ def test_carry_over_across_the_act_boundary():
     # Skill/Ultimate uses reset; mana pool reset to base.
     assert not s2.skill_used and not s2.ultimate_used
     assert s2.pool == []
-    # Act II fields its own roster.
+    # Phase II fields its own roster.
     assert [e.name for e in new_state.enemies][0] == "Knight"
 
 
@@ -340,9 +348,9 @@ def test_confirm_is_gated_and_double_confirm_rejected():
     assert run.all_confirmed()
 
 
-def test_final_act_victory_completes_the_run():
+def test_final_phase_victory_completes_the_run():
     run, state, _eid = _start_run()
-    run.act_index = 2  # jump to the finale
+    run.phase_index = 2  # jump to the finale
     state.result = "victory"
     run.on_state_change(state)
     assert run.complete is True
@@ -361,13 +369,13 @@ def test_session_suppresses_result_and_gates_confirm_by_seat():
 
     session.state.result = "victory"
     run.on_state_change(session.state)
-    # The act boundary is not a game over…
+    # The phase boundary is not a game over…
     assert session.public_result() is None
     snap = session.snapshot_for("A")
     assert snap["result"] is None and snap["game_over"] is None
     # …and the snapshot carries the per-seat level-up gate.
     adv = snap["adventure"]
-    assert adv["act"] == 1 and adv["acts_total"] == 3
+    assert adv["phase"] == 1 and adv["phases_total"] == 3
     lu = adv["level_up"]
     assert lu["next_level"] == 2
     rows = {r["id"]: r for r in lu["characters"]}
@@ -380,9 +388,9 @@ def test_session_suppresses_result_and_gates_confirm_by_seat():
     session.confirm_level_up("A", "soren", {})
     session.claim("A", ["ys"])
     session.confirm_level_up("A", "ys", {})
-    # The last confirmation advanced the act.
-    assert run.act_index == 1
-    assert session.encounter_id.endswith("__act2")
+    # The last confirmation advanced the phase.
+    assert run.phase_index == 1
+    assert session.encounter_id.endswith("__phase2")
     assert session.state.result is None
     # A defeat passes through untouched.
     session.state.result = "defeat"

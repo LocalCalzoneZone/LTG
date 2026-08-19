@@ -8,6 +8,7 @@ import type {
   BuildView,
   Color,
   LevelUpRow,
+  PriceStat,
 } from "../lib/types";
 import { ManaIcon } from "./Pips";
 import { IconSigil } from "./Icons";
@@ -16,30 +17,30 @@ const SMALL_BTN =
   "caps-label border border-line px-2.5 py-1 text-[9px] tracking-[0.14em] text-mist transition " +
   "hover:border-line2 hover:text-parch";
 
-/** The between-acts flow (§D10-6.3), driven entirely by the snapshot's
- * adventure block: act victory splash → level-up screen (gated on every seat's
- * confirmation) → narrative splash over the next act's scene → combat. The
- * narrative splash also opens Act I (its narration is the adventure's opening).
+/** The between-phases flow (§D10-6.3), driven entirely by the snapshot's
+ * adventure block: phase victory splash → level-up screen (gated on every seat's
+ * confirmation) → narrative splash over the next phase's scene → combat. The
+ * narrative splash also opens Phase I (its narration is the adventure's opening).
  *
  * Every screen here sits BELOW the 42px top ribbon (top-[42px], z-20 — under
  * the z-40 modals): players must be able to Copy Link, claim seats, and reach
- * Options/Quit during splashes, e.g. inviting an ally before Act I begins.
+ * Options/Quit during splashes, e.g. inviting an ally before Phase I begins.
  */
 export function AdventureFlow() {
   const snapshot = useGame((s) => s.snapshot);
   const sessionId = useGame((s) => s.sessionId);
   const adventure = snapshot?.adventure;
 
-  // Which act boundaries this client has clicked through, keyed per session.
+  // Which phase boundaries this client has clicked through, keyed per session.
   const [victorySeen, setVictorySeen] = useState<Record<string, boolean>>({});
   const [narrationSeen, setNarrationSeen] = useState<Record<string, boolean>>({});
-  // Hold the act-clear splash back so the final kill (and its death animation)
+  // Hold the phase-clear splash back so the final kill (and its death animation)
   // reads on the board before the screen changes.
   const boundaryReady = useAfterHold(!!adventure?.level_up, SPLASH_HOLD_MS);
 
   if (!snapshot || !adventure) return null;
 
-  const key = `${sessionId}:${adventure.act}`;
+  const key = `${sessionId}:${adventure.phase}`;
 
   // Defeat / final victory: the GameOverOverlay owns the screen.
   if (snapshot.result != null) return null;
@@ -48,9 +49,9 @@ export function AdventureFlow() {
     if (!victorySeen[key]) {
       if (!boundaryReady) return null; // the killing blow plays out first
       return (
-        <ActVictorySplash
-          act={adventure.act}
-          actName={adventure.act_name}
+        <PhaseVictorySplash
+          phase={adventure.phase}
+          phaseName={adventure.phase_name}
           onContinue={() => setVictorySeen((m) => ({ ...m, [key]: true }))}
         />
       );
@@ -58,7 +59,7 @@ export function AdventureFlow() {
     return <LevelUpScreen adventure={adventure} />;
   }
 
-  // Combat (or the moment an act opens): the narrative splash, once per act.
+  // Combat (or the moment a phase opens): the narrative splash, once per phase.
   if (!narrationSeen[key] && adventure.narration) {
     return (
       <NarrativeSplash
@@ -71,10 +72,10 @@ export function AdventureFlow() {
   return null;
 }
 
-/** "Act I — clear": the act-labelled victory treatment (§D10-6.3 step 1). */
-function ActVictorySplash({ act, actName, onContinue }: {
-  act: number;
-  actName: string;
+/** "Phase I — clear": the phase-labelled victory treatment (§D10-6.3 step 1). */
+function PhaseVictorySplash({ phase, phaseName, onContinue }: {
+  phase: number;
+  phaseName: string;
   onContinue: () => void;
 }) {
   return (
@@ -86,11 +87,11 @@ function ActVictorySplash({ act, actName, onContinue }: {
             className="caps-label pl-[0.3em] text-4xl tracking-[0.3em] text-vigor"
             style={{ textShadow: "0 0 30px rgba(132,199,147,.4)" }}
           >
-            Act {roman(act)} — Clear
+            Phase {roman(phase)} — Clear
           </div>
           <span className="h-px w-16 bg-gradient-to-l from-transparent to-vigor/70" />
         </div>
-        <div className="mt-3 text-sm font-light text-mist">{actName}</div>
+        <div className="mt-3 text-sm font-light text-mist">{phaseName}</div>
         <button
           onClick={onContinue}
           className="chamfer-x caps-label mt-6 bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
@@ -102,7 +103,7 @@ function ActVictorySplash({ act, actName, onContinue }: {
   );
 }
 
-/** The next act's narration over its scene art (§D10-6.3 step 3). */
+/** The next phase's narration over its scene art (§D10-6.3 step 3). */
 function NarrativeSplash({ adventure, sceneImage, onContinue }: {
   adventure: AdventureBlock;
   sceneImage: string;
@@ -125,7 +126,7 @@ function NarrativeSplash({ adventure, sceneImage, onContinue }: {
         <div className="flex items-center gap-4">
           <span className="h-px w-14 bg-gradient-to-r from-transparent to-brass" />
           <div className="caps-label whitespace-nowrap text-[15px] tracking-[0.25em] text-brass-hi">
-            Act {roman(adventure.act)} · {adventure.act_name}
+            Phase {roman(adventure.phase)} · {adventure.phase_name}
           </div>
           <span className="h-px w-14 bg-gradient-to-l from-transparent to-brass" />
         </div>
@@ -165,12 +166,42 @@ function draftFrom(b: BuildView): Draft {
   };
 }
 
+/** Price of the nth purchase (1-based) of a stat on the T-79 curve. Past the
+ * shipped list, extend by the last step (the server's list is long enough
+ * that this is a formality). */
+function nthPrice(prices: BuildPrices, stat: PriceStat, n: number): number {
+  const list = prices.curve[stat];
+  if (n <= list.length) return list[n - 1];
+  const step = list.length >= 2 ? list[list.length - 1] - list[list.length - 2] : 0;
+  return list[list.length - 1] + step * (n - list.length);
+}
+
+/** Total price of purchases (from+1 … to) of a stat, counted from baseline. */
+function rangeCost(prices: BuildPrices, stat: PriceStat, from: number, to: number): number {
+  let sum = 0;
+  for (let n = from + 1; n <= to; n++) sum += nthPrice(prices, stat, n);
+  return sum;
+}
+
+/** Bought-count of each stat in a build (purchases since the free baseline). */
+function boughtCounts(b: { hp: number; starting_mana: unknown[]; starting_cards: number; power_bought: number },
+                      prices: BuildPrices): Record<PriceStat, number> {
+  return {
+    hp_step: (b.hp - prices.baseline.hp) / 2,
+    mana: b.starting_mana.length - prices.baseline.mana,
+    card: b.starting_cards - prices.baseline.cards,
+    power: b.power_bought,
+  };
+}
+
 function draftCost(d: Draft, base: BuildView, prices: BuildPrices): number {
+  const from = boughtCounts(base, prices);
+  const to = boughtCounts(d, prices);
   return (
-    ((d.hp - base.hp) / 2) * prices.hp_step +
-    (d.starting_mana.length - base.starting_mana.length) * prices.mana +
-    (d.starting_cards - base.starting_cards) * prices.card +
-    (d.power_bought - base.power_bought) * prices.power
+    rangeCost(prices, "hp_step", from.hp_step, to.hp_step) +
+    rangeCost(prices, "mana", from.mana, to.mana) +
+    rangeCost(prices, "card", from.card, to.card) +
+    rangeCost(prices, "power", from.power, to.power)
   );
 }
 
@@ -193,6 +224,9 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
           <span className="h-px flex-1 bg-line" />
           <span className="caps-label text-[10px] tracking-[0.2em] text-mist">
             +{lu.points_per_level} points · bankable · irreversible
+            {active?.points_to_next_level != null && active.earned_points != null && (
+              <> · {active.earned_points} earned · {active.points_to_next_level} to level {(active.next_level ?? lu.next_level) + 1}</>
+            )}
           </span>
         </div>
 
@@ -213,7 +247,7 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
             </div>
             <div className="max-w-md text-sm font-light text-mist">
               {mine.length
-                ? "Waiting for the other players to confirm — the next act begins when every character is confirmed."
+                ? "Waiting for the other players to confirm — the next phase begins when every character is confirmed."
                 : "You control no characters. Claim a seat in the top ribbon to confirm its level-up."}
             </div>
           </div>
@@ -292,6 +326,12 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
   const spent = useMemo(() => draftCost(draft, base, prices), [draft, base, prices]);
   const remaining = available - spent;
   const powerCap = prices.power_cap_per_level * nextLevel;
+  // The NEXT purchase's price per stat — escalating (T-79), so it moves as you buy.
+  const bought = boughtCounts(draft, prices);
+  const nextHp = nthPrice(prices, "hp_step", bought.hp_step + 1);
+  const nextCard = nthPrice(prices, "card", bought.card + 1);
+  const nextPower = nthPrice(prices, "power", bought.power + 1);
+  const nextMana = nthPrice(prices, "mana", bought.mana + 1);
   const basePower = base.attack_mode === "melee" ? 2 : 1;
 
   const patch = (next: Partial<Draft>) => setDraft((d) => ({ ...d, ...next }));
@@ -346,8 +386,8 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         <StatRow
           name="Hit Points"
           value={String(draft.hp)}
-          cost={`+2 HP · ${prices.hp_step} pts (heals +2)`}
-          canUp={remaining >= prices.hp_step}
+          cost={`+2 HP · ${nextHp} pts (heals +2)`}
+          canUp={remaining >= nextHp}
           canDown={draft.hp - 2 >= base.hp}
           onUp={() => patch({ hp: draft.hp + 2 })}
           onDown={() => patch({ hp: draft.hp - 2 })}
@@ -356,18 +396,18 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         <StatRow
           name="Starting Cards"
           value={String(draft.starting_cards)}
-          cost={`+1 card · ${prices.card} pts`}
-          canUp={remaining >= prices.card}
+          cost={`+1 card · ${nextCard} pts`}
+          canUp={remaining >= nextCard}
           canDown={draft.starting_cards - 1 >= base.starting_cards}
           onUp={() => patch({ starting_cards: draft.starting_cards + 1 })}
           onDown={() => patch({ starting_cards: draft.starting_cards - 1 })}
-          hint="Each act opens on a full reshuffle and a fresh hand of this many cards."
+          hint="Each phase opens on a full reshuffle and a fresh hand of this many cards."
         />
         <StatRow
           name="Power"
           value={`${basePower + draft.power_bought}`}
-          cost={`+1 Power · ${prices.power} pts (cap +${powerCap} at level ${nextLevel})`}
-          canUp={remaining >= prices.power && draft.power_bought < powerCap}
+          cost={`+1 Power · ${nextPower} pts (cap +${powerCap} at level ${nextLevel})`}
+          canUp={remaining >= nextPower && draft.power_bought < powerCap}
           canDown={draft.power_bought - 1 >= base.power_bought}
           onUp={() => patch({ power_bought: draft.power_bought + 1 })}
           onDown={() => patch({ power_bought: draft.power_bought - 1 })}
@@ -400,7 +440,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
             <button
               onClick={() =>
                 patch({ starting_mana: [...draft.starting_mana, base.colors[0]] })}
-              disabled={remaining < prices.mana}
+              disabled={remaining < nextMana}
               className={`${SMALL_BTN} disabled:cursor-not-allowed disabled:opacity-30`}
             >
               +
@@ -416,7 +456,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
             )}
           </span>
           <span className="ml-auto text-xs font-light text-dimmed">
-            +1 slot · {prices.mana} pts · colour locks now
+            +1 slot · {nextMana} pts · colour locks now
           </span>
         </div>
 

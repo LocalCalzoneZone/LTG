@@ -11,8 +11,10 @@ const label = "caps-label text-[9px] tracking-[0.2em] text-mist";
 export function LlmSettingsPanel() {
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [model, setModel] = useState("");
+  const [taskModels, setTaskModels] = useState<Record<string, string>>({});
   const [instructions, setInstructions] = useState("");
   const [artStyle, setArtStyle] = useState("");
+  const [tone, setTone] = useState("");
   const [artBackend, setArtBackend] = useState("openrouter");
   const [comfyUrl, setComfyUrl] = useState("");
   const [comfyWorkflow, setComfyWorkflow] = useState("");
@@ -24,8 +26,10 @@ export function LlmSettingsPanel() {
   const load = (s: LlmSettings) => {
     setSettings(s);
     setModel(s.model);
+    setTaskModels({ ...s.task_models });
     setInstructions(s.instructions);
     setArtStyle(s.art_style);
+    setTone(s.scenario_tone);
     setArtBackend(s.art_backend);
     setComfyUrl(s.comfyui_url);
     setComfyWorkflow(s.comfyui_workflow);
@@ -43,13 +47,15 @@ export function LlmSettingsPanel() {
     setNote(null);
     try {
       const patch: {
-        model: string; instructions: string; art_style: string;
-        art_backend: string; comfyui_url: string; comfyui_workflow: string;
+        model: string; task_models: Record<string, string>; instructions: string; art_style: string;
+        scenario_tone: string; art_backend: string; comfyui_url: string; comfyui_workflow: string;
         api_key?: string;
       } = {
         model,
+        task_models: taskModels,
         instructions,
         art_style: artStyle,
+        scenario_tone: tone,
         art_backend: artBackend,
         comfyui_url: comfyUrl,
         comfyui_workflow: comfyWorkflow,
@@ -68,7 +74,7 @@ export function LlmSettingsPanel() {
 
   // Reset a prompt to the server's built-in default (also picks up upgrades to
   // the default that a previously saved copy would otherwise shadow).
-  const reset = async (patch: { instructions: null } | { art_style: null }, what: string) => {
+  const reset = async (patch: { instructions: null } | { art_style: null } | { scenario_tone: null }, what: string) => {
     setBusy(true);
     setErr(null);
     setNote(null);
@@ -111,7 +117,7 @@ export function LlmSettingsPanel() {
         </div>
 
         <label className="mb-3 flex flex-col gap-1.5">
-          <span className={label}>Model</span>
+          <span className={label}>Default model</span>
           <select className={field} value={model} onChange={(e) => setModel(e.target.value)}>
             {settings?.models.map((m) => (
               <option key={m.id} value={m.id}>
@@ -120,6 +126,26 @@ export function LlmSettingsPanel() {
             ))}
           </select>
         </label>
+
+        {/* Per-task models (Update 17): each generation task may pick its own
+            model; "Default" follows the choice above. */}
+        <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2">
+          {settings?.model_tasks.map((t) => (
+            <label key={t.id} className="flex flex-col gap-1">
+              <span className={label}>{t.label}</span>
+              <select
+                className={field}
+                value={taskModels[t.id] ?? ""}
+                onChange={(e) => setTaskModels({ ...taskModels, [t.id]: e.target.value })}
+              >
+                <option value="">Default ({settings.models.find((m) => m.id === model)?.label ?? model})</option>
+                {settings.models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="flex items-center justify-between">
@@ -144,6 +170,37 @@ export function LlmSettingsPanel() {
         <div className="mt-1.5 text-[11px] font-light text-dimmed">
           How the model builds enemies and scopes difficulty. The party, difficulty, and target
           budget are appended automatically at generation time.
+        </div>
+      </section>
+
+      {/* Scenario tone (Update 17): the brief every town / arc / act prompt opens with */}
+      <section className="border border-line bg-black/25 p-3">
+        <div className="caps-label mb-3 text-[10px] tracking-[0.25em] text-brass">
+          Scenario Tone
+        </div>
+        <label className="flex flex-col gap-1.5">
+          <span className="flex items-center justify-between">
+            <span className={label}>Tone brief — towns, arcs, acts</span>
+            <button
+              type="button"
+              onClick={() => reset({ scenario_tone: null }, "Scenario tone")}
+              disabled={busy}
+              className="caps-label border border-line px-2 py-0.5 text-[9px] tracking-[0.14em] text-mist transition hover:border-line2 hover:text-parch disabled:opacity-50"
+              title="Restore the built-in classic high fantasy brief"
+            >
+              Reset to default
+            </button>
+          </span>
+          <textarea
+            className={`${field} min-h-[120px] w-full font-mono text-[12px] leading-relaxed`}
+            value={tone}
+            onChange={(e) => setTone(e.target.value)}
+            spellCheck={false}
+          />
+        </label>
+        <div className="mt-1.5 text-[11px] font-light text-dimmed">
+          Injected verbatim into the town, arc, and act writers. Change it to steer the whole
+          campaign world — grimdark, fairy tale, sword-and-sorcery.
         </div>
       </section>
 

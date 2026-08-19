@@ -534,8 +534,8 @@ async function renderVerdictDetail(el, id) {
           ${attribution}</table>` : ""}
 
       ${spend ? `<div class="panel-title" style="margin-top:18px">Spend-plan audit</div>
-        <div class="caption">The character replays the gauntlet's three-act adventure under each
-        LEVEL-UP SPEND PLAN (where the 30 points go between acts: balanced / all-HP / all-Power /
+        <div class="caption">The character replays the gauntlet's three-phase adventure under each
+        LEVEL-UP SPEND PLAN (where the 30 points go between phases: balanced / all-HP / all-Power /
         all-mana), across a pressure ladder. Flat rows = the points prices are fair for this
         character; one dominant plan implicates the PRICE TABLE, not the character.</div>
         ${spendNoSignal ? `<div class="stale-band">No signal — the rates saturated or came out flat

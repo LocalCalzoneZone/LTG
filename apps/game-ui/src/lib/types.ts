@@ -342,13 +342,16 @@ export interface Priority {
 }
 
 // ---- Adventures (Design Update 10) ----------------------------------------- //
-// The points-buy price table (server-sent; the client renders costs, never rules).
+// The points-buy price curve (server-sent; the client renders costs, never rules).
+// Update 17 §D17-2.2 (T-79): `curve[stat][n-1]` is the price of the nth purchase
+// of that stat counted from the free baseline (an hp_step is one +2 pair).
+export type PriceStat = "hp_step" | "mana" | "card" | "power";
 export interface BuildPrices {
-  hp_step: number; // per +2 HP
-  mana: number; // per +1 capacity slot
-  card: number; // per +1 starting card
-  power: number; // per +1 bought Power
+  curve: Record<PriceStat, number[]>;
+  baseline: { hp: number; mana: number; cards: number };
   power_cap_per_level: number; // bought Power ≤ this × level (T-60)
+  level_thresholds: number[]; // T-78: cumulative points to reach index-level
+  max_level: number;
 }
 
 // A character's points-buy build as the level-up screen edits it.
@@ -374,6 +377,9 @@ export interface LevelUpRow {
   locked?: number; // the entering build's spend
   banked?: number; // carried remainder
   available?: number; // banked + the 30 grant (0 extra once confirmed)
+  earned_points?: number; // cumulative grants incl. this boundary's (T-78)
+  next_level?: number; // the level those points derive to
+  points_to_next_level?: number | null; // null at max level
 }
 
 export interface LevelUpBlock {
@@ -388,11 +394,11 @@ export interface AdventureBlock {
   id: string;
   name: string;
   flavor: string;
-  act: number; // 1-based
-  acts_total: number;
-  act_name: string;
+  phase: number; // 1-based
+  phases_total: number;
+  phase_name: string;
   narration: string;
-  character_ids: string[]; // roster ids — Restart from Act I re-picks these
+  character_ids: string[]; // roster ids — Restart from Phase I re-picks these
   complete: boolean;
   level_up: LevelUpBlock | null;
 }
@@ -424,10 +430,23 @@ export interface GameSnapshot {
   legal_actions: LegalAction[];
   result: string | null;
   game_over: { result: string; objective_line?: string | null } | null;
-  // Present only when this session runs an adventure (Update 10): act sequence,
-  // narration, and the between-acts level-up gate. A non-final act victory
+  // Present only when this session runs an adventure (Update 10): phase sequence,
+  // narration, and the between-phases level-up gate. A non-final phase victory
   // arrives with result/game_over suppressed and `level_up` set instead.
   adventure?: AdventureBlock;
+  // Present when this session plays inside a run (Update 17 §D17-3): the run
+  // id and the most recent auto-save row (or an error).
+  run?: { run_id: string; last_save: { save_id?: string; label?: string; kind?: string; error?: string } | null };
+  // Scenario Mode (Update 17): present in adventure mode inside a scenario.
+  mode?: "adventure";
+  scenario?: ScenarioInfo;
+  quest_log?: QuestLogView;
+  party_sheet?: PartySheetRow[];
+  confirm?: ConfirmView | null;
+  rewards?: RewardsView | null;
+  gear_editable?: boolean;
+  defeat_pending?: boolean;
+  adventure_name?: string;
 }
 
 export interface SeatsMsg {
@@ -446,6 +465,11 @@ export interface CharacterOption {
   portrait: string; // data URL / image URL, "" if none
   card_count: number;
   deletable: boolean; // true for imported loadouts; false for bundled examples
+  // Build spend on the T-79 curve (Update 17 §D17-2.2). `points_over` > 0 flags
+  // a loadout that over-spends its budget — advisory, like deck status.
+  points_spent?: number;
+  points_budget?: number;
+  points_over?: number;
 }
 export interface EncounterOption {
   id: string;
@@ -534,12 +558,12 @@ export interface AdventureOption {
   flavor: string;
   // The difficulty it was generated at ("" / absent for hand-authored).
   difficulty?: string;
-  act_names: string[];
+  phase_names: string[];
   deletable: boolean;
   editable: boolean;
 }
-// The full adventure: wrapper fields + each act's embedded encounter detail.
-export interface AdventureActDetail extends EncounterDetail {
+// The full adventure: wrapper fields + each phase's embedded encounter detail.
+export interface AdventurePhaseDetail extends EncounterDetail {
   narration: string;
   encounter_id: string;
 }
@@ -549,7 +573,7 @@ export interface AdventureDetail {
   flavor: string;
   // The difficulty it was generated at ("" / absent for hand-authored).
   difficulty?: string;
-  acts: AdventureActDetail[];
+  phases: AdventurePhaseDetail[];
 }
 // "Generate all art" queue progress (polled).
 export interface ArtQueueStatus {
@@ -561,10 +585,32 @@ export interface ArtQueueStatus {
   errors: string[];
 }
 
+export interface ScenarioOption {
+  id: string;
+  title: string;
+  town_id: string;
+  town_name: string;
+  villain: string;
+  stakes: string;
+  act_titles: string[];
+  act1_adventure_id: string;
+  difficulty: string;
+}
+export interface TownOption {
+  id: string;
+  name: string;
+  region_flavor: string;
+  art_url: string;
+  location_count: number;
+  npc_count: number;
+  art_missing: number;
+}
 export interface SetupOptions {
   characters: CharacterOption[];
   encounters: EncounterOption[];
   adventures: AdventureOption[];
+  scenarios: ScenarioOption[];
+  towns: TownOption[];
 }
 
 // LLM / encounter generation (Options → LLM).
@@ -574,8 +620,11 @@ export interface LlmModel {
 }
 export interface LlmSettings {
   model: string;
+  task_models: Record<string, string>; // per generation task; "" = the default model
+  model_tasks: LlmModel[];             // {id,label}: encounters / adventures / towns / scenarios
   instructions: string;
   art_style: string; // the aesthetic wrapper for image generation
+  scenario_tone: string; // the tone brief for towns / arcs / acts (Update 17)
   art_backend: string; // "openrouter" | "comfyui"
   art_backends: LlmModel[]; // {id,label} options for the backend picker
   art_model: string; // the fixed OpenRouter image-model slug (display only)
@@ -591,9 +640,205 @@ export interface LlmSettings {
 export interface LlmSettingsPatch {
   api_key?: string;
   model?: string;
+  task_models?: Record<string, string>;
   instructions?: string | null;
   art_style?: string | null;
+  scenario_tone?: string | null;
   art_backend?: string;
   comfyui_url?: string;
   comfyui_workflow?: string;
+}
+
+// ---- Scenario Mode (Design Update 17) --------------------------------------- //
+// The town-mode state message: no engine state — the town screen, the
+// conversation, the quest log, the party sheet. `mode` "complete" is the run's
+// end (Standard finished, or a Hardcore death).
+export interface TownLocationView {
+  id: string;
+  name: string;
+  function: string;
+  description: string;
+  art_url: string;          // the EXTERIOR (map card)
+  interior_art_url: string; // the backdrop once inside
+  scene: string;
+  questgiver: boolean;
+  has_dialogue: boolean;
+  npc_count: number;
+}
+export interface TownNpcView {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  art_url: string;
+  has_dialogue: boolean;
+  questgiver: boolean;
+  merchant: boolean;
+  flavor: string;
+}
+export interface ConversationView {
+  npc_id: string;
+  node_id: string | null;
+  speaker: "npc" | "party" | null;
+  text: string;
+  attributed: string | null;
+  choices: { index: number; label: string; party_wide: boolean; ends: boolean }[];
+  over: boolean;
+}
+export interface JournalEntry {
+  act: number; scenario: number; kind: "intro" | "heard" | "quest" | "event"; text: string; speaker: string; where: string;
+}
+export interface QuestLogView {
+  arc_title: string;
+  journal: JournalEntry[];
+  act_number: number;
+  acts_total: number;
+  act_title: string;
+  quest: { status: string; title: string; text: string; direct_to: unknown };
+  direct_to: { npc: string | null; location: string | null } | null;
+  completed: { act: number; title: string; quest: string; adventure: string }[];
+  scenario_number: number;
+}
+export interface PartySheetRow {
+  id: string;
+  name: string;
+  portrait: string;
+  level: number;
+  earned_points: number;
+  points_to_next_level: number | null;
+  banked: number;
+  gold: number;
+  hp: number | null;
+  max_hp: number | null;
+  build: {
+    hp: number; starting_mana: Color[]; starting_cards: number; power_bought: number;
+    keyword: string | null; attack_mode: "melee" | "ranged"; colors: Color[]; description: string;
+  };
+  gear: GearView;
+  worn_points?: number;
+  effective_level?: number;
+}
+// Items (Update 17 §D17-4)
+export interface ItemView {
+  id: string;
+  name: string;
+  slot: "weapon" | "accessory" | "consumable";
+  rarity: "common" | "uncommon" | "rare" | "mythic";
+  level_min: number;
+  points_price: number;
+  flavor: string;
+  art_desc: string;
+  art_url: string;
+  summary?: string;
+  sell_price?: number;
+  buy_price?: number;
+  statics?: unknown[];
+  effects?: unknown[];
+  consumable?: { timing: "instant" | "sorcery" } | null;
+  template?: string | null;
+  affixes?: string[];
+}
+export interface GearView {
+  primary: ItemView | null;
+  secondary: ItemView | null;
+  accessory: ItemView | null;
+  belt: ItemView[];
+  inventory: { gear: ItemView[]; consumables: ItemView[] };
+}
+export interface ShopView {
+  location_id: string;
+  name: string;
+  function: string;
+  stock: ItemView[];
+  sell_mult: number;
+  buy_mult: number;
+}
+export interface RewardsView {
+  items: ItemView[];
+  assign: Record<string, string>;            // index → character id | "discard"
+  room: Record<string, Record<string, boolean>>;
+  all_assigned: boolean;
+  characters: { id: string; name: string }[];
+}
+export interface TradeView {
+  from: string; to: string; item_id: string | null; gold: number; offered_by: string; to_owner: string;
+}
+export interface ItemMeta {
+  id: string; name: string; slot: string; rarity: string; level_min: number; points_price: number;
+  flavor: string; art_url: string; source: string; summary: string;
+}
+export interface ScenarioInfo {
+  title: string;
+  villain: string;
+  act_number: number;
+  acts_total: number;
+  act_title: string;
+  scenario_number: number;
+  options: { difficulty: string; hardcore: boolean; everquest: boolean };
+  mode: "town" | "adventure" | "complete";
+  dead: boolean;
+  scenario_id: string;
+}
+export interface ConfirmView {
+  id: number;
+  kind: string;
+  label: string;
+  initiator: string;
+  you_are_initiator: boolean;
+  answered: boolean;
+  yes_count: number;
+  player_count: number;
+  seconds_left: number;
+}
+export interface AdventureJobView {
+  state: "idle" | "pending" | "generated" | "art_queued" | "ready" | "failed";
+  progress: [number, number];
+  adventure_ref: string | null;
+  error: string | null;
+}
+export interface TownSnapshot {
+  mode: "town" | "complete";
+  session_id: string;
+  town: {
+    id: string; name: string; region_flavor: string; scene: string; art_url: string;
+    locations: TownLocationView[];
+  };
+  location: {
+    id: string; name: string; function: string; scene: string; art_url: string;
+    description: string; npcs: TownNpcView[];
+  } | null;
+  conversation: ConversationView | null;
+  splash: { kind: "town" | "location"; title: string; subtitle: string; text: string } | null;
+  defeat_pending: boolean;
+  materializing: boolean;
+  materialize_error: string | null;
+  quest_log: QuestLogView;
+  scenario: ScenarioInfo;
+  adventure_job: AdventureJobView;
+  adventure_unlocked: boolean;
+  adventure_ready: boolean;
+  adventure_name: string;
+  party_sheet: PartySheetRow[];
+  flags: Record<string, boolean>;
+  run: { run_id: string | null; last_save: { label?: string; kind?: string; error?: string } | null };
+  confirm: ConfirmView | null;
+  shop: ShopView | null;
+  trade: TradeView | null;
+  gear_editable: boolean;
+}
+
+export interface TownDetail {
+  id: string; name: string; region_flavor: string; scene: string; art_url: string;
+  locations: { id: string; name: string; function: string; description: string;
+               exterior_scene: string; exterior_art_url: string;
+               interior_scene: string; interior_art_url: string;
+               scene?: string; art_url?: string; // legacy aliases of the interior
+               npcs: { id: string; name: string; role: string; persona: string; portrait_desc: string; art_url: string }[] }[];
+}
+export interface ScenarioDetail {
+  id: string; title: string; town_id: string; town_name: string; difficulty: string;
+  arc: { title: string; villain: string; stakes: string;
+         acts: { title: string; hook: string; questgiver_location: string; questgiver_npc: string;
+                 handoff: string | null; adventure_theme: string; tone_notes: string }[] };
+  act1: { adventure_id: string; materialization: { quest: { title: string; text: string }; arrival: string } };
 }

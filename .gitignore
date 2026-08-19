@@ -17,3 +17,5 @@ node_modules/
 # Autoplay Tester run artifacts (gauntlets stay tracked; runs/verdicts are local)
 apps/autoplay-tester/data/runs/
 apps/autoplay-tester/data/verdicts/
+# Update 17 runs & saves (runtime data — the branching save tree + content store)
+saves/

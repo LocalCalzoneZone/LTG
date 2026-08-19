@@ -17,8 +17,10 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import appctl, art, content, llm
+from . import appctl, art, content, jobs, llm, scenario_content
 from .adventure import AdventureRun
+from .runs import RunManager
+from .scenario import ScenarioRun
 from .session import SessionManager
 
 APP_ROOT = Path(__file__).resolve().parent.parent          # apps/game-server
@@ -33,17 +35,36 @@ app.add_middleware(
 )
 
 MANAGER = SessionManager()
+RUNS = RunManager()
 
 
 # --------------------------------------------------------------------------- #
 # REST: lobby / setup
 # --------------------------------------------------------------------------- #
+class RunOptionsBody(BaseModel):
+    """Update 17 §D17-1: a run's immutable options. Present on an adventure
+    start == play it inside a NEW run (saved, resumable, forkable)."""
+    difficulty: str = "standard"      # easy / standard / hard
+    hardcore: bool = False            # defeat ends the run
+    everquest: bool = False           # (scenario layer — recorded, unused in Phase 0)
+    name: str = ""
+
+
 class CreateGameBody(BaseModel):
     character_ids: List[str]
-    # Exactly one of these: a standalone encounter, or an adventure (Update 10 —
-    # the session then runs the three-act flow: carry-over, level-ups, splashes).
+    # Exactly one of these: a standalone encounter, an adventure (Update 10 —
+    # the session then runs the three-phase flow: carry-over, level-ups,
+    # splashes), a pre-generated scenario, or a town (Town + New: generate an
+    # arc for it at start) — the last two ALWAYS create a run (§D17-1).
     encounter_id: Optional[str] = None
     adventure_id: Optional[str] = None
+    scenario_id: Optional[str] = None
+    town_id: Optional[str] = None
+    # Optional (adventures only): create a run around this adventure (§D17-3).
+    # Absent == today's throwaway adventure session, byte-identical. Required
+    # semantics for scenarios (defaults apply when absent).
+    run: Optional[RunOptionsBody] = None
+    note: str = ""
 
 
 @app.get("/api/setup-options")
@@ -52,22 +73,35 @@ def setup_options() -> Dict[str, Any]:
         "characters": content.list_characters(),
         "encounters": content.list_encounters(),
         "adventures": content.list_adventures(),
+        **_scenario_setup_options(),
     }
 
 
 @app.post("/api/games")
-def create_game(body: CreateGameBody) -> Dict[str, Any]:
+async def create_game(body: CreateGameBody) -> Dict[str, Any]:
+    if body.scenario_id or body.town_id:
+        return await _create_scenario_game(body)
     if bool(body.encounter_id) == bool(body.adventure_id):
         raise HTTPException(400, "choose an encounter or an adventure")
     try:
         if body.adventure_id:
             run = AdventureRun(body.adventure_id)
+            seed = random.randrange(2**31)
             state, portraits, game_art, encounter_id = run.start(
-                body.character_ids, seed=random.randrange(2**31))
+                body.character_ids, seed=seed)
+            run_id = None
+            if body.run is not None:
+                meta = RUNS.create_adventure_run(
+                    run, options=body.run.model_dump(exclude={"name"}),
+                    name=body.run.name)
+                run_id = meta["run_id"]
             session = MANAGER.create(state, name=run.name, portraits=portraits,
                                      encounter_id=encounter_id, art=game_art,
-                                     adventure=run)
-            return {"session_id": session.id}
+                                     adventure=run, run_id=run_id,
+                                     run_manager=RUNS if run_id else None)
+            if run_id:
+                session.save_point("adventure_start", seed)  # the first auto-save
+            return {"session_id": session.id, "run_id": run_id}
         state, portraits, game_art = content.build_state(
             body.character_ids, body.encounter_id, seed=random.randrange(2**31)
         )
@@ -78,6 +112,135 @@ def create_game(body: CreateGameBody) -> Dict[str, Any]:
                              portraits=portraits,
                              encounter_id=body.encounter_id, art=game_art)
     return {"session_id": session.id}
+
+
+# --------------------------------------------------------------------------- #
+# Scenario Mode (Update 17): starting a run, the async driver, town verbs
+# --------------------------------------------------------------------------- #
+def _scenario_setup_options() -> Dict[str, Any]:
+    return {"scenarios": scenario_content.list_scenarios(),
+            "towns": scenario_content.list_towns()}
+
+
+async def _create_scenario_game(body: CreateGameBody) -> Dict[str, Any]:
+    """New Game → Scenarios (§D17-7): a pre-generated scenario (Act I instant)
+    or Town + New (an arc generates now, blocking; the town portion of Act I
+    generates under the entry splash). Always a run."""
+    opts = (body.run or RunOptionsBody()).model_dump()
+    name = opts.pop("name", "")
+    try:
+        loadouts = content.loadouts_for(body.character_ids)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    materialization = None
+    if body.scenario_id:
+        sdef = scenario_content.scenario_detail(body.scenario_id)
+        if sdef is None:
+            raise HTTPException(404, "no such scenario")
+        town = scenario_content.town_detail(sdef["town_id"])
+        if town is None:
+            raise HTTPException(400, f"the scenario's town ({sdef['town_id']}) is missing")
+        arc = sdef["arc"]
+        materialization = (sdef.get("act1") or {}).get("materialization") or None
+        pregen_adventure = (sdef.get("act1") or {}).get("adventure_id")
+        town_id, scenario_id = sdef["town_id"], body.scenario_id
+    else:
+        town = scenario_content.town_detail(body.town_id or "")
+        if town is None:
+            raise HTTPException(404, "no such town")
+        try:
+            party = llm.party_summary_from_loadouts(loadouts)
+            arc = await asyncio.to_thread(llm.generate_arc, town, party,
+                                          opts.get("difficulty", "standard"),
+                                          None, body.note or "")
+        except ValueError as exc:
+            raise HTTPException(502, str(exc))
+        pregen_adventure = None
+        town_id, scenario_id = body.town_id or "", ""
+    scenario = ScenarioRun(town, arc, body.character_ids, loadouts, opts,
+                           town_id=town_id, scenario_id=scenario_id)
+    meta = RUNS.create_scenario_run(scenario, name=name)
+    session = MANAGER.create(None, name=meta["name"], adventure=None,
+                             run_id=meta["run_id"], run_manager=RUNS, scenario=scenario)
+    session.async_hook = _scenario_async
+    session.scenario_enter_town(materialization)
+    if materialization is None:
+        _scenario_async(session, "materialize")
+    elif pregen_adventure:
+        jobs.RUNNER.prepare_pregenerated(session, pregen_adventure)
+    return {"session_id": session.id, "run_id": meta["run_id"]}
+
+
+def _scenario_async(session, kind: str) -> None:
+    """The session's hook for work that leaves the lock: LLM calls off-thread,
+    the confirmation timer. Schedules a task on the running loop (or runs the
+    generation inline when there is no loop — tests)."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if kind == "materialize":
+        if loop is None:
+            session.materialize_act()
+        else:
+            loop.create_task(_materialize_task(session))
+    elif kind == "new_arc":
+        if loop is None:
+            _new_arc_sync(session)
+        else:
+            loop.create_task(_new_arc_task(session))
+    elif kind == "adventure_job":
+        sc = session.scenario
+        if sc is not None and sc.adventure_detail is not None \
+                and sc.adventure_job.get("state") == "ready":
+            return  # a pre-generated Act I (or a reload): already ready
+        jobs.RUNNER.start(session, _broadcast, _refresh_sessions_art)
+    elif kind == "confirm_timer" and loop is not None:
+        loop.create_task(_confirm_timer(session))
+
+
+async def _materialize_task(session) -> None:
+    await asyncio.to_thread(session.materialize_act)
+    await _broadcast(session)
+
+
+def _new_arc_sync(session) -> None:
+    sc = session.scenario
+    party = llm.party_summary_from_loadouts(sc.loadouts, sc.levels())
+    prev = sc.previous_arcs + [{"title": sc.arc["title"], "villain": sc.arc["villain"],
+                                "outcome": "defeated"}]
+    arc = sc.arc_generator(sc.town, party, sc.options.get("difficulty", "standard"), prev)
+    session.new_arc(arc)
+    session.materialize_act()
+
+
+async def _new_arc_task(session) -> None:
+    try:
+        await asyncio.to_thread(_new_arc_sync, session)
+    except ValueError as exc:
+        if session.scenario is not None:
+            session.scenario.materialize_error = f"new arc: {exc}"
+            session.scenario.materializing = False
+    await _broadcast(session)
+
+
+async def _confirm_timer(session) -> None:
+    c = session.confirm
+    if c is None:
+        return
+    cid = c["id"]
+    await asyncio.sleep(max(0.0, c["deadline"] - __import__("time").time()))
+    async with session.lock():
+        session.expire_confirm(cid)
+    await _broadcast(session)
+    _after_town_change(session)
+
+
+def _after_town_change(session) -> None:
+    """A town verb may have swapped the session into adventure mode: start the
+    pacer so the opening auto-passes drain visibly."""
+    if session.state is not None:
+        session.start_pacer(_broadcast)
 
 
 @app.post("/api/characters")
@@ -100,6 +263,83 @@ def delete_character(character_id: str) -> Dict[str, Any]:
         content.delete_loadout(character_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# REST: runs & saves (Update 17 §D17-3) — Load Game
+# --------------------------------------------------------------------------- #
+@app.get("/api/runs")
+def list_runs() -> Dict[str, Any]:
+    """The Load Game list: every run under saves/, newest first."""
+    return {"runs": RUNS.list_runs()}
+
+
+@app.get("/api/runs/{run_id}")
+def run_detail(run_id: str) -> Dict[str, Any]:
+    """One run with its saves, oldest → newest (each loadable / deletable)."""
+    try:
+        return RUNS.run_detail(run_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.post("/api/runs/{run_id}/saves/{save_id}/load")
+def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
+    """Rebuild the save's session (the exact adventure + party it points at)
+    and return its id; continuing appends new saves — a fork when this save
+    was not the newest (§D17-3.1)."""
+    try:
+        meta, adventure, state, portraits, game_art, encounter_id = RUNS.load_save(run_id, save_id)
+        scenario = (RUNS.load_scenario_save(run_id, save_id)
+                    if RUNS.is_scenario_save(run_id, save_id) else None)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if scenario is None:
+        session = MANAGER.create(state, name=adventure.name, portraits=portraits,
+                                 encounter_id=encounter_id, art=game_art,
+                                 adventure=adventure, run_id=run_id, run_manager=RUNS)
+        return {"session_id": session.id, "run_id": run_id}
+    if scenario.mode == "adventure" and adventure is not None:
+        scenario.adventure = adventure
+        session = MANAGER.create(state, name=meta["name"], portraits=portraits,
+                                 encounter_id=encounter_id, art=game_art,
+                                 adventure=adventure, run_id=run_id, run_manager=RUNS,
+                                 scenario=scenario)
+    else:
+        scenario.mode = "town" if scenario.mode != "complete" else "complete"
+        session = MANAGER.create(None, name=meta["name"], run_id=run_id,
+                                 run_manager=RUNS, scenario=scenario)
+        # A town save whose act never materialized (a crash mid-generation)
+        # resumes the generation; a pending adventure job resumes too.
+        if scenario.act is None and scenario.mode == "town":
+            scenario.materializing = True
+            _scenario_async(session, "materialize")
+        job = scenario.adventure_job.get("state")
+        if scenario.adventure_unlocked and job in ("pending", "failed", "idle") \
+                and scenario.adventure_detail is None:
+            _scenario_async(session, "adventure_job")
+    session.async_hook = _scenario_async
+    return {"session_id": session.id, "run_id": run_id}
+
+
+@app.delete("/api/runs/{run_id}/saves/{save_id}")
+def delete_save(run_id: str, save_id: str) -> Dict[str, Any]:
+    try:
+        RUNS.delete_save(run_id, save_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    return {"ok": True}
+
+
+@app.delete("/api/runs/{run_id}")
+def delete_run(run_id: str) -> Dict[str, Any]:
+    try:
+        RUNS.delete_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
     return {"ok": True}
 
 
@@ -142,7 +382,7 @@ def delete_encounter(encounter_id: str) -> Dict[str, Any]:
 
 # --------------------------------------------------------------------------- #
 # REST: adventures (Design Update 10) — list/detail/edit/delete + generation.
-# Acts are ordinary encounters (reserved ids) edited through the encounter
+# Phases are ordinary encounters (reserved ids) edited through the encounter
 # endpoints above; the wrapper (name, flavor, narrations) is edited here.
 # --------------------------------------------------------------------------- #
 class AdventureInfoBody(BaseModel):
@@ -159,7 +399,7 @@ class GenerateAdventureBody(BaseModel):
 
 @app.get("/api/adventures/{adventure_id}")
 def get_adventure(adventure_id: str) -> Dict[str, Any]:
-    """The full adventure: wrapper fields + each act's embedded encounter."""
+    """The full adventure: wrapper fields + each phase's embedded encounter."""
     detail = content.adventure_detail(adventure_id)
     if detail is None:
         raise HTTPException(404, "no such adventure")
@@ -179,7 +419,7 @@ def put_adventure_info(adventure_id: str, body: AdventureInfoBody) -> Dict[str, 
 
 @app.delete("/api/adventures/{adventure_id}")
 def delete_adventure(adventure_id: str) -> Dict[str, Any]:
-    """Remove an adventure and its act files."""
+    """Remove an adventure and its phase files."""
     try:
         content.delete_adventure(adventure_id)
     except ValueError as exc:
@@ -189,7 +429,7 @@ def delete_adventure(adventure_id: str) -> Dict[str, Any]:
 
 @app.post("/api/adventures/generate")
 def generate_adventure(body: GenerateAdventureBody) -> Dict[str, Any]:
-    """Generate + persist a whole three-act adventure in one model call,
+    """Generate + persist a whole three-phase adventure in one model call,
     scoped to the picked party and difficulty; returns its meta."""
     try:
         meta = llm.generate_adventure(body.character_ids, body.difficulty, body.note)
@@ -208,8 +448,10 @@ class LlmSettingsBody(BaseModel):
     # ever sees it — keep this model in sync with the settings keys.
     api_key: Optional[str] = None
     model: Optional[str] = None
+    task_models: Optional[Dict[str, Optional[str]]] = None   # per-task overrides ("" = default)
     instructions: Optional[str] = None
     art_style: Optional[str] = None
+    scenario_tone: Optional[str] = None
     art_backend: Optional[str] = None
     comfyui_url: Optional[str] = None
     comfyui_workflow: Optional[str] = None
@@ -301,8 +543,8 @@ async def delete_encounter_art(encounter_id: str, kind: str,
 # --------------------------------------------------------------------------- #
 # REST: the art queue — "Generate all art" (Update 10 §D10-6.4). POST enqueues
 # every still-missing image (idempotent); GET polls progress. The adventure
-# variant covers its acts in order (Act I first, so play can start while later
-# acts paint); completed images broadcast to sessions as they land.
+# variant covers its phases in order (Phase I first, so play can start while later
+# phases paint); completed images broadcast to sessions as they land.
 # --------------------------------------------------------------------------- #
 @app.post("/api/encounters/{encounter_id}/art/all")
 async def start_encounter_art_queue(encounter_id: str) -> Dict[str, Any]:
@@ -322,14 +564,218 @@ async def start_adventure_art_queue(adventure_id: str) -> Dict[str, Any]:
     detail = content.adventure_detail(adventure_id)
     if detail is None:
         raise HTTPException(404, "no such adventure")
-    act_ids = [a["encounter_id"] for a in detail["acts"]]
-    return art.QUEUE.start(f"adventure:{adventure_id}", act_ids,
+    phase_ids = [a["encounter_id"] for a in detail["phases"]]
+    return art.QUEUE.start(f"adventure:{adventure_id}", phase_ids,
                            _refresh_sessions_art)
 
 
 @app.get("/api/adventures/{adventure_id}/art/all")
 def adventure_art_queue_status(adventure_id: str) -> Dict[str, Any]:
     return art.QUEUE.status(f"adventure:{adventure_id}")
+
+
+# --------------------------------------------------------------------------- #
+# REST: towns & scenarios (Update 17 §D17-5.1 / §D17-6.1 — Options → Towns /
+# Options → Scenarios): list / detail / save / delete / generate / art.
+# --------------------------------------------------------------------------- #
+class SaveTownBody(BaseModel):
+    id: Optional[str] = None
+    town: Dict[str, Any]
+
+
+class GenerateTownBody(BaseModel):
+    note: str = ""
+
+
+class TownArtBody(BaseModel):
+    kind: str                     # town | location | npc
+    target_id: Optional[str] = None
+    text: str = ""
+
+
+class GenerateScenarioBody(BaseModel):
+    town_id: str
+    difficulty: str = "standard"
+    note: str = ""
+
+
+@app.get("/api/towns")
+def list_towns() -> Dict[str, Any]:
+    return {"towns": scenario_content.list_towns()}
+
+
+@app.get("/api/towns/{town_id}")
+def get_town(town_id: str) -> Dict[str, Any]:
+    t = scenario_content.town_detail(town_id)
+    if t is None:
+        raise HTTPException(404, "no such town")
+    return t
+
+
+@app.post("/api/towns")
+def save_town(body: SaveTownBody) -> Dict[str, Any]:
+    try:
+        return {"town": scenario_content.save_town(body.town, body.id)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.delete("/api/towns/{town_id}")
+def delete_town(town_id: str) -> Dict[str, Any]:
+    try:
+        scenario_content.delete_town(town_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/towns/generate")
+async def generate_town(body: GenerateTownBody) -> Dict[str, Any]:
+    try:
+        meta = await asyncio.to_thread(llm.generate_town, body.note)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+    return {"town": meta}
+
+
+async def _refresh_town_art(_key: str) -> None:
+    """Town art landed: push it into every live scenario session in that town."""
+    for session in MANAGER.all():
+        sc = getattr(session, "scenario", None)
+        if sc is not None and _key == f"town:{sc.town_id}":
+            sc.reload_town_art()
+            await _broadcast(session)
+
+
+@app.post("/api/towns/{town_id}/art")
+async def generate_town_art(town_id: str, body: TownArtBody) -> Dict[str, Any]:
+    try:
+        result = await asyncio.to_thread(art.generate_town_art, town_id, body.kind,
+                                         body.target_id, body.text or "")
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+    await _refresh_town_art(f"town:{town_id}")
+    return result
+
+
+@app.post("/api/towns/{town_id}/art/all")
+async def start_town_art_queue(town_id: str) -> Dict[str, Any]:
+    if scenario_content.town_detail(town_id) is None:
+        raise HTTPException(404, "no such town")
+    return art.QUEUE.start_items(f"town:{town_id}", art.town_art_items(town_id),
+                                 _refresh_town_art)
+
+
+@app.get("/api/towns/{town_id}/art/all")
+def town_art_queue_status(town_id: str) -> Dict[str, Any]:
+    return art.QUEUE.status(f"town:{town_id}")
+
+
+# --------------------------------------------------------------------------- #
+# REST: equipment (Update 17 §D17-4.3 — Options → Equipment)
+# --------------------------------------------------------------------------- #
+class SaveItemBody(BaseModel):
+    id: Optional[str] = None
+    item: Dict[str, Any]
+
+
+@app.get("/api/items")
+def list_items() -> Dict[str, Any]:
+    from . import items as _items
+    return {"items": _items.list_items()}
+
+
+@app.get("/api/items/{item_id}")
+def get_item(item_id: str) -> Dict[str, Any]:
+    from . import items as _items
+    d = _items.item_detail(item_id)
+    if d is None:
+        raise HTTPException(404, "no such item")
+    return d
+
+
+@app.post("/api/items")
+def save_item(body: SaveItemBody) -> Dict[str, Any]:
+    from . import items as _items
+    try:
+        return {"item": _items.save_item(body.item, body.id)}
+    except Exception as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.delete("/api/items/{item_id}")
+def delete_item(item_id: str) -> Dict[str, Any]:
+    from . import items as _items
+    try:
+        _items.delete_item(item_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/items/{item_id}/art")
+async def generate_item_art(item_id: str) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(art.generate_item_art, item_id)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+
+
+async def _refresh_nothing(_key: str) -> None:
+    return None
+
+
+@app.post("/api/items/art/all")
+async def start_item_art_queue() -> Dict[str, Any]:
+    return art.QUEUE.start_items("items", art.item_art_items(), _refresh_nothing)
+
+
+@app.get("/api/items/art/all")
+def item_art_queue_status() -> Dict[str, Any]:
+    return art.QUEUE.status("items")
+
+
+@app.get("/api/scenarios")
+def list_scenarios() -> Dict[str, Any]:
+    return {"scenarios": scenario_content.list_scenarios()}
+
+
+@app.get("/api/scenarios/{scenario_id}")
+def get_scenario(scenario_id: str) -> Dict[str, Any]:
+    sdef = scenario_content.scenario_detail(scenario_id)
+    if sdef is None:
+        raise HTTPException(404, "no such scenario")
+    return sdef
+
+
+@app.delete("/api/scenarios/{scenario_id}")
+def delete_scenario(scenario_id: str) -> Dict[str, Any]:
+    try:
+        scenario_content.delete_scenario(scenario_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/scenarios/generate")
+async def generate_scenario(body: GenerateScenarioBody) -> Dict[str, Any]:
+    """Pre-generate a scenario for a town: the arc plus Act I fully materialized
+    (town portion + adventure) so New Scenario is instant (§D17-6.1). Art for
+    the Act I adventure queues afterwards; town art has its own button."""
+    from .scenario import pregenerate_scenario
+    try:
+        meta = await asyncio.to_thread(pregenerate_scenario, body.town_id,
+                                       body.difficulty, body.note)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+    adv_id = meta.get("act1_adventure_id")
+    if adv_id:
+        detail = content.adventure_detail(adv_id)
+        if detail:
+            art.QUEUE.start(f"adventure:{adv_id}",
+                            [a["encounter_id"] for a in detail["phases"]],
+                            _refresh_sessions_art)
+    return {"scenario": meta}
 
 
 @app.get("/api/games/{session_id}")
@@ -366,7 +812,7 @@ def _prompt_msg(session) -> Dict[str, Any]:
 async def _broadcast(session) -> None:
     """Push a fresh (per-client filtered) state + seats + prompt to everyone."""
     prompt = _prompt_msg(session)
-    # public_result suppresses a non-final act victory in an adventure (the act
+    # public_result suppresses a non-final phase victory in an adventure (the phase
     # boundary is a level-up gate, not a game over); plain encounters unchanged.
     result = session.public_result()
     for cid, ws in list(session.clients.items()):
@@ -438,10 +884,44 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                 await _broadcast(session)
                 session.start_pacer(_broadcast)
 
+            elif mtype == "town":
+                # Scenario Mode (Update 17 §D17-5.2): a town verb — visit /
+                # leave / talk / choose / attribute / start_adventure / save.
+                async with session.lock():
+                    try:
+                        verb = str(msg.get("verb") or "")
+                        if session.scenario is not None and session.state is not None:
+                            # In a fight: only the economy verbs (gear at the
+                            # gate, the rewards modal) apply.
+                            session.economy_verb(client_id, verb, msg.get("payload") or {})
+                        else:
+                            session.town_verb(client_id, verb, msg.get("payload") or {})
+                    except ValueError as exc:
+                        await _send(ws, {"type": "error", "message": str(exc)})
+                        continue
+                await _broadcast(session)
+                _after_town_change(session)
+
+            elif mtype == "confirm":
+                # The all-players confirmation (T-84): yes / no / cancel.
+                async with session.lock():
+                    cid_ = int(msg.get("id") or 0)
+                    if msg.get("cancel"):
+                        session.cancel_confirm(client_id, cid_)
+                    else:
+                        session.answer_confirm(client_id, cid_, bool(msg.get("yes", True)))
+                await _broadcast(session)
+                _after_town_change(session)
+
+            elif mtype == "retry_job":
+                if session.scenario is not None:
+                    _scenario_async(session, "adventure_job")
+                await _broadcast(session)
+
             elif mtype == "confirm_level_up":
-                # The between-acts gate (Update 10 §D10-3.3): one confirmation
+                # The between-phases gate (Update 10 §D10-3.3): one confirmation
                 # per controlled character; the last confirmation composes the
-                # next act (carry-over applied) before the broadcast.
+                # next phase (carry-over applied) before the broadcast.
                 async with session.lock():
                     try:
                         session.confirm_level_up(

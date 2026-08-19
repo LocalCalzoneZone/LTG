@@ -22,17 +22,20 @@ const STEP_OF: Record<string, string> = {
 
 /** One 42px ribbon: wordmark · turn tracker · seats · invite / options / new game.
  *  Always rendered, so an empty battlefield can still reach New Game / Options. */
-export function TopRibbon({ onNewGame, onOptions }: {
+export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   onNewGame: () => void;
   onOptions: () => void;
+  onLoadGame?: () => void;
 }) {
   const snapshot = useGame((s) => s.snapshot);
+  const town = useGame((s) => s.town);
   const sessionId = useGame((s) => s.sessionId);
   const seats = useGame((s) => s.seats);
   const you = useGame((s) => s.you);
   const clientId = useGame((s) => s.clientId);
   const claim = useGame((s) => s.claim);
   const release = useGame((s) => s.release);
+  const setSheetFor = useGame((s) => s.setSheetFor);
   const connected = useGame((s) => s.connected);
   const [copied, setCopied] = useState(false);
 
@@ -161,11 +164,29 @@ export function TopRibbon({ onNewGame, onOptions }: {
       {snapshot?.adventure && (
         <span
           className="caps-label text-[10px] tracking-[0.18em] text-mist"
-          title={`${snapshot.adventure.name} — ${snapshot.adventure.act_name}`}
+          title={`${snapshot.adventure.name} — ${snapshot.adventure.phase_name}`}
         >
-          Act {roman(snapshot.adventure.act)} / {roman(snapshot.adventure.acts_total)}
+          {snapshot.scenario ? `Act ${roman(snapshot.scenario.act_number)} · ` : ""}
+          Phase {roman(snapshot.adventure.phase)} / {roman(snapshot.adventure.phases_total)}
         </span>
       )}
+      {town && (
+        <span
+          className="caps-label text-[10px] tracking-[0.18em] text-mist"
+          title={`${town.scenario.title} — ${town.scenario.act_title}`}
+        >
+          {town.town.name} · Act {roman(town.scenario.act_number)} / {roman(town.scenario.acts_total)}
+        </span>
+      )}
+      {(snapshot?.party_sheet?.length || town?.party_sheet?.length) ? (
+        <button
+          onClick={() => setSheetFor((snapshot?.party_sheet ?? town?.party_sheet ?? [])[0]?.id ?? null)}
+          className="caps-label ml-2 border border-line px-2 py-[3px] text-[9px] tracking-[0.16em] text-mist transition hover:border-line2 hover:text-parch"
+          title="Character sheets — stats, build, gear (read-only in combat)"
+        >
+          Sheet
+        </button>
+      ) : null}
 
       {/* turn tracker — centred */}
       {snapshot && (
@@ -262,6 +283,15 @@ export function TopRibbon({ onNewGame, onOptions }: {
         >
           <IconGear size={13} />
         </button>
+        {onLoadGame && (
+          <button
+            onClick={onLoadGame}
+            title="Load Game — runs and their saves (Update 17)"
+            className="caps-label ml-2 flex items-center border border-line px-3 py-[5px] text-[10px] tracking-[0.16em] text-mist transition hover:border-line2 hover:text-parch"
+          >
+            Load Game
+          </button>
+        )}
         <button
           onClick={onNewGame}
           className="caps-label ml-2 flex items-center gap-1.5 border border-line2 px-3 py-[5px] text-[10px] tracking-[0.16em] text-brass transition hover:border-brass hover:text-brass-hi hover:shadow-[0_0_12px_rgba(233,204,130,0.15)]"

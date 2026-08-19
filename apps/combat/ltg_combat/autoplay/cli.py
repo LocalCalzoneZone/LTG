@@ -10,7 +10,7 @@
 Content files are engine-shaped JSON:
   * an enemies-only encounter (optionally with layouts / an objective) — needs
     --parties (Deckbuilder loadout exports); the size axis picks the first N;
-  * an adventure with INLINE acts ({"acts": [<encounter>, ×3]}) — run through
+  * an adventure with INLINE phases ({"phases": [<encounter>, ×3]}) — run through
     the §D10-2/3 carry-over and level-up rules;
   * a full scenario with an embedded party (the §A/§C shape) — runs as-is
     (the size/party axes don't apply).
@@ -65,7 +65,7 @@ def _parse_sizes(text: str) -> List[int]:
 
 
 def _content_mode(content: Dict[str, Any]) -> str:
-    if isinstance(content.get("acts"), list):
+    if isinstance(content.get("phases", content.get("acts")), list):
         return "adventure"
     if isinstance(content.get("party"), list):
         return "scenario"

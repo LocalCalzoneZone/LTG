@@ -70,14 +70,14 @@ ENCOUNTER_HIDDEN_FILE = LOADOUTS_DIR / "encounters_hidden.json"
 # And for adventures (a bundled example adventure survives file deletion).
 ADVENTURE_HIDDEN_FILE = LOADOUTS_DIR / "adventures_hidden.json"
 
-# Acts per adventure (Design Update 10, T-61).
-ACT_COUNT = 3
+# Phases per adventure (Design Update 10, T-61).
+PHASE_COUNT = 3
 
 # --------------------------------------------------------------------------- #
 # Balance register: the global enemy Power bump. Every enemy fields +2 Power
 # over its authored chassis (+4 for a boss) — applied at build time in
 # `build_state_from_loadouts`, the one choke point every real game passes
-# through (standalone encounters and adventure acts alike), so authored
+# through (standalone encounters and adventure phases alike), so authored
 # content, bundled examples, and LLM-generated encounters are all lifted
 # uniformly. Authored JSON keeps its original numbers.
 # --------------------------------------------------------------------------- #
@@ -192,7 +192,12 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
             "meta": {
                 "id": cid,
                 "name": char.name,
-                "archetype": char.preset or "Custom",  # display label; presets or a custom build
+                "archetype": "Custom",  # retired label (presets removed, Update 17); kept for the client contract
+                # Build spend on the T-79 curve — advisory (Update 17 §D17-2.2):
+                # an over-spent loadout is flagged, never rejected.
+                "points_spent": char.points_spent,
+                "points_budget": char.points_budget,
+                "points_over": char.points_over,
                 "colors": [c.value for c in char.colors],
                 "identity": [c.value for c in char.starting_mana],
                 "description": char.description,
@@ -321,10 +326,10 @@ def _encounter_meta(eid: str, scen: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def list_encounters() -> List[Dict[str, Any]]:
-    # An adventure's acts are stored as ordinary encounter files (so the editor,
+    # An adventure's phases are stored as ordinary encounter files (so the editor,
     # the art system, and game building all work on them unchanged) but they are
-    # not standalone content: the picker lists the ADVENTURE, never its acts.
-    hidden = _enc_hidden() | _adventure_act_ids()
+    # not standalone content: the picker lists the ADVENTURE, never its phases.
+    hidden = _enc_hidden() | _adventure_phase_ids()
     return [_encounter_meta(eid, scen)
             for eid, scen in _encounter_registry().items() if eid not in hidden]
 
@@ -572,7 +577,7 @@ def _write_content(filename: str, text: str) -> None:
 
 
 def _remove_content_files(cid: str) -> None:
-    """Delete an encounter/act's JSON and its generated-art folder from wherever
+    """Delete an encounter/phase's JSON and its generated-art folder from wherever
     they physically live (the tracked content dir and the legacy loadouts dir),
     so a delete truly removes the piece rather than leaving a tracked orphan."""
     for d in (CONTENT_DIR, LOADOUTS_DIR):
@@ -628,9 +633,9 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
         prev = _encounter_registry().get(eid)
         if prev and prev.get("difficulty"):
             cleaned["difficulty"] = prev["difficulty"]
-    # An adventure act edited through this path must keep its adventure valid
-    # (Act III boss constraints, §D10-4.1) — checked before anything persists.
-    _check_act_edit(eid, cleaned)
+    # An adventure phase edited through this path must keep its adventure valid
+    # (Phase III boss constraints, §D10-4.1) — checked before anything persists.
+    _check_phase_edit(eid, cleaned)
     _write_content(f"{eid}.json", json.dumps(cleaned, indent=2))
     hidden = _enc_hidden()
     if eid in hidden:
@@ -656,95 +661,101 @@ def delete_encounter(encounter_id: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Adventures — the three-act run (Design Update 10)
+# Adventures — the three-phase run (Design Update 10)
 #
-# An adventure is a WRAPPER (name, flavor, per-act narration) over three acts,
+# An adventure is a WRAPPER (name, flavor, per-phase narration) over three phases,
 # each a complete standard encounter. The wrapper persists as its own JSON
-# (kind: "adventure"); each act persists as an ordinary encounter file with the
-# reserved id "<adventure_id>__act<n>" — so the encounter editor, the art system,
-# and the game-build path all work on an act unchanged. Act ids never appear in
+# (kind: "adventure"); each phase persists as an ordinary encounter file with the
+# reserved id "<adventure_id>__phase<n>" — so the encounter editor, the art system,
+# and the game-build path all work on a phase unchanged. Phase ids never appear in
 # the standalone encounter list (see list_encounters).
 # --------------------------------------------------------------------------- #
-def act_encounter_id(adventure_id: str, act_number: int) -> str:
-    """The reserved encounter id behind one act (act_number is 1-based)."""
-    return f"{adventure_id}__act{act_number}"
+def phase_encounter_id(adventure_id: str, phase_number: int) -> str:
+    """The reserved encounter id behind one phase (phase_number is 1-based)."""
+    return f"{adventure_id}__phase{phase_number}"
 
 
 def _adventure_registry() -> Dict[str, Dict[str, Any]]:
-    """id -> {name, flavor, acts:[{narration, encounter_id}], source, path}."""
+    """id -> {name, flavor, phases:[{narration, encounter_id}], source, path}."""
     reg: Dict[str, Dict[str, Any]] = {}
     for path in _iter_json():
         raw = _load_json(path)
         if raw is None or raw.get("kind") != "adventure":
             continue
-        acts = raw.get("acts")
-        if not isinstance(acts, list):
+        phases = raw.get("phases", raw.get("acts"))  # "acts": pre-Update-17 wrappers
+        if not isinstance(phases, list):
             continue
         reg[path.stem] = {
             "name": str(raw.get("name") or path.stem),
             "flavor": str(raw.get("flavor") or ""),
             "difficulty": str(raw.get("difficulty") or ""),
-            "acts": copy.deepcopy(acts),
+            "phases": copy.deepcopy(phases),
+            # Update 17: an adventure generated for a run (a scenario act) is
+            # kept out of the New Game picker; it stays editable/inspectable.
+            "run_only": bool(raw.get("run_only")),
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
             "path": path,
         }
     return reg
 
 
-def _adventure_act_ids() -> set:
-    """Every encounter id claimed as an act by a registered adventure."""
+def _adventure_phase_ids() -> set:
+    """Every encounter id claimed as a phase by a registered adventure."""
     out: set = set()
     for adv in _adventure_registry().values():
-        for act in adv["acts"]:
-            if isinstance(act, dict) and act.get("encounter_id"):
-                out.add(str(act["encounter_id"]))
+        for phase in adv["phases"]:
+            if isinstance(phase, dict) and phase.get("encounter_id"):
+                out.add(str(phase["encounter_id"]))
     return out
 
 
 def _adventure_meta(aid: str, adv: Dict[str, Any]) -> Dict[str, Any]:
-    act_names = []
+    phase_names = []
     reg = _encounter_registry()
-    for act in adv["acts"]:
-        eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
+    for phase in adv["phases"]:
+        eid = str(phase.get("encounter_id", "")) if isinstance(phase, dict) else ""
         scen = reg.get(eid)
-        act_names.append(scen["name"] if scen else eid)
+        phase_names.append(scen["name"] if scen else eid)
     return {
         "id": aid,
         "name": adv["name"],
         "flavor": adv["flavor"],
         "difficulty": adv.get("difficulty", ""),  # "made at" flag ("" = unstamped)
-        "act_names": act_names,
+        "phase_names": phase_names,
+        "run_only": bool(adv.get("run_only")),
         "deletable": True,
         "editable": True,
     }
 
 
-def list_adventures() -> List[Dict[str, Any]]:
+def list_adventures(include_run_only: bool = False) -> List[Dict[str, Any]]:
     hidden = _adv_hidden()
     return [_adventure_meta(aid, adv)
-            for aid, adv in _adventure_registry().items() if aid not in hidden]
+            for aid, adv in _adventure_registry().items()
+            if aid not in hidden and (include_run_only or not adv.get("run_only"))]
 
 
 def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
-    """The full adventure: wrapper fields plus each act's embedded encounter
+    """The full adventure: wrapper fields plus each phase's embedded encounter
     detail (the same shape `encounter_detail` returns, plus `narration`)."""
     adv = _adventure_registry().get(adventure_id)
     if adv is None:
         return None
-    acts = []
-    for act in adv["acts"]:
-        eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
+    phases = []
+    for phase in adv["phases"]:
+        eid = str(phase.get("encounter_id", "")) if isinstance(phase, dict) else ""
         enc = encounter_detail(eid)
         if enc is None:
-            return None  # a wrapper pointing at a missing act file is unusable
-        acts.append({"narration": str(act.get("narration") or ""),
+            return None  # a wrapper pointing at a missing phase file is unusable
+        phases.append({"narration": str(phase.get("narration") or ""),
                      "encounter_id": eid, **enc})
     return {"id": adventure_id, "name": adv["name"], "flavor": adv["flavor"],
-            "difficulty": adv.get("difficulty", ""), "acts": acts}
+            "difficulty": adv.get("difficulty", ""), "phases": phases,
+            **({"run_only": True} if adv.get("run_only") else {})}
 
 
-def _act_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
-    """(boss levels, highest enemy level) for one act's enemy pool."""
+def _phase_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
+    """(boss levels, highest enemy level) for one phase's enemy pool."""
     bosses = [int(e.get("level", 0)) for e in enemies
               if isinstance(e, dict) and e.get("is_boss")]
     highest = max((int(e.get("level", 0)) for e in enemies if isinstance(e, dict)),
@@ -752,8 +763,8 @@ def _act_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
     return bosses, highest
 
 
-def _validate_act(cleaned: Dict[str, Any]) -> None:
-    """Adventure acts are held to the generated-encounter bar (§D10-4.1): party-
+def _validate_phase(cleaned: Dict[str, Any]) -> None:
+    """Adventure phases are held to the generated-encounter bar (§D10-4.1): party-
     size layouts "1"–"4" with the party outnumbered (2×, duplicates count), and
     every enemy described (the art / narration systems feed on it). Standalone
     encounters stay free of these extras."""
@@ -790,93 +801,95 @@ def _validate_act(cleaned: Dict[str, Any]) -> None:
                          + ", ".join(undescribed))
 
 
-def _validate_adventure(acts: List[Dict[str, Any]],
+def _validate_adventure(phases: List[Dict[str, Any]],
                         narrations: List[str]) -> None:
-    """The §D10-4.1 adventure-level checks, over already act-valid encounters.
+    """The §D10-4.1 adventure-level checks, over already phase-valid encounters.
 
-    ``acts`` are the three cleaned encounter dicts in order; ``narrations`` the
-    three act narrations. Per-act validity (layouts, minimum bodies, at most one
+    ``phases`` are the three cleaned encounter dicts in order; ``narrations`` the
+    three phase narrations. Per-phase validity (layouts, minimum bodies, at most one
     boss) is `_validate_encounter`'s job and assumed done."""
-    if len(acts) != ACT_COUNT:
-        raise ValueError(f"an adventure has exactly {ACT_COUNT} acts")
+    if len(phases) != PHASE_COUNT:
+        raise ValueError(f"an adventure has exactly {PHASE_COUNT} phases")
     for i, text in enumerate(narrations, start=1):
         if not str(text or "").strip():
-            raise ValueError(f"act {i} is missing its narration")
-    # Objectives (§D12-1.1): at most ONE per adventure, on Acts I–II only —
-    # Act III is always the standard boss kill (the climax stays a fight).
-    with_objective = [i for i, act in enumerate(acts, start=1)
-                      if act.get("objective")]
+            raise ValueError(f"phase {i} is missing its narration")
+    # Objectives (§D12-1.1): at most ONE per adventure, on Phases I–II only —
+    # Phase III is always the standard boss kill (the climax stays a fight).
+    with_objective = [i for i, phase in enumerate(phases, start=1)
+                      if phase.get("objective")]
     if len(with_objective) > 1:
         raise ValueError("an adventure carries at most one objective "
-                         f"(acts {', '.join(map(str, with_objective))} all have one)")
-    if ACT_COUNT in with_objective:
-        raise ValueError("Act III is always the standard boss kill — "
-                         "objectives may appear on Acts I and II only")
-    finale_bosses, _ = _act_boss_levels(acts[-1]["enemies"])
+                         f"(phases {', '.join(map(str, with_objective))} all have one)")
+    if PHASE_COUNT in with_objective:
+        raise ValueError("Phase III is always the standard boss kill — "
+                         "objectives may appear on Phases I and II only")
+    finale_bosses, _ = _phase_boss_levels(phases[-1]["enemies"])
     if len(finale_bosses) != 1:
-        raise ValueError("Act III must contain exactly one boss (is_boss)")
+        raise ValueError("Phase III must contain exactly one boss (is_boss)")
     finale_level = finale_bosses[0]
-    for i, act in enumerate(acts, start=1):
-        bosses, highest = _act_boss_levels(act["enemies"])
-        if i < ACT_COUNT and bosses and bosses[0] >= finale_level:
+    for i, phase in enumerate(phases, start=1):
+        bosses, highest = _phase_boss_levels(phase["enemies"])
+        if i < PHASE_COUNT and bosses and bosses[0] >= finale_level:
             raise ValueError(
-                f"act {i}'s mini-boss (level {bosses[0]}) must be strictly "
-                f"lower level than Act III's boss (level {finale_level})")
+                f"phase {i}'s mini-boss (level {bosses[0]}) must be strictly "
+                f"lower level than Phase III's boss (level {finale_level})")
         if highest > finale_level:
             raise ValueError(
-                f"act {i} fields a level-{highest} enemy above Act III's boss "
+                f"phase {i} fields a level-{highest} enemy above Phase III's boss "
                 f"(level {finale_level}) — the boss is the adventure's "
                 "highest-level enemy")
 
 
 def save_adventure(raw: Dict[str, Any],
                    adventure_id: Optional[str] = None) -> Dict[str, Any]:
-    """Validate + persist an adventure (wrapper + three act files), returning its
-    meta. Each act passes the exact `_validate_encounter` gate an encounter takes;
+    """Validate + persist an adventure (wrapper + three phase files), returning its
+    meta. Each phase passes the exact `_validate_encounter` gate an encounter takes;
     then the §D10-4.1 adventure-level checks run; only then does anything persist.
 
-    ``raw`` is ``{name, flavor, acts: [{narration, ...encounter}, ×3]}``."""
+    ``raw`` is ``{name, flavor, phases: [{narration, ...encounter}, ×3]}``."""
     if not isinstance(raw, dict):
         raise ValueError("adventure must be an object")
-    acts_raw = raw.get("acts")
-    if not isinstance(acts_raw, list) or len(acts_raw) != ACT_COUNT:
-        raise ValueError(f"an adventure has exactly {ACT_COUNT} acts")
+    phases_raw = raw.get("phases", raw.get("acts"))  # "acts": legacy alias
+    if not isinstance(phases_raw, list) or len(phases_raw) != PHASE_COUNT:
+        raise ValueError(f"an adventure has exactly {PHASE_COUNT} phases")
     name = str(raw.get("name") or "Adventure")
-    # Objective placement (§D12-1.1) — checked BEFORE the per-act deep dive so
-    # the standing rules produce their own message, not an id error from an act
+    # Objective placement (§D12-1.1) — checked BEFORE the per-phase deep dive so
+    # the standing rules produce their own message, not an id error from a phase
     # that should never have carried an objective at all.
-    with_objective = [i for i, act in enumerate(acts_raw, start=1)
-                      if isinstance(act, dict) and act.get("objective")]
+    with_objective = [i for i, phase in enumerate(phases_raw, start=1)
+                      if isinstance(phase, dict) and phase.get("objective")]
     if len(with_objective) > 1:
         raise ValueError("an adventure carries at most one objective "
-                         f"(acts {', '.join(map(str, with_objective))} all have one)")
-    if ACT_COUNT in with_objective:
-        raise ValueError("Act III is always the standard boss kill — "
-                         "objectives may appear on Acts I and II only")
-    cleaned_acts: List[Dict[str, Any]] = []
+                         f"(phases {', '.join(map(str, with_objective))} all have one)")
+    if PHASE_COUNT in with_objective:
+        raise ValueError("Phase III is always the standard boss kill — "
+                         "objectives may appear on Phases I and II only")
+    cleaned_phases: List[Dict[str, Any]] = []
     narrations: List[str] = []
-    for i, act in enumerate(acts_raw, start=1):
-        if not isinstance(act, dict):
-            raise ValueError(f"act {i} must be an object")
+    for i, phase in enumerate(phases_raw, start=1):
+        if not isinstance(phase, dict):
+            raise ValueError(f"phase {i} must be an object")
         try:
-            cleaned = _validate_encounter(act)
-            _validate_act(cleaned)
+            cleaned = _validate_encounter(phase)
+            _validate_phase(cleaned)
         except ValueError as exc:
-            raise ValueError(f"act {i}: {exc}") from exc
-        cleaned_acts.append(cleaned)
-        narrations.append(str(act.get("narration") or "").strip())
-    _validate_adventure(cleaned_acts, narrations)
+            raise ValueError(f"phase {i}: {exc}") from exc
+        cleaned_phases.append(cleaned)
+        narrations.append(str(phase.get("narration") or "").strip())
+    _validate_adventure(cleaned_phases, narrations)
 
     aid = adventure_id or _slug(name) or "adventure"
-    act_entries = []
-    for i, (act, narration) in enumerate(zip(cleaned_acts, narrations), start=1):
-        eid = act_encounter_id(aid, i)
-        _write_content(f"{eid}.json", json.dumps(act, indent=2))
-        act_entries.append({"narration": narration, "encounter_id": eid})
+    phase_entries = []
+    for i, (phase, narration) in enumerate(zip(cleaned_phases, narrations), start=1):
+        eid = phase_encounter_id(aid, i)
+        _write_content(f"{eid}.json", json.dumps(phase, indent=2))
+        phase_entries.append({"narration": narration, "encounter_id": eid})
     wrapper = {"kind": "adventure", "name": name,
-               "flavor": str(raw.get("flavor") or ""), "acts": act_entries}
+               "flavor": str(raw.get("flavor") or ""), "phases": phase_entries}
     if str(raw.get("difficulty") or "").strip():  # "made at" flag (llm.py stamps it)
         wrapper["difficulty"] = str(raw["difficulty"]).strip()
+    if raw.get("run_only"):
+        wrapper["run_only"] = True
     _write_content(f"{aid}.json", json.dumps(wrapper, indent=2))
     hidden = _adv_hidden()
     if aid in hidden:
@@ -887,8 +900,8 @@ def save_adventure(raw: Dict[str, Any],
 
 
 def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-    """Update the adventure-level fields only — name, flavor, the per-act
-    narrations — leaving the act encounters untouched. Returns the meta."""
+    """Update the adventure-level fields only — name, flavor, the per-phase
+    narrations — leaving the phase encounters untouched. Returns the meta."""
     adv = _adventure_registry().get(adventure_id)
     if adv is None:
         raise ValueError(f"unknown adventure: {adventure_id}")
@@ -896,30 +909,32 @@ def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, A
     flavor = patch.get("flavor")
     flavor = adv["flavor"] if flavor is None else str(flavor)
     narrations = patch.get("narrations")
-    acts = copy.deepcopy(adv["acts"])
+    phases = copy.deepcopy(adv["phases"])
     if narrations is not None:
-        if not isinstance(narrations, list) or len(narrations) != len(acts):
-            raise ValueError(f"narrations must be a list of {len(acts)}")
-        for act, text in zip(acts, narrations):
+        if not isinstance(narrations, list) or len(narrations) != len(phases):
+            raise ValueError(f"narrations must be a list of {len(phases)}")
+        for phase, text in zip(phases, narrations):
             if not str(text or "").strip():
-                raise ValueError("every act needs a non-empty narration")
-            act["narration"] = str(text)
-    wrapper = {"kind": "adventure", "name": name, "flavor": flavor, "acts": acts}
+                raise ValueError("every phase needs a non-empty narration")
+            phase["narration"] = str(text)
+    wrapper = {"kind": "adventure", "name": name, "flavor": flavor, "phases": phases}
     if adv.get("difficulty"):  # the "made at" flag rides through info edits
         wrapper["difficulty"] = adv["difficulty"]
+    if adv.get("run_only"):
+        wrapper["run_only"] = True
     _write_content(f"{adventure_id}.json", json.dumps(wrapper, indent=2))
     fresh = _adventure_registry().get(adventure_id)
     return _adventure_meta(adventure_id, fresh)
 
 
 def delete_adventure(adventure_id: str) -> None:
-    """Remove an adventure, its act files, and their art. A bundled example that
+    """Remove an adventure, its phase files, and their art. A bundled example that
     survives the deletion is hidden instead (mirroring delete_encounter)."""
     adv = _adventure_registry().get(adventure_id)
     if adv is None:
         raise ValueError(f"unknown adventure: {adventure_id}")
-    for act in adv["acts"]:
-        eid = str(act.get("encounter_id", "")) if isinstance(act, dict) else ""
+    for phase in adv["phases"]:
+        eid = str(phase.get("encounter_id", "")) if isinstance(phase, dict) else ""
         if eid:
             _remove_content_files(eid)
     _remove_content_files(adventure_id)
@@ -929,30 +944,30 @@ def delete_adventure(adventure_id: str) -> None:
         _set_adv_hidden(hidden)
 
 
-def _check_act_edit(eid: str, cleaned: Dict[str, Any]) -> None:
-    """Adventure-level gate on an act edited through the ordinary encounter save
-    path: re-run the §D10-4.1 checks with the edited act substituted, BEFORE
-    anything persists. A non-act encounter id passes straight through."""
+def _check_phase_edit(eid: str, cleaned: Dict[str, Any]) -> None:
+    """Adventure-level gate on a phase edited through the ordinary encounter save
+    path: re-run the §D10-4.1 checks with the edited phase substituted, BEFORE
+    anything persists. A non-phase encounter id passes straight through."""
     for aid, adv in _adventure_registry().items():
-        act_ids = [str(a.get("encounter_id", "")) for a in adv["acts"]
+        phase_ids = [str(a.get("encounter_id", "")) for a in adv["phases"]
                    if isinstance(a, dict)]
-        if eid not in act_ids:
+        if eid not in phase_ids:
             continue
-        _validate_act(cleaned)
-        acts: List[Dict[str, Any]] = []
+        _validate_phase(cleaned)
+        phases: List[Dict[str, Any]] = []
         reg = _encounter_registry()
-        for act_eid in act_ids:
-            if act_eid == eid:
-                acts.append(cleaned)
+        for phase_eid in phase_ids:
+            if phase_eid == eid:
+                phases.append(cleaned)
                 continue
-            scen = reg.get(act_eid)
+            scen = reg.get(phase_eid)
             if scen is None:
-                raise ValueError(f"adventure {aid} is missing act file {act_eid}")
-            acts.append({"name": scen["name"], "enemies": scen["enemies"]})
-        narrations = [str(a.get("narration") or "") for a in adv["acts"]
+                raise ValueError(f"adventure {aid} is missing phase file {phase_eid}")
+            phases.append({"name": scen["name"], "enemies": scen["enemies"]})
+        narrations = [str(a.get("narration") or "") for a in adv["phases"]
                       if isinstance(a, dict)]
         try:
-            _validate_adventure(acts, narrations)
+            _validate_adventure(phases, narrations)
         except ValueError as exc:
             raise ValueError(f"adventure '{adv['name']}': {exc}") from exc
         return
@@ -1033,12 +1048,32 @@ def loadouts_for(character_ids: List[str]) -> List[Dict[str, Any]]:
     return loadouts
 
 
+def scenario_from_detail(detail: Dict[str, Any]) -> Dict[str, Any]:
+    """The build-time scenario shape (`encounter_for`'s) from a full encounter
+    detail dict — used when the encounter is a FROZEN copy in a run's content
+    store rather than a live registry entry (Update 17 §D17-3.3)."""
+    return {
+        "name": str(detail.get("name") or ""),
+        "scene_image": str(detail.get("scene_image") or ""),
+        "enemies": copy.deepcopy(detail.get("enemies") or []),
+        "tokens": copy.deepcopy(detail.get("tokens") or {}),
+        "layouts": copy.deepcopy(detail.get("layouts") or {}),
+        **({"objective": copy.deepcopy(detail["objective"])} if detail.get("objective") else {}),
+    }
+
+
 def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
-                              seed: Optional[int] = None
+                              seed: Optional[int] = None,
+                              scenario: Optional[Dict[str, Any]] = None
                               ) -> "tuple[GameState, Dict[str, str], Dict[str, Any]]":
     """`build_state` with the loadouts already in hand — the adventure layer uses
-    this to field leveled (adventure-local) builds against an act."""
-    scenario = encounter_for(encounter_id)
+    this to field leveled (adventure-local) builds against a phase. ``scenario``
+    (optional) supplies the encounter itself — a run's frozen copy — instead of
+    the live registry's entry for ``encounter_id``; art still resolves by id."""
+    if scenario is None:
+        scenario = encounter_for(encounter_id)
+    else:
+        scenario = copy.deepcopy(scenario)
     if scenario is None:
         raise ValueError(f"unknown encounter: {encounter_id}")
     pool_ids = {_pool_id(e) for e in scenario["enemies"] if isinstance(e, dict)}

@@ -22,11 +22,11 @@ import random
 from typing import Any, Dict, List, Optional, Tuple
 
 from ltg_core.schema import (
-    COST_HP_STEP,
-    COST_MANA,
-    COST_POWER,
+    BASELINE_HP,
+    BASELINE_MANA,
     MAX_POWER_BOUGHT,
     iter_effects,
+    stat_price,
 )
 
 from ..state import Action, GameState
@@ -179,28 +179,40 @@ def _enemy_kill_order(state: GameState) -> List[str]:
 # --------------------------------------------------------------------------- #
 def _spend(char: Dict[str, Any], points: int, order: List[str]) -> Tuple[Dict[str, Any], int]:
     """Spend `points` on the character dict following `order` (a rotation of
-    "hp" / "power" / "mana" purchases; "hp" also serves as the sink). Mirrors
-    the §D10-3 price table; the caller has already bumped `level`."""
+    "hp" / "power" / "mana" purchases; "hp" also serves as the sink). Prices
+    come from the T-79 escalating curve (Update 17 §D17-2.2): the nth purchase
+    of a stat costs `stat_price(stat, n)`, counting every purchase since
+    baseline — so a plan that keeps buying one stat pays more each time. The
+    caller has already bumped `level`."""
     out = dict(char)
     left = points
     level = int(out.get("level", 1))
     identity = list(out.get("colors", [])) or ["C"]
+
+    def next_price(what: str) -> int:
+        if what == "power":
+            return stat_price("power", int(out.get("power_bought", 0)) + 1)
+        if what == "mana":
+            return stat_price("mana", len(out.get("starting_mana", [])) - BASELINE_MANA + 1)
+        return stat_price("hp_step", (int(out["hp"]) - BASELINE_HP) // 2 + 1)
+
     progressed = True
     while progressed and left > 0:
         progressed = False
         for what in order:
-            if what == "power" and left >= COST_POWER \
+            price = next_price(what)
+            if what == "power" and left >= price \
                     and int(out.get("power_bought", 0)) < MAX_POWER_BOUGHT * level:
                 out["power_bought"] = int(out.get("power_bought", 0)) + 1
-                left -= COST_POWER
+                left -= price
                 progressed = True
-            elif what == "mana" and left >= COST_MANA:
+            elif what == "mana" and left >= price:
                 out["starting_mana"] = list(out.get("starting_mana", [])) + [identity[0]]
-                left -= COST_MANA
+                left -= price
                 progressed = True
-            elif what == "hp" and left >= COST_HP_STEP:
+            elif what == "hp" and left >= price:
                 out["hp"] = int(out["hp"]) + 2
-                left -= COST_HP_STEP
+                left -= price
                 progressed = True
             if left <= 0:
                 break

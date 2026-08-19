@@ -1,0 +1,252 @@
+"""Design Update 17 §D17-4 / §D17-5.3 / §D17-5.5 — the economy: items and the
+catalogue, template × affix rolls, gear composition into the stat block,
+consumables as always-in-hand activated-ability cards, rewards, shops,
+selling and trading, effective level."""
+
+from __future__ import annotations
+
+import random
+
+import pytest
+
+from ltg_core.schema import BELT_SIZE, INVENTORY_GEAR, Item
+from ltg_combat.engine import apply_action, legal_actions
+from ltg_combat.scenario import compose_spec, state_from_dict
+from ltg_game_server import content, items, scenario_content as sc
+from ltg_game_server.runs import RunManager
+from ltg_game_server.session import SessionManager
+
+from tests.test_design_update_10 import _adventure, _isolate  # noqa: F401
+from tests.test_design_update_17_scenario import (_accept_quest, _drive, _fake_materializer,
+                                                   _win_adventure)
+from tests.test_design_update_17_towns import arc_raw, town_raw
+from ltg_game_server.scenario import ScenarioRun
+
+
+@pytest.fixture(autouse=True)
+def _dirs(tmp_path, monkeypatch):
+    monkeypatch.setattr(sc, "TOWNS_DIR", tmp_path / "towns")
+    monkeypatch.setattr(sc, "SCENARIOS_DIR", tmp_path / "scenarios")
+    monkeypatch.setattr(sc, "TOWN_HIDDEN_FILE", tmp_path / "th.json")
+    monkeypatch.setattr(sc, "SCENARIO_HIDDEN_FILE", tmp_path / "sh.json")
+    monkeypatch.setattr(items, "USER_ITEMS_DIR", tmp_path / "equipment")
+    monkeypatch.setattr(items, "ITEM_HIDDEN_FILE", tmp_path / "ih.json")
+
+
+def test_base_catalogue_ships_t82():
+    metas = items.list_items()
+    by_slot = {}
+    for m in metas:
+        by_slot.setdefault(m["slot"], []).append(m)
+    assert len(by_slot["weapon"]) >= 6 and len(by_slot["accessory"]) >= 4 and len(by_slot["consumable"]) >= 6
+    keen = items.get_item("keen_falchion")
+    assert keen.points_price == 15 and items.summarize(keen) == "melee weapon · +1 Power"
+    flask = items.get_item("pilgrims_flask")
+    assert flask.statics[0].kind == "ability" and flask.statics[0].card.name == "Pilgrim's Sip"
+    draught = items.get_item("marsh_draught")
+    card = draught.as_card("soren_")
+    assert card.consumable_id == "marsh_draught" and card.timing.value == "sorcery" and card.cost.generic == 0
+
+
+def test_user_item_save_and_delete_shadows_catalogue():
+    meta = items.save_item({"name": "Test Charm", "slot": "accessory", "points_price": 12,
+                            "statics": [{"kind": "stat", "stat": "hp", "amount": 2}]})
+    assert meta["id"] == "test_charm" and meta["source"] == "user"
+    assert items.get_item("test_charm").points_price == 12
+    with pytest.raises(Exception):
+        items.save_item({"name": "Bad", "slot": "accessory", "statics": [{"kind": "power_bonus", "amount": 1}]})
+    items.delete_item("test_charm")
+    assert items.get_item("test_charm") is None
+
+
+def test_rolls_stay_on_vocabulary_and_budget():
+    rng = random.Random(3)
+    for _ in range(40):
+        it = items.roll_item(rng, "weapon", tier=5, boss=True)
+        assert isinstance(it, Item) and it.template
+        # Price = template + affixes (+ premium): never below the template's.
+        base = items.get_item(it.template)
+        assert it.points_price >= base.points_price
+        for a in it.affixes:
+            assert any(x["id"] == a for x in items.AFFIXES)
+    stock = items.roll_stock("weaponsmith", tier=6, seed=1)
+    assert stock and all(x.rarity in ("common", "uncommon") for x in stock)
+    assert all(not any(a in ("warded", "venomed", "unbroken", "blighted") for a in x.affixes) for x in stock)
+    drops = items.roll_drops(2, tier=1, seed=7)
+    assert len([d for d in drops if d.slot != "consumable"]) == 3      # party + 1
+    assert len([d for d in drops if d.slot == "consumable"]) == 4      # party × 2
+    assert items.roll_stock("inn", 3) == []
+
+
+def test_gear_helpers_capacity_equip_swap():
+    lo = {"character": {"name": "X"}}
+    sword = items.get_item("keen_falchion").model_dump(mode="json")
+    bow = items.get_item("siege_bow").model_dump(mode="json")
+    belt_item = items.get_item("quick_salve").model_dump(mode="json")
+    items.add_item(lo, sword)
+    items.equip(lo, "keen_falchion", "primary")
+    assert items.gear_of(lo)["primary"]["id"] == "keen_falchion"
+    items.add_item(lo, bow)
+    items.equip(lo, "siege_bow", "primary")            # swap: falchion back to inventory
+    g = items.gear_of(lo)
+    assert g["primary"]["id"] == "siege_bow" and [x["id"] for x in g["inventory"]["gear"]] == ["keen_falchion"]
+    with pytest.raises(ValueError, match="accessory"):
+        items.equip(lo, "keen_falchion", "accessory")
+    for i in range(BELT_SIZE + 2):
+        items.add_item(lo, {**belt_item, "id": f"salve_{i}"})
+    g = items.gear_of(lo)
+    assert len(g["belt"]) == BELT_SIZE and len(g["inventory"]["consumables"]) == 2
+    with pytest.raises(ValueError, match="belt is full"):
+        items.to_belt(lo, "salve_3")
+    items.from_belt(lo, "salve_0")
+    items.to_belt(lo, "salve_3")
+    assert [x["id"] for x in items.gear_of(lo)["belt"]] == ["salve_1", "salve_2", "salve_3"]
+    for i in range(INVENTORY_GEAR):
+        try:
+            items.add_item(lo, {**bow, "id": f"bow_{i}"})
+        except ValueError:
+            break
+    with pytest.raises(ValueError, match="no room"):
+        items.add_item(lo, {**bow, "id": "one_more"})
+    assert items.worn_points(lo) == 30 and items.effective_level_bonus(lo) == 1
+    items.consume_used(lo, ["salve_1"])
+    assert [x["id"] for x in items.gear_of(lo)["belt"]] == ["salve_2", "salve_3"]
+
+
+def test_compose_folds_gear_and_deals_consumables():
+    lo = content.loadout_for("loadout_soren")
+    lo["gear"] = items.empty_gear()
+    lo["gear"]["primary"] = items.get_item("siege_bow").model_dump(mode="json")        # ranged +1 trample
+    lo["gear"]["secondary"] = items.get_item("keen_falchion").model_dump(mode="json")  # mode/power ignored
+    lo["gear"]["accessory"] = items.get_item("pilgrims_flask").model_dump(mode="json")  # grants a card
+    lo["gear"]["belt"] = [items.get_item("quick_salve").model_dump(mode="json"),
+                          items.get_item("hush_powder").model_dump(mode="json")]
+    plain = compose_spec([content.loadout_for("loadout_soren")], content.encounter_for("builtin_a"))
+    spec = compose_spec([lo], content.encounter_for("builtin_a"))
+    p0, p1 = plain["party"][0], spec["party"][0]
+    assert p1["attack_mode"] == "ranged"
+    # Base power follows the mode (melee 2 → ranged 1) then +1 from the primary.
+    assert p1["power"] == p0["power"] - 1 + 1
+    assert "trample" in p1["keywords"]
+    assert len(p1["opening_extras"]) == 3
+    st = state_from_dict(spec, seed=1)
+    c = st.party[0]
+    extras = [k for k in c.hand if k.consumable_id or k.granted_by]
+    assert len(extras) == 3 and len(c.hand) == c.hand_size + 3
+    # Drink the salve: no mana, stacks as an ABILITY, the card is exiled.
+    st.phase = "player"; st.priority = c.id
+    acts = legal_actions(st)
+    drink = next((a for a in acts if a.kind == "cast" and a.card_id and "consumable_quick_salve" in a.card_id), None)
+    assert drink is not None
+    st2, _ = apply_action(st, drink)
+    top = st2.stack[-1]
+    assert top.kind == "ability" and top.label == "Quick Salve"
+    c2 = st2.character(c.id)
+    assert any(k.consumable_id == "quick_salve" for k in c2.exile)
+    assert not any(k.consumable_id == "quick_salve" for k in c2.hand + c2.graveyard)
+    assert any("uses Quick Salve" in e.msg for e in st2.log)
+
+
+@pytest.fixture
+def runs(tmp_path):
+    return RunManager(root=tmp_path / "saves")
+
+
+def _start(runs, options=None):
+    town = sc.validate_town(town_raw())
+    arc = sc.validate_arc(arc_raw(), town)
+    loadouts = content.loadouts_for(["loadout_soren", "loadout_ys"])
+    scen = ScenarioRun(town, arc, ["loadout_soren", "loadout_ys"], loadouts,
+                       options or {"difficulty": "standard"}, town_id="hollowmere")
+    scen.materializer = _fake_materializer
+    meta = runs.create_scenario_run(scen, name="Econ")
+    session = SessionManager().create(None, run_id=meta["run_id"], run_manager=runs, scenario=scen)
+    session.async_hook = lambda s, kind: _drive(s, kind)
+    session.scenario_enter_town(None)
+    session.materialize_act()
+    session.clients["c1"] = object()
+    return session, scen, meta["run_id"]
+
+
+def test_stock_rolls_per_act_and_shop_buy_sell_trade(runs):
+    session, scen, run_id = _start(runs)
+    stock = scen.act["stock"]
+    assert set(stock) >= {"tolls_forge", "the_brass_eye", "reedwife_s"}
+    assert all(it["rarity"] in ("common", "uncommon") for loc in stock.values() for it in loc)
+    scen.gold["loadout_soren"] = 100
+    session.town_verb("c1", "visit", {"location_id": "tolls_forge"})
+    snap = session.snapshot_for("c1")
+    assert snap["shop"]["function"] == "weaponsmith" and snap["shop"]["stock"]
+    first = snap["shop"]["stock"][0]
+    session.town_verb("c1", "buy", {"location_id": "tolls_forge", "item_id": first["id"], "character_id": "loadout_soren"})
+    assert scen.gold["loadout_soren"] == 100 - first["buy_price"]
+    lo = scen.loadouts[0]
+    assert items.gear_of(lo)["inventory"]["gear"][0]["id"] == first["id"]
+    assert first["id"] not in [x["id"] for x in scen.act["stock"]["tolls_forge"]]
+    # Equip it, check the sheet, sell it back at 50%.
+    session.town_verb("c1", "equip", {"character_id": "loadout_soren", "item_id": first["id"], "slot": "primary"})
+    sheet = session.snapshot_for("c1")["party_sheet"][0]
+    assert sheet["gear"]["primary"]["id"] == first["id"] and sheet["worn_points"] == first["points_price"]
+    session.town_verb("c1", "sell", {"character_id": "loadout_soren", "item_id": first["id"]})
+    assert items.gear_of(scen.loadouts[0])["primary"] is None
+    assert scen.gold["loadout_soren"] == 100 - first["buy_price"] + int(first["points_price"] * 0.5)
+    # Trade gold to Ys (same client → immediate).
+    session.town_verb("c1", "give", {"character_id": "loadout_soren", "to": "loadout_ys", "gold": 10})
+    assert scen.gold["loadout_ys"] == 10
+    second = scen.act["stock"]["tolls_forge"][0]
+    scen.gold["loadout_ys"] = 0
+    with pytest.raises(ValueError, match="not enough"):
+        session.town_verb("c1", "buy", {"location_id": "tolls_forge", "item_id": second["id"], "character_id": "loadout_ys"})
+
+
+def test_rewards_gate_after_phase_three(runs):
+    session, scen, run_id = _start(runs)
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    _win_adventure(session)
+    # The finale is won but the run holds at the Rewards modal: still in the
+    # fight's session, victory suppressed, drops rolled (T-83).
+    assert scen.rewards is not None and session.state is not None and scen.mode == "adventure"
+    assert session.public_result() is None
+    snap = session.snapshot_for("c1")
+    rv = snap["rewards"]
+    gear = [i for i in rv["items"] if i["slot"] != "consumable"]
+    cons = [i for i in rv["items"] if i["slot"] == "consumable"]
+    assert len(gear) == 3 and len(cons) == 4
+    with pytest.raises(ValueError, match="assign every reward"):
+        session.economy_verb("c1", "reward_accept", {})
+    for i in range(len(rv["items"])):
+        target = "loadout_soren" if i % 2 == 0 else "loadout_ys"
+        if not rv["room"][str(i)][target]:
+            target = "discard"
+        session.economy_verb("c1", "reward_assign", {"index": i, "target": target})
+    session.economy_verb("c1", "reward_accept", {})   # one client → runs at once
+    # Items landed, the finale transitioned, and the party is in town for Act II.
+    assert scen.rewards is None and scen.mode == "town" and scen.act_index == 1
+    lo = scen.loadouts[0]
+    assert items.all_items(lo)
+    kinds = [s["kind"] for s in runs.run_detail(run_id)["saves"]]
+    assert "rewards" in kinds and kinds[-1] == "act_start"
+    # A belt consumable is dealt into the next adventure's opening hand.
+    belt = items.gear_of(lo)["belt"]
+    if belt:
+        _accept_quest(session)
+        session.town_verb("c1", "leave", {})
+        session.town_verb("c1", "start_adventure", {})
+        c = session.state.party[0]
+        assert any(k.consumable_id for k in c.hand)
+
+
+def test_effective_level_reads_worn_points(runs):
+    session, scen, run_id = _start(runs)
+    lo = scen.loadouts[0]
+    items.add_item(lo, items.get_item("siege_bow").model_dump(mode="json"))
+    items.equip(lo, "siege_bow", "primary")
+    assert items.worn_points(lo) == 30
+    # Party of two: (1 + 1) + (1 + 0) → average 1.5 → floor 1; both geared → 2.
+    assert scen.effective_level() == 1
+    lo2 = scen.loadouts[1]
+    items.add_item(lo2, items.get_item("siege_bow").model_dump(mode="json"))
+    items.equip(lo2, "siege_bow", "primary")
+    assert scen.effective_level() == 2

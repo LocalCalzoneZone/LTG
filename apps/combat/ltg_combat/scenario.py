@@ -406,6 +406,11 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
         hand_size = int(p["hand_size"])
         hand = [c.model_copy(deep=True) for c in library[:hand_size]]
         draw_pile = [c.model_copy(deep=True) for c in library[hand_size:]]
+        # Update 17: belt consumables + granted abilities sit ABOVE the drawn
+        # hand from turn 1 (they never count against hand_size).
+        extras = [Card.model_validate(c) for c in (p.get("opening_extras") or [])]
+        if extras:
+            hand = extras + hand
         party.append(CharacterState(
             id=p.get("id", _slug(p["name"])), name=p["name"],
             archetype=p.get("archetype", ""), max_hp=int(p["hp"]), hp=int(p["hp"]),
@@ -576,7 +581,7 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
     lo = Loadout.model_validate(raw_loadout)
     char = lo.character
     block = char.stat_block  # §P-4c resolved stat block: what the engine consumes
-    return {
+    entry = {
         "id": _slug(char.name),
         "name": char.name,
         "archetype": char.preset or "",      # display label only; no stats derive from it
@@ -597,6 +602,81 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
         "ability_flavor": (char.ability_flavor.model_dump(mode="json")
                            if getattr(char, "ability_flavor", None) else {}),
     }
+    if lo.gear:
+        fold_gear(entry, lo.gear)  # Update 17 §D17-4.2 / §D17-4.4
+    return entry
+
+
+def fold_gear(entry: Dict[str, Any], gear: Dict[str, Any]) -> None:
+    """Fold worn gear into the party entry's STAT BLOCK and keyword list,
+    exactly as a level-up would (Update 17 §D17-4.2), and deal the belt's
+    consumables (§D17-4.4) + any granted abilities in as opening-hand cards.
+    The engine sees a stat block, as it always has.
+
+    - primary weapon: attack mode + Power bonus + its other statics;
+    - secondary weapon: ONLY its non-mode, non-Power statics;
+    - accessory: all its statics;
+    - stat riders: hp / mana (a slot in the first identity colour) / cards.
+    """
+    from ltg_core.schema import Item  # local import: schema is core, this is combat
+
+    def _item(raw: Any) -> Optional[Item]:
+        if not raw:
+            return None
+        try:
+            return Item.model_validate(raw)
+        except Exception:
+            return None
+
+    keywords = list(entry.get("keywords") or [])
+    granted: List[Dict[str, Any]] = []
+    for slot in ("primary", "secondary", "accessory"):
+        item = _item(gear.get(slot))
+        if item is None:
+            continue
+        for st in item.statics:
+            if st.kind == "attack_mode":
+                if slot == "primary" and st.mode is not None:
+                    # A weapon may grant a mode the build didn't buy; base Power
+                    # follows the mode (melee 2 / ranged 1) before bonuses.
+                    old_mode = entry.get("attack_mode", "melee")
+                    new_mode = st.mode.value
+                    if new_mode != old_mode:
+                        base_old = 2 if old_mode == "melee" else 1
+                        base_new = 2 if new_mode == "melee" else 1
+                        entry["power"] = int(entry.get("power", 0)) - base_old + base_new
+                        entry["attack_mode"] = new_mode
+            elif st.kind == "power_bonus":
+                if slot == "primary":
+                    entry["power"] = int(entry.get("power", 0)) + int(st.amount)
+            elif st.kind == "keyword" and st.keyword:
+                if st.keyword not in keywords:
+                    keywords.append(st.keyword)
+            elif st.kind == "stat":
+                if st.stat == "hp":
+                    entry["hp"] = int(entry.get("hp", 0)) + int(st.amount)
+                elif st.stat == "mana":
+                    ident = list(entry.get("identity") or [])
+                    fill = ident[0] if ident else "C"
+                    entry["identity"] = ident + [fill] * max(0, int(st.amount))
+                elif st.stat == "cards":
+                    entry["hand_size"] = int(entry.get("hand_size", 1)) + int(st.amount)
+            elif st.kind == "ability" and st.card is not None:
+                card = st.card.model_copy(deep=True)
+                card.granted_by = item.id
+                card.image = card.image or item.art_url
+                card.id = f"granted_{item.id}_{card.id}"
+                granted.append(card.model_dump(mode="json"))
+    entry["keywords"] = keywords
+    prefix = f"{entry['id']}_"
+    belt_cards: List[Dict[str, Any]] = []
+    for raw in gear.get("belt") or []:
+        item = _item(raw)
+        if item is not None and item.slot == "consumable":
+            belt_cards.append(item.as_card(prefix).model_dump(mode="json"))
+    if belt_cards or granted:
+        # Dealt above the drawn opening hand, from turn 1 (§D17-4.4).
+        entry["opening_extras"] = belt_cards + granted
 
 
 def compose_spec(loadouts: List[Dict[str, Any]], scenario: Dict[str, Any],

@@ -1,0 +1,26 @@
+{
+  "kind": "item",
+  "id": "keen_falchion",
+  "name": "Keen Falchion",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 1,
+  "points_price": 15,
+  "flavor": "It wants the neck. Let it.",
+  "art_desc": "A heavy single-edged falchion, blade bright along the curve, brass-capped pommel.",
+  "art_url": "/art/items/keen_falchion/item-6d2c2105.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}
