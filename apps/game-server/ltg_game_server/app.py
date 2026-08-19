@@ -448,6 +448,7 @@ class LlmSettingsBody(BaseModel):
     # ever sees it — keep this model in sync with the settings keys.
     api_key: Optional[str] = None
     model: Optional[str] = None
+    task_models: Optional[Dict[str, Optional[str]]] = None   # per-task overrides ("" = default)
     instructions: Optional[str] = None
     art_style: Optional[str] = None
     art_backend: Optional[str] = None

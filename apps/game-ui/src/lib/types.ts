@@ -618,6 +618,8 @@ export interface LlmModel {
 }
 export interface LlmSettings {
   model: string;
+  task_models: Record<string, string>; // per generation task; "" = the default model
+  model_tasks: LlmModel[];             // {id,label}: encounters / adventures / towns / scenarios
   instructions: string;
   art_style: string; // the aesthetic wrapper for image generation
   art_backend: string; // "openrouter" | "comfyui"
@@ -635,6 +637,7 @@ export interface LlmSettings {
 export interface LlmSettingsPatch {
   api_key?: string;
   model?: string;
+  task_models?: Record<string, string>;
   instructions?: string | null;
   art_style?: string | null;
   art_backend?: string;

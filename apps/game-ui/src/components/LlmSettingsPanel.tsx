@@ -11,6 +11,7 @@ const label = "caps-label text-[9px] tracking-[0.2em] text-mist";
 export function LlmSettingsPanel() {
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [model, setModel] = useState("");
+  const [taskModels, setTaskModels] = useState<Record<string, string>>({});
   const [instructions, setInstructions] = useState("");
   const [artStyle, setArtStyle] = useState("");
   const [artBackend, setArtBackend] = useState("openrouter");
@@ -24,6 +25,7 @@ export function LlmSettingsPanel() {
   const load = (s: LlmSettings) => {
     setSettings(s);
     setModel(s.model);
+    setTaskModels({ ...s.task_models });
     setInstructions(s.instructions);
     setArtStyle(s.art_style);
     setArtBackend(s.art_backend);
@@ -43,11 +45,12 @@ export function LlmSettingsPanel() {
     setNote(null);
     try {
       const patch: {
-        model: string; instructions: string; art_style: string;
+        model: string; task_models: Record<string, string>; instructions: string; art_style: string;
         art_backend: string; comfyui_url: string; comfyui_workflow: string;
         api_key?: string;
       } = {
         model,
+        task_models: taskModels,
         instructions,
         art_style: artStyle,
         art_backend: artBackend,
@@ -111,7 +114,7 @@ export function LlmSettingsPanel() {
         </div>
 
         <label className="mb-3 flex flex-col gap-1.5">
-          <span className={label}>Model</span>
+          <span className={label}>Default model</span>
           <select className={field} value={model} onChange={(e) => setModel(e.target.value)}>
             {settings?.models.map((m) => (
               <option key={m.id} value={m.id}>
@@ -120,6 +123,26 @@ export function LlmSettingsPanel() {
             ))}
           </select>
         </label>
+
+        {/* Per-task models (Update 17): each generation task may pick its own
+            model; "Default" follows the choice above. */}
+        <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2">
+          {settings?.model_tasks.map((t) => (
+            <label key={t.id} className="flex flex-col gap-1">
+              <span className={label}>{t.label}</span>
+              <select
+                className={field}
+                value={taskModels[t.id] ?? ""}
+                onChange={(e) => setTaskModels({ ...taskModels, [t.id]: e.target.value })}
+              >
+                <option value="">Default ({settings.models.find((m) => m.id === model)?.label ?? model})</option>
+                {settings.models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="flex items-center justify-between">

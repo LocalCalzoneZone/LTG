@@ -33,10 +33,31 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Selectable models. `id` is the exact OpenRouter slug sent in the request; edit
 # these if a slug 404s (OpenRouter slugs drift). `label` is the dropdown display.
 MODELS: List[Dict[str, str]] = [
-    {"id": "z-ai/glm-5.2", "label": "GLM 5.2 (z-ai)"},
-    {"id": "google/gemini-3.5-flash", "label": "Gemini 3.5 Flash (Google)"},
-    {"id": "anthropic/claude-opus-4.8", "label": "Claude Opus 4.8 (Anthropic)"},
+    {"id": "z-ai/glm-5.3", "label": "GLM 5.3 (z-ai)"},
+    {"id": "google/gemini-3.7-flash", "label": "Gemini 3.7 Flash (Google)"},
+    {"id": "anthropic/claude-opus-5", "label": "Claude Opus 5 (Anthropic)"},
 ]
+# Retired slugs → their successors, so a saved settings file keeps working.
+_MODEL_ALIASES = {
+    "z-ai/glm-5.2": "z-ai/glm-5.3",
+    "google/gemini-3.5-flash": "google/gemini-3.7-flash",
+    "anthropic/claude-opus-4.8": "anthropic/claude-opus-5",
+}
+# The generation TASKS a model can be chosen for (Options → LLM). Each may
+# override the default `model`; "" means "use the default".
+MODEL_TASKS: List[Dict[str, str]] = [
+    {"id": "encounters", "label": "Encounters"},
+    {"id": "adventures", "label": "Adventures"},
+    {"id": "towns", "label": "Towns"},
+    {"id": "scenarios", "label": "Scenarios (arcs & acts)"},
+]
+
+
+def _valid_model(mid: Any) -> Optional[str]:
+    if not isinstance(mid, str) or not mid:
+        return None
+    mid = _MODEL_ALIASES.get(mid, mid)
+    return mid if mid in {m["id"] for m in MODELS} else None
 
 # Image generation backends (Options → LLM → Art Generation). "openrouter" calls
 # the cloud image model below with the stored API key; "comfyui" queues the
@@ -728,12 +749,14 @@ Design a brand-new encounter (do not copy the examples' theme). Return ONLY the 
 
 def _default_settings() -> Dict[str, Any]:
     return {"api_key": "", "model": MODELS[0]["id"],
+            "task_models": {t["id"]: "" for t in MODEL_TASKS},
             "instructions": DEFAULT_INSTRUCTIONS, "art_style": DEFAULT_ART_STYLE,
             "art_backend": "openrouter", "comfyui_url": "", "comfyui_workflow": ""}
 
 
 def load_settings() -> Dict[str, Any]:
-    """The full settings dict (including the raw api_key), defaults merged in."""
+    """The full settings dict (including the raw api_key), defaults merged in.
+    Retired model slugs are mapped to their successors on the way in."""
     out = _default_settings()
     try:
         data = json.loads(SETTINGS_PATH.read_text())
@@ -742,9 +765,21 @@ def load_settings() -> Dict[str, Any]:
                       "art_backend", "comfyui_url", "comfyui_workflow"):
                 if isinstance(data.get(k), str) and data[k] != "":
                     out[k] = data[k]
+            tm = data.get("task_models")
+            if isinstance(tm, dict):
+                for t in MODEL_TASKS:
+                    out["task_models"][t["id"]] = _valid_model(tm.get(t["id"])) or ""
     except (OSError, json.JSONDecodeError):
         pass
+    out["model"] = _valid_model(out["model"]) or MODELS[0]["id"]
     return out
+
+
+def model_for(task: str, settings: Optional[Dict[str, Any]] = None) -> str:
+    """The model to call for a generation task (encounters / adventures /
+    towns / scenarios): the per-task pick, else the default `model`."""
+    s = settings or load_settings()
+    return (s.get("task_models") or {}).get(task) or s["model"]
 
 
 def public_settings() -> Dict[str, Any]:
@@ -752,6 +787,8 @@ def public_settings() -> Dict[str, Any]:
     s = load_settings()
     return {
         "model": s["model"],
+        "task_models": dict(s["task_models"]),
+        "model_tasks": MODEL_TASKS,
         "instructions": s["instructions"],
         "art_style": s["art_style"],
         "art_backend": s["art_backend"],
@@ -777,9 +814,21 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     those files on the next save."""
     cur = load_settings()
     if "model" in patch and isinstance(patch["model"], str) and patch["model"]:
-        if patch["model"] not in {m["id"] for m in MODELS}:
+        mid = _valid_model(patch["model"])
+        if mid is None:
             raise ValueError(f"unknown model: {patch['model']}")
-        cur["model"] = patch["model"]
+        cur["model"] = mid
+    if "task_models" in patch and isinstance(patch["task_models"], dict):
+        for t in MODEL_TASKS:
+            if t["id"] in patch["task_models"]:
+                v = patch["task_models"][t["id"]]
+                if v in (None, ""):
+                    cur["task_models"][t["id"]] = ""       # follow the default
+                else:
+                    mid = _valid_model(v)
+                    if mid is None:
+                        raise ValueError(f"unknown model: {v}")
+                    cur["task_models"][t["id"]] = mid
     if "instructions" in patch:
         ins = patch["instructions"]
         if ins is None:
@@ -1241,7 +1290,7 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
 
     last_err = ""
     for attempt in range(max(1, attempts)):
-        reply = _chat(settings["api_key"], settings["model"], messages)
+        reply = _chat(settings["api_key"], model_for("encounters", settings), messages)
         try:
             encounter = _normalize(_extract_json(reply))
             _scale_hp(encounter, difficulty)  # floor enemy HP so they aren't one-shot
@@ -1510,7 +1559,7 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
 
     last_err = ""
     for _attempt in range(max(1, attempts)):
-        reply = _chat(settings["api_key"], settings["model"], messages,
+        reply = _chat(settings["api_key"], model_for("adventures", settings), messages,
                       max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT)
         try:
             raw = _extract_json(reply)
@@ -1712,9 +1761,10 @@ def _arc_block(arc: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _scenario_chat(system: str, user: str, attempts: int, fix, what: str) -> Dict[str, Any]:
+def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
+                   task: str = "scenarios") -> Dict[str, Any]:
     """The shared repair loop: call, validate via ``fix(raw) -> cleaned``, feed the
-    error back, up to ``attempts``."""
+    error back, up to ``attempts``. ``task`` picks the model (towns / scenarios)."""
     settings = load_settings()
     if not settings["api_key"]:
         raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
@@ -1724,7 +1774,7 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str) -> Dic
     ]
     last_err = ""
     for _ in range(max(1, attempts)):
-        reply = _chat(settings["api_key"], settings["model"], messages,
+        reply = _chat(settings["api_key"], model_for(task, settings), messages,
                       max_tokens=SCENARIO_MAX_TOKENS, timeout=SCENARIO_TIMEOUT)
         try:
             return fix(_extract_json(reply))
@@ -1742,7 +1792,8 @@ def generate_town(note: str = "", attempts: int = 3) -> Dict[str, Any]:
     from . import scenario_content as sc
     user = "Design the town now." + (f" Player's note (honor it): {note.strip()}" if note.strip() else "")
     user += "\nReturn ONLY the town JSON."
-    town = _scenario_chat(TOWN_INSTRUCTIONS, user, attempts, sc.validate_town, "town")
+    town = _scenario_chat(TOWN_INSTRUCTIONS, user, attempts, sc.validate_town, "town",
+                          task="towns")
     return sc.save_town(town)
 
 
