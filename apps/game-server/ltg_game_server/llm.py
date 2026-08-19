@@ -1736,8 +1736,10 @@ Write:
       "choices": [{"label": "...", "next": "<node id or omit to end>",
                    "requires": ["<flag>", ...] (optional),
                    "effects": [<hook>, ...] (optional)}]}}}
-   - 2–4 nodes deep on the main line, 2–3 choices per node, a choice with no
-     "next" ends the conversation. Node text 1–3 sentences in the NPC's voice.
+   - Keep each PATH through the tree short: 2–4 nodes from the root to an end
+     (never more than 8, counting every branch), 2–3 choices per node; a choice
+     with no "next" ends the conversation. Node text 1–3 sentences in the NPC's
+     voice.
    - HOOKS are a CLOSED vocabulary — use ONLY these shapes, nothing else:
        {"kind": "set_flag", "flag": "<name>"}
        {"kind": "grant_quest"}            (the quest above)

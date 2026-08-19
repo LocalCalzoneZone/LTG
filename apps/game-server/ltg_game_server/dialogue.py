@@ -6,8 +6,9 @@ A dialogue tree::
                                 "choices": [{"label", "next"?, "requires"?: [flag…],
                                              "effects"?: [hook…]}]}}}
 
-2–4 nodes deep, 2–3 choices per node; a choice without ``next`` ends the
-conversation. **Hooks are a closed vocabulary** (like effect verbs):
+2–4 nodes deep on the main line (a hard cap of MAX_DEPTH — generous, since a
+defeated_once branch stacks on top), 2–3 choices per node; a choice without
+``next`` ends the conversation. **Hooks are a closed vocabulary** (like effect verbs):
 ``set_flag``, ``grant_quest``, ``advance_quest``, ``unlock_adventure`` (write-
 once per act), ``give_gold``, ``give_item``, ``rest``, ``open_shop``,
 ``direct_to``. Nothing else validates; the prompt is told so.
@@ -34,7 +35,7 @@ HOOKS = ("set_flag", "grant_quest", "advance_quest", "unlock_adventure",
 # Hooks whose choice is party-wide: they open the all-players confirmation
 # (§D17-5.4). Flavour choices don't.
 PARTY_WIDE_HOOKS = frozenset({"grant_quest", "unlock_adventure", "rest"})
-MAX_DEPTH = 4
+MAX_DEPTH = 10
 MIN_CHOICES = 1     # a leaf may carry one "Farewell"; the prompt asks 2–3
 MAX_CHOICES = 4
 
@@ -77,7 +78,7 @@ def _clean_hook(h: Any, where: str) -> Dict[str, Any]:
 def validate_dialogue(raw: Dict[str, Any], flags_known: Optional[Set[str]] = None
                       ) -> Dict[str, Any]:
     """The authored-dialogue gate: shape, closed hooks, every ``next`` resolves,
-    depth ≤ 4, no `freeform`. Returns the cleaned tree."""
+    depth ≤ MAX_DEPTH, no `freeform`. Returns the cleaned tree."""
     if not isinstance(raw, dict):
         raise ValueError("dialogue must be an object")
     if raw.get("freeform"):
@@ -136,7 +137,7 @@ def validate_dialogue(raw: Dict[str, Any], flags_known: Optional[Set[str]] = Non
                 best = max(best, 1 + depth(ch["next"], seen + (nid,)))
         return best
     if depth(root, ()) > MAX_DEPTH:
-        raise ValueError(f"dialogue is deeper than {MAX_DEPTH} nodes")
+        raise ValueError(f"dialogue runs deeper than {MAX_DEPTH} nodes — trim the longest chain")
     return {"root": root, "nodes": nodes}
 
 
