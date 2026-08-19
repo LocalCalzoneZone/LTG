@@ -93,6 +93,12 @@ class ScenarioRun:
         # The Rewards modal after Phase III (§D17-4.5): rolled drops awaiting
         # assignment; None outside that moment.
         self.rewards: Optional[Dict[str, Any]] = None
+        # The JOURNAL: what the party has learned, in order — the act's intro
+        # (the arrival paragraph), the lines townsfolk have told them, the
+        # quest they agreed to. Nothing the party hasn't heard appears here.
+        self.journal: List[Dict[str, Any]] = []
+        # A lost adventure holds on the defeat splash until the party "flees".
+        self.defeat_pending = False
         # A per-player shop view is stateless (stock lives on the act); the
         # pending two-party trade offer (§D17-5.3), if any.
         self.trade: Optional[Dict[str, Any]] = None
@@ -169,6 +175,7 @@ class ScenarioRun:
         self.act = copy.deepcopy(m)
         self.materializing = False
         self.materialize_error = None
+        self.add_journal("intro", m.get("arrival", ""))
         # Merchant stock (§D17-5.5): rolled in code at the act's tier, fixed
         # for the act, refreshed each act — unless the materialization already
         # carries it (a reload, a pre-generated Act I).
@@ -240,6 +247,7 @@ class ScenarioRun:
                                                  "choices": [{"label": "Farewell.", "next": None,
                                                               "requires": [], "effects": []}]}}}
         self.conversation = Conversation(npc_id, tree)
+        self._note_npc_line()
 
     def attribute(self, character_id: str) -> None:
         if self.conversation is None:
@@ -277,6 +285,8 @@ class ScenarioRun:
             fired.append(h)
         if self.conversation.over:
             self.conversation = None
+        else:
+            self._note_npc_line()
         return fired
 
     def end_conversation(self) -> None:
@@ -290,6 +300,7 @@ class ScenarioRun:
             if self.quest.get("status") in ("none", "offered"):
                 self.quest["status"] = "accepted"
             self.flags["quest_accepted"] = True
+            self.add_journal("quest", f'You agreed to take on "{self.quest.get("title", "")}": {self.quest.get("text", "")}')
         elif kind == "advance_quest":
             if self.quest.get("status") == "accepted":
                 self.quest["status"] = "advanced"
@@ -298,6 +309,7 @@ class ScenarioRun:
         elif kind == "give_gold":
             for cid in self.character_ids:
                 self.gold[cid] = self.gold.get(cid, 0) + int(h.get("amount", 0))
+            self.add_journal("event", f"Each of you received {int(h.get('amount', 0))} gold.")
         elif kind == "give_item":
             self.flags[f"item_{h.get('item')}"] = True  # Phase 2 lands the item itself
         elif kind == "rest":
@@ -306,11 +318,39 @@ class ScenarioRun:
             self.flags["_shop_open"] = True    # Phase 2: the shop modal (stub now)
         elif kind == "direct_to":
             self.quest["direct_to"] = {"npc": h.get("npc"), "location": h.get("location")}
+            npc = sc.find_npc(self.town, h.get("npc") or "")
+            loc = sc.find_location(self.town, h.get("location") or "") or (npc[0] if npc else None)
+            who = (npc[1]["name"] if npc else "") + (f" at {loc['name']}" if loc else "")
+            if who.strip():
+                self.add_journal("event", f"You were told to seek {who.strip()}.")
 
     def rest(self) -> None:
         """The inn: full restore (HP; the adventure resets the rest)."""
         for cid in self.character_ids:
             self.hp[cid] = None
+
+    # -- the journal ------------------------------------------------------- #
+    def add_journal(self, kind: str, text: str, speaker: str = "", where: str = "") -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        entry = {"act": self.act_index + 1, "scenario": self.scenario_number,
+                 "kind": kind, "text": text, "speaker": speaker, "where": where}
+        if self.journal and self.journal[-1] == entry:
+            return
+        self.journal.append(entry)
+
+    def _note_npc_line(self) -> None:
+        """Record what the NPC just said (the node the party is looking at)."""
+        conv = self.conversation
+        if conv is None or conv.node is None:
+            return
+        found = sc.find_npc(self.town, conv.npc_id)
+        if found is None:
+            return
+        loc, npc = found
+        if conv.node.get("speaker") == "npc":
+            self.add_journal("heard", conv.node["text"], speaker=npc["name"], where=loc["name"])
 
     # -- the adventure (§D17-6.3 / §D17-6.4) -------------------------------- #
     def adventure_context(self) -> Dict[str, Any]:
@@ -345,8 +385,10 @@ class ScenarioRun:
             raise ValueError("the adventure is not ready")
         self._sync_levels_into_loadouts()
         run = AdventureRun(self.adventure_id or "run-adventure", detail=self.adventure_detail)
+        run.difficulty = self.options.get("difficulty", "standard")
         state, portraits, art, eid = run.start(self.character_ids, seed=seed,
                                                loadouts=self.loadouts)
+        self.add_journal("event", f'You rode out for {self.adventure_detail.get("name", "the road")}.')
         # Pools carry across acts (a lone adventure re-derives them; a run knows).
         for cid, live in zip(self.character_ids, run.live_ids):
             run.banked[live] = int(self.banked.get(cid, 0))
@@ -399,6 +441,8 @@ class ScenarioRun:
         self.flags[f"act_{n}_complete"] = True
         self.flags.pop("defeated_once", None)
         self.quest["status"] = "complete"
+        self.add_journal("event", f'{(self.adventure_detail or {}).get("name", "The adventure")} is done; '
+                                  f'"{self.quest.get("title", "")}" is complete.')
         self.completed_acts.append({"act": n, "title": self.outline["title"],
                                     "quest": self.quest.get("title", ""),
                                     "adventure": (self.adventure_detail or {}).get("name", "")})
@@ -435,11 +479,14 @@ class ScenarioRun:
         if run is not None:
             self._harvest(run, state)
         self.adventure = None
+        self.defeat_pending = False
         if self.options.get("hardcore"):
             self.dead = True
             self.mode = "complete"
             return "dead"
         self.flags["defeated_once"] = True
+        self.add_journal("event", f'You were beaten at {(self.adventure_detail or {}).get("name", "the road")} '
+                                  "and forced to flee back to town.")
         return "town"
 
     # -- rewards (§D17-4.5) ------------------------------------------------- #
@@ -595,14 +642,20 @@ class ScenarioRun:
             loc = sc.find_location(self.town, direct.get("location") or "") or (npc[0] if npc else None)
             pointer = {"npc": npc[1]["name"] if npc else None,
                        "location": loc["name"] if loc else None}
+        # The quest's text is shown only once the party has AGREED to it — until
+        # then, the journal holds only what the townsfolk have said.
+        q = dict(self.quest)
+        if q.get("status") in ("none", "offered"):
+            q["text"] = ""
+            q["title"] = ""
         return {
-            "arc_title": self.arc["title"], "villain": self.arc["villain"],
-            "stakes": self.arc["stakes"],
+            "arc_title": self.arc["title"],
             "act_number": self.act_index + 1, "acts_total": len(self.arc["acts"]),
             "act_title": self.outline["title"],
-            "quest": dict(self.quest), "direct_to": pointer,
+            "quest": q, "direct_to": pointer,
             "completed": list(self.completed_acts),
             "scenario_number": self.scenario_number,
+            "journal": [dict(e) for e in self.journal],
         }
 
     # -- snapshots (the town screen) ---------------------------------------- #
@@ -692,6 +745,7 @@ class ScenarioRun:
             "conversation": (self.conversation.snapshot(self.flags)
                              if self.conversation is not None else None),
             "splash": copy.deepcopy(self.splash),
+            "defeat_pending": self.defeat_pending,
             "materializing": self.materializing,
             "materialize_error": self.materialize_error,
             "quest_log": self.quest_log(),
@@ -751,6 +805,7 @@ class ScenarioRun:
             "dead": self.dead,
             "act_present": self.act is not None,
             "rewards": copy.deepcopy(self.rewards),
+            "journal": copy.deepcopy(self.journal),
         }
 
     def restore(self, block: Dict[str, Any], act: Optional[Dict[str, Any]],
@@ -777,6 +832,7 @@ class ScenarioRun:
         self.act_summaries = list(block.get("act_summaries") or [])
         self.dead = bool(block.get("dead"))
         self.rewards = copy.deepcopy(block.get("rewards")) or None
+        self.journal = copy.deepcopy(block.get("journal") or [])
         self.conversation = None
         self.splash = None
         if act is not None:
@@ -812,7 +868,11 @@ def pregenerate_scenario(town_id: str, difficulty: str = "standard",
                          note: str = "") -> Dict[str, Any]:
     """Options → Scenarios → Generate: arc for the town, Act I's town portion,
     and Act I's adventure (generated for a generic level-1 party — layouts
-    cover parties of 1–4 anyway). Persists the scenario; returns its meta."""
+    cover parties of 1–4 anyway). The adventure is written at STANDARD; the
+    run's chosen difficulty rescales it at play (AdventureRun.difficulty), so
+    a pre-generated scenario carries no difficulty of its own. Persists the
+    scenario; returns its meta."""
+    difficulty = "standard"
     town = sc.town_detail(town_id)
     if town is None:
         raise ValueError(f"unknown town: {town_id}")

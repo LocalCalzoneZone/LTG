@@ -445,6 +445,8 @@ export interface GameSnapshot {
   confirm?: ConfirmView | null;
   rewards?: RewardsView | null;
   gear_editable?: boolean;
+  defeat_pending?: boolean;
+  adventure_name?: string;
 }
 
 export interface SeatsMsg {
@@ -683,10 +685,12 @@ export interface ConversationView {
   choices: { index: number; label: string; party_wide: boolean; ends: boolean }[];
   over: boolean;
 }
+export interface JournalEntry {
+  act: number; scenario: number; kind: "intro" | "heard" | "quest" | "event"; text: string; speaker: string; where: string;
+}
 export interface QuestLogView {
   arc_title: string;
-  villain: string;
-  stakes: string;
+  journal: JournalEntry[];
   act_number: number;
   acts_total: number;
   act_title: string;
@@ -805,6 +809,7 @@ export interface TownSnapshot {
   } | null;
   conversation: ConversationView | null;
   splash: { kind: "town" | "location"; title: string; subtitle: string; text: string } | null;
+  defeat_pending: boolean;
   materializing: boolean;
   materialize_error: string | null;
   quest_log: QuestLogView;

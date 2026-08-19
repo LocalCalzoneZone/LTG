@@ -126,6 +126,9 @@ def test_arrival_materializes_and_town_snapshot_shape(runs):
     assert snap["splash"]["kind"] == "town" and "causeway" in snap["splash"]["text"]
     assert [l["function"] for l in snap["town"]["locations"]][:4] == ["inn", "weaponsmith", "artificer", "apothecary"]
     assert snap["quest_log"]["quest"]["status"] == "offered"
+    # The journal opens with the intro; the quest text is NOT shown until accepted.
+    assert snap["quest_log"]["quest"]["text"] == "" and snap["quest_log"]["journal"][0]["kind"] == "intro"
+    assert "villain" not in snap["quest_log"]
     assert snap["scenario"]["act_number"] == 1 and snap["scenario"]["acts_total"] == 3
     assert [p["id"] for p in snap["party_sheet"]] == ["loadout_soren", "loadout_ys"]
     assert snap["party_sheet"][0]["level"] == 1 and snap["party_sheet"][0]["gold"] == 0
@@ -140,6 +143,9 @@ def test_quest_accept_fires_hooks_saves_and_generates_the_adventure(runs):
     _accept_quest(session)
     assert scen.quest["status"] == "accepted" and scen.flags["quest_accepted"]
     assert scen.adventure_unlocked
+    kinds = [e["kind"] for e in scen.journal]
+    assert kinds[0] == "intro" and "heard" in kinds and "quest" in kinds
+    assert scen.quest_log()["quest"]["text"]  # revealed once agreed
     # The job ran inline (test driver) → ready with a frozen adventure.
     assert scen.adventure_job["state"] == "ready" and scen.adventure_ready
     assert scen.adventure_detail["name"] == "Adventure for act 1"
@@ -211,7 +217,13 @@ def test_normal_defeat_returns_to_town_with_defeated_once(runs):
     session.town_verb("c1", "start_adventure", {})
     session.state.result = "defeat"
     session._run_hooks()
+    # The defeat splash holds: still in the fight's session, loss suppressed,
+    # until the party presses on ("forced to flee").
+    assert scen.defeat_pending and session.public_result() is None and session.state is not None
+    assert session.snapshot_for("c1")["defeat_pending"] is True
+    session.economy_verb("c1", "flee", {})
     assert scen.mode == "town" and scen.flags["defeated_once"] and scen.act_index == 0
+    assert any("forced to flee" in e["text"] for e in scen.journal)
     assert scen.quest["status"] == "offered"           # not advanced; re-offered
     assert "limp" in session.snapshot_for("c1")["splash"]["text"]  # defeat-aware materialization
     assert scen.adventure_detail is None and not scen.adventure_unlocked
@@ -234,6 +246,7 @@ def test_hardcore_defeat_ends_the_run(runs):
     session.town_verb("c1", "start_adventure", {})
     session.state.result = "defeat"
     session._run_hooks()
+    session.economy_verb("c1", "flee", {})
     assert scen.dead and scen.mode == "complete"
     assert session.snapshot_for("c1")["mode"] == "complete"
     assert runs.list_runs()[0]["dead"] is True

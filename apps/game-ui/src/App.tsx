@@ -9,7 +9,7 @@ import { ScreenFx } from "./components/FxLayer";
 import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { LoadGameModal } from "./components/LoadGameModal";
-import { CharacterSheetModal, ConfirmOverlay, TownScreen } from "./components/TownScreen";
+import { CharacterSheetModal, ConfirmOverlay, DefeatSplash, TownScreen } from "./components/TownScreen";
 import { RewardsModal } from "./components/Items";
 import { OptionsModal } from "./components/OptionsModal";
 import {
@@ -172,6 +172,10 @@ export default function App() {
                 <CharacterSheetModal rows={snapshot.party_sheet} editable={!!snapshot.gear_editable} inTown={false} />
               )}
               {snapshot.rewards && <RewardsModal rewards={snapshot.rewards} />}
+              {snapshot.defeat_pending && (
+                <DefeatSplash adventureName={snapshot.adventure_name ?? snapshot.adventure?.name ?? ""}
+                              hardcore={!!snapshot.scenario?.options.hardcore} />
+              )}
               <ConfirmOverlay confirm={snapshot.confirm} />
             </>
           ) : (

@@ -91,6 +91,7 @@ class Session:
         # "everquest" / "town" / "dead") — informational, for the app + tests.
         self.pending_transition: Optional[str] = None
         self._rewards_done = False
+        self._fleeing = False
         self.state = state  # authoritative (un-settled) engine state (None in town)
         # Presentation pacing (engine settle stops): ONLY the game server's
         # states are paced — the runner, cockpit and tests never set this.
@@ -355,6 +356,14 @@ class Session:
             else:  # scenario_complete
                 self._enter_town(materialization=None, complete=True)
         elif self.state.result == "defeat":
+            if not sc.defeat_pending and not getattr(self, "_fleeing", False):
+                # Hold on the defeat splash: "forced to flee" → the party
+                # presses on to town (the `flee` verb).
+                sc.defeat_pending = True
+                return
+            if sc.defeat_pending and not getattr(self, "_fleeing", False):
+                return
+            self._fleeing = False
             outcome = sc.on_adventure_defeat(self.state)
             self.pending_transition = outcome
             if outcome == "dead":
@@ -602,6 +611,13 @@ class Session:
                 raise ValueError("no rewards")
             sc.assign_reward(int(payload.get("index", -1)), payload.get("target"))
             return []
+        if verb == "flee":
+            if not sc.defeat_pending or self.state is None:
+                raise ValueError("nothing to flee from")
+            self._fleeing = True
+            self._end_saved = True
+            self._scenario_transitions()
+            return []
         if verb == "reward_accept":
             if sc.rewards is None:
                 raise ValueError("no rewards")
@@ -717,6 +733,8 @@ class Session:
             return None
         if self.scenario is not None and self.scenario.rewards is not None:
             return None  # the Rewards modal holds the finale's victory back
+        if self.scenario is not None and self.scenario.defeat_pending:
+            return None  # the defeat splash holds the loss until the party flees
         result = self.state.result
         if (self.adventure is not None
                 and self.adventure.suppresses_result(result)):
@@ -778,6 +796,8 @@ class Session:
             live = self.adventure.loadouts if self.adventure is not None else None
             snap["party_sheet"] = self.scenario.party_block(live)
             snap["rewards"] = self.scenario.rewards_view()
+            snap["defeat_pending"] = self.scenario.defeat_pending
+            snap["adventure_name"] = (self.scenario.adventure_detail or {}).get("name", "")
             snap["gear_editable"] = bool(self.adventure is not None and self.adventure.level_up is not None)
         snap["confirm"] = self.confirm_payload(client_id)
         return snap

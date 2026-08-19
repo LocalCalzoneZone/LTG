@@ -155,6 +155,10 @@ class AdventureRun:
             raise ValueError(f"unknown adventure: {adventure_id}")
         self.adventure_id = adventure_id
         self.detail: Dict[str, Any] = copy.deepcopy(detail)
+        # Update 17: the RUN's difficulty. A pre-generated adventure was written
+        # at its own (stamped) difficulty; at play the enemy HP is rescaled by
+        # the ratio so the scenario's chosen difficulty applies to every act.
+        self.difficulty: Optional[str] = None
         self.name: str = detail["name"]
         self.flavor: str = detail["flavor"]
         # [{encounter_id, narration, name}] in phase order.
@@ -183,8 +187,26 @@ class AdventureRun:
     # -- phase composition ------------------------------------------------------ #
     def _scenario(self, phase_index: int) -> Dict[str, Any]:
         """The frozen encounter behind a phase (the detail embeds each phase's
-        full encounter), in the build path's shape."""
-        return content.scenario_from_detail(self.detail["phases"][phase_index])
+        full encounter), in the build path's shape — enemy HP rescaled from the
+        adventure's stamped difficulty to the run's (see `difficulty`)."""
+        scen = content.scenario_from_detail(self.detail["phases"][phase_index])
+        made_at = str(self.detail.get("difficulty") or "standard")
+        if self.difficulty and self.difficulty != made_at:
+            from .llm import ENEMY_HP_MULT
+            mult = ENEMY_HP_MULT.get(self.difficulty, 1.2) / ENEMY_HP_MULT.get(made_at, 1.2)
+            if abs(mult - 1.0) > 1e-9:
+                def bump(v: Any) -> Any:
+                    try:
+                        return max(1, -(-int(v) * mult // 1))
+                    except (TypeError, ValueError):
+                        return v
+                for e in scen.get("enemies", []):
+                    if isinstance(e, dict) and "hp" in e:
+                        e["hp"] = int(bump(e["hp"]))
+                for t in (scen.get("tokens") or {}).values():
+                    if isinstance(t, dict) and "hp" in t:
+                        t["hp"] = int(bump(t["hp"]))
+        return scen
 
     def start(self, character_ids: List[str], seed: Optional[int] = None,
               loadouts: Optional[List[Dict[str, Any]]] = None

@@ -281,7 +281,6 @@ export function NewGameModal({ onClose, onStarted }: {
                                    checked={scPicked === sc.id}
                                    onChange={() => setPick({ kind: "scenario", id: sc.id })} />
                             <span className="caps-label text-[11px] tracking-[0.1em] text-parch">{sc.title}</span>
-                            <DifficultyTag difficulty={sc.difficulty} />
                             <span className="caps-label ml-auto shrink-0 text-[9px] tracking-[0.1em] text-brass">{sc.town_name}</span>
                           </div>
                           <div className="pl-6 text-xs font-light italic text-mist">{sc.villain}</div>

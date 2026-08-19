@@ -3,6 +3,7 @@ import { actionModeColor } from "../lib/format";
 import { armedTargetIdSet, useGame } from "../lib/store";
 import type { CardView, LogEntry } from "../lib/types";
 import { HandCard } from "./Hand";
+import { JournalEntries } from "./TownScreen";
 
 /** `text` with the card name dotted-underlined (the hover-a-card affordance). */
 function withCardName(text: string, name: string | undefined) {
@@ -72,14 +73,10 @@ export function SidePanel() {
       <div className="flex h-full flex-col gap-2 bg-ink-2 p-2.5">
         <Panel title="Journal">
           <div className="text-xs font-light">
-            <div className="text-parch">{log.arc_title}</div>
-            <div className="mt-0.5 italic text-mist">{log.villain}</div>
-            <div className="caps-label mt-2 text-[9px] tracking-[0.16em] text-mist">Act {log.act_number} — {log.act_title}</div>
-            <div className="mt-1 text-parch">{log.quest.title || "No quest yet"}</div>
-            {log.quest.text && <div className="mt-0.5 text-mist">{log.quest.text}</div>}
-            <div className="caps-label mt-1 text-[9px] tracking-[0.16em] text-brass">{log.quest.status}</div>
-            {log.direct_to && (
-              <div className="mt-1 text-parch">Seek {log.direct_to.npc ?? ""}{log.direct_to.location ? ` at ${log.direct_to.location}` : ""}.</div>
+            <div className="caps-label text-[9px] tracking-[0.16em] text-mist">{log.arc_title} · Act {log.act_number} — {log.act_title}</div>
+            <div className="mt-2"><JournalEntries log={log} /></div>
+            {log.quest.title && (
+              <div className="caps-label mt-2 text-[9px] tracking-[0.16em] text-brass">Quest: {log.quest.title} · {log.quest.status}</div>
             )}
           </div>
         </Panel>

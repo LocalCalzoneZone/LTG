@@ -20,7 +20,6 @@ import {
 import type { ItemMeta, ItemView, ScenarioDetail, ScenarioOption, TownDetail, TownOption } from "../lib/types";
 import { ArtQueueButton } from "./ArtQueueButton";
 import { ItemCard } from "./Items";
-import { DifficultyTag } from "./DifficultyTag";
 import { IconCanvas, IconSigil, IconX } from "./Icons";
 
 const GHOST_BTN =
@@ -143,7 +142,6 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
   const [scenarios, setScenarios] = useState<ScenarioOption[] | null>(null);
   const [towns, setTowns] = useState<TownOption[]>([]);
   const [townId, setTownId] = useState("");
-  const [difficulty, setDifficulty] = useState("standard");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -165,7 +163,7 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
     if (!townId) return;
     setBusy(true); setErr(null);
     try {
-      await generateScenario(townId, difficulty, note);
+      await generateScenario(townId, "standard", note);
       await refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -179,7 +177,6 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
           <button className={SMALL_BTN} onClick={() => setOpen(null)}>← Scenarios</button>
           <span className="caps-label text-[12px] tracking-[0.2em] text-brass">{open.arc.title}</span>
           <span className="text-xs font-light italic text-mist">{open.town_name}</span>
-          <DifficultyTag difficulty={open.difficulty} />
           <span className="h-px flex-1 bg-line" />
           {onEditAdventure && (
             <button className={GHOST_BTN} onClick={() => onEditAdventure(open.act1.adventure_id)}>Open Act I's adventure</button>
@@ -213,14 +210,12 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
         <select value={townId} onChange={(e) => setTownId(e.target.value)} className={FIELD}>
           {towns.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className={FIELD}>
-          {["easy", "standard", "hard"].map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note for the arc"
                className={`${FIELD} min-w-[220px] flex-1`} />
         <button className={GHOST_BTN} onClick={gen} disabled={busy || !townId}>
           {busy ? "Generating (arc, Act I, adventure — minutes)…" : "Generate scenario"}
         </button>
+        <span className="text-[10px] font-light text-dimmed">Difficulty is chosen when a run starts; the adventure rescales to it.</span>
       </div>
       {err && <div className="mb-2 border border-blood/50 bg-blood/10 px-3 py-2 text-sm font-light text-blood">{err}</div>}
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto pr-1">
@@ -234,7 +229,6 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="caps-label text-[11px] tracking-[0.14em] text-parch">{s.title}</span>
-                <DifficultyTag difficulty={s.difficulty} />
                 <span className="caps-label text-[9px] tracking-[0.12em] text-brass">{s.town_name}</span>
               </div>
               <div className="truncate text-xs font-light italic text-mist">{s.villain}</div>

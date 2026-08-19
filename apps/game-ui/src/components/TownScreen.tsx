@@ -86,30 +86,34 @@ export function TownScreen() {
         )}
       </div>
 
-      {/* Slots */}
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-        <div className="flex flex-wrap items-stretch justify-center gap-4">
-          {loc
-            ? loc.npcs.map((n) => (
-                <SlotCard
-                  key={n.id}
-                  title={n.name}
-                  subtitle={n.role}
-                  art={n.art_url}
-                  marker={n.questgiver ? "Quest" : n.has_dialogue ? "Talk" : n.merchant ? "Wares" : ""}
-                  onClick={() => setInspect({ kind: "npc", item: n })}
-                />
-              ))
-            : town.town.locations.map((l) => (
-                <SlotCard
-                  key={l.id}
-                  title={l.name}
-                  subtitle={fnLabel(l.function)}
-                  art={l.art_url}
-                  marker={l.questgiver ? "Quest" : l.has_dialogue ? "Talk" : ""}
-                  onClick={() => setInspect({ kind: "location", item: l })}
-                />
-              ))}
+      {/* Body: the party on the left (as on the battlefield), the town's
+          cards tiled to the right */}
+      <div className="flex min-h-0 flex-1 gap-4 px-6 py-3">
+        <PartyColumn party={town.party_sheet} />
+        <div className="scroll-thin flex min-h-0 flex-1 items-center overflow-y-auto">
+          <div className="grid w-full grid-cols-[repeat(auto-fill,190px)] justify-center gap-4">
+            {loc
+              ? loc.npcs.map((n) => (
+                  <SlotCard
+                    key={n.id}
+                    title={n.name}
+                    subtitle={n.role}
+                    art={n.art_url}
+                    marker={n.questgiver ? "Quest" : n.has_dialogue ? "Talk" : n.merchant ? "Wares" : ""}
+                    onClick={() => setInspect({ kind: "npc", item: n })}
+                  />
+                ))
+              : town.town.locations.map((l) => (
+                  <SlotCard
+                    key={l.id}
+                    title={l.name}
+                    subtitle={fnLabel(l.function)}
+                    art={l.art_url}
+                    marker={l.questgiver ? "Quest" : l.has_dialogue ? "Talk" : ""}
+                    onClick={() => setInspect({ kind: "location", item: l })}
+                  />
+                ))}
+          </div>
         </div>
       </div>
 
@@ -145,13 +149,43 @@ export function TownScreen() {
   );
 }
 
+/** The party, standing on the left as it does on the battlefield: portrait
+ * cards with name, level, HP; click for the character sheet. */
+function PartyColumn({ party }: { party: PartySheetRow[] }) {
+  const setSheetFor = useGame((s) => s.setSheetFor);
+  return (
+    <div className="scroll-thin flex w-[150px] shrink-0 flex-col justify-center gap-2 overflow-y-auto">
+      {party.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => setSheetFor(p.id)}
+          title={`${p.name} — character sheet`}
+          className="group relative flex w-full flex-col overflow-hidden border border-tide/40 bg-ink-0/70 text-left shadow-lg transition hover:border-tide"
+        >
+          <div className="aspect-[3/4] w-full bg-ink-0">
+            {p.portrait ? (
+              <img src={p.portrait} alt={p.name} className="h-full w-full object-cover object-top" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={26} /></div>
+            )}
+          </div>
+          <div className="flex items-baseline justify-between gap-1 bg-gradient-to-t from-ink-0/95 to-ink-0/60 px-2 py-1.5">
+            <span className="caps-label truncate text-[10px] tracking-[0.1em] text-parch">{p.name}</span>
+            <span className="shrink-0 text-[9px] font-light text-mist">L{p.level}{p.max_hp ? ` · ${p.hp ?? p.max_hp}/${p.max_hp}` : ""}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SlotCard({ title, subtitle, art, marker, onClick }: {
   title: string; subtitle: string; art: string; marker: string; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex w-[150px] flex-col overflow-hidden border border-line bg-ink-0/70 text-left shadow-lg transition hover:border-brass/70 hover:shadow-[0_0_16px_rgba(233,204,130,0.12)]"
+      className="group relative flex w-[190px] flex-col overflow-hidden border border-line bg-ink-0/70 text-left shadow-lg transition hover:border-brass/70 hover:shadow-[0_0_16px_rgba(233,204,130,0.12)]"
     >
       <div className="aspect-[3/4] w-full bg-ink-0">
         {art ? (
@@ -167,8 +201,8 @@ function SlotCard({ title, subtitle, art, marker, onClick }: {
           {marker}
         </span>
       )}
-      <div className="flex flex-col gap-0.5 bg-gradient-to-t from-ink-0/95 to-ink-0/60 p-2">
-        <span className="caps-label truncate text-[11px] tracking-[0.1em] text-parch">{title}</span>
+      <div className="flex flex-col gap-0.5 bg-gradient-to-t from-ink-0/95 to-ink-0/60 p-2.5">
+        <span className="caps-label truncate text-[12px] tracking-[0.1em] text-parch">{title}</span>
         <span className="truncate text-[10px] font-light text-mist">{subtitle}</span>
       </div>
     </button>
@@ -191,25 +225,7 @@ function TownConsole({ town }: { town: TownSnapshot }) {
   return (
     <div className="flex items-end justify-between gap-4 border-t border-line bg-ink-0/80 px-5 py-3 backdrop-blur-[2px]">
       <div className="flex items-end gap-2">
-        {town.party_sheet.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => setSheetFor(p.id)}
-            title={`${p.name} — character sheet`}
-            className="group flex flex-col items-center gap-1"
-          >
-            <span className="block h-14 w-11 overflow-hidden border border-line bg-ink-0 transition group-hover:border-brass/70">
-              {p.portrait ? (
-                <img src={p.portrait} alt={p.name} className="h-full w-full object-cover object-top" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={16} /></span>
-              )}
-            </span>
-            <span className="caps-label max-w-[64px] truncate text-[8px] tracking-[0.12em] text-mist group-hover:text-parch">
-              {p.name} · L{p.level}
-            </span>
-          </button>
-        ))}
+        <button className={SMALL_BTN} onClick={() => setSheetFor(town.party_sheet[0]?.id ?? null)}>Character sheets</button>
         {town.run.last_save?.label && (
           <span className="ml-3 self-center text-[10px] font-light text-dimmed" title="Last save">
             Saved · {town.run.last_save.label.split(" · ").slice(-1)[0]}
@@ -307,77 +323,90 @@ function DialogueModal({ town, conv }: { town: TownSnapshot; conv: ConversationV
   const sendTown = useGame((s) => s.sendTown);
   const npc = town.location?.npcs.find((n) => n.id === conv.npc_id);
   const busy = !!town.confirm;
+  // The featured party portrait: the attributed speaker, else the first.
+  const featured = town.party_sheet.find((p) => p.id === conv.attributed) ?? town.party_sheet[0];
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/75 backdrop-blur-[2px]">
-      <div className="panel-ticks flex h-[min(80vh,560px)] w-[min(94vw,980px)] border border-line2 bg-ink-2 shadow-2xl">
-        {/* Party strip */}
-        <div className="flex w-[120px] shrink-0 flex-col gap-1 border-r border-line bg-ink-0/60 p-2">
-          {town.party_sheet.map((p) => {
-            const on = conv.attributed === p.id;
-            return (
+    <div className="absolute inset-0 z-30 flex items-stretch bg-black/85 backdrop-blur-[2px]">
+      {/* Left: the party — one portrait featured near full height, the rest as tabs */}
+      <div className="relative flex w-[30%] min-w-[220px] shrink-0 flex-col justify-end">
+        {featured?.portrait ? (
+          <img src={featured.portrait} alt={featured.name}
+               className="absolute inset-0 h-full w-full object-cover object-top" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-dimmed"><IconSigil size={48} /></div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-ink-0/70" />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-0 via-ink-0/70 to-transparent px-4 pb-4 pt-16">
+          <div className="caps-label text-[13px] tracking-[0.22em] text-parch">{featured?.name}</div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {town.party_sheet.map((p) => (
               <button
                 key={p.id}
                 onClick={() => sendTown("attribute", { character_id: p.id })}
                 title={`Attribute the party's line to ${p.name}`}
-                className={`relative aspect-[3/4] w-full overflow-hidden border transition ${on ? "border-brass shadow-[0_0_10px_rgba(233,204,130,0.25)]" : "border-line hover:border-line2"}`}
+                className={`caps-label border px-2 py-0.5 text-[8px] tracking-[0.12em] transition ${
+                  conv.attributed === p.id ? "border-brass text-brass" : "border-line text-mist hover:text-parch"
+                }`}
               >
-                {p.portrait ? (
-                  <img src={p.portrait} alt={p.name} className="h-full w-full scale-125 object-cover object-top" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={20} /></span>
-                )}
-                <span className="caps-label absolute inset-x-0 bottom-0 truncate bg-ink-0/80 px-1 py-0.5 text-[8px] tracking-[0.12em] text-parch">
-                  {p.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {/* NPC + text + choices */}
-        <div className="flex min-w-0 flex-1 flex-col p-5">
-          <div className="flex items-start gap-4">
-            <div className="h-24 w-24 shrink-0 overflow-hidden border border-line bg-ink-0">
-              {npc?.art_url ? (
-                <img src={npc.art_url} alt={npc.name} className="h-full w-full object-cover object-top" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={26} /></div>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="caps-label text-[13px] tracking-[0.22em] text-brass">{npc?.name ?? conv.npc_id}</div>
-              <div className="text-xs font-light italic text-mist">{npc?.role}</div>
-            </div>
-            <button onClick={() => sendTown("end_talk")} className="text-mist hover:text-parch" title="End the conversation">
-              <IconX size={14} />
-            </button>
-          </div>
-          <div className="mt-5 flex-1 overflow-y-auto">
-            <p className="font-display text-lg font-light leading-relaxed text-parch">
-              {conv.speaker === "party" && conv.attributed && (
-                <span className="caps-label mr-2 text-[10px] tracking-[0.2em] text-mist">
-                  {town.party_sheet.find((p) => p.id === conv.attributed)?.name ?? "The party"} —
-                </span>
-              )}
-              {conv.text}
-            </p>
-          </div>
-          <div className="mt-4 flex flex-col gap-2">
-            {conv.choices.map((c) => (
-              <button
-                key={c.index}
-                className={GHOST_BTN}
-                disabled={busy}
-                onClick={() => sendTown("choose", { index: c.index })}
-                title={c.party_wide ? "A party-wide choice — every player confirms" : ""}
-              >
-                {c.label}
-                {c.party_wide && <span className="ml-2 text-[9px] text-dimmed">· party</span>}
+                {p.name}
               </button>
             ))}
-            {conv.over && (
-              <button className={GHOST_BTN} onClick={() => sendTown("end_talk")}>Farewell.</button>
-            )}
           </div>
+        </div>
+      </div>
+
+      {/* Centre: the words */}
+      <div className="flex min-w-0 flex-1 flex-col justify-center px-8 py-6">
+        <div className="flex items-start gap-3">
+          <div>
+            <div className="caps-label text-[15px] tracking-[0.25em] text-brass">{npc?.name ?? conv.npc_id}</div>
+            <div className="text-xs font-light italic text-mist">{npc?.role}{town.location ? ` · ${town.location.name}` : ""}</div>
+          </div>
+          <span className="h-px flex-1 self-center bg-line" />
+          <button onClick={() => sendTown("end_talk")} className="text-mist hover:text-parch" title="End the conversation">
+            <IconX size={14} />
+          </button>
+        </div>
+        <div className="mt-6 max-h-[40vh] overflow-y-auto">
+          <p className="font-display text-xl font-light leading-relaxed text-parch">
+            {conv.speaker === "party" && conv.attributed && (
+              <span className="caps-label mr-2 text-[10px] tracking-[0.2em] text-mist">
+                {town.party_sheet.find((p) => p.id === conv.attributed)?.name ?? "The party"} —
+              </span>
+            )}
+            {conv.text}
+          </p>
+        </div>
+        <div className="mt-6 flex flex-col gap-2">
+          {conv.choices.map((c) => (
+            <button
+              key={c.index}
+              className={GHOST_BTN}
+              disabled={busy}
+              onClick={() => sendTown("choose", { index: c.index })}
+              title={c.party_wide ? "A party-wide choice — every player confirms" : ""}
+            >
+              {c.label}
+              {c.party_wide && <span className="ml-2 text-[9px] text-dimmed">· party</span>}
+            </button>
+          ))}
+          {conv.over && (
+            <button className={GHOST_BTN} onClick={() => sendTown("end_talk")}>Farewell.</button>
+          )}
+        </div>
+      </div>
+
+      {/* Right: the NPC, near full height */}
+      <div className="relative flex w-[30%] min-w-[220px] shrink-0 flex-col justify-end">
+        {npc?.art_url ? (
+          <img src={npc.art_url} alt={npc.name} className="absolute inset-0 h-full w-full object-cover object-top" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-dimmed"><IconSigil size={48} /></div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-ink-0/70" />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-0 via-ink-0/70 to-transparent px-4 pb-4 pt-16 text-right">
+          <div className="caps-label text-[13px] tracking-[0.22em] text-brass">{npc?.name}</div>
+          <div className="text-[10px] font-light italic text-mist">{npc?.role}</div>
         </div>
       </div>
     </div>
@@ -386,33 +415,18 @@ function DialogueModal({ town, conv }: { town: TownSnapshot; conv: ConversationV
 
 function QuestLogPanel({ log, onClose }: { log: QuestLogView; onClose: () => void }) {
   return (
-    <div className="absolute inset-y-0 right-0 z-30 flex w-[min(92vw,420px)] flex-col border-l border-line2 bg-ink-2/95 p-5 shadow-2xl backdrop-blur-[2px]">
+    <div className="absolute inset-y-0 right-0 z-30 flex w-[min(92vw,460px)] flex-col border-l border-line2 bg-ink-2/95 p-5 shadow-2xl backdrop-blur-[2px]">
       <div className="mb-4 flex items-center gap-3">
-        <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">Quest Log</h2>
+        <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">Journal</h2>
+        <span className="text-[10px] font-light text-mist">{log.arc_title} · Act {roman(log.act_number)}</span>
         <span className="h-px flex-1 bg-line" />
         <button onClick={onClose} className="text-mist hover:text-parch"><IconX size={14} /></button>
       </div>
-      <div className="flex flex-col gap-4 overflow-y-auto text-sm font-light">
-        <div>
-          <div className="caps-label text-[10px] tracking-[0.2em] text-mist">Scenario {log.scenario_number}</div>
-          <div className="text-parch">{log.arc_title}</div>
-          <div className="mt-1 text-xs text-mist">{log.villain}</div>
-          <div className="mt-1 text-xs italic text-dimmed">{log.stakes}</div>
-        </div>
-        <div>
-          <div className="caps-label text-[10px] tracking-[0.2em] text-mist">Act {roman(log.act_number)} — {log.act_title}</div>
-          <div className="mt-1 text-parch">{log.quest.title || "No quest yet"}</div>
-          <div className="mt-1 text-xs text-mist">{log.quest.text}</div>
-          <div className="caps-label mt-2 text-[9px] tracking-[0.16em] text-brass">{log.quest.status}</div>
-          {log.direct_to && (
-            <div className="mt-2 text-xs text-parch">
-              Seek {log.direct_to.npc ?? ""}{log.direct_to.location ? ` at ${log.direct_to.location}` : ""}.
-            </div>
-          )}
-        </div>
+      <div className="scroll-thin flex flex-col gap-3 overflow-y-auto pr-1 text-sm font-light">
+        <JournalEntries log={log} full />
         {log.completed.length > 0 && (
-          <div>
-            <div className="caps-label text-[10px] tracking-[0.2em] text-mist">Completed</div>
+          <div className="mt-2 border-t border-line pt-2">
+            <div className="caps-label text-[10px] tracking-[0.2em] text-mist">Deeds done</div>
             {log.completed.map((c) => (
               <div key={c.act} className="mt-1 text-xs text-mist">
                 Act {roman(c.act)} — {c.title}: <span className="text-parch">{c.quest}</span>
@@ -421,6 +435,32 @@ function QuestLogPanel({ log, onClose }: { log: QuestLogView; onClose: () => voi
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The journal's entries: the act's intro, then what the townsfolk said, the
+ * quest once agreed to, the road taken. Nothing the party hasn't heard. */
+export function JournalEntries({ log, full }: { log: QuestLogView; full?: boolean }) {
+  const entries = log.journal ?? [];
+  const shown = full ? entries : entries.slice(-6);
+  if (!entries.length) return <div className="text-xs font-light italic text-dimmed">The page is blank so far.</div>;
+  return (
+    <div className="flex flex-col gap-2">
+      {!full && entries.length > shown.length && (
+        <div className="text-[10px] font-light italic text-dimmed">… {entries.length - shown.length} earlier entries in the Journal</div>
+      )}
+      {shown.map((e, i) => (
+        <div key={i} className={`text-xs font-light leading-relaxed ${e.kind === "intro" ? "italic text-parch" : e.kind === "quest" ? "text-brass" : "text-mist"}`}>
+          {e.kind === "heard" && (
+            <span className="caps-label mr-1 text-[9px] tracking-[0.14em] text-parch">{e.speaker}{e.where ? `, ${e.where}` : ""} —</span>
+          )}
+          {e.kind === "heard" ? <span>“{e.text}”</span> : e.text}
+        </div>
+      ))}
+      {log.direct_to && (
+        <div className="text-xs font-light text-parch">Seek {log.direct_to.npc ?? ""}{log.direct_to.location ? ` at ${log.direct_to.location}` : ""}.</div>
+      )}
     </div>
   );
 }
@@ -439,27 +479,30 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
   const basePower = b.attack_mode === "melee" ? 2 : 1;
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={() => setSheetFor(null)}>
-      <div className="panel-ticks flex max-h-[90vh] w-[min(94vw,940px)] gap-5 overflow-y-auto border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="w-[200px] shrink-0">
-          <div className="aspect-[3/4] w-full border border-line bg-ink-0">
-            {row.portrait ? (
-              <img src={row.portrait} alt={row.name} className="h-full w-full object-cover object-top" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={40} /></div>
-            )}
-          </div>
-          <div className="mt-2 flex items-center justify-between text-xs font-light text-mist">
-            <span>Level {row.level}</span>
-            <span>{row.gold} gold</span>
-          </div>
-          <div className="mt-1 text-[10px] font-light text-dimmed">
-            {row.earned_points} points earned{row.points_to_next_level != null ? ` · ${row.points_to_next_level} to next level` : " · max level"}
-            {row.banked ? ` · ${row.banked} banked` : ""}
+      <div className="panel-ticks flex max-h-[92vh] w-[min(96vw,1180px)] gap-6 overflow-y-auto border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* The portrait, featured: near full height of the sheet */}
+        <div className="relative w-[340px] shrink-0 self-stretch overflow-hidden border border-line bg-ink-0" style={{ minHeight: 520 }}>
+          {row.portrait ? (
+            <img src={row.portrait} alt={row.name} className="absolute inset-0 h-full w-full object-cover object-top" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-dimmed"><IconSigil size={56} /></div>
+          )}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-0 via-ink-0/80 to-transparent px-4 pb-4 pt-20">
+            <div className="caps-label text-[18px] tracking-[0.22em] text-brass-hi">{row.name}</div>
+            <div className="mt-1 flex items-center justify-between text-xs font-light text-parch">
+              <span>Level {row.level}{row.effective_level && row.effective_level !== row.level ? ` (eff. ${row.effective_level})` : ""}</span>
+              <span>{row.gold} gold</span>
+            </div>
+            <div className="mt-1 text-[10px] font-light text-mist">
+              {row.earned_points} points earned{row.points_to_next_level != null ? ` · ${row.points_to_next_level} to next level` : " · max level"}
+              {row.banked ? ` · ${row.banked} banked` : ""}
+            </div>
+            {b.description && <p className="mt-2 text-xs font-light italic leading-relaxed text-mist">{b.description}</p>}
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start gap-3">
-            <div className="caps-label text-[14px] tracking-[0.22em] text-brass">{row.name}</div>
+            <div className="caps-label text-[14px] tracking-[0.22em] text-brass">Character Sheet</div>
             <span className="flex gap-1">
               {rows.length > 1 && rows.map((r) => (
                 <button key={r.id} onClick={() => setSheetFor(r.id)}
@@ -471,7 +514,6 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
             <span className="h-px flex-1 self-center bg-line" />
             <button onClick={() => setSheetFor(null)} className="text-mist hover:text-parch"><IconX size={14} /></button>
           </div>
-          {b.description && <p className="mt-2 text-xs font-light italic text-mist">{b.description}</p>}
           <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm font-light">
             <Stat label="Hit Points" value={`${row.hp ?? b.hp} / ${b.hp}`} />
             <Stat label="Attack" value={`${b.attack_mode} ${basePower + b.power_bought}`} />
@@ -578,6 +620,33 @@ function TradeOffer({ town }: { town: TownSnapshot }) {
         </div>
         <button className={BRASS_BTN} onClick={() => sendTown("trade_answer", { yes: true })}>Accept</button>
         <button className={SMALL_BTN} onClick={() => sendTown("trade_answer", { yes: false })}>Decline</button>
+      </div>
+    </div>
+  );
+}
+
+/** The defeat splash inside a scenario (Normal or Hardcore): the party is
+ * beaten and forced to flee; the run continues in town (or ends, in Hardcore)
+ * once someone presses on. */
+export function DefeatSplash({ adventureName, hardcore }: { adventureName: string; hardcore: boolean }) {
+  const sendTown = useGame((s) => s.sendTown);
+  return (
+    <div className="fixed inset-x-0 bottom-0 top-[42px] z-30 flex items-center justify-center bg-ink-0/95">
+      <div className="relative z-10 flex max-w-2xl flex-col items-center gap-5 px-8 text-center">
+        <div className="caps-label text-[11px] tracking-[0.3em] text-mist">{adventureName}</div>
+        <div className="flex items-center gap-4">
+          <span className="h-px w-14 bg-gradient-to-r from-transparent to-blood" />
+          <div className="caps-label whitespace-nowrap text-[15px] tracking-[0.25em] text-blood">Defeated</div>
+          <span className="h-px w-14 bg-gradient-to-l from-transparent to-blood" />
+        </div>
+        <p className="font-display text-lg font-light leading-relaxed text-parch">
+          {hardcore
+            ? "The line breaks and does not re-form. There is no road back from this."
+            : "The line breaks. Bloodied and outnumbered, you are forced to flee — back down the road to town, the quest undone, to lick your wounds and try again."}
+        </p>
+        <button onClick={() => sendTown("flee")} className={BRASS_BTN}>
+          {hardcore ? "It is over" : "Return to town"}
+        </button>
       </div>
     </div>
   );
