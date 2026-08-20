@@ -1,0 +1,293 @@
+{
+  "name": "Barrowdown Yard \u2014 The Chained Sails",
+  "scene": "The barley downs under a hard blue sky, gold to every horizon and combing in a wind you can hear but no longer feel. The mill's yard is a circle of absolute dead air: chaff hanging motionless at chest height, cart ruts stopped mid-turn, four white sails strapped to their stocks with iron bands. Beyond the hedge the thorns thrash like surf against a shore.",
+  "scene_image": "/art/the_stillness_at_barrowdown_outmill__phase1/scene-52234c2c.png",
+  "enemies": [
+    {
+      "id": "sigil_nailer",
+      "name": "Sigil-Nailer",
+      "flavor": "Fodder with one iron nail and one flinch in it.",
+      "description": "A stooped labourer in grey sackcloth, hood drawn to the chin, one fist wrapped around a cold-iron nail and the other around a wooden mallet worn smooth.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "iron_sigil",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Iron Sigil \u2014 nail a hero's breath flat (-1/-1)",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "door_brace",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 35,
+          "target_rule": "self",
+          "telegraph": "Brace the Door \u2014 the next blow finds only planking",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "combat_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase1/sigil_nailer-8c3422c8.png"
+    },
+    {
+      "id": "chaff_warden",
+      "name": "Chaff-Warden",
+      "flavor": "Shields the one who is speaking; drags your eyes off him.",
+      "description": "A broad-shouldered man in a flour-caked leather apron over grey robes, a threshing-bar held crosswise, face bound in dusty linen with only a slit for the eyes.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "sigil_shroud",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Sigil-Shroud \u2014 the next blow aimed at his fellow slides off the dead air",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "stand_in_the_dust",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Stand in the Dust \u2014 bellow a hero into his reach",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase1/chaff_warden-2683a9d4.png"
+    },
+    {
+      "id": "hush_cantor",
+      "name": "Cantor of the Windless",
+      "flavor": "Holds the hush over the yard: everyone fights at -1/-1 until he stops.",
+      "description": "A thin figure in ash-grey robes standing perfectly still beneath the vane, palms pressed to an iron plate bolted to the mill wall, mouth working a word with no sound and no breath behind it.",
+      "hp": 6,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "windless_cant",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "The Windless Cant \u2014 a held hush: the whole party fights at -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "dust_rebuke",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "action_type": "spell",
+          "telegraph": "Dust-Rebuke \u2014 the hanging chaff drives inward at the one who struck him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase1/hush_cantor-8fe125ed.png"
+    },
+    {
+      "id": "chaff_thresher",
+      "name": "Chaff-Thresher",
+      "flavor": "Sidles between the sacks, then lands one heavy flail.",
+      "description": "A wiry hooded reaper moving in short careful steps, a flail of knotted chain and stone hanging from one hand, sleeves and hem grey with settled husk.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "flail_lash",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Flail-Lash \u2014 one full swing at the strongest arm",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "sidle_the_stacks",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 40,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Sidle the Stacks \u2014 slip back among the standing sacks"
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase1/chaff_thresher-95dca5f0.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "hush_cantor",
+      "sigil_nailer"
+    ],
+    "2": [
+      "hush_cantor",
+      "chaff_warden",
+      "sigil_nailer",
+      "sigil_nailer"
+    ],
+    "3": [
+      "hush_cantor",
+      "chaff_warden",
+      "chaff_thresher",
+      "sigil_nailer",
+      "sigil_nailer",
+      "sigil_nailer"
+    ],
+    "4": [
+      "hush_cantor",
+      "chaff_warden",
+      "chaff_thresher",
+      "sigil_nailer",
+      "sigil_nailer",
+      "sigil_nailer",
+      "sigil_nailer",
+      "sigil_nailer"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "hush_cantor",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Sigils Set \u2014 the yard's hush bites down",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 1,
+          "toughness": 1,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 2,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "nonlethal": false
+        }
+      ]
+    },
+    "resolved": false
+  }
+}

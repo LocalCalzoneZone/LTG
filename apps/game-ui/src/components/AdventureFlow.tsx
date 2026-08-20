@@ -42,7 +42,7 @@ export function AdventureFlow() {
 
   const key = `${sessionId}:${adventure.phase}`;
 
-  // Defeat / final victory: the GameOverOverlay owns the screen.
+  // Defeat / final victory: the GameOverOverlay owns the bottom bar.
   if (snapshot.result != null) return null;
 
   if (adventure.level_up) {
