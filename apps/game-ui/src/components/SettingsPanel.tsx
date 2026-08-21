@@ -119,6 +119,11 @@ function UpdateSection() {
                   ? "You're up to date."
                   : "…"}
           </div>
+          {status?.error && status.detail && (
+            <pre className="mt-2 max-h-[30vh] max-w-[560px] overflow-auto whitespace-pre-wrap border border-line bg-black/30 p-2 text-[10px] font-light leading-relaxed text-dimmed">
+              {status.detail}
+            </pre>
+          )}
           {behind > 0 && !status?.error && (
             <ul className="mt-1 max-h-[30vh] max-w-[560px] list-disc overflow-y-auto pl-5 text-[11px] font-light text-dimmed">
               {(status?.log ?? []).map((line, i) => (

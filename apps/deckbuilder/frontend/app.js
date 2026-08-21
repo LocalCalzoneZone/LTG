@@ -1514,8 +1514,9 @@ function effectRowHtml(e, i, card, depth = 0) {
         <div class="effect-head"><span class="kw-label">${e.slot} — replacement</span></div>
         <div class="effect-params">
           <label class="inline">name <input type="text" class="stance-name" data-i="${i}" value="${escapeAttr(e.name || "")}" placeholder="e.g. Soothing Palm"/></label>
-          ${e.slot === "attack" && animList().length
-            ? `<label class="inline" title="Which panel clip plays when this replaced attack resolves — pick an alternate for a distinct look">animation ${animSelectHtml("stance-anim", `data-i="${i}"`, e.animation || null, "Default attack clip")}</label>`
+          ${animList().length
+            ? `<label class="inline" title="Which panel clip plays when this replaced ability resolves — pick an alternate for a distinct look">animation ${animSelectHtml("stance-anim", `data-i="${i}"`, e.animation || null,
+                e.slot === "move" ? "None (Move has no default clip)" : `Default ${e.slot} clip`)}</label>`
             : ""}
           <span class="marker-note">the effects below (until the next block) resolve as this ability — set the slot to unchanged/removed above to delete</span>
         </div></div>`;

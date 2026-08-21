@@ -422,7 +422,7 @@ function QuestLogPanel({ log, onClose }: { log: QuestLogView; onClose: () => voi
         <span className="h-px flex-1 bg-line" />
         <button onClick={onClose} className="text-mist hover:text-parch"><IconX size={14} /></button>
       </div>
-      <div className="scroll-thin flex flex-col gap-3 overflow-y-auto pr-1 text-sm font-light">
+      <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1 text-sm font-light">
         <JournalEntries log={log} full />
         {log.completed.length > 0 && (
           <div className="mt-2 border-t border-line pt-2">
@@ -627,24 +627,26 @@ function TradeOffer({ town }: { town: TownSnapshot }) {
 
 /** The defeat splash inside a scenario (Normal or Hardcore): the party is
  * beaten and forced to flee; the run continues in town (or ends, in Hardcore)
- * once someone presses on. */
+ * once someone presses on. Covers ONLY the bottom action bar (rendered absolute
+ * inside the bar's wrapper in App) — the battlefield and log above stay
+ * readable and clickable, so the losing board can be inspected. */
 export function DefeatSplash({ adventureName, hardcore }: { adventureName: string; hardcore: boolean }) {
   const sendTown = useGame((s) => s.sendTown);
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[42px] z-30 flex items-center justify-center bg-ink-0/95">
-      <div className="relative z-10 flex max-w-2xl flex-col items-center gap-5 px-8 text-center">
-        <div className="caps-label text-[11px] tracking-[0.3em] text-mist">{adventureName}</div>
+    <div className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-ink-0/95 px-6 py-3">
+      <div className="flex max-w-3xl flex-col items-center gap-2 text-center">
         <div className="flex items-center gap-4">
           <span className="h-px w-14 bg-gradient-to-r from-transparent to-blood" />
           <div className="caps-label whitespace-nowrap text-[15px] tracking-[0.25em] text-blood">Defeated</div>
           <span className="h-px w-14 bg-gradient-to-l from-transparent to-blood" />
         </div>
-        <p className="font-display text-lg font-light leading-relaxed text-parch">
+        <div className="caps-label text-[10px] tracking-[0.3em] text-mist">{adventureName}</div>
+        <p className="font-display text-base font-light leading-relaxed text-parch">
           {hardcore
             ? "The line breaks and does not re-form. There is no road back from this."
             : "The line breaks. Bloodied and outnumbered, you are forced to flee — back down the road to town, the quest undone, to lick your wounds and try again."}
         </p>
-        <button onClick={() => sendTown("flee")} className={BRASS_BTN}>
+        <button onClick={() => sendTown("flee")} className={`${BRASS_BTN} mt-1`}>
           {hardcore ? "It is over" : "Return to town"}
         </button>
       </div>

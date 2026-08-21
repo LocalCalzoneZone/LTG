@@ -1,0 +1,276 @@
+{
+  "name": "The Grinding Floor",
+  "scene": "The mill's grinding floor: warm dusty timber, hoppers heaped and unmoving, the sack-hoist rope hanging slack through its hole in the ceiling, the great millstone dark and still. Slabs of sunlight from the shutters are thick with flour that never settles, and iron wind-sigils are nailed at head height along every beam.",
+  "scene_image": "/art/the_stillness_at_barrowdown_outmill__phase2/scene-9dc6efc3.png",
+  "enemies": [
+    {
+      "id": "grist_husk",
+      "name": "Grist-Husk",
+      "flavor": "Cheap, splits when hit, throws grit in your eyes.",
+      "description": "A man-shaped bundle of sacking stuffed hard with chaff, bound at wrist and knee with twine, a rusted sigil stitched where the face should be.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "chaff_in_the_eyes",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 35,
+          "target_rule": "valuation",
+          "telegraph": "Chaff in the Eyes \u2014 wound a hero -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "split_seam",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Split Seam \u2014 the burst sack drives grit into the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase2/grist_husk-c4f435be.png"
+    },
+    {
+      "id": "winnow_hook",
+      "name": "Winnow-Hook",
+      "flavor": "Drags your back line into the front rank's reach.",
+      "description": "A long-armed figure in grey, hood cinched tight, wielding a grain-hook on a two-yard shaft; the iron hook is bright where the wood is filthy.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "grain_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Grain-Hook \u2014 haul a hero into the front rank",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "barbed_recoil",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Barbed Recoil \u2014 the hook snaps back at whoever marked him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase2/winnow_hook-0c2d6393.png"
+    },
+    {
+      "id": "threshing_vigilant",
+      "name": "Threshing Vigilant",
+      "flavor": "Grows permanently every time one of his fellows falls. Kill order matters.",
+      "description": "A heavy-set warden in a canvas coat sewn over with iron plates, gripping a threshing flail of banded oak, his hood pushed back to show a shaved scalp scarred by nail-marks.",
+      "hp": 8,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "widowed_flail",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Widowed Flail \u2014 +1/+1, permanently, for the one that fell",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "threshing_swing",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Threshing Swing \u2014 a full-shouldered blow",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase2/threshing_vigilant-c51844b7.png"
+    },
+    {
+      "id": "hopper_stitcher",
+      "name": "Hopper-Stitcher",
+      "flavor": "Holds a rite that stitches a new Sackling every turn \u2014 break it or be buried.",
+      "description": "A kneeling figure with sleeves rolled to the elbow, forearms white with flour, working a curved needle and waxed thread through sackcloth faster than the eye can follow; a bandolier of iron sigils crosses her chest.",
+      "hp": 8,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "sack_stitch_rite",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Sack-Stitch Rite \u2014 a held rite: another Sackling stands up every turn",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "sackling",
+              "count": 1,
+              "hp": 3,
+              "power": 1,
+              "trigger": "upkeep"
+            }
+          ]
+        },
+        {
+          "id": "needle_ward",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Needle-Ward \u2014 she stitches the wound shut before it opens",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "all_damage",
+              "uses": "next",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase2/hopper_stitcher-a841dde5.png"
+    }
+  ],
+  "tokens": {
+    "sackling": {
+      "name": "Sackling",
+      "hp": 3,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase2/sackling-ad99494d.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "hopper_stitcher",
+      "grist_husk"
+    ],
+    "2": [
+      "hopper_stitcher",
+      "threshing_vigilant",
+      "grist_husk",
+      "grist_husk"
+    ],
+    "3": [
+      "hopper_stitcher",
+      "threshing_vigilant",
+      "winnow_hook",
+      "winnow_hook",
+      "grist_husk",
+      "grist_husk"
+    ],
+    "4": [
+      "hopper_stitcher",
+      "hopper_stitcher",
+      "threshing_vigilant",
+      "winnow_hook",
+      "winnow_hook",
+      "grist_husk",
+      "grist_husk",
+      "grist_husk"
+    ]
+  }
+}

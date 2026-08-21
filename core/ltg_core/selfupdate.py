@@ -6,11 +6,14 @@ game server share exactly one updater (both expose it as /api/update/* and
 `git fetch` + fast-forward + reinstall requirements — and it covers every app
 in the repo at once.
 
-User data (apps/deckbuilder/loadouts — characters, settings, generated art)
-is gitignored, so an update can never touch saves; --ff-only means a checkout
-with local commits or edits refuses cleanly instead of merging. The running
-server keeps executing old code — callers tell the user to relaunch after a
-successful update.
+Characters, settings and saves are gitignored (apps/deckbuilder/loadouts, and
+saves/), so an update can never touch them. Encounters, adventures, towns,
+scenarios and their art are NOT: the game writes those into the tracked
+content/ dir on purpose, so authoring them here ships them to every install —
+but it also means a player install that edits or generates one has a dirty
+tree, and --ff-only then refuses. That refusal is why _ff_failure names the
+exact blockers rather than guessing. The running server keeps executing old
+code — callers tell the user to relaunch after a successful update.
 """
 
 from __future__ import annotations
@@ -83,9 +86,7 @@ def apply_update() -> Dict[str, Any]:
     except subprocess.TimeoutExpired:
         return _error("The update timed out mid-merge — try again.")
     if ff.returncode != 0:
-        return _error(
-            "Couldn't apply the update cleanly — this checkout has local "
-            "changes git won't overwrite. Ask your game admin for help.", ff.stderr)
+        return _ff_failure(target, ff.stderr)
     # Re-resolve dependencies with the venv's own interpreter (new/updated
     # requirements ride in with the pull).
     try:
@@ -101,6 +102,51 @@ def apply_update() -> Dict[str, Any]:
                       "app, delete the .venv folder, and relaunch to repair.",
                       pip.stderr)
     return {"supported": True, "updated": True}
+
+
+def _ff_failure(target: str, stderr: str) -> Dict[str, Any]:
+    """Explain a refused fast-forward in terms the player can read back to us.
+
+    `git merge --ff-only` refuses for several unrelated reasons and its own
+    stderr is terse, so we ask git what actually stands in the way: commits this
+    install made on its own, and/or files it has changed. Naming them beats the
+    old blanket "you have local changes" — which was a guess, and was wrong
+    whenever the real cause was a local commit or a diverged branch."""
+    ahead = _git("rev-list", "--count", f"{target}..HEAD")
+    n_ahead = int(ahead.stdout.strip() or 0) if ahead.returncode == 0 else 0
+
+    st = _git("status", "--porcelain")
+    # Porcelain v1: "XY <path>". Keep the status code — " M" (edited), "??"
+    # (untracked) and "UU" (conflicted) need different advice from us.
+    entries = [ln.rstrip() for ln in st.stdout.splitlines() if ln.strip()] \
+        if st.returncode == 0 else []
+    dirty = [e for e in entries if not e.startswith("??")]
+    untracked = [e for e in entries if e.startswith("??")]
+
+    reasons: List[str] = []
+    if n_ahead:
+        reasons.append(f"{n_ahead} local commit{'' if n_ahead == 1 else 's'} "
+                       f"this install made on its own")
+    if dirty:
+        reasons.append(f"{len(dirty)} changed file{'' if len(dirty) == 1 else 's'}")
+    if not reasons:
+        # Nothing obvious — most often an untracked file sitting where an
+        # incoming one wants to land. Let git's own words through.
+        reasons.append("something git won't overwrite")
+
+    blocks: List[str] = []
+    if dirty:
+        blocks.append("\n".join(["Changed files:"] + [f"  {e}" for e in dirty[:40]]))
+    if untracked:
+        blocks.append("\n".join(["New files not in git:"]
+                                 + [f"  {e}" for e in untracked[:20]]))
+    if stderr.strip():
+        blocks.append(stderr.strip())
+
+    return _error(
+        "Couldn't apply the update cleanly — " + " and ".join(reasons) +
+        " stand in the way. Send your game admin the details below.",
+        "\n\n".join(blocks))
 
 
 def schedule_exit(delay: float = 0.4) -> None:

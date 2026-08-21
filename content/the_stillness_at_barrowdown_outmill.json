@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Stillness at Barrowdown Outmill",
+  "flavor": "Walk out through the barley to a mill that will not turn, and find who has nailed the wind to its beams.",
+  "phases": [
+    {
+      "narration": "You leave Millhaven by the hedge-path Tullow Bramblebrook scratched into the dust, and the wind walks with you the whole way \u2014 barley combing, hedgerows hissing, gulls shoved sideways over the downs. Then it stops. Not dies: stops, as though it struck a wall. Barrowdown Outmill stands in the middle of that wall with its four white sails chained to their stocks and black iron sigils hammered along every beam. Hooded figures are working the yard, and one of them repeats a flat, breathless word over the vane \u2014 and you can hear the sigils setting into the timber with each repetition.",
+      "encounter_id": "the_stillness_at_barrowdown_outmill__phase1"
+    },
+    {
+      "narration": "The mill door stands open on a room where the flour dust hangs exactly where it was thrown, painted into the shutter-light. Grain sacks lean along the wall in a row, each one stitched at the throat with a small iron sigil, and each one settles a little whenever you look away. Above you the stopped millstone ticks as it cools, and behind the hoppers someone is working a needle through sackcloth, quickly, without looking up.",
+      "encounter_id": "the_stillness_at_barrowdown_outmill__phase2"
+    },
+    {
+      "narration": "The ladder brings you up into the cap loft, where the sail-shaft comes through the wall and does not turn. Brass cages hang in rows from the rafters, swaying with nothing to sway them, and inside each one something circles and circles and cannot get out \u2014 you feel their keening in your teeth rather than your ears. Beneath them a hooded man sets a fresh nail against a fresh beam, waits for the room to go quiet, and only then looks up at you.",
+      "encounter_id": "the_stillness_at_barrowdown_outmill__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

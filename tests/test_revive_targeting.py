@@ -104,3 +104,56 @@ def test_charm_revive_mode_uncastable_with_nobody_down():
     st = _state([dict(_CHARM)], downed=False)
     modes = {a.mode for a in _casts(st, "charm")}
     assert 0 in modes and 1 not in modes      # shield yes, revive no
+
+# --- the SAME rule on the side-wide path (`mode: all`) ------------------------- #
+# The playtest bug: Windry's Ultimate heals "all allies", but a downed ally got
+# nothing — the chosen-target path let a heal reach a downed body while the
+# side-wide path built its set from the LIVING party only.
+ALL_ALLY = {"mode": "all", "side": "ally", "exclude_self": False, "targeted": False}
+
+_MASS_MEND = _card("mass_mend", [{"kind": "heal", "amount": 9999, "target": ALL_ALLY}])
+_MASS_WARD = _card("mass_ward", [
+    {"kind": "heal", "amount": 6, "target": ALL_ALLY},
+    {"kind": "grant_keyword", "keywords": ["lifelink"], "target": ALL_ALLY,
+     "duration": "encounter"},
+    {"kind": "pump", "power": 0, "toughness": 3, "target": ALL_ALLY,
+     "duration": "this_turn"},
+])
+_MASS_HARM = _card("mass_harm", [{"kind": "deal_damage", "amount": 4, "target": ALL_ALLY}])
+
+
+def _resolve(st, cid):
+    st = apply_action(st, next(a for a in _casts(st, cid)))[0]
+    while st.stack:
+        p = next((a for a in legal_actions(st) if a.kind == "pass"), None)
+        if p is None:
+            break
+        st = apply_action(st, p)[0]
+    return st
+
+
+def test_mass_heal_reaches_the_downed_ally_and_stands_them_up():
+    st = _resolve(_state([dict(_MASS_MEND)]), "mass_mend")
+    ys = st.character("ys")
+    assert ys.alive and ys.hp == ys.max_hp
+    assert st.character("soren").hp == st.character("soren").max_hp   # …and everyone else
+
+
+def test_restorative_verbs_all_reach_a_downed_ally():
+    st = _resolve(_state([dict(_MASS_WARD)]), "mass_ward")
+    ys = st.character("ys")
+    assert ys.hp == 6 and "lifelink" in ys.keywords and ys.temp_mod == 3
+
+
+def test_a_harmful_side_wide_effect_still_passes_a_downed_ally_by():
+    """An enemy AoE is authored as `deal_damage` on side 'ally' — the downed body
+    is not a victim (enemies never single-target one either). Kicking someone
+    while they are down would turn one downing into a death spiral."""
+    st = _resolve(_state([dict(_MASS_HARM)]), "mass_harm")
+    assert st.character("ys").hp == 0                       # untouched on the floor
+    assert st.character("soren").hp == 20 - 4               # the standing ally is hit
+
+
+def test_downed_ally_is_skipped_when_nothing_is_down_changes_nothing():
+    st = _resolve(_state([dict(_MASS_MEND)], downed=False), "mass_mend")
+    assert all(c.hp == c.max_hp for c in st.party)

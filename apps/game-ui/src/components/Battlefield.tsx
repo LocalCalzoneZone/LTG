@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { CreatureView, GameSnapshot, Row, TokenView } from "../lib/types";
 import { DEPART_MS, type DepartKind, type FxEvent } from "../lib/fx";
+import { useFieldView, type FieldView } from "../lib/fieldView";
 import { lungeVars, useFlip } from "../lib/motion";
 import { useSceneTint } from "../lib/sceneTint";
 import { armedTargetIdSet, useGame } from "../lib/store";
 import { ArtControls } from "./ArtControls";
 import { CharacterCard } from "./CharacterCard";
 import { CorpseMarker, CreatureCard, TokenCard } from "./CreatureCard";
+import { IconFitView, IconZoomIn, IconZoomOut } from "./Icons";
 import { useScreenShake } from "./FxLayer";
 import { ProjectileLayer } from "./ProjectileLayer";
 
@@ -156,6 +158,58 @@ function PhaseHerald() {
   );
 }
 
+const VIEW_BTN =
+  "flex h-6 w-6 items-center justify-center border border-line bg-ink-0/85 text-mist " +
+  "transition hover:border-brass/60 hover:text-brass disabled:cursor-not-allowed " +
+  "disabled:opacity-30 disabled:hover:border-line disabled:hover:text-mist";
+
+/** The battlefield camera's controls: pull back, push in, reset framing. Sits
+ * over the field (never inside the stage, so it neither zooms nor pans away).
+ * The zoom reading only appears off the default, so the default board carries
+ * no chrome it doesn't need. */
+function ViewControls({ view }: { view: FieldView }) {
+  return (
+    <div
+      className="absolute bottom-1.5 right-2 z-20 flex items-center gap-1 opacity-45 transition hover:opacity-100"
+      onPointerDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      {!view.isDefault && (
+        <span className="caps-label mr-0.5 text-[9px] tracking-[0.2em] text-dimmed">
+          {Math.round(view.scale * 100)}%
+        </span>
+      )}
+      <button
+        type="button"
+        className={VIEW_BTN}
+        onClick={view.zoomOut}
+        disabled={!view.canZoomOut}
+        title="Zoom out (scroll wheel)"
+      >
+        <IconZoomOut size={13} />
+      </button>
+      <button
+        type="button"
+        className={VIEW_BTN}
+        onClick={view.zoomIn}
+        disabled={!view.canZoomIn}
+        title="Zoom in (scroll wheel)"
+      >
+        <IconZoomIn size={13} />
+      </button>
+      <button
+        type="button"
+        className={VIEW_BTN}
+        onClick={view.reset}
+        disabled={view.isDefault}
+        title="Reset view — drag the field to pan"
+      >
+        <IconFitView size={13} />
+      </button>
+    </div>
+  );
+}
+
 export function Battlefield() {
   const snapshot = useGame((s) => s.snapshot);
   const armed = useGame((s) => s.armed);
@@ -165,7 +219,9 @@ export function Battlefield() {
   const fx = useGame((s) => s.fx);
   const dying = useDeparting(snapshot);
   const shaking = useScreenShake();
-  const fieldRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);   // the pane (fixed): backdrop + chrome
+  const fieldRef = useRef<HTMLDivElement>(null);  // the stage (zoomed/panned): the board
+  const view = useFieldView(viewRef);
   // FLIP pass: any card whose layout position changed with this snapshot
   // glides from where it stood — movement is a slide, never a teleport.
   useFlip(fieldRef, snapshot);
@@ -217,10 +273,13 @@ export function Battlefield() {
 
   return (
     <div
-      ref={fieldRef}
-      className={`field-scene relative isolate flex h-full w-full gap-2 overflow-hidden px-3 pb-1 pt-4 ${
-        shaking ? "fx-shake" : kick
-      }`}
+      ref={viewRef}
+      onWheel={view.onWheel}
+      onPointerDown={view.onPointerDown}
+      onClickCapture={view.onClickCapture}
+      className={`field-scene relative isolate h-full w-full overflow-hidden ${
+        view.panning ? "cursor-grabbing" : ""
+      } ${shaking ? "fx-shake" : kick}`}
     >
       {/* Generated scene backdrop, behind the cards; a scrim keeps them legible.
           (-z ordering needs the container's own stacking context — `isolate`.) */}
@@ -257,116 +316,130 @@ export function Battlefield() {
         </div>
       )}
 
-      {/* Player area (~40%) */}
-      <div className="flex min-w-0 basis-2/5 gap-1.5">
-        {PLAYER_ROWS.map((row) => {
-          const chars = snapshot.characters.filter((c) => c.row === row);
-          const toks = snapshot.tokens.filter((t) => t.row === row);
-          const pickable = isMovePicker && ROW_IDS.includes(row) && targetIds.has(row);
-          const marked = threatenedRows.has(row);
-          return (
-            <div
-              key={row}
-              onClick={() => pickable && pickTargetId(row)}
-              className={`relative flex flex-1 flex-col items-center justify-center gap-3 ${
-                pickable ? "brackets cursor-pointer bg-brass/5" : ""
-              }`}
-            >
-              {marked && (
-                <>
-                  <div className="row-threat pointer-events-none absolute inset-0" />
-                  <span className="caps-label pointer-events-none absolute left-1/2 top-0.5 z-[1] -translate-x-1/2 text-[9px] tracking-[0.3em] text-blood/90">
-                    marked
-                  </span>
-                </>
-              )}
-              {chars.map((c) => (
-                <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
-                  <CharacterCard
-                    char={c}
-                    focused={focusedId === c.id}
-                    isHolder={holder === c.id && controlled.has(c.id)}
-                    waiting={holder === c.id && !controlled.has(c.id)}
-                    isTarget={targetIds.has(c.id)}
-                  />
-                </MotionWrap>
-              ))}
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {toks.map((t) => (
-                  <MotionWrap key={t.id} id={t.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
-                    <TokenCard token={t} isTarget={targetIds.has(t.id)} />
+      {/* The stage — everything the camera moves. The backdrop and the chrome
+          above stay put; zooming/panning re-frames the BOARD. */}
+      <div
+        ref={fieldRef}
+        className="absolute inset-0 flex gap-2 px-3 pb-1 pt-4"
+        style={{
+          transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+          transformOrigin: "50% 50%",
+        }}
+      >
+        {/* Player area (~40%) */}
+        <div className="flex min-w-0 basis-2/5 gap-1.5">
+          {PLAYER_ROWS.map((row) => {
+            const chars = snapshot.characters.filter((c) => c.row === row);
+            const toks = snapshot.tokens.filter((t) => t.row === row);
+            const pickable = isMovePicker && ROW_IDS.includes(row) && targetIds.has(row);
+            const marked = threatenedRows.has(row);
+            return (
+              <div
+                key={row}
+                onClick={() => pickable && pickTargetId(row)}
+                className={`relative flex flex-1 flex-col items-center justify-center gap-3 ${
+                  pickable ? "brackets cursor-pointer bg-brass/5" : ""
+                }`}
+              >
+                {marked && (
+                  <>
+                    <div className="row-threat pointer-events-none absolute inset-0" />
+                    <span className="caps-label pointer-events-none absolute left-1/2 top-0.5 z-[1] -translate-x-1/2 text-[9px] tracking-[0.3em] text-blood/90">
+                      marked
+                    </span>
+                  </>
+                )}
+                {chars.map((c) => (
+                  <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
+                    <CharacterCard
+                      char={c}
+                      focused={focusedId === c.id}
+                      isHolder={holder === c.id && controlled.has(c.id)}
+                      waiting={holder === c.id && !controlled.has(c.id)}
+                      isTarget={targetIds.has(c.id)}
+                    />
+                  </MotionWrap>
+                ))}
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {toks.map((t) => (
+                    <MotionWrap key={t.id} id={t.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
+                      <TokenCard token={t} isTarget={targetIds.has(t.id)} />
+                    </MotionWrap>
+                  ))}
+                  {dying
+                    .filter((d) => d.kind === "token" && d.view.row === row)
+                    .map((d) => (
+                      <div
+                        key={`dying-${d.view.id}`}
+                        className={`${departClass(d)} pointer-events-none`}
+                      >
+                        <TokenCard token={d.view as TokenView} />
+                      </div>
+                    ))}
+                </div>
+                <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
+                  {row}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Centre divider — hairline with a brass diamond */}
+        <div className="relative flex w-3 flex-none items-center justify-center self-stretch">
+          <div className="absolute inset-y-[8%] left-1/2 w-px bg-gradient-to-b from-transparent via-line2 to-transparent" />
+          <div className="z-[1] h-[7px] w-[7px] rotate-45 border border-brass bg-ink-1" />
+        </div>
+
+        {/* Creature area (~60%) */}
+        <div className="flex min-w-0 basis-3/5 gap-1.5">
+          {CREATURE_ROWS.map((row) => {
+            const creatures = snapshot.creatures.filter((c) => c.row === row);
+            const corpses = (snapshot.corpses ?? []).filter(
+              (c) => c.row === row && !dyingIds.has(c.id));
+            return (
+              <div
+                key={row}
+                className="relative flex flex-1 flex-col items-center justify-center gap-3"
+              >
+                {creatures.map((c) => (
+                  <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy">
+                    <CreatureCard creature={c} isTarget={targetIds.has(c.id)} />
                   </MotionWrap>
                 ))}
                 {dying
-                  .filter((d) => d.kind === "token" && d.view.row === row)
+                  .filter((d) => d.kind === "creature" && d.view.row === row)
                   .map((d) => (
                     <div
                       key={`dying-${d.view.id}`}
                       className={`${departClass(d)} pointer-events-none`}
                     >
-                      <TokenCard token={d.view as TokenView} />
+                      <CreatureCard creature={d.view as CreatureView} />
                     </div>
                   ))}
-              </div>
-              <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
-                {row}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Centre divider — hairline with a brass diamond */}
-      <div className="relative flex w-3 flex-none items-center justify-center self-stretch">
-        <div className="absolute inset-y-[8%] left-1/2 w-px bg-gradient-to-b from-transparent via-line2 to-transparent" />
-        <div className="z-[1] h-[7px] w-[7px] rotate-45 border border-brass bg-ink-1" />
-      </div>
-
-      {/* Creature area (~60%) */}
-      <div className="flex min-w-0 basis-3/5 gap-1.5">
-        {CREATURE_ROWS.map((row) => {
-          const creatures = snapshot.creatures.filter((c) => c.row === row);
-          const corpses = (snapshot.corpses ?? []).filter(
-            (c) => c.row === row && !dyingIds.has(c.id));
-          return (
-            <div
-              key={row}
-              className="relative flex flex-1 flex-col items-center justify-center gap-3"
-            >
-              {creatures.map((c) => (
-                <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy">
-                  <CreatureCard creature={c} isTarget={targetIds.has(c.id)} />
-                </MotionWrap>
-              ))}
-              {dying
-                .filter((d) => d.kind === "creature" && d.view.row === row)
-                .map((d) => (
-                  <div
-                    key={`dying-${d.view.id}`}
-                    className={`${departClass(d)} pointer-events-none`}
-                  >
-                    <CreatureCard creature={d.view as CreatureView} />
+                {corpses.length > 0 && (
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {corpses.map((c) => (
+                      <CorpseMarker key={c.id} corpse={c} isTarget={targetIds.has(c.id)} />
+                    ))}
                   </div>
-                ))}
-              {corpses.length > 0 && (
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {corpses.map((c) => (
-                    <CorpseMarker key={c.id} corpse={c} isTarget={targetIds.has(c.id)} />
-                  ))}
-                </div>
-              )}
-              <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
-                {row}
-              </span>
-            </div>
-          );
-        })}
+                )}
+                <span className="caps-label pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-dimmed/70">
+                  {row}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Projectiles fly over everything on the board — inside the stage, so a
+            bolt still lands on its target's chest at any zoom. */}
+        <ProjectileLayer field={fieldRef} />
       </div>
 
-      {/* Projectiles fly over everything on the board. */}
-      <ProjectileLayer field={fieldRef} />
       {/* Phase heralds sweep over the whole field on the big turns of the round. */}
       <PhaseHerald />
+      <ViewControls view={view} />
     </div>
   );
 }

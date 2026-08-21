@@ -35,7 +35,6 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   const clientId = useGame((s) => s.clientId);
   const claim = useGame((s) => s.claim);
   const release = useGame((s) => s.release);
-  const setSheetFor = useGame((s) => s.setSheetFor);
   const connected = useGame((s) => s.connected);
   const [copied, setCopied] = useState(false);
 
@@ -131,12 +130,43 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
     window.clearTimeout(turnGhostTimerRef.current);
   }, []);
 
-  const copyInvite = () => {
+  const copyInvite = async () => {
     // The invite host comes from Options → Settings (e.g. a Tailscale IP);
     // unset, it falls back to however this window was opened.
-    if (sessionId) navigator.clipboard?.writeText(inviteUrl(sessionId));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    if (!sessionId) return;
+    const url = inviteUrl(sessionId);
+    // navigator.clipboard exists only in secure contexts — over plain-HTTP
+    // multiplayer (a Tailscale IP) it is undefined, so fall back to the
+    // hidden-textarea copy, then to a prompt the player can copy from.
+    let ok = false;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      ta.remove();
+    }
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } else {
+      window.prompt("Copy the invite link:", url);
+    }
   };
 
   return (
@@ -178,16 +208,6 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
           {town.town.name} · Act {roman(town.scenario.act_number)} / {roman(town.scenario.acts_total)}
         </span>
       )}
-      {(snapshot?.party_sheet?.length || town?.party_sheet?.length) ? (
-        <button
-          onClick={() => setSheetFor((snapshot?.party_sheet ?? town?.party_sheet ?? [])[0]?.id ?? null)}
-          className="caps-label ml-2 border border-line px-2 py-[3px] text-[9px] tracking-[0.16em] text-mist transition hover:border-line2 hover:text-parch"
-          title="Character sheets — stats, build, gear (read-only in combat)"
-        >
-          Sheet
-        </button>
-      ) : null}
-
       {/* turn tracker — centred */}
       {snapshot && (
         <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-baseline">

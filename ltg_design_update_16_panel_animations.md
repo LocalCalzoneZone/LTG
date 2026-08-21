@@ -16,11 +16,11 @@ A **panel animation** is a short pre-generated clip (MiniMax H3 image-to-video, 
 PanelAnimation { id, title, file, trigger, alternate, speed, duration_s, impact_s }
 Character.animations: [PanelAnimation]           # the character's clip list
 Card.animation: anim_id | null                    # per-card pick (deck, Skill, Ultimate)
-StanceReplacement.animation: anim_id | null       # per-stance pick for a replaced attack
+StanceReplacement.animation: anim_id | null       # per-slot pick for any replaced ability (attack/defend/mitigate/move)
 ```
 
 - `trigger` ∈ `attack | cast | channel | defend | mitigate | skill | ultimate | hit | death` — the action type the clip plays for **by default**.
-- `alternate = true` removes the clip from the defaults; it is offered as an explicit pick on cards and stance attacks (e.g. Lasarre's *Crystal darts* stance attack vs her default *crystal blade slash*).
+- `alternate = true` removes the clip from the defaults; it is offered as an explicit pick on cards and stance-replaced abilities (e.g. Lasarre's *Crystal darts* stance attack vs her default *crystal blade slash*).
 - `speed` is the video playback rate, default 1.0 — clips are delivered at their final length and played as authored (retime before upload if needed). Animated images (WebP/GIF) cannot be retimed by browsers, so for those `duration_s` says how long the panel shows the clip before swapping back. WebM/VP9 is the recommended format.
 - `file` is a URL path (`/anim/<char_slug>/<file>`). Clips are **never inlined** into the loadout JSON (the JSON rides every game snapshot); the bytes live at `apps/deckbuilder/loadouts/anim/<char_slug>/` (gitignored, beside the loadout), with `content/anim/` as a tracked fallback for clips shipped with the repo.
 
@@ -28,8 +28,8 @@ StanceReplacement.animation: anim_id | null       # per-stance pick for a replac
 
 For a resolving action by a party character:
 
-1. An explicit pick — the card's `animation`, or for a stance-replaced attack the replacement's `animation` — wins if it names an existing clip (alternates included).
-2. Otherwise the first **non-alternate** clip whose `trigger` matches: `attack` (basic attack *and* a stance-replaced attack with no pick), `cast` (non-channeled card), `channel` (channeled card), `skill`, `ultimate`, `defend` / `mitigate` (the free actions *and* their stance replacements), `hit` (the character takes damage), `death` (incapacitated).
+1. An explicit pick — the card's `animation`, or for any stance-replaced ability the replacement's `animation` — wins if it names an existing clip (alternates included).
+2. Otherwise the first **non-alternate** clip whose `trigger` matches: `attack` (basic attack *and* a stance-replaced attack with no pick), `cast` (non-channeled card), `channel` (channeled card), `skill`, `ultimate`, `defend` / `mitigate` (the free actions *and* their stance replacements), `hit` (the character takes damage), `death` (incapacitated). A replaced **Move** has no default trigger — it plays only an explicit pick.
 3. A Skill with no clip falls back to `channel`/`cast` by its timing; an Ultimate falls back to `cast`.
 4. Nothing matches → the panel stays static.
 
@@ -46,7 +46,7 @@ The engine's `resolve` log entry now carries `kind`, `side`, `card`, `heroic` (`
 
 ## A-6. Authoring flow
 
-Deckbuilder → **Animations** button under the portrait opens the clip modal: *+ Add clip* (WebM/MP4/WebP/GIF) → title, *plays on*, *alternate*, speed / duration; the thumbnail previews on click; × deletes the file and clears any picks that named it. Card editor → *Panel animation* select on every card (blank = default). Stance editor → *animation* select on the `attack — replacement` row. Save / Update Game Character as usual — the picks and clip list ride the loadout.
+Deckbuilder → **Animations** button under the portrait opens the clip modal: *+ Add clip* (WebM/MP4/WebP/GIF) → title, *plays on*, *alternate*, speed / duration; the thumbnail previews on click; × deletes the file and clears any picks that named it. Card editor → *Panel animation* select on every card (blank = default). Stance editor → *animation* select on every replacement row (attack / defend / mitigate / move; Move defaults to none). Save / Update Game Character as usual — the picks and clip list ride the loadout.
 
 ## A-7. Deferred
 

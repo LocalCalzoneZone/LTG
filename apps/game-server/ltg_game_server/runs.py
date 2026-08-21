@@ -59,6 +59,21 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
+def _shrink_portraits(loadout: Dict[str, Any]) -> Dict[str, Any]:
+    """Cache a restored loadout's portrait to a file, in place.
+
+    Restored loadouts come from the run's content store, not the character
+    registry — so a save written before portraits became files still carries
+    its multi-MB inline data URL, and every snapshot of that run would ship it.
+    `content.portrait_url` is a no-op for the URL form, so new saves cost
+    nothing here.
+    """
+    ch = loadout.get("character") if isinstance(loadout, dict) else None
+    if isinstance(ch, dict) and str(ch.get("portrait") or "").startswith("data:"):
+        ch["portrait"] = content.portrait_url(ch["portrait"])
+    return loadout
+
+
 def _canonical(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -254,7 +269,10 @@ class RunManager:
         return {
             "run_id": run["run_id"],
             "name": run.get("name", ""),
-            "party": run.get("party", []),
+            # A pre-cache run's party rows still hold inline portraits; shrink
+            # them for the wire (a copy — `run` is written back elsewhere).
+            "party": [{**row, "portrait": content.portrait_url(str(row.get("portrait") or ""))}
+                      for row in run.get("party", []) if isinstance(row, dict)],
             "options": run.get("options", {}),
             "created_at": run.get("created_at", ""),
             "updated_at": run.get("updated_at", ""),
@@ -445,7 +463,8 @@ class RunManager:
         adventure = AdventureRun(adv_block.get("adventure_id") or "run-adventure",
                                  detail=detail)
         party = copy.deepcopy(snap["party"])
-        party["loadouts"] = [st.get(h) for h in party.pop("loadout_refs", [])]
+        party["loadouts"] = [_shrink_portraits(st.get(h))
+                             for h in party.pop("loadout_refs", [])]
         state, portraits, art, encounter_id = adventure.restore(party, seed=snap.get("seed"))
         return self._run_meta(run), adventure, state, portraits, art, encounter_id
 
@@ -464,7 +483,7 @@ class RunManager:
         block = copy.deepcopy(snap["scenario"])
         town = st.get(block["town_ref"])
         arc = st.get(block["arc_ref"])
-        loadouts = [st.get(h) for h in block.get("loadout_refs", [])]
+        loadouts = [_shrink_portraits(st.get(h)) for h in block.get("loadout_refs", [])]
         act = st.get(block["act_ref"]) if block.get("act_ref") else None
         adv = st.get(block["adventure_ref"]) if block.get("adventure_ref") else None
         scenario = ScenarioRun(town, arc, block["character_ids"], loadouts,

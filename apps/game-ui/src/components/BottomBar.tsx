@@ -9,6 +9,7 @@ import { IconChannel, IconGrave, IconLibrary } from "./Icons";
 export function BottomBar({ height }: { height?: number | null }) {
   const snapshot = useGame((s) => s.snapshot);
   const focusedId = useGame((s) => s.focusedId);
+  const setSheetFor = useGame((s) => s.setSheetFor);
   const choices = useGame(focusedChoices);
   const openZone = useGame((s) => s.openZone);
   // The resolution hold: while the board's choreography is still landing —
@@ -50,6 +51,9 @@ export function BottomBar({ height }: { height?: number | null }) {
   }
 
   const reaction = snapshot.priority.kind === "reaction" && snapshot.priority.holder_character_id === char.id;
+  // The sheet exists only when a party sheet rides the snapshot (scenario /
+  // adventure runs); a bare authored encounter has none to open.
+  const hasSheet = !!snapshot.party_sheet?.some((r) => r.id === char.id);
 
   return (
     <div
@@ -60,13 +64,23 @@ export function BottomBar({ height }: { height?: number | null }) {
       <ArmingHint />
       <ManaPayPopup />
 
-      {/* who am I acting as + hidden zones — one block */}
+      {/* who am I acting as + hidden zones — one block. The name opens the
+          character sheet (stats, build, gear — read-only in combat). */}
       <div className="flex w-[150px] shrink-0 flex-col gap-1.5">
-        <div className="flex items-center justify-center border border-line bg-black/25 px-2 py-2">
-          <div className="caps-label min-w-0 truncate text-[14px] tracking-[0.14em] text-parch">
+        <button
+          onClick={() => hasSheet && setSheetFor(char.id)}
+          disabled={!hasSheet}
+          title={hasSheet ? `${char.name} — character sheet` : undefined}
+          className={`flex items-center justify-center border border-line bg-black/25 px-2 py-2 transition ${
+            hasSheet ? "hover:border-brass/60 hover:bg-brass/5" : "cursor-default"
+          }`}
+        >
+          <div className={`caps-label min-w-0 truncate text-[14px] tracking-[0.14em] text-parch ${
+            hasSheet ? "underline decoration-line2 decoration-dotted underline-offset-4" : ""
+          }`}>
             {char.name}
           </div>
-        </div>
+        </button>
 
         {char.controlled ? (
           <>

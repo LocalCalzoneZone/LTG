@@ -6,6 +6,8 @@
 
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
+import { scaleOf } from "./fieldView";
+
 const rects = new Map<string, DOMRect>();
 
 /** Last measured on-screen rect of a combatant card (by entity id). */
@@ -22,10 +24,24 @@ const reducedMotion = () =>
  * own classes and inline styles. */
 export function useFlip(root: RefObject<HTMLElement | null>, dep: unknown) {
   const prev = useRef<Map<string, DOMRect>>(new Map());
+  const prevRoot = useRef<[number, number, number] | null>(null);
 
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
+    // The board may be zoomed (the pane's camera). Measurements come back in
+    // VIEWPORT pixels while the FLIP transform is applied inside the scaled
+    // stage, so every delta is converted back to stage-local pixels.
+    const scale = scaleOf(el);
+    // If the CAMERA moved (zoom, pan) or the pane itself was resized since the
+    // last pass, every stored rect is stale: re-baseline them and animate
+    // nothing. The board did not move — the viewer did.
+    const box = el.getBoundingClientRect();
+    const now: [number, number, number] = [box.left, box.top, box.width];
+    const before = prevRoot.current;
+    const moved =
+      before !== null && now.some((v, i) => Math.abs(v - before[i]) > 0.5);
+    prevRoot.current = now;
     const seen = new Set<string>();
     el.querySelectorAll<HTMLElement>("[data-fid]").forEach((node) => {
       const id = node.dataset.fid;
@@ -35,9 +51,9 @@ export function useFlip(root: RefObject<HTMLElement | null>, dep: unknown) {
       const p = prev.current.get(id);
       prev.current.set(id, r);
       rects.set(id, r);
-      if (!p || reducedMotion()) return;
-      const dx = p.left - r.left;
-      const dy = p.top - r.top;
+      if (!p || moved || reducedMotion()) return;
+      const dx = (p.left - r.left) / scale;
+      const dy = (p.top - r.top) / scale;
       if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       node.animate(
         [

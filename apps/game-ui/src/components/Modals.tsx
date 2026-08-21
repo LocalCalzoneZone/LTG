@@ -269,7 +269,9 @@ export function CardPickPrompt() {
   );
 }
 
-/** §4.16 game-over overlay (board stays visible behind). For an adventure
+/** §4.16 game-over overlay — covers ONLY the bottom action bar (it is rendered
+ * absolute inside the bar's wrapper in App): the battlefield and log above stay
+ * readable and clickable, so the final board state can be inspected. For an adventure
  * (Update 10) the finale's win reads "Adventure Complete", and a defeat offers
  * Restart from Phase I — same party, fresh state, level 1. */
 export function GameOverOverlay({
@@ -308,55 +310,53 @@ export function GameOverOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
-      <div className="panel-ticks border border-line2 bg-ink-2/95 px-12 py-9 text-center shadow-2xl">
-        <div className="flex items-center justify-center gap-5">
-          <span className={`h-px w-16 bg-gradient-to-r from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
-          {/* pl offsets the trailing letter-spacing after the last glyph, so the
-              word sits optically centred between the hairlines */}
-          <div
-            className={`caps-label pl-[0.3em] text-4xl tracking-[0.3em] ${win ? "text-vigor" : "text-blood"}`}
-            style={{ textShadow: win ? "0 0 30px rgba(132,199,147,.4)" : "0 0 30px rgba(194,90,80,.4)" }}
-          >
-            {advWin ? "Adventure Complete" : win ? "Victory" : "Defeat"}
-          </div>
-          <span className={`h-px w-16 bg-gradient-to-l from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1.5 overflow-y-auto bg-ink-0/95 px-6 py-3 text-center">
+      <div className="flex items-center justify-center gap-5">
+        <span className={`h-px w-16 bg-gradient-to-r from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
+        {/* pl offsets the trailing letter-spacing after the last glyph, so the
+            word sits optically centred between the hairlines */}
+        <div
+          className={`caps-label pl-[0.3em] text-2xl tracking-[0.3em] ${win ? "text-vigor" : "text-blood"}`}
+          style={{ textShadow: win ? "0 0 30px rgba(132,199,147,.4)" : "0 0 30px rgba(194,90,80,.4)" }}
+        >
+          {advWin ? "Adventure Complete" : win ? "Victory" : "Defeat"}
         </div>
-        {objectiveLine && (
-          <div className="mt-3 text-sm font-light text-parch">{objectiveLine}</div>
+        <span className={`h-px w-16 bg-gradient-to-l from-transparent ${win ? "to-vigor/70" : "to-blood/70"}`} />
+      </div>
+      {objectiveLine && (
+        <div className="text-sm font-light text-parch">{objectiveLine}</div>
+      )}
+      <div className="text-sm font-light text-mist">
+        {advWin
+          ? `${adventure.name} — all three phases, cleared.`
+          : adventure
+            ? `${adventure.name} ends in Phase ${adventure.phase}. No checkpoints — the run is the run.`
+            : "Tweak your party, encounters, or generation settings, then start again."}
+      </div>
+      {restartErr && <div className="text-xs font-light text-blood">{restartErr}</div>}
+      <div className="mt-2 flex items-center justify-center gap-3">
+        {adventure && !win && (
+          <button
+            onClick={restart}
+            disabled={restarting}
+            className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {restarting ? "Restarting…" : "Restart from Phase I"}
+          </button>
         )}
-        <div className="mt-3 text-sm font-light text-mist">
-          {advWin
-            ? `${adventure.name} — all three phases, cleared.`
-            : adventure
-              ? `${adventure.name} ends in Phase ${adventure.phase}. No checkpoints — the run is the run.`
-              : "Tweak your party, encounters, or generation settings, then start again."}
-        </div>
-        {restartErr && <div className="mt-2 text-xs font-light text-blood">{restartErr}</div>}
-        <div className="mt-6 flex items-center justify-center gap-3">
-          {adventure && !win && (
-            <button
-              onClick={restart}
-              disabled={restarting}
-              className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {restarting ? "Restarting…" : "Restart from Phase I"}
-            </button>
-          )}
-          <button
-            onClick={onOptions}
-            className="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-line2 hover:text-parch"
-          >
-            Options
-          </button>
-          <button
-            onClick={onNewGame}
-            className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0"
-          >
-            New Game
-          </button>
-          <QuitControl buttonClassName="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-blood/60 hover:text-blood" />
-        </div>
+        <button
+          onClick={onOptions}
+          className="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-line2 hover:text-parch"
+        >
+          Options
+        </button>
+        <button
+          onClick={onNewGame}
+          className="caps-label border border-brass/60 bg-brass/10 px-5 py-2 text-[10px] tracking-[0.2em] text-brass transition hover:bg-brass hover:text-ink-0"
+        >
+          New Game
+        </button>
+        <QuitControl buttonClassName="caps-label border border-line px-5 py-2 text-[10px] tracking-[0.2em] text-mist transition hover:border-blood/60 hover:text-blood" />
       </div>
     </div>
   );

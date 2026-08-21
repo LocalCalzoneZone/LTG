@@ -310,7 +310,7 @@ def _tick_stirring(st: GameState) -> None:
         if e is None:
             continue
         e.hp = max(1, e.max_hp // 2)
-        e.temp_mod = e.power_bonus = e.prevent_pool = 0
+        _shed_temp_layers(e)
         e.prevent_tags = []
         e.protection_tags = []
         e.poison_effects = []
@@ -485,6 +485,7 @@ def _upkeep_draws(st: GameState) -> None:
         _draw(st, c, 1)
         c.used_attack = c.used_defend = c.used_mitigate = c.used_move = False
         c.acted_mode = None
+        c.proactive_modes = []
         c.turn_ended = False
         c.taunted_to = None  # enemy taunt is a this-turn bind (§F-3)
         c.spells_cast_turn = 0  # `spells_cast` conditions count per turn
@@ -1492,21 +1493,22 @@ def _execute_ally(st: GameState, token: TokenState) -> None:
 
 
 def _end_step(st: GameState) -> None:
-    """End-of-turn expiry (R-7): `temp_mod` (pump/wound) → 0, prevention/taunt drop,
-    turn-scoped keywords lapse. Sustained channel auras are then re-applied (they
-    live in the temp layers, which just reset). Finally re-check lethality on the
-    refreshed effective_hp: a creature ≤ 0 dies, a PC recovers if back above 0."""
+    """End-of-turn expiry (R-7): `temp_mod` (pump/wound) drops back to its
+    ENCOUNTER-scoped share (0 for the usual turn-scoped pump), prevention/taunt
+    drop, turn-scoped keywords lapse. Sustained channel auras are then re-applied
+    (they live in the temp layers, which just reset). Finally re-check lethality on
+    the refreshed effective_hp: a creature ≤ 0 dies, a PC recovers if back above 0."""
     for c in st.party:
-        c.temp_mod = c.power_bonus = c.prevent_pool = 0
+        _reset_temp_layers(c)
         c.prevent_tags = []
         _expire_keywords(c)
     for e in st.enemies:
-        e.temp_mod = e.prevent_pool = e.power_bonus = 0
+        _reset_temp_layers(e)
         e.prevent_tags = []
         e.taunted_by = None
         _expire_keywords(e)
     for t in st.tokens:
-        t.temp_mod = t.power_bonus = t.prevent_pool = 0
+        _reset_temp_layers(t)
         t.prevent_tags = []
         _expire_keywords(t)
     _tick_control(st)  # turn-bound control expires at the End Step (§D9-1.4)
@@ -1528,6 +1530,35 @@ def _reap_dead(st: GameState) -> None:
         if c.effective_hp <= 0 and c.channels:
             _note_break(st, c, "incapacitated")
     _process_breaks(st)
+
+
+def _reset_temp_layers(combatant) -> None:
+    """The End-step reset: the live pump/wound layers fall back to whatever share of
+    them was granted `duration: encounter` (0 in the ordinary turn-scoped case), so
+    an encounter buffer/anthem survives the turn instead of evaporating at End."""
+    combatant.temp_mod = combatant.enc_temp_mod
+    combatant.power_bonus = combatant.enc_power_bonus
+    combatant.prevent_pool = 0
+
+
+def _shed_temp_layers(combatant) -> None:
+    """Drop every temporary stat modifier, encounter-scoped ones included — for a
+    creature leaving and re-entering the board (bounce, control revert, a corpse
+    rising), which sheds its whole modifier stack."""
+    combatant.temp_mod = combatant.enc_temp_mod = 0
+    combatant.power_bonus = combatant.enc_power_bonus = 0
+    combatant.prevent_pool = 0
+
+
+def _sync_enc_temp(combatant) -> None:
+    """Keep the encounter share of `temp_mod` inside the live layer. Damage spends
+    the buffer and healing closes a wound; either way what carries past the End step
+    can only shrink — never resurrect a buffer the fight already ate."""
+    enc = getattr(combatant, "enc_temp_mod", 0)
+    if enc > 0:
+        combatant.enc_temp_mod = max(0, min(enc, combatant.temp_mod))
+    elif enc < 0:
+        combatant.enc_temp_mod = min(0, max(enc, combatant.temp_mod))
 
 
 def _expire_keywords(combatant) -> None:
@@ -1620,12 +1651,18 @@ def _do_choose_card(st: GameState, action: Action) -> None:
     pc.need -= 1
     if pc.need > 0 and pc.candidates:
         return  # still choosing — pending_choice stays (picked card removed)
-    # This move is done: shuffle if asked, then resume the item's remaining effects
-    # (which may itself raise the next choice).
+    # This chooser is done: shuffle if asked, then hand the same effect to the next
+    # targeted character (a per-player move), and only then resume the item's
+    # remaining effects — either step may itself raise the next choice.
     item, eff, remaining = pc.item, pc.effect, pc.remaining
+    movers_left = list(pc.movers_left)
     st.pending_choice = None
     _move_shuffle(st, char, eff)
-    _resolve_effect_list(st, item, remaining, _new_ctx(st, item))
+    ctx = _new_ctx(st, item)
+    movers = [c for c in (st.character(cid) for cid in movers_left) if c is not None]
+    if movers and _run_move_card(st, item, eff, ctx, remaining, movers):
+        return
+    _resolve_effect_list(st, item, remaining, ctx)
     if st.pending_choice is None:
         _process_breaks(st)
         st.priority = None
@@ -1864,12 +1901,39 @@ def _do_end_turn(st: GameState, action: Action) -> None:
          auto=bool(getattr(action, "auto", False)))
 
 
+def _proactive_allowance(actor: CharacterState) -> int:
+    """How many DISTINCT proactive actions the character may take this turn: one,
+    or two with vigilance — GDD §7, "may attack and still act/defend". The pairing
+    is free-form (attack+cast, defend+attack, skill+attack, …); the per-action
+    limits still apply on top (one basic Attack, one Defend, one Skill a fight)."""
+    return 2 if _has_kw(actor, "vigilance") else 1
+
+
+def _proactive_open(actor: CharacterState, mode: str) -> bool:
+    """True if `mode` is still available: either it is an action already underway
+    this turn (further sorcery-speed spells ride the same Cast) or the turn's
+    allowance has room for another."""
+    return (mode in actor.proactive_modes
+            or len(actor.proactive_modes) < _proactive_allowance(actor))
+
+
+def _spend_proactive(st: GameState, actor: CharacterState, mode: str,
+                     gauge: bool = True) -> None:
+    """Book a proactive action: +2 gauge for the turn's first one (D8-3.3), stamp
+    `acted_mode`, and record the mode against the turn's allowance. The heroic
+    actions pass `gauge=False` — they charge on their own terms (the Skill +5, the
+    Ultimate spending the gauge as its cost), never the generic action credit."""
+    if gauge and actor.acted_mode is None:
+        _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
+    actor.acted_mode = mode
+    if mode not in actor.proactive_modes:
+        actor.proactive_modes.append(mode)
+
+
 def _do_attack(st: GameState, action: Action) -> None:
     """The free basic attack (the proactive Attack): deal damage = Power."""
     actor = st.character(action.actor_id)
-    if actor.acted_mode is None:
-        _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
-    actor.acted_mode = "attack"
+    _spend_proactive(st, actor, "attack")
     actor.used_attack = True
     if actor.attack_mode == "melee" and actor.row != "front":
         # §L-2.1: the lunge — a melee swing physically closes to Front the moment
@@ -1921,9 +1985,8 @@ def _do_cast(st: GameState, action: Action) -> None:
     else:
         actor.graveyard.append(card)  # the card goes to the graveyard at once (R-9)
     if card.timing in _SORCERY_SPEED and not reactive:
-        if actor.acted_mode is None:
-            _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
-        actor.acted_mode = "cast"  # choosing Cast; further sorcery-speed casts ok
+        # Choosing Cast; further sorcery-speed casts ride the same action.
+        _spend_proactive(st, actor, "cast")
     # +1 gauge per point of mana spent (generic + coloured; X counts; a channel
     # charges its reserved cost once, at cast) — D8-3.3.
     _gain_gauge(st, actor, len(paid))
@@ -1952,9 +2015,7 @@ def _do_defend(st: GameState, action: Action) -> None:
     that raises effective_hp and expires at End (R-7). (Magnitude is a placeholder
     until gear/flavour set it.)"""
     actor = st.character(action.actor_id)
-    if actor.acted_mode is None:
-        _gain_gauge(st, actor, 2)  # the action itself (D8-3.3)
-    actor.acted_mode = "defend"
+    _spend_proactive(st, actor, "defend")
     actor.used_defend = True
     actor.temp_mod += _DEFEND_TEMP_HP
     # …plus +1 per point of temp HP granted as the source: Defend now earns +5
@@ -1979,9 +2040,7 @@ def _do_move(st: GameState, action: Action) -> None:
     mover has haste (then it is free); once per turn either way."""
     actor = st.character(action.actor_id)
     if not _has_kw(actor, "haste"):
-        if actor.acted_mode is None:
-            _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
-        actor.acted_mode = "move"
+        _spend_proactive(st, actor, "move")
     actor.used_move = True
     _push(st, StackItem(kind="move", source_id=actor.id, source_side="party",
                         label=f"Move to {action.target_id}", effects=[],
@@ -2062,7 +2121,7 @@ def _do_use_skill(st: GameState, action: Action) -> None:
     x = max(0, int(action.x or 0))
     paid = _pay(actor, card, action.mana, x=x)
     actor.skill_used = True
-    actor.acted_mode = "skill"  # the Skill IS the turn's proactive action
+    _spend_proactive(st, actor, "skill", gauge=False)  # the Skill IS a proactive action
     reserved = list(paid) if card.timing == Timing.channeled else []
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{card.name} (Skill)", effects=list(card.effects),
@@ -2091,7 +2150,7 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
     card = actor.ultimate
     actor.ultimate_used = True
     actor.ultimate_gauge = 0
-    actor.acted_mode = "ultimate"
+    _spend_proactive(st, actor, "ultimate", gauge=False)
     _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
                         label=f"{card.name} (Ultimate)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
@@ -2116,20 +2175,14 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     stance = _active_stance(actor)
     repl = stance.slot(slot)
     if slot == "attack":
-        if actor.acted_mode is None:
-            _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
-        actor.acted_mode = "attack"
+        _spend_proactive(st, actor, "attack")
         actor.used_attack = True
     elif slot == "defend":
-        if actor.acted_mode is None:
-            _gain_gauge(st, actor, 2)
-        actor.acted_mode = "defend"
+        _spend_proactive(st, actor, "defend")
         actor.used_defend = True
     elif slot == "move":
         if not _has_kw(actor, "haste"):
-            if actor.acted_mode is None:
-                _gain_gauge(st, actor, 2)
-            actor.acted_mode = "move"
+            _spend_proactive(st, actor, "move")
         actor.used_move = True
     else:  # mitigate — the once-per-turn reaction, in the same window
         actor.used_mitigate = True
@@ -2343,14 +2396,9 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
                     resolve_now=True)
                 return
         if kind == "move_card":
-            char = st.character(item.source_id)
-            if char is not None:
-                cands = _move_candidates(char, effect, ctx)
-                if len(cands) > effect.count:  # a genuine "which cards?" choice
-                    st.pending_choice = PendingChoice(
-                        chooser_id=char.id, effect=effect, candidates=cands,
-                        need=effect.count, remaining=list(effects[i + 1:]), item=item)
-                    return
+            if _run_move_card(st, item, effect, ctx, list(effects[i + 1:])):
+                return
+            continue  # every target has moved (or been prompted and served)
         # A top-level scry pauses for the player to order the revealed top cards
         # (top/bottom, and the order on top). Nested scry (modal/conditional) keeps
         # the non-interactive reveal in `_resolve_effect`.
@@ -2412,7 +2460,7 @@ def _pin_channel_splash(st: GameState, ch, effects) -> None:
         pick = st.combatant(ch.target_id)
         if pick is None:
             return
-        splash = _splash_targets(st, pick, scope)
+        splash = _splash_targets(st, pick, scope, getattr(effect, "kind", None))
         ch.splash_ids = [_tid(c) for c in splash]
         if splash:
             name = getattr(ch, "name", None) or ch.card.name
@@ -2510,7 +2558,7 @@ def _enemy_channel_targets(st: GameState, ch: EnemyChannel, effect) -> List:
         side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
         item = StackItem(kind="ability", source_id=ch.holder_id, source_side="enemy",
                          label=ch.name, effects=[])
-        return _creatures_on_side(st, side, item, desc)
+        return _creatures_on_side(st, side, item, desc, getattr(effect, "kind", None))
     tgt = st.combatant(ch.target_id)
     out = [tgt] if tgt is not None else []
     return out + _channel_splash_targets(st, ch, effect)
@@ -2557,11 +2605,13 @@ def _continuous_targets(st: GameState, channel: Channel, effect) -> List:
         return [holder] if holder is not None else []
     if mode == TargetMode.all:
         side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
+        kind = getattr(effect, "kind", None)
         if side == "enemy":
             return list(st.living_enemies())
         if side == "any":
-            return list(st.living_party()) + list(st.living_tokens()) + list(st.living_enemies())
-        return list(st.living_party()) + list(st.living_tokens())
+            return (_party_pool(st, kind) + list(st.living_tokens())
+                    + list(st.living_enemies()))
+        return _party_pool(st, kind) + list(st.living_tokens())
     tgt = st.combatant(channel.target_id)
     out = [tgt] if tgt is not None else []
     return out + _channel_splash_targets(st, channel, effect)
@@ -2970,6 +3020,11 @@ def _do_choose_target(st: GameState, action: Action) -> None:
 _TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge",
                          "copy_spell", "redirect"})
 
+# Card-logistics verbs: they read and write a target's zones, so they only mean
+# anything on a PLAYER CHARACTER. An ally token (or an enemy) caught by a
+# side-wide `all` target holds no library — it is passed over, not crashed on.
+_CARD_ZONE_VERBS = frozenset({"draw", "scry", "move_card"})
+
 
 def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
     # Container effects expand here so resolution composes (no modal-in-modal).
@@ -3011,6 +3066,8 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
             _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no target).",
                  kind=effect.kind)
             continue
+        if effect.kind in _CARD_ZONE_VERBS and not isinstance(target, CharacterState):
+            continue  # no hand, no library, nothing for a card verb to do
         if _is_targeted(effect) and (target is None or not _legal_target(target)):
             _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no legal target).",
                  kind=effect.kind)
@@ -3035,7 +3092,7 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
         scope = getattr(getattr(desc, "scope", None), "value",
                         getattr(desc, "scope", None))
         if scope is not None and target is not None and not isinstance(target, Corpse):
-            splash = _splash_targets(st, target, scope)
+            splash = _splash_targets(st, target, scope, effect.kind)
             if splash:
                 _log(st, "splash", f"{item.label} splashes across the "
                      f"{'row' if scope == 'row' else 'row and adjacent rows'}: "
@@ -3099,14 +3156,39 @@ def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> Lis
         return [st.combatant(item.source_id)]
     if mode == TargetMode.all:
         side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
-        return _creatures_on_side(st, side, item, desc)
+        return _creatures_on_side(st, side, item, desc, getattr(effect, "kind", None))
     return [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
 
 
-def _creatures_on_side(st: GameState, side: str, item: StackItem, desc) -> List:
-    """Every living creature on a side (allies include ally tokens). A `rows`
-    filter narrows the set to the named battlefield rows (§D9-3.2); a corpse
-    `state` resolves to the corpses instead (only corpse-legal verbs author it)."""
+# Verbs that may land on a DOWNED character. Incapacitation is recoverable and the
+# body stays on the battlefield (R-7), so a restorative verb must reach it — "heal
+# all allies" is exactly the thing that picks a fallen friend back up, and the
+# chosen-target path has always allowed it (see `_side_options` / `_legal_target`).
+# Everything else passes a downed body by: the harm vocabulary an enemy AoE is
+# written in (`deal_damage`, `wound`, `poison`, `lose_life`) also targets side
+# "ally", enemies never pick a downed character as a single target either, and
+# pounding the incapacitated would turn one downing into a death spiral. A verb not
+# named here is skipped — the safe side for anything added later.
+_REACHES_DOWNED = frozenset({
+    "heal", "revive", "pump", "counters",
+    "grant_keyword", "prevent", "protection", "amplify", "double_next",
+})
+
+
+def _party_pool(st: GameState, kind: Optional[str]) -> List:
+    """The party an effect of `kind` lands on: the standing characters, plus the
+    DOWNED ones when the verb can legitimately reach an incapacitated body."""
+    return list(st.party) if kind in _REACHES_DOWNED else list(st.living_party())
+
+
+def _creatures_on_side(st: GameState, side: str, item: StackItem, desc,
+                       kind: Optional[str] = None) -> List:
+    """Every creature on a side (allies include ally tokens). A `rows` filter
+    narrows the set to the named battlefield rows (§D9-3.2); a corpse `state`
+    resolves to the corpses instead (only corpse-legal verbs author it).
+
+    `kind` is the verb being resolved: it decides whether a DOWNED ally is in the
+    set (`_REACHES_DOWNED`). Omit it and downed characters are left out."""
     state = getattr(desc, "state", None)
     state = getattr(state, "value", state)
     if state == "corpse":
@@ -3114,9 +3196,10 @@ def _creatures_on_side(st: GameState, side: str, item: StackItem, desc) -> List:
     elif side == "enemy":
         out = list(st.living_enemies())
     elif side == "any":
-        out = list(st.living_party()) + list(st.living_enemies()) + list(st.living_tokens())
+        out = (_party_pool(st, kind) + list(st.living_enemies())
+               + list(st.living_tokens()))
     else:
-        out = list(st.living_party()) + list(st.living_tokens())  # ally
+        out = _party_pool(st, kind) + list(st.living_tokens())  # ally
         if getattr(desc, "exclude_self", False):
             out = [c for c in out if c.id != item.source_id]
     rows = getattr(desc, "rows", None)
@@ -3429,10 +3512,16 @@ def _r_destroy(st, item, effect, target, ctx):
 def _r_pump(st, item, effect, target, ctx):
     # Pump (+X/+X): +X Power and +X temp_mod — a buffer that lifts effective_hp and
     # expires at End (R-7). power/toughness may be refs (pump X, +1 per player…).
+    # `duration: encounter` mirrors the grant into the encounter layers, which the
+    # End step resets back to instead of to 0 (the buffer holds for the fight).
     power, toughness = _value(effect.power, ctx), _value(effect.toughness, ctx)
     if hasattr(target, "power_bonus"):
         target.power_bonus += power
     target.temp_mod += toughness
+    if getattr(effect, "duration", None) == Duration.encounter:
+        if hasattr(target, "enc_power_bonus"):
+            target.enc_power_bonus += power
+        target.enc_temp_mod += toughness
     # The toughness half is temp HP granted — the caster's gauge charges +1 per
     # point, like any shielding (D8-3.3).
     if toughness > 0:
@@ -3567,6 +3656,37 @@ def _r_move_card(st, item, effect, target, ctx):
     _move_shuffle(st, char, effect)
 
 
+def _move_targets(st: GameState, item: StackItem, effect, ctx) -> List:
+    """The characters a top-level move_card lands on. Tokens and enemies caught by a
+    side-wide `all` target hold no zones and are dropped (see `_CARD_ZONE_VERBS`)."""
+    return [t for t in _resolution_targets(st, item, effect, ctx)
+            if isinstance(t, CharacterState)]
+
+
+def _run_move_card(st: GameState, item: StackItem, effect, ctx,
+                   remaining: List, movers: Optional[List] = None) -> bool:
+    """Resolve a top-level move_card across ALL of its targets ("each player returns
+    N cards", not just the caster's). A target with more legal candidates than the
+    effect moves gets a genuine "which cards?" pick: pause there, recording the
+    targets still to come on the PendingChoice so `_do_choose_card` walks the rest.
+    Targets with no real choice move deterministically, in place.
+
+    Returns True if a pick was raised (the caller stops resolving), False once every
+    target is done."""
+    if movers is None:
+        movers = _move_targets(st, item, effect, ctx)
+    for n, char in enumerate(movers):
+        cands = _move_candidates(char, effect, ctx)
+        if len(cands) > effect.count:  # a genuine "which cards?" choice
+            st.pending_choice = PendingChoice(
+                chooser_id=char.id, effect=effect, candidates=cands,
+                need=effect.count, remaining=list(remaining), item=item,
+                movers_left=[c.id for c in movers[n + 1:]])
+            return True
+        _r_move_card(st, item, effect, char, ctx)
+    return False
+
+
 def _r_create_token(st, item, effect, target, ctx):
     # An enemy Swarm (§F-4) spawns enemy-side tokens; a card's create_token spawns
     # autonomous ally tokens. Both read the effect's stats, falling back to the
@@ -3683,7 +3803,7 @@ def _bounce_enemy(st: GameState, enemy: EnemyState) -> None:
     enemy.intent2 = None
     _break_enemy_channels(st, enemy, "channeler bounced")  # off-field = concentration gone
     # Shed temporary modifiers (the pump/wound layers would expire at End anyway, R-7).
-    enemy.temp_mod = enemy.prevent_pool = enemy.power_bonus = 0
+    _shed_temp_layers(enemy)
     enemy.prevent_tags = []
     enemy.taunted_by = None
     for kw, dur in list(enemy.keywords.items()):  # temporary granted keywords fall off
@@ -3818,6 +3938,13 @@ def _r_wound(st, item, effect, target, ctx):
     if hasattr(target, "power_bonus"):
         target.power_bonus -= power
     target.temp_mod -= toughness
+    if getattr(effect, "duration", None) == Duration.encounter:
+        if hasattr(target, "enc_power_bonus"):
+            target.enc_power_bonus -= power
+        target.enc_temp_mod -= toughness
+    else:
+        # A turn-scoped wound eating into an encounter buffer eats it for good.
+        _sync_enc_temp(target)
     _log(st, "wound", f"{target.name} suffers -{power}/-{toughness} "
          f"(eff HP {target.effective_hp}).", target=_tid(target),
          power=power, toughness=toughness)
@@ -4044,15 +4171,17 @@ def _effect_desc(item: StackItem, effect):
     return desc
 
 
-def _splash_targets(st: GameState, pick, scope: str) -> List:
+def _splash_targets(st: GameState, pick, scope: str, kind: Optional[str] = None) -> List:
     """Row/blast splash around a resolved pick (§D9-3.2): every OTHER same-side
     creature on the pick's row (`row`), or on its row and adjacent rows (`blast`;
     front↔mid, mid↔rear — front and rear are not adjacent). Splash victims are
-    incidental — never targeted, so hexproof/shroud do not shelter them."""
+    incidental — never targeted, so hexproof/shroud do not shelter them. A downed
+    ally standing in the scope is covered by a restorative verb and passed over by
+    a harmful one, exactly as for a side-wide target (`_REACHES_DOWNED`)."""
     if isinstance(pick, EnemyState):
         pool = [c for c in st.living_enemies() if c is not pick]
     else:
-        pool = [c for c in list(st.living_party()) + list(st.living_tokens())
+        pool = [c for c in _party_pool(st, kind) + list(st.living_tokens())
                 if c is not pick]
     prow = _row_rank(pick.row)
     span = 0 if scope == "row" else 1
@@ -4062,7 +4191,7 @@ def _splash_targets(st: GameState, pick, scope: str) -> List:
 def _r_revive(st, item, effect, target, ctx):
     # Restore an incapacitated character to a fraction of max HP (R-11).
     if isinstance(target, CharacterState) and target.effective_hp <= 0:
-        target.temp_mod = 0
+        target.temp_mod = target.enc_temp_mod = 0
         target.hp = max(1, int(target.max_hp * effect.to_fraction))
         target.down_credited = False  # a later downing charges gauges anew (D8-3.3)
         _log(st, "revive", f"{target.name} is revived (HP {target.hp}).", character=target.id)
@@ -4185,7 +4314,7 @@ def _end_control(st: GameState, tok: TokenState, reason: str) -> None:
     enemy.max_hp = tok.max_hp
     enemy.power = tok.power
     enemy.row = tok.row
-    enemy.temp_mod = enemy.power_bonus = enemy.prevent_pool = 0
+    _shed_temp_layers(enemy)
     enemy.prevent_tags = []
     enemy.poison_effects, enemy.poison_counters = tok.poison_effects, tok.poison_counters
     enemy.regen_effects, enemy.regen_counters = tok.regen_effects, tok.regen_counters
@@ -4716,6 +4845,7 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     if target.temp_mod > 0:
         absorbed = min(target.temp_mod, amount)
         target.temp_mod -= absorbed
+        _sync_enc_temp(target)  # a spent buffer does not come back at End
         amount -= absorbed
         if absorbed:
             _log(st, "absorbed",
@@ -4770,6 +4900,7 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
         _log(st, "deathtouch", f"{target.name} is executed by deathtouch.", target=target.id)
         target.hp = 0
         target.temp_mod = min(target.temp_mod, 0)
+        _sync_enc_temp(target)
     _after_damage(st, target)
     # On-damage channel triggers key off the blow that connected (soak + HP lost).
     if connected > 0:
@@ -4807,6 +4938,7 @@ def _heal(st: GameState, target, amount: int, reason: str = "",
     if target.temp_mod < 0:  # cancel the wound toward 0 first
         fill = min(-target.temp_mod, amount)
         target.temp_mod += fill
+        _sync_enc_temp(target)  # the mended share of an encounter wound stays mended
         amount -= fill
         gained += fill
         if fill:
@@ -5239,17 +5371,17 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     # windows (instants / Mitigate) are unaffected; see _r_stun.
     if actor.stunned > 0:
         return [Action("end_turn", actor.id, label="Stunned — end turn")]
-    mode = actor.acted_mode
-    vig = _has_kw(actor, "vigilance")  # lifts the attack-vs-cast restriction (GDD §7)
     aslot = _stance_slot(actor, "attack")
     dslot = _stance_slot(actor, "defend")
     mslot = _stance_slot(actor, "move")
-    # Attack (basic, once per round): locked out after a Cast unless vigilant, and
-    # forbidden outright while a `prevent attack` shield (Pacifism) rides the actor.
+    # Attack (basic, once per round): it costs a proactive action, so it is locked
+    # out once the turn's allowance is spent (vigilance buys a second — it may
+    # follow a Cast, a Defend, a Skill, either way round), and forbidden outright
+    # while a `prevent attack` shield (Pacifism) rides the actor.
     # A stance may remove it (gone in every form) or replace it (an activated
     # ability with the slot's economy — once per round, satisfies the proactive
     # Attack choice; Pacifism binds the sword, not the replacement).
-    if not actor.used_attack and (mode is None or (vig and mode in ("cast", "skill"))):
+    if not actor.used_attack and _proactive_open(actor, "attack"):
         if aslot == "unchanged":
             if not _prevented_action(actor, "attack"):
                 dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
@@ -5259,7 +5391,9 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
                                                 f"Power {actor.current_power}){dbl}"))
         elif aslot != "removed":
             actions += _stance_actions(st, actor, "attack", aslot)
-    if mode is None and not actor.used_defend:  # Defend (the defensive action)
+    # Defend (the defensive action): a proactive action like any other — a vigilant
+    # character may Defend and still swing (the bug this rule used to have).
+    if not actor.used_defend and _proactive_open(actor, "defend"):
         if dslot == "unchanged":
             actions.append(Action("defend", actor.id, label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
         elif dslot != "removed":
@@ -5269,19 +5403,22 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     # own action is unresolved). Costs the action; haste makes one voluntary move
     # free (offered alongside the normal action). Once per turn.
     # A stance-removed Move is total — neither the action nor the haste free move.
+    move_ok = not actor.used_move and (_proactive_open(actor, "move")
+                                       or _has_kw(actor, "haste"))
     if mslot == "unchanged":
-        if not actor.used_move and (mode is None or _has_kw(actor, "haste")):
+        if move_ok:
             free = " (free, haste)" if _has_kw(actor, "haste") else ""
             for row in ("front", "mid", "rear"):
                 if row != actor.row:
                     actions.append(Action("move", actor.id, target_id=row,
                                           label=f"Move to {row.capitalize()}{free}"))
     elif mslot != "removed":
-        if not actor.used_move and (mode is None or _has_kw(actor, "haste")):
+        if move_ok:
             actions += _stance_actions(st, actor, "move", mslot)
-    # Cast sorcery-speed spells (sorcery/channeled): after an Attack/Skill only
-    # if vigilant.
-    if mode in (None, "cast") or (vig and mode in ("attack", "skill")):
+    # Cast sorcery-speed spells (sorcery/channeled): once Cast is the turn's action
+    # every further sorcery rides it; starting one after another action needs the
+    # vigilance allowance.
+    if _proactive_open(actor, "cast"):
         for card in actor.hand:
             if card.timing in _SORCERY_SPEED and _can_pay(actor, card):
                 if _card_has_stance(card) and _active_stance(actor) is not None:
@@ -5392,18 +5529,15 @@ def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:
 def _heroic_actions(st: GameState, actor: CharacterState,
                     main_phase: bool) -> List[Action]:
     """The once-per-encounter Skill/Ultimate offers (D8-3, amended). BOTH are
-    activated abilities at active speed — main phase only. The Skill consumes
-    the proactive action, so it is offered only while that action is unspent —
-    unless the actor has vigilance, which lets the Skill ride alongside an
-    Attack or Cast turn (and vice versa). The Ultimate additionally needs a
-    full gauge."""
+    activated abilities at active speed — main phase only. The Skill consumes a
+    proactive action, so it is offered only while the turn's allowance has room —
+    vigilance buys a second, letting the Skill ride alongside an Attack/Cast/Defend
+    turn (and vice versa). The Ultimate additionally needs a full gauge, and is
+    never the second action: it opens the turn or not at all."""
     out: List[Action] = []
     if not main_phase:
         return out
-    mode = actor.acted_mode
-    vig = _has_kw(actor, "vigilance")
-    skill_ok = mode is None or (vig and mode in ("attack", "cast"))
-    if (skill_ok and actor.skill is not None and not actor.skill_used
+    if (_proactive_open(actor, "skill") and actor.skill is not None and not actor.skill_used
             and _can_pay(actor, actor.skill)):
         skill = actor.skill
         # One stance at a time (§D9-2.3): a channeled stance-skill waits until
@@ -5411,7 +5545,7 @@ def _heroic_actions(st: GameState, actor: CharacterState,
         if not (_card_has_stance(skill) and _active_stance(actor) is not None):
             out += _hero_ability_actions(st, actor, skill, "use_skill", "Skill")
     if (actor.ultimate is not None and not actor.ultimate_used
-            and actor.ultimate_gauge >= 100 and actor.acted_mode is None):
+            and actor.ultimate_gauge >= 100 and not actor.proactive_modes):
         out += _hero_ability_actions(st, actor, actor.ultimate, "use_ultimate", "Ultimate")
     return out
 

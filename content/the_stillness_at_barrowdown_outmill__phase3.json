@@ -1,0 +1,466 @@
+{
+  "name": "Under the Brass Cages",
+  "scene": "The cap loft at the top of the tower: raw timber, rope, and the great sail-shaft standing dead in its bearing. Dozens of small brass cages sway on chains from the rafters, each holding a captured gust that batters the bars, and gold barley light rises through the open trapdoor thick with flour like silt in water.",
+  "scene_image": "/art/the_stillness_at_barrowdown_outmill__phase3/scene-a0589b85.png",
+  "enemies": [
+    {
+      "id": "beam_thrall",
+      "name": "Sigil-Nailed Beam",
+      "flavor": "A wall with reach that answers every blow.",
+      "description": "A mill-beam eight feet of blackened oak, walking on two splayed props, its length studded with iron sigils that glow dull as a banked hearth; a hanging hoist-chain trails from its shoulder.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "groaning_taunt",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Groaning Timber \u2014 the sound drags a hero into its swing",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "splinter_lash",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Splinter-Lash \u2014 the chain whips back at the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase3/beam_thrall-36cde954.png"
+    },
+    {
+      "id": "chaff_choker",
+      "name": "Chaff-Choker",
+      "flavor": "Fills your lungs with husk, and punishes anyone who mends.",
+      "description": "A lean figure with a bellows-bag strapped to the back and a nozzle of hammered tin in each hand, hood and shoulders furred with grey husk, breathing through a wet rag.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "chaff_lungs",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Fill the Lungs \u2014 husk and grit take root (poison)",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "no_breath_to_spare",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_healed",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "No Breath to Spare \u2014 the mender is choked mid-word",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase3/chaff_choker-826fceac.png"
+    },
+    {
+      "id": "vane_sentinel",
+      "name": "Vane-Sentinel",
+      "flavor": "Bodyguard: shields the hurt and hammers anyone who touches them.",
+      "description": "A tall warden in a coat of overlapping iron vanes, each plate stamped with a sigil, carrying a long-handled sledge and a shield cut from a sail-stock.",
+      "hp": 10,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "vane_shield",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Vane-Shield \u2014 the next blow at his charge is swallowed by dead air",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hammer_answer",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Hammer's Answer \u2014 a sledge blow for whoever struck his charge",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase3/vane_sentinel-ee7020ba.png"
+    },
+    {
+      "id": "cage_bearer",
+      "name": "Brass-Cage Bearer",
+      "flavor": "Fills a cage with stolen wind \u2014 and lets it out all at once.",
+      "description": "A hunched servant carrying a brass birdcage on a pole above their head, working a small crank at the base; inside, a knot of visible air spins tighter and brighter with every turn.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "wind_into_brass",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "cooldown": 1,
+          "priority": 30,
+          "target_rule": "self",
+          "telegraph": "Wind into Brass \u2014 another turn of the crank",
+          "verbs": [
+            {
+              "kind": "charge",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "cage_burst",
+          "archetype": "Burst",
+          "timing": "reactive",
+          "trigger": "on_charge_full",
+          "charge_threshold": 3,
+          "priority": 10,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Cage-Burst \u2014 the door springs and the whole gale gets out at once",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "blast"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase3/cage_bearer-d92033a2.png"
+    },
+    {
+      "id": "kesk_the_nailhand",
+      "name": "Kesk the Nailhand",
+      "flavor": "Holds the hush that makes his servants unopposed; kills your spells in the dead air.",
+      "description": "A broad, unhurried man in layered grey robes belted with a carpenter's harness of iron nails, one hand a mass of old hammer-scars; an iron wind-sigil the size of a plate is nailed flat to his chest through the cloth, and a cage of stolen air hangs at his hip, silent when he holds it still.",
+      "hp": 27,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "stilled_air",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Stilled Air \u2014 a held hush: every servant here moves unopposed (+1/+1)",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "nail_the_breath",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Nail the Breath \u2014 one sigil driven at the strongest of you",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hush_the_mouth",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Hush the Mouth \u2014 a hero stands with no air to spend (stunned)",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "sigil_snap",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 3,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "action_type": "spell",
+          "telegraph": "Sigil-Snap \u2014 the word dies in the dead air",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        },
+        {
+          "id": "nailhands_contempt",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "cooldown": 2,
+          "priority": 12,
+          "target_rule": "trigger_source",
+          "telegraph": "The Nailhand's Contempt \u2014 he hammers a sigil home while you rise to your moment",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shackle_the_front",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 22,
+          "target_row": "front",
+          "action_type": "attack",
+          "target_rule": "valuation",
+          "telegraph": "Shackle the Front \u2014 a sigil hammered into the floorboards where you stand",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "empty_the_lungs",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "action_type": "spell",
+          "cooldown": 2,
+          "priority": 26,
+          "target_rule": "self",
+          "telegraph": "Empty the Lungs \u2014 the loft takes back every breath in it",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 2,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "the_nail_goes_deep",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "THE NAIL GOES DEEP \u2014 every sigil in the loft flares and the cages scream at once",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_stillness_at_barrowdown_outmill__phase3/kesk_the_nailhand-cc93f2ae.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "kesk_the_nailhand",
+      "beam_thrall"
+    ],
+    "2": [
+      "kesk_the_nailhand",
+      "vane_sentinel",
+      "beam_thrall",
+      "chaff_choker"
+    ],
+    "3": [
+      "kesk_the_nailhand",
+      "vane_sentinel",
+      "cage_bearer",
+      "beam_thrall",
+      "beam_thrall",
+      "chaff_choker"
+    ],
+    "4": [
+      "kesk_the_nailhand",
+      "vane_sentinel",
+      "vane_sentinel",
+      "cage_bearer",
+      "beam_thrall",
+      "beam_thrall",
+      "chaff_choker",
+      "chaff_choker"
+    ]
+  }
+}

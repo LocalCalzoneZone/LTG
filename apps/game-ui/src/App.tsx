@@ -172,10 +172,6 @@ export default function App() {
                 <CharacterSheetModal rows={snapshot.party_sheet} editable={!!snapshot.gear_editable} inTown={false} />
               )}
               {snapshot.rewards && <RewardsModal rewards={snapshot.rewards} />}
-              {snapshot.defeat_pending && (
-                <DefeatSplash adventureName={snapshot.adventure_name ?? snapshot.adventure?.name ?? ""}
-                              hardcore={!!snapshot.scenario?.options.hardcore} />
-              )}
               <ConfirmOverlay confirm={snapshot.confirm} />
             </>
           ) : (
@@ -215,7 +211,21 @@ export default function App() {
             onMove={(y) => setConsoleH(window.innerHeight - y)}
             onReset={resetConsoleH}
           />
-          <BottomBar height={consoleH || null} />
+          {/* The game-end splashes cover ONLY this bottom strip (absolute over
+              the bar): the battlefield and log above stay readable and clickable
+              so the final board state can be inspected on victory or defeat. */}
+          <div className="relative flex-none">
+            <BottomBar height={consoleH || null} />
+            {snapshot.defeat_pending && (
+              <DefeatSplash adventureName={snapshot.adventure_name ?? snapshot.adventure?.name ?? ""}
+                            hardcore={!!snapshot.scenario?.options.hardcore} />
+            )}
+            <GameOverOverlay
+              onNewGame={() => setShowNewGame(true)}
+              onOptions={() => setShowOptions(true)}
+              onStarted={onStarted}
+            />
+          </div>
         </>
       )}
 
@@ -236,11 +246,6 @@ export default function App() {
       <ScreenFx />
       {/* Adventure phase flow (Update 10): victory splash → level-up → narration */}
       <AdventureFlow />
-      <GameOverOverlay
-        onNewGame={() => setShowNewGame(true)}
-        onOptions={() => setShowOptions(true)}
-        onStarted={onStarted}
-      />
       <PhaseBanner />
       <Toast />
     </div>

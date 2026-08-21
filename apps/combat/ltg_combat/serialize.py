@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 from ltg_core.schema import Card
-from ltg_core.translation import channel_break_clause
+from ltg_core.translation import channel_break_clause, render_effects
 from .state import Action, GameState
 
 _WUBRG = ["W", "U", "B", "R", "G"]
@@ -532,6 +532,38 @@ def action_mode(kind: str, attack_mode: Optional[str]) -> Optional[str]:
     return None
 
 
+def _stack_mechanics(state: GameState, item) -> str:
+    """The complete mechanical read of a non-card stack action (an enemy
+    ability's flavour name means nothing on its own) — the UI shows it on
+    hover. Card-backed actions return "" (the hover pops the full card)."""
+    if item.card is not None:
+        return ""
+    parts: List[str] = []
+    if item.kind == "attack" and item.attack_power is not None:
+        # Recomputed the way resolution will: base Power + the source's CURRENT
+        # bonus (R-7) — a wound landing while this sits on the stack changes it.
+        src = state.combatant(item.source_id)
+        bonus = getattr(src, "power_bonus", 0) if src is not None else 0
+        dmg = max(0, item.attack_power + bonus)
+        reach = item.attack_mode if item.attack_mode in ("melee", "ranged") else "melee"
+        where = (f"every character standing in the {item.target_row} row"
+                 if item.target_row else "the target")
+        parts.append(f"Deals {dmg} {reach} combat damage to {where}.")
+    if item.effects:
+        try:
+            text = render_effects(list(item.effects))
+        except Exception:
+            text = ""
+        if text:
+            if item.target_row:
+                text = f"Strikes every character in the {item.target_row} row: {text}"
+            parts.append(text)
+    if item.starts_channel:
+        parts.append("On resolve this begins a channelled effect — counter it "
+                     "on the stack to stop the channel from ever starting.")
+    return " ".join(parts)
+
+
 def _stack_list(state: GameState) -> List[Dict[str, Any]]:
     out = []
     for i, item in enumerate(reversed(state.stack)):  # top first
@@ -548,6 +580,7 @@ def _stack_list(state: GameState) -> List[Dict[str, Any]]:
             # The full card behind the action (a cast / a card-carried trigger),
             # so the UI can show it on hover; None for attacks & enemy components.
             "card": card_dict(item.card) if item.card is not None else None,
+            "mechanics": _stack_mechanics(state, item),
             "top": i == 0,
             "raw": to_jsonable(item),
         })

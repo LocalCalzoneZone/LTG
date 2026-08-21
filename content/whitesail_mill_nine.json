@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "Whitesail Mill Nine",
+  "flavor": "Orc tithe-men hold Millhaven's ninth windmill, its millers and its wheat \u2014 walk out into the barley and take it back.",
+  "phases": [
+    {
+      "narration": "You leave Millhaven by the west gate with Harbourmaster Kerrick's directions in your head and the black sail still sitting inside the breakwater behind you. The barley comes up to your ribs, gold and hissing in the sea wind, and half a mile out you can see the white sails of Mill Nine turning above it. Closer in, someone has driven a post into the track and nailed a sheet of tally-marks to it, and the shapes lounging around that post are not millers.",
+      "encounter_id": "whitesail_mill_nine__phase1"
+    },
+    {
+      "narration": "The barley gives out at a trodden ring of dirt and the mill yard opens in front of you: carts half loaded with meal, cook-fires, a kennel of dog-crates lashed under the cart-shed, and the millers sitting roped and unhurt on the granary step, being counted for the third time. High on the cap-walk a tithe-man is stoking a pitch barrel \u2014 a black plume for the galley in the bay, and a whistle of launch crews if it ever catches properly. Cut him down before the smoke goes up.",
+      "encounter_id": "whitesail_mill_nine__phase2"
+    },
+    {
+      "narration": "The mill door hangs off one hinge and inside the air is a white fog shot through with sunbeams from the cap windows. The great stones are turning on an empty hopper, grinding nothing but their own dust, and at a barrel-top desk beneath them an orc with a ledger chained to his belt finishes a line, blows the flour off the page, and stands up with a cleaver-hook in his fist. He looks each of you over the way a man prices livestock, and starts with whichever of you he judges dearest.",
+      "encounter_id": "whitesail_mill_nine__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

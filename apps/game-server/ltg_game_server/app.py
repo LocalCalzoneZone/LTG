@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,7 @@ from .adventure import AdventureRun
 from .runs import RunManager
 from .scenario import ScenarioRun
 from .session import SessionManager
+from .snapshot import priority_fields
 
 APP_ROOT = Path(__file__).resolve().parent.parent          # apps/game-server
 FRONTEND_DIST = APP_ROOT.parent / "game-ui" / "dist"       # apps/game-ui/dist
@@ -802,11 +804,13 @@ async def _send(ws: WebSocket, msg: Dict[str, Any]) -> None:
 
 
 def _prompt_msg(session) -> Dict[str, Any]:
-    snap = session.snapshot_for("")  # unseated view: public priority fields only
-    pr = snap["priority"]
-    return {"type": "prompt",
-            "holder_character_id": pr["holder_character_id"],
-            "kind": pr["kind"]}
+    """The public priority pair. Computed directly rather than by building an
+    unseated snapshot and reading two fields off it — this runs once per
+    broadcast, and a snapshot is the expensive thing the broadcast already
+    builds per client."""
+    if session.state is None:
+        return {"type": "prompt", "holder_character_id": None, "kind": None}
+    return {"type": "prompt", **priority_fields(session.state)}
 
 
 async def _broadcast(session) -> None:
@@ -876,8 +880,17 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                         # enemy steps) drains PACED — one broadcast per step,
                         # a beat between the ones worth watching.
                         session.apply_index(client_id, index, mana, drain=False)
-                    except ValueError as exc:
-                        await _send(ws, {"type": "error", "message": str(exc)})
+                    except Exception as exc:
+                        # ValueError is a rejection (illegal index / not your seat).
+                        # Anything else is an engine fault mid-resolution — report it
+                        # and keep the socket, because dropping it here would release
+                        # this client's seats and force everyone to re-claim their
+                        # characters. `apply_action` works on a deep copy, so the
+                        # session's state is still the last good one either way.
+                        if not isinstance(exc, ValueError):
+                            traceback.print_exc()
+                        await _send(ws, {"type": "error", "message": str(exc) or
+                                         f"{type(exc).__name__} while resolving"})
                         # Re-sync just this client so its optimistic arming reverts.
                         await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
                         continue
@@ -952,12 +965,20 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
 app.include_router(appctl.router)
 
 
+# Every art filename is unique to its bytes — generated pieces carry a random
+# token per write (art._write_image), cached portraits their content hash — so a
+# URL here never changes what it serves and the browser can keep it forever.
+# Worth saying out loud: portraits are re-referenced by every state broadcast,
+# and a revalidation round-trip per image per client adds up on a remote host.
+_ART_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
 @app.get(art.ART_URL_PREFIX + "/{image_path:path}")
 def serve_art(image_path: str) -> FileResponse:
     for base in (art.ART_DIR, art.LEGACY_ART_DIR):
         p = (base / image_path).resolve()
         if p.is_relative_to(base.resolve()) and p.is_file():
-            return FileResponse(p)
+            return FileResponse(p, headers={"Cache-Control": _ART_CACHE_CONTROL})
     raise HTTPException(status_code=404, detail="no such image")
 
 

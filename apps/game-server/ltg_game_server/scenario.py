@@ -573,7 +573,8 @@ class ScenarioRun:
                 item = items.Item.model_validate(it)
             except Exception:
                 continue
-            rows.append({**it, "buy_price": items.buy_price(item), "summary": items.summarize(item)})
+            rows.append({**it, "buy_price": items.buy_price(item), "summary": items.summarize(item),
+                         "description": items.describe(item)})
         return {"location_id": location_id, "name": loc["name"], "function": loc.get("function", ""),
                 "stock": rows, "sell_mult": items.SELL_MULT, "buy_mult": items.BUY_MULT}
 
@@ -695,7 +696,8 @@ class ScenarioRun:
                 it = items.Item.model_validate(raw)
             except Exception:
                 return raw
-            return {**raw, "summary": items.summarize(it), "sell_price": items.sell_price(it)}
+            return {**raw, "summary": items.summarize(it), "description": items.describe(it),
+                    "sell_price": items.sell_price(it)}
         return {"primary": view(g["primary"]), "secondary": view(g["secondary"]),
                 "accessory": view(g["accessory"]),
                 "belt": [view(x) for x in g["belt"]],
@@ -775,7 +777,8 @@ class ScenarioRun:
         for it in self.rewards["items"]:
             try:
                 item = items.Item.model_validate(it)
-                rows.append({**it, "summary": items.summarize(item)})
+                rows.append({**it, "summary": items.summarize(item),
+                             "description": items.describe(item)})
             except Exception:
                 rows.append(it)
         return {"items": rows, "assign": dict(self.rewards["assign"]),
