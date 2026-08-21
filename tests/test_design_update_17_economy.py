@@ -46,6 +46,13 @@ def test_base_catalogue_ships_t82():
     draught = items.get_item("marsh_draught")
     card = draught.as_card("soren_")
     assert card.consumable_id == "marsh_draught" and card.timing.value == "sorcery" and card.cost.generic == 0
+    # A consumable is played AS a card, so its card FACE must read as one: the
+    # item has no authored prose, so the face renders its effects, and it
+    # carries the item's art into the card's art frame.
+    from ltg_combat.serialize import card_dict
+    view = card_dict(card)
+    assert view["text"] and view["text"] == items._consumable_text(draught)
+    assert view["image"] == draught.art_url
 
 
 def test_user_item_save_and_delete_shadows_catalogue():

@@ -33,6 +33,7 @@ import random
 from typing import List, Optional, Tuple
 
 from ltg_core.schema import (
+    ACTION_MODIFIERS,
     Card,
     DealDamage,
     Duration,
@@ -388,6 +389,9 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
     if side == "party":
         item.needs_mode = any(getattr(e, "kind", None) == "modal" for e in fired)
         item.needs_target = _trigger_pick_effect(item) is not None
+    # After the pick flags are read (a `$slot` pick is owed only while
+    # `target_id` is empty), aim any stack-facing clause at what fired it.
+    _bind_trigger_stack_target(st, item)
     st.priority = None  # fresh window — re-seeded by _advance
     st.passes = 0
     ch.fires = getattr(ch, "fires", 0) + 1
@@ -395,6 +399,41 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
          f"{name}'s trigger goes on the stack.", source=holder.id, label=name,
          card=getattr(card, "id", None))
     _raise_next_trigger_pick(st)
+
+
+# The verbs that aim at a STACK ITEM rather than a creature. Cast at spell speed
+# they enumerate stack options at cast; fired from a TRIGGER there is no cast-time
+# pick, so `_bind_trigger_stack_target` aims them at the event that fired them.
+_STACK_FACING = frozenset({"counter", "redirect", "copy_spell"})
+
+
+def _bind_trigger_stack_target(st: GameState, item: StackItem) -> None:
+    """Aim a fired trigger that answers something ON THE STACK — the ward shape
+    ("whenever an enemy attacks while channeled, cancel that attack"). A
+    triggered clause gets no cast-time target pick (see `_target_sites`), and the
+    thing it answers is the very event that fired it, so the binding is automatic
+    rather than a prompt: the topmost OPPOSING action below this trigger that
+    matches the effect's filter. No match leaves it unbound (it fizzles as usual).
+    Untriggered stack-facing effects are unaffected — they picked at cast."""
+    if item.target_id is not None:
+        return
+    eff = next((e for e in _iter_leaf(_pending_trigger_effects(item))
+                if getattr(e, "kind", None) in _STACK_FACING), None)
+    if eff is None:
+        return
+    # A copy_spell may answer EITHER side's spell (copying an ally's is a real
+    # use); the answering verbs only ever look across the table.
+    any_side = eff.kind == "copy_spell"
+    filt = getattr(eff, "filter", None) or ("spell" if any_side else "any")
+    for s in reversed(st.stack):
+        if s is item or (not any_side and s.source_side == item.source_side):
+            continue
+        if not _filter_matches(filt, s):
+            continue
+        if eff.kind == "redirect" and not _stack_redirectable(st, s):
+            continue
+        item.target_id = f"#{s.uid}"
+        return
 
 
 def _event_who_matches(who: str, holder, holder_side: str,
@@ -498,11 +537,16 @@ def _upkeep_draws(st: GameState) -> None:
 
 def _refreshed_pool(char: CharacterState) -> List[str]:
     """Capacity minus the colours held channels reserve (reservation doesn't
-    refresh; the rest of capacity curves up around it — GDD §4.4, §8)."""
+    refresh; the rest of capacity curves up around it — GDD §4.4, §8), and minus
+    any live `sap`: a suppressed slot refreshes nothing. The newest locks are
+    sapped first, so the colours a character has leaned on longest survive."""
     pool = list(char.mana_colors)
     for color in char.reserved:
         if color in pool:
             pool.remove(color)
+    over = len(pool) - char.capacity
+    if over > 0:
+        del pool[len(pool) - over:]
     return pool
 
 
@@ -697,16 +741,19 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     still act always produces an intent. An enemy with no components goes straight to
     the default attack (legacy behaviour, unchanged).
 
-    Boss fury (§D9-4): once ENRAGED, a boss runs the pass TWICE and declares two
-    intents. Cooldowns spend as they are picked, so the first pick excludes
-    itself from the second; the default Attack backstops the second slot. A stun
-    suppresses ONE of the two — the boss declares one intent, never zero."""
+    Boss fury (§D9-4): a boss runs the pass TWICE and declares two intents — once
+    ENRAGED, or from the opening bell when the encounter marks it `double_intent`
+    (the Standard/Hard difficulty dial: a boss that acts once a round is a
+    punching bag with a big HP bar). Cooldowns spend as they are picked, so the
+    first pick excludes itself from the second; the default Attack backstops the
+    second slot. A stun suppresses ONE of the two — the boss declares one intent,
+    never zero."""
     # Reset this round's intents-window lines (D8-1.5); every path below re-sets them.
     e.round_intent = e.round_intent2 = None
     e.round_intent_status = e.round_intent2_status = "none"
     e.round_intent_reveal = e.round_intent2_reveal = ""
     e.intent2 = None
-    double = e.is_boss and e.enraged
+    double = e.is_boss and (e.enraged or e.double_intent)
     if e.stunned > 0:  # stun: skip one intent, spend one charge (R-11)
         e.stunned -= 1
         if double:
@@ -780,10 +827,12 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
         name = tmpl.get("name", f"{e.name} Attack")
         kind = "attack" if tmpl.get("intent_type", "attack") == "attack" \
             else tmpl.get("action_type", "ability")
+        effects = [DealDamage(amount=base, target=t_row("ally", row))]
         e.intent = Intent(name=name, action_type=kind,
-                          effects=[DealDamage(amount=base, target=t_row("ally", row))],
+                          effects=effects,
                           target_id=None, target_row=row, attack_power=base,
-                          attack_mode=tmpl.get("mode", e.attack_mode))
+                          attack_mode=tmpl.get("mode", e.attack_mode),
+                          combat_ability=_is_combat_ability(kind, effects))
         e.round_intent = e.intent
         e.round_intent_status = "declared"
         _log(st, "intent_declared",
@@ -814,7 +863,8 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
     src_tmpl = tmpl if mode == tmpl.get("mode", "melee") else e.ranged_template
     base = int(src_tmpl.get("amount", 0))
     e.intent = Intent(name=name, action_type=kind, effects=effects, target_id=target.id,
-                      attack_power=base, attack_mode=mode)
+                      attack_power=base, attack_mode=mode,
+                      combat_ability=_is_combat_ability(kind, effects))
     e.round_intent = e.intent
     e.round_intent_status = "declared"
     _log(st, "intent_declared",
@@ -907,6 +957,14 @@ def _component_eligible(st: GameState, e: EnemyState, comp: Component) -> bool:
     # A channel-component sleeps while its channel holds — one instance at a time;
     # after a break, its cooldown gates the re-channel.
     if comp.channel and any(ch.component_id == comp.id for ch in e.channels):
+        return False
+    # Action shields bind components too, not just the basic swing (R-11): a
+    # SILENCED enemy cannot run its spell-classed rules, a PACIFIED one cannot run
+    # its attack-classed rules. It falls through to a rule the shield leaves open —
+    # so silencing the coven's caster turns it into a body, rather than doing
+    # nothing because its Fireball was a "component" and not a "spell".
+    if ((comp.action_type == "spell" and _prevented_action(e, "cast"))
+            or (comp.action_type == "attack" and _prevented_action(e, "attack"))):
         return False
     return True
 
@@ -1121,10 +1179,12 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
         # the row footprint so the author needn't hand-write the scope.
         name = comp.telegraph or comp.archetype or "Ability"
         kind = comp.action_type if comp.action_type in ("attack", "spell") else "ability"
+        effects = _row_scope_verbs(comp.verbs, comp.target_row)
         return Intent(name=name, action_type=kind,
-                      effects=_row_scope_verbs(comp.verbs, comp.target_row),
+                      effects=effects,
                       target_id=None, target_row=comp.target_row,
-                      source_component=comp.id)
+                      source_component=comp.id,
+                      combat_ability=_is_combat_ability(kind, effects))
     if _swarm_at_cap(st, e, comp):
         return None  # already at the per-creator token cap — skip (attack instead, §F-4)
     target = _component_target(st, e, comp)
@@ -1136,7 +1196,11 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
     kind = "spell" if comp.action_type == "spell" else "ability"
     return Intent(name=name, action_type=kind, effects=list(comp.verbs),
                   target_id=(target.id if target is not None else None),
-                  source_component=comp.id)
+                  source_component=comp.id,
+                  # A channelled component deals nothing as its intent resolves —
+                  # it starts a held channel — so it is never a Combat Ability.
+                  combat_ability=(not comp.channel
+                                  and _is_combat_ability(kind, comp.verbs)))
 
 
 # --------------------------------------------------------------------------- #
@@ -1402,13 +1466,14 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         # A POSITIONAL intent (§L-5) aims at ground, never a name: no target
         # legality to check, taunt ignored. Occupancy is read when the item
         # RESOLVES — vacating the row in time is the dodge working.
-        _push(st, StackItem(kind=intent.action_type, source_id=enemy.id,
-                            source_side="enemy", label=intent.name,
-                            effects=intent.effects, target_id=None,
-                            target_row=intent.target_row,
-                            attack_mode=enemy.attack_mode,
-                            attack_power=intent.attack_power,
-                            component_id=intent.source_component))
+        pushed = _push(st, StackItem(
+            kind=intent.action_type, source_id=enemy.id,
+            source_side="enemy", label=intent.name,
+            effects=intent.effects, target_id=None,
+            target_row=intent.target_row,
+            attack_mode=enemy.attack_mode,
+            attack_power=intent.attack_power,
+            component_id=intent.source_component))
         _set_intent_status(enemy, intent, "executed")
         st.priority = None  # open a fresh reaction window (party order, set in _advance)
         st.passes = 0
@@ -1418,6 +1483,8 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
              enemy=enemy.id, label=intent.name, row=intent.target_row)
         if intent.action_type == "attack":
             _fire_event(st, "attack", enemy)
+        else:
+            _announce_combat_ability(st, pushed)
         return
     if intent.target_id is None:
         _set_intent_status(enemy, intent, "fizzled")
@@ -1449,12 +1516,13 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     # marked here so counters can still kill it on the stack first (§8).
     src_comp = next((c for c in enemy.components
                      if c.id == intent.source_component), None)
-    _push(st, StackItem(kind=intent.action_type, source_id=enemy.id,
-                        source_side="enemy", label=intent.name,
-                        effects=intent.effects, target_id=intent.target_id,
-                        attack_mode=enemy.attack_mode, attack_power=intent.attack_power,
-                        starts_channel=bool(src_comp is not None and src_comp.channel),
-                        component_id=intent.source_component))
+    pushed = _push(st, StackItem(
+        kind=intent.action_type, source_id=enemy.id,
+        source_side="enemy", label=intent.name,
+        effects=intent.effects, target_id=intent.target_id,
+        attack_mode=enemy.attack_mode, attack_power=intent.attack_power,
+        starts_channel=bool(src_comp is not None and src_comp.channel),
+        component_id=intent.source_component))
     _set_intent_status(enemy, intent, "executed")  # the stack is honest (D8-1.5)
     st.priority = None  # open a fresh reaction window (party order, set in _advance)
     st.passes = 0
@@ -1462,6 +1530,8 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
          enemy=enemy.id, label=intent.name)
     if intent.action_type == "attack":
         _fire_event(st, "attack", enemy)  # attack triggers fire at declaration
+    else:
+        _announce_combat_ability(st, pushed)  # §M-A.7: so does a damaging ability
 
 
 def _execute_ally(st: GameState, token: TokenState) -> None:
@@ -1502,6 +1572,7 @@ def _end_step(st: GameState) -> None:
         _reset_temp_layers(c)
         c.prevent_tags = []
         _expire_keywords(c)
+        _expire_action_mods(c)   # only characters carry these
     for e in st.enemies:
         _reset_temp_layers(e)
         e.prevent_tags = []
@@ -1539,6 +1610,9 @@ def _reset_temp_layers(combatant) -> None:
     combatant.temp_mod = combatant.enc_temp_mod
     combatant.power_bonus = combatant.enc_power_bonus
     combatant.prevent_pool = 0
+    # `sap` rides the same two-layer shape (only characters have mana).
+    if hasattr(combatant, "capacity_mod"):
+        combatant.capacity_mod = combatant.enc_capacity_mod
 
 
 def _shed_temp_layers(combatant) -> None:
@@ -1548,6 +1622,8 @@ def _shed_temp_layers(combatant) -> None:
     combatant.temp_mod = combatant.enc_temp_mod = 0
     combatant.power_bonus = combatant.enc_power_bonus = 0
     combatant.prevent_pool = 0
+    if hasattr(combatant, "capacity_mod"):
+        combatant.capacity_mod = combatant.enc_capacity_mod = 0
 
 
 def _sync_enc_temp(combatant) -> None:
@@ -1764,7 +1840,10 @@ def _trigger_matches(st: GameState, e: EnemyState, comp: Component, ctx: dict) -
         if trig == "on_attack":
             # A hero's attack sits on the stack — a duellist's window: parry it
             # (counter, filter "attack"), shield the victim, or riposte first.
-            return top is not None and top.source_side == "party" and top.kind == "attack"
+            # A hero's Combat Ability (§M-A.7) opens the same window: if a damaging
+            # ability is answerable like a swing, it is punishable like one too.
+            return (top is not None and top.source_side == "party"
+                    and (top.kind == "attack" or top.combat_ability))
         if trig == "on_targeted":
             return top is not None and top.source_side == "party" and top.target_id == e.id
         if trig == "on_incoming_lethal":
@@ -1880,12 +1959,13 @@ def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> 
     # "triggered"/"ability" counter answers it while "spell" doesn't — unless
     # the component is spell-classed (an arcane riposte counters as a spell).
     kind = "spell" if comp.action_type == "spell" else "triggered"
-    _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
-                        label=label, effects=list(comp.verbs), target_id=tid))
+    pushed = _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
+                                 label=label, effects=list(comp.verbs), target_id=tid))
     st.priority = None   # reopen the window; party order re-seeded by _advance
     st.passes = 0
     _log(st, "enemy_react", f"{e.name} reacts with {label}.",
          enemy=e.id, label=label, target=tid, trigger=comp.trigger)
+    _announce_combat_ability(st, pushed)
 
 
 def _do_end_turn(st: GameState, action: Action) -> None:
@@ -1991,7 +2071,8 @@ def _do_cast(st: GameState, action: Action) -> None:
     # charges its reserved cost once, at cast) — D8-3.3.
     _gain_gauge(st, actor, len(paid))
     reserved = list(paid) if card.timing == Timing.channeled else []
-    _push(st, StackItem(kind="ability" if consumable else "spell",
+    pushed = _push(st, StackItem(
+                        kind="ability" if consumable else "spell",
                         source_id=actor.id, source_side="party",
                         label=card.name, effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
@@ -2004,6 +2085,7 @@ def _do_cast(st: GameState, action: Action) -> None:
     _log(st, "cast", f"{actor.name} {verb} {card.name}"
          + (f" on {tgt.name}" if tgt else "") + f". Mana: {_mana_str(actor.pool)}.",
          character=actor.id, card=card.id, target=action.target_id)
+    _announce_combat_ability(st, pushed)  # a thrown consumable that damages swings
     # `spells_cast` conditions count this cast; on-cast channel triggers fire now
     # (at cast, MTG-style — even if the spell is later countered).
     actor.spells_cast_turn += 1
@@ -2011,25 +2093,41 @@ def _do_cast(st: GameState, action: Action) -> None:
 
 
 def _do_defend(st: GameState, action: Action) -> None:
-    """The free defensive action: gain temporary HP — a positive `temp_mod` buffer
-    that raises effective_hp and expires at End (R-7). (Magnitude is a placeholder
-    until gear/flavour set it.)"""
+    """The defensive action: gain temporary HP — a positive `temp_mod` buffer that
+    raises effective_hp and expires at End (R-7). The buffer is the actor's BASE
+    Power, so the same stat that decides what your swing is worth decides what
+    turtling is worth: a heavy hitter has a real choice to make every turn instead
+    of always attacking. Free (no proactive action) for a `defender`, whose whole
+    identity is the shield wall."""
     actor = st.character(action.actor_id)
-    _spend_proactive(st, actor, "defend")
+    # Held as a REACTION (`defend_as_reaction`, offered only with a stack up): the
+    # proactive action is not spent — it may already be gone, which is the point.
+    # A `defender` never spends it either.
+    reactive = bool(st.stack) and _has_action_mod(actor, "defend_as_reaction")
+    if not reactive and not _has_kw(actor, "defender"):
+        _spend_proactive(st, actor, "defend")
     actor.used_defend = True
-    actor.temp_mod += _DEFEND_TEMP_HP
-    # …plus +1 per point of temp HP granted as the source: Defend now earns +5
-    # total — turtling charges your finisher, at the price of tempo (D8-3.3).
-    _gain_gauge(st, actor, _DEFEND_TEMP_HP)
-    st.priority = None
-    _log(st, "defend", f"{actor.name} defends (+{_DEFEND_TEMP_HP} temp HP).",
-         character=actor.id, temp_mod=actor.temp_mod)
+    gain = _defend_value(actor)
+    actor.temp_mod += gain
+    # …plus +1 per point of temp HP granted as the source: turtling charges your
+    # finisher, at the price of tempo (D8-3.3).
+    _gain_gauge(st, actor, gain)
+    _log(st, "defend", f"{actor.name} defends (+{gain} temp HP"
+         f"{', as a reaction' if reactive else ''}).",
+         character=actor.id, temp_mod=actor.temp_mod, amount=gain)
+    if reactive:
+        _do_pass(st, Action(kind="pass", actor_id=actor.id))   # the window rolls on
+    else:
+        st.priority = None
 
 
 def _mitigate_value(combatant) -> int:
     """X = ceil(current Power / 2) (Update 02 §M-A.2) — read at resolution, never 0
-    for a Power-1 character."""
-    return math.ceil(max(0, combatant.current_power) / 2)
+    for a Power-1 character. A `mitigate_full` modifier pays out full Power."""
+    power = max(0, combatant.current_power)
+    if _has_action_mod(combatant, "mitigate_full"):
+        return power
+    return math.ceil(power / 2)
 
 
 def _do_move(st: GameState, action: Action) -> None:
@@ -2077,7 +2175,10 @@ def _do_mitigate(st: GameState, action: Action) -> None:
 def _apply_mitigation(st: GameState, item: StackItem, target, amount: int):
     """Apply a declared Mitigate to one attack hit (Update 02 §M-A.3). Returns the
     (possibly redirected) target and the post-mitigation amount. Only the hits aimed
-    at the protected character are affected; X is read now (Power can have shifted)."""
+    at the protected character are affected; X is read now (Power can have shifted).
+
+    The outcome is recorded ON THE ITEM, because a Combat Ability's RIDERS follow
+    the damage (§M-A.7) — see `_mitigated_rider`."""
     if item.mitigate_by is None or target is None or _tid(target) != item.mitigate_for:
         return target, amount
     mitigator = st.character(item.mitigate_by)
@@ -2085,7 +2186,48 @@ def _apply_mitigation(st: GameState, item: StackItem, target, amount: int):
         return target, amount
     x = _mitigate_value(mitigator)
     landing = mitigator if item.mitigate_for != item.mitigate_by else target  # ally → redirect
-    return landing, max(0, amount - x)
+    residual = max(0, amount - x)
+    # Accumulated across every mitigated hit this action deals: a two-hit ability
+    # blunted to nothing on both hits carries no rider, but one that leaks a
+    # single point does.
+    rec = item.mitigation_outcome
+    if rec is None:
+        rec = item.mitigation_outcome = {"protected": item.mitigate_for,
+                                         "landed_on": _tid(landing), "residual": 0}
+    rec["landed_on"] = _tid(landing)
+    rec["residual"] += residual
+    return landing, residual
+
+
+def _mitigated_rider(st: GameState, item: StackItem, effect, victim):
+    """Route a Combat Ability's non-damage RIDER under a declared Mitigate (§M-A.7).
+    The rider follows the residual damage, so stepping in front of "deal 5 and stun"
+    is a real decision rather than a partial refund:
+
+      * the guard swallowed the hit whole (0 damage left) → the rider never lands;
+      * the guard took the leftover for an ally → the rider lands on the GUARD.
+
+    Damage verbs are exempt — they route through `_apply_mitigation` themselves, so
+    a second hit is still mitigated per-hit rather than pre-redirected. Returns
+    (victim, blocked)."""
+    rec = item.mitigation_outcome
+    if (rec is None or victim is None or getattr(effect, "kind", None) == "deal_damage"
+            or _tid(victim) != rec["protected"]):
+        return victim, False
+    if rec["residual"] <= 0:
+        _log(st, "rider_blocked",
+             f"{item.label}'s {effect.kind} does not land — the Mitigate absorbed "
+             f"the blow whole.", kind=effect.kind, target=rec["protected"],
+             label=item.label)
+        return victim, True
+    landing = st.combatant(rec["landed_on"])
+    if landing is None or _tid(landing) == _tid(victim):
+        return victim, False
+    _log(st, "rider_follows",
+         f"{item.label}'s {effect.kind} follows the damage onto {landing.name} — "
+         f"they stepped in, they wear it.", kind=effect.kind,
+         target=rec["landed_on"], label=item.label)
+    return landing, False
 
 
 def _do_drop_channels(st: GameState, action: Action) -> None:
@@ -2123,7 +2265,8 @@ def _do_use_skill(st: GameState, action: Action) -> None:
     actor.skill_used = True
     _spend_proactive(st, actor, "skill", gauge=False)  # the Skill IS a proactive action
     reserved = list(paid) if card.timing == Timing.channeled else []
-    _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
+    pushed = _push(st, StackItem(
+                        kind="activated", source_id=actor.id, source_side="party",
                         label=f"{card.name} (Skill)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card=card, reserved=reserved, mode=action.mode, x=x,
@@ -2138,6 +2281,7 @@ def _do_use_skill(st: GameState, action: Action) -> None:
     _log(st, "skill", f"{actor.name} uses their Skill — {card.name}"
          + (f" on {tgt.name}" if tgt else "") + ".",
          character=actor.id, card=card.id, target=action.target_id)
+    _announce_combat_ability(st, pushed)  # §M-A.7: a damaging Skill swings
     _gain_gauge(st, actor, 5)  # using your Skill charges the gauge (D8-3.3)
 
 
@@ -2151,7 +2295,8 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
     actor.ultimate_used = True
     actor.ultimate_gauge = 0
     _spend_proactive(st, actor, "ultimate", gauge=False)
-    _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
+    pushed = _push(st, StackItem(
+                        kind="activated", source_id=actor.id, source_side="party",
                         label=f"{card.name} (Ultimate)", effects=list(card.effects),
                         target_id=action.target_id, targets=action.targets,
                         card=card, mode=action.mode, cast_mode="action",
@@ -2161,6 +2306,7 @@ def _do_use_ultimate(st: GameState, action: Action) -> None:
     _log(st, "ultimate", f"{actor.name} unleashes their Ultimate — {card.name}"
          + (f" on {tgt.name}" if tgt else "") + "!",
          character=actor.id, card=card.id, target=action.target_id)
+    _announce_combat_ability(st, pushed)
 
 
 def _do_stance_ability(st: GameState, action: Action) -> None:
@@ -2168,8 +2314,10 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     The replacement inherits its slot's economy (a replaced attack is the once-
     per-round proactive Attack; a replaced Mitigate is the once-per-turn
     reaction) and lands on the stack as an ACTIVATED ability — not an attack,
-    not a spell: it trips no on_attack triggers, feeds no attack keywords, and
-    only a broad ability/action counter answers it."""
+    not a spell: it feeds no attack keywords, and only a broad ability/action
+    counter answers it. A replacement that DEALS DAMAGE is a Combat Ability
+    (§M-A.7), so it does trip on-attack triggers — the derived rule is blind to
+    which slot the damage came out of."""
     actor = st.character(action.actor_id)
     slot = action.card_id
     stance = _active_stance(actor)
@@ -2193,7 +2341,8 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     # `targets` carries the per-site picks for a replacement whose effects target
     # independently (Counter-Attack: the action it cancels AND whom it hits), so
     # `_new_ctx` can bind each site; empty for the single-target shape.
-    _push(st, StackItem(kind="activated", source_id=actor.id, source_side="party",
+    pushed = _push(st, StackItem(
+                        kind="activated", source_id=actor.id, source_side="party",
                         label=f"{name} (stance)", effects=list(repl.effects),
                         target_id=action.target_id, targets=tuple(action.targets),
                         card=_stance_card(actor), stance_slot=slot,
@@ -2203,18 +2352,43 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
     _log(st, "stance_ability", f"{actor.name} uses {name} (stance-{slot})"
          + (f" on {tgt.name}" if tgt else "") + ".",
          character=actor.id, slot=slot, target=action.target_id)
+    _announce_combat_ability(st, pushed)
 
 
-_DEFEND_TEMP_HP = 3   # placeholder; GDD leaves Defend's amount to gear/flavour
+def _has_action_mod(combatant, mod: str) -> bool:
+    return mod in (getattr(combatant, "action_mods", None) or {})
+
+
+def _defend_value(combatant) -> int:
+    """Defend's temp-HP buffer: the actor's BASE Power (pumps and wounds move the
+    swing, not the stance), never below 0 — doubled by a `defend_double` modifier."""
+    value = max(0, getattr(combatant, "power", 0))
+    return value * 2 if _has_action_mod(combatant, "defend_double") else value
 
 
 def _push(st: GameState, item: StackItem) -> StackItem:
     """Push an item onto the stack, stamping it with a unique id so a counter can
-    name the exact action it answers."""
+    name the exact action it answers, and deriving its Combat Ability class
+    (§M-A.7) from the verbs it is about to run. Derived HERE so every path onto the
+    stack — enemy intent, enemy reaction, hero Skill/Ultimate/stance, a pushed
+    trigger — is classified by one rule. An item that starts a CHANNEL is exempt:
+    it deals no damage as it resolves; its held verbs fire later on their own."""
     st.stack_seq += 1
     item.uid = st.stack_seq
+    if not item.combat_ability and not item.starts_channel:
+        item.combat_ability = _is_combat_ability(item.kind, item.effects)
     st.stack.append(item)
     return item
+
+
+def _announce_combat_ability(st: GameState, item: StackItem) -> None:
+    """A Combat Ability announces itself like a swing (§M-A.7): on-attack triggers
+    read it as it hits the stack — the same moment an attack intent fires its own.
+    A no-op for every other action, and for a plain attack (which fires its event
+    on its own path). Echoes and copies never re-announce: they are pushed
+    directly, not through an announce site."""
+    if item.combat_ability:
+        _fire_event(st, "attack", st.combatant(item.source_id))
 
 
 def _open_window(st: GameState, actor_id: str, reactive: bool) -> None:
@@ -2314,8 +2488,9 @@ def _queue_echo(st: GameState, item: StackItem, skip: bool) -> None:
             echo.is_copy = True
             echo.label = f"{item.label} (echo)"
             # The echo is its own resolution: a declared Mitigate rode the
-            # original swing only.
+            # original swing only, and so did whatever that Mitigate did.
             echo.mitigate_by = echo.mitigate_for = None
+            echo.mitigation_outcome = None
             _push(st, echo)
             _log(st, "double",
                  f"{item.label} resolves twice — the echo follows.",
@@ -2369,6 +2544,20 @@ def _new_ctx(st: GameState, item: StackItem) -> dict:
     return ctx
 
 
+def _damage_first(item: StackItem, effects):
+    """Under a DECLARED Mitigate, a Combat Ability resolves its damage before its
+    riders: the rider rule (§M-A.7) reads what the damage actually did, so the hit
+    has to land first. A stable partition — authored order survives within each
+    group, and the usual "deal N, then stun" list is already in this order, so this
+    is a no-op for almost every action. Untouched when nothing is mitigating."""
+    if item.mitigate_by is None or not item.combat_ability:
+        return effects
+    hits = [e for e in effects if _damage_verbs([e])]
+    if not hits or len(hits) == len(effects):
+        return effects
+    return hits + [e for e in effects if not _damage_verbs([e])]
+
+
 def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> None:
     """Resolve a stack item's top-level effects in order. When a top-level
     move_card needs the player to pick which cards move (more legal candidates than
@@ -2381,6 +2570,7 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
     channel_start firing), where the player must get their pick — a break-trigger
     scry pauses exactly like a sorcery's. Upkeep/event ticks resolve effects
     directly via `_resolve_effect` and stay non-interactive."""
+    effects = _damage_first(item, effects)
     for i, effect in enumerate(effects):
         kind = getattr(effect, "kind", None)
         # A TRIGGERED modal firing in this list (channel_start) has had no cast-time
@@ -2664,10 +2854,12 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
             if not any(t.parameter == param and t.combat_kind == ck
                        for t in target.prevent_tags):
                 target.prevent_tags.append(PreventTag(param, None, ck))
-            # Pacifying an enemy also cancels any attack intent it already declared.
+            # An action shield also cancels the matching intent the enemy has
+            # already declared — but only the MATCHING one: Pacifism binds the
+            # sword (attack-type intents), Silence binds the tongue (spell-classed
+            # ones). A silenced brute still swings; a pacified mage still casts.
             if param in _ACTION_PREVENT and isinstance(target, EnemyState):
-                target.intent = None
-                target.intent2 = None
+                _cancel_prevented_intents(st, target, param)
             if log_it:
                 _log(st, "prevent", f"{target.name} — {param} prevented (channel).",
                      target=_tid(target), parameter=param)
@@ -2883,8 +3075,17 @@ def _trigger_pick_effect(item: StackItem):
     """The first effect of a fired triggered ability that still owes a target
     pick, or None. A DIRECT chosen target always needs the pick; a "$slot" target
     needs it only when nothing bound the slot at cast (`item.target_id` empty —
-    a slot shared with an untriggered aura effect was chosen at cast instead)."""
-    for e in _pending_trigger_effects(item):
+    a slot shared with an untriggered aura effect was chosen at cast instead).
+
+    The scan descends into CONDITIONAL branches (`_iter_leaf`), because the
+    canonical channelled-ward shape wraps its payload in one: "while channeled,
+    whenever an enemy attacks, IF you are in the front row, do X to a target".
+    The conditional itself has no target, so a top-level-only scan saw nothing
+    to aim and the payload resolved against an unbound target and fizzled.
+    Resolution reads the same binding — a conditional-nested effect falls back to
+    `item.target_id` (`_site_target`) — so one pick aims the whole branch, exactly
+    as it does for a conditional cast at spell speed."""
+    for e in _iter_leaf(_pending_trigger_effects(item)):
         desc = getattr(e, "target", None)
         if isinstance(desc, str):
             if item.target_id is None:
@@ -3150,14 +3351,35 @@ def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> Lis
     target for independent multi-target cards, else the item's primary target)."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) or desc is None:
-        return [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
-    mode = getattr(desc, "mode", None)
-    if mode == TargetMode.self_:
-        return [st.combatant(item.source_id)]
-    if mode == TargetMode.all:
-        side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
-        return _creatures_on_side(st, side, item, desc, getattr(effect, "kind", None))
-    return [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
+        out = [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
+    else:
+        mode = getattr(desc, "mode", None)
+        if mode == TargetMode.self_:
+            out = [st.combatant(item.source_id)]
+        elif mode == TargetMode.all:
+            side = desc.side.value if getattr(desc, "side", None) is not None else "ally"
+            out = _creatures_on_side(st, side, item, desc, getattr(effect, "kind", None))
+        else:
+            out = [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
+    # §M-A.7 is applied HERE, at the one chokepoint every resolution path shares —
+    # the per-effect loop, a top-level move_card, a scry — so no verb can slip a
+    # rider past the rule by having its own resolution route.
+    return _mitigation_reroute(st, item, effect, out)
+
+
+def _mitigation_reroute(st: GameState, item: StackItem, effect, targets: List) -> List:
+    """Apply the Combat Ability rider rule (§M-A.7) to a resolved target set: riders
+    on the protected character follow the residual damage, and drop out entirely
+    when the guard swallowed the hit whole. A no-op unless a Mitigate actually
+    reduced something on this item."""
+    if item.mitigation_outcome is None:
+        return targets
+    out = []
+    for target in targets:
+        target, blocked = _mitigated_rider(st, item, effect, target)
+        if not blocked:
+            out.append(target)
+    return out
 
 
 # Verbs that may land on a DOWNED character. Incapacitation is recoverable and the
@@ -3377,10 +3599,13 @@ def _r_deal_damage(st, item, effect, target, ctx):
                 amount = max(0, item.attack_power + source_obj.power_bonus)
             else:
                 amount = max(0, source_obj.current_power)
-        # Mitigate answers attack-type hits only (Update 02 §M-A.1)
+    # Mitigate answers a basic attack (Update 02 §M-A.1) and a Combat Ability —
+    # an ability that deals damage is a swing by another name (§M-A.7). It is a
+    # no-op unless a Mitigate was actually declared on this item.
+    if item.kind == "attack" or item.combat_ability:
         target, amount = _apply_mitigation(st, item, target, amount)
     overkill = _deal_damage(st, target, amount, source=item.label,
-                            source_obj=source_obj, damage_kind=item.kind,
+                            source_obj=source_obj, damage_kind=_damage_lane(item),
                             attack_mode=item.attack_mode)
     # Trample: if the blow felled the target, the excess cleaves onto ONE more creature.
     if (item.kind == "attack" and overkill > 0 and source_obj is not None
@@ -3952,6 +4177,138 @@ def _r_wound(st, item, effect, target, ctx):
         _after_damage(st, target)
 
 
+def _r_sap(st, item, effect, target, ctx):
+    """Sap: reduce mana CAPACITY for the duration — the mana-side wound. Only a
+    player character has a mana engine; an enemy or token caught by a side-wide
+    target is passed over rather than crashed on."""
+    if not hasattr(target, "capacity_mod"):
+        return
+    amount = max(0, _value(effect.amount, ctx))
+    if amount <= 0:
+        return
+    before = target.capacity
+    target.capacity_mod -= amount
+    if getattr(effect, "duration", None) == Duration.encounter:
+        target.enc_capacity_mod -= amount
+    # Bite NOW as well as next refresh: trim the unspent pool down to the new
+    # capacity. Mana already spent is gone (we cannot claw it back), and mana
+    # RESERVED by a held channel is never stripped — that would silently break
+    # the channel the reservation is holding up.
+    _trim_pool_to_capacity(target)
+    _log(st, "sap", f"{target.name}'s mana capacity drops by {amount} "
+         f"({before} → {target.capacity}).", target=_tid(target), amount=amount,
+         capacity=target.capacity,
+         duration=getattr(getattr(effect, "duration", None), "value", None))
+
+
+def _trim_pool_to_capacity(char) -> None:
+    """Drop unspent, UNRESERVED mana above the (possibly sapped) capacity. The
+    reserved share is skipped: stripping it would silently break the channel the
+    reservation is holding up."""
+    over = len(char.pool) - char.capacity
+    if over <= 0:
+        return
+    reserved = list(char.reserved)
+    spare = []
+    for color in char.pool:
+        if color in reserved:
+            reserved.remove(color)   # this pip is spoken for by a held channel
+        else:
+            spare.append(color)
+    for color in spare[-over:] if over < len(spare) else spare:
+        char.pool.remove(color)
+
+
+def _r_modify_action(st, item, effect, target, ctx):
+    """Change how one of the target's evergreen actions works. Only a player
+    character has these actions, so an enemy or token caught by a side-wide
+    target is passed over rather than crashed on.
+
+    The two INSTANT modifiers spend themselves here; the rest ride the character
+    in `action_mods` until their duration expires."""
+    if not isinstance(target, CharacterState):
+        return
+    mod = effect.modifier
+    if mod == "refresh_skill":
+        if not target.skill_used:
+            _log(st, "action_mod", f"{target.name}'s Skill is already available.",
+                 target=_tid(target), modifier=mod)
+            return
+        target.skill_used = False
+        _log(st, "action_mod", f"{target.name}'s Skill is refreshed.",
+             target=_tid(target), modifier=mod)
+        return
+    if mod == "charge_ultimate":
+        amount = max(0, _value(effect.amount, ctx))
+        _gain_gauge(st, target, amount)
+        _log(st, "action_mod",
+             f"{target.name}'s ultimate gauge surges +{amount} "
+             f"({target.ultimate_gauge}/100).",
+             target=_tid(target), modifier=mod, amount=amount)
+        return
+    if mod == "drain_ultimate":
+        # Drain Ult: the enemy-side mirror of charge_ultimate. Takes what is
+        # actually there (a gauge already at 0 loses nothing) and never goes
+        # negative, so the log reports the real loss rather than the attempt.
+        want = max(0, _value(effect.amount, ctx))
+        taken = min(want, target.ultimate_gauge)
+        target.ultimate_gauge -= taken
+        _log(st, "action_mod",
+             f"{target.name}'s ultimate gauge is drained −{taken} "
+             f"({target.ultimate_gauge}/100)." if taken
+             else f"{target.name}'s ultimate gauge is already empty.",
+             target=_tid(target), modifier=mod, amount=taken)
+        return
+    duration = getattr(getattr(effect, "duration", None), "value", "this_turn")
+    target.action_mods[mod] = duration
+    if effect.action == "attack":
+        _sync_attack_mode(target)
+    _log(st, "action_mod",
+         f"{target.name}: {ACTION_MODIFIERS[effect.action][mod]} "
+         f"({_duration_word(duration)}).",
+         target=_tid(target), modifier=mod, action=effect.action,
+         duration=duration, attack_mode=target.attack_mode)
+
+
+def _duration_word(duration: str) -> str:
+    return {"this_turn": "this turn", "encounter": "for the encounter",
+            "while_channeled": "while channelled"}.get(duration, duration)
+
+
+def _sync_attack_mode(char: CharacterState) -> None:
+    """Recompute the live basic-attack reach from the AUTHORED mode plus whatever
+    mode modifiers currently ride the character. Idempotent, so it is safe to call
+    on every apply and every expiry.
+
+    `attack_mode` stays the single live value every other rule reads (R-1 reach,
+    the offer label, the stack item), which is why this writes the field rather
+    than threading a helper through those call sites. Order: a flip first, then an
+    absolute, so `make_melee`/`make_ranged` beat `switch_mode` when both ride."""
+    if not char.base_attack_mode:
+        char.base_attack_mode = char.attack_mode      # capture before first change
+    mode = char.base_attack_mode
+    if "switch_mode" in char.action_mods:
+        mode = "ranged" if mode == "melee" else "melee"
+    if "make_melee" in char.action_mods:
+        mode = "melee"
+    if "make_ranged" in char.action_mods:             # ranged wins a contradiction
+        mode = "ranged"
+    char.attack_mode = mode
+
+
+def _expire_action_mods(combatant) -> None:
+    """Drop action modifiers whose duration ends with the turn, then re-sync the
+    attack reach (encounter / while_channeled ride on; the channel break lifts the
+    last). Mirrors `_expire_keywords`."""
+    mods = getattr(combatant, "action_mods", None)
+    if not mods:
+        return
+    for mod, dur in list(mods.items()):
+        if dur in ("this_turn", "end_of_turn"):   # end_of_turn: legacy alias
+            del mods[mod]
+    _sync_attack_mode(combatant)
+
+
 def _r_counters(st, item, effect, target, ctx):
     # Persistent +X/+X counters: permanent Power and max HP (not cleared at End).
     power, toughness = _value(effect.power, ctx), _value(effect.toughness, ctx)
@@ -4409,6 +4766,8 @@ RESOLVERS = {
     "stun": _r_stun,
     "pump": _r_pump,
     "wound": _r_wound,
+    "sap": _r_sap,
+    "modify_action": _r_modify_action,
     "counters": _r_counters,
     "prevent": _r_prevent_only,
     "protection": _r_protection,
@@ -4625,13 +4984,15 @@ def _check_charge_full(st: GameState, e: EnemyState) -> None:
         e.charge = 0
         label = comp.telegraph or comp.archetype or "Detonation"
         kind = "spell" if comp.action_type == "spell" else "triggered"
-        _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
-                            label=label, effects=list(comp.verbs), target_id=tid))
+        pushed = _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
+                                     label=label, effects=list(comp.verbs),
+                                     target_id=tid))
         st.priority = None  # fresh window — re-seeded by _advance
         st.passes = 0
         _log(st, "charge_detonate",
              f"{e.name}'s gathered power erupts — {label} goes on the stack.",
              enemy=e.id, label=label, component=comp.id, target=tid)
+        _announce_combat_ability(st, pushed)
         return
 
 
@@ -4661,13 +5022,51 @@ def _gain_gauge(st: GameState, char, n: int) -> None:
 # incoming damage. These are checked when the actor tries to act (see
 # `_prevented_action`), never in `_deal_damage`, so a `prevent attack` shield
 # must not also soak damage of kind "attack".
-_ACTION_PREVENT = frozenset({"attack"})
+# The non-damage `prevent` parameters: ACTION shields. They forbid an action
+# outright rather than blunting damage, so `_prevent_match` skips them.
+_ACTION_PREVENT = frozenset({"attack", "cast"})
 
 
 def _prevented_action(combatant, action: str) -> bool:
     """True if a `prevent [action]` shield forbids this actor from taking `action`
-    (e.g. Pacifism's `prevent attack` stops a creature attacking, R-11)."""
+    (Pacifism's `prevent attack` stops a creature attacking; Silence's
+    `prevent cast` stops it casting cards — R-11)."""
     return any(t.parameter == action for t in getattr(combatant, "prevent_tags", []))
+
+
+def _intent_blocked_by(intent, param: str) -> bool:
+    """Does an action shield named `param` forbid this declared intent? `attack`
+    binds attack-type intents (the basic swing and an attack-classed component);
+    `cast` binds spell-classed ones. A Move is never either."""
+    if intent is None or getattr(intent, "kind", "action") == "move":
+        return False
+    if param == "attack":
+        return intent.action_type == "attack"
+    if param == "cast":
+        return intent.action_type == "spell"
+    return False
+
+
+def _cancel_prevented_intents(st: GameState, enemy, param: str) -> None:
+    """Strip the intents an action shield forbids, leaving the rest standing."""
+    for slot in ("intent", "intent2"):
+        intent = getattr(enemy, slot, None)
+        if _intent_blocked_by(intent, param):
+            setattr(enemy, slot, None)
+            _log(st, "intent_stripped",
+                 f"{enemy.name}'s {intent.name} is cut short — {param} prevented.",
+                 enemy=enemy.id, intent=intent.name, parameter=param)
+
+
+def _silenced_for(actor, card: Card) -> bool:
+    """Does Silence (`prevent cast`) forbid casting THIS card? Silence binds the
+    tongue, not the hands: a carried CONSUMABLE still works (drinking a potion is
+    not speech), which leaves a silenced character a real answer to buy their way
+    out instead of losing the turn outright. The basic attack, Skill and Ultimate
+    are not casts at all and are never gated here."""
+    if not _prevented_action(actor, "cast"):
+        return False
+    return not getattr(card, "consumable_id", None)
 
 
 # The two damage lanes (shared by `prevent` and `amplify`): COMBAT damage is the
@@ -4676,6 +5075,70 @@ def _prevented_action(combatant, action: str) -> bool:
 # SPELL damage is the arcane lane — spells and triggered abilities.
 _COMBAT_DAMAGE_KINDS = frozenset({"attack", "activated", "ability", "fight"})
 _SPELL_DAMAGE_KINDS = frozenset({"spell", "triggered"})
+
+# The action classes a Combat Ability can be drawn from (§M-A.7). "spell" is
+# deliberately absent: a spell-classed action is arcane by authorial choice, and
+# Negate — not a raised shield — is its answer.
+_COMBAT_ABILITY_KINDS = frozenset({"ability", "activated", "triggered"})
+
+
+def _damage_verbs(effects) -> List:
+    """Every `deal_damage` verb an action can run, looking THROUGH the container
+    verbs (modal modes, a conditional's body) so a wrapped hit still counts."""
+    out: List = []
+    for effect in effects or ():
+        kind = getattr(effect, "kind", None)
+        if kind == "deal_damage":
+            out.append(effect)
+        elif kind == "modal":
+            for mode in getattr(effect, "modes", None) or ():
+                out += _damage_verbs(getattr(mode, "effects", None))
+        elif kind == "conditional":
+            out += _damage_verbs(getattr(effect, "effects", None))
+    return out
+
+
+def _is_combat_ability(kind: str, effects) -> bool:
+    """§M-A.7, DERIVED — never authored: an ability-class action that DEALS DAMAGE
+    is a Combat Ability. "Battering Ram — deal 5" is a swing wearing an ability's
+    clothes, and the engine now treats it as one: its damage lands in the COMBAT
+    lane, it trips on-attack triggers, and a single-target one can be answered by
+    Mitigate. A non-damaging ability (a stun, a heal, a summon) is untouched, and
+    so is anything authored as a spell."""
+    return kind in _COMBAT_ABILITY_KINDS and bool(_damage_verbs(effects))
+
+
+def _damage_lane(item) -> str:
+    """The lane an item's hits land in. A Combat Ability that stacks as a TRIGGERED
+    ability — an enemy's reactive punish, "Flare-Snap: deal 4 to the attacker" —
+    would otherwise sit in the SPELL lane, on the wrong side of every
+    combat_damage shield. Its damage is physical: read it as ability damage."""
+    if item.kind == "triggered" and item.combat_ability:
+        return "ability"
+    return item.kind
+
+
+def _single_target_damage(verb) -> bool:
+    """Is this damage verb aimed at ONE named victim? A `mode: all` payload or a
+    row/blast splash is not — that is the AoE a single raised guard cannot cover."""
+    desc = getattr(verb, "target", None)
+    if desc is None or isinstance(desc, str):
+        return False
+    mode = getattr(getattr(desc, "mode", None), "value", getattr(desc, "mode", None))
+    scope = getattr(getattr(desc, "scope", None), "value", getattr(desc, "scope", None))
+    return mode == "chosen" and scope is None and not getattr(desc, "rows", None)
+
+
+def _mitigable(item) -> bool:
+    """Can Mitigate answer this stack item? A basic attack always (Update 02 §M-A.1,
+    including the §L-5 row swipe). A Combat Ability only when its damage is aimed at
+    one named victim: AoE and splash payloads stay unmitigable by design — that
+    level of blast is beyond what one character can step in front of."""
+    if item.kind == "attack":
+        return True
+    if not item.combat_ability or item.target_id is None or item.target_row is not None:
+        return False
+    return any(_single_target_damage(v) for v in _damage_verbs(item.effects))
 
 
 def _lane_label(parameter: str, combat_kind: str = "all") -> str:
@@ -5383,7 +5846,7 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     # Attack choice; Pacifism binds the sword, not the replacement).
     if not actor.used_attack and _proactive_open(actor, "attack"):
         if aslot == "unchanged":
-            if not _prevented_action(actor, "attack"):
+            if not _prevented_action(actor, "attack") and not _has_kw(actor, "defender"):
                 dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
                 for e in _legal_attack_targets(st, actor):  # only rows this attack can reach
                     actions.append(Action("attack", actor.id, target_id=e.id,
@@ -5392,10 +5855,16 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
         elif aslot != "removed":
             actions += _stance_actions(st, actor, "attack", aslot)
     # Defend (the defensive action): a proactive action like any other — a vigilant
-    # character may Defend and still swing (the bug this rule used to have).
-    if not actor.used_defend and _proactive_open(actor, "defend"):
+    # character may Defend and still swing (the bug this rule used to have). A
+    # `defender` gets it FREE: the action is never spent, so the same turn still
+    # buys a cast or a Skill. That is the whole trade — no sword, no footwork,
+    # but the shield costs nothing.
+    free_defend = _has_kw(actor, "defender")
+    if not actor.used_defend and (free_defend or _proactive_open(actor, "defend")):
         if dslot == "unchanged":
-            actions.append(Action("defend", actor.id, label=f"Defend (+{_DEFEND_TEMP_HP} temp HP)"))
+            suffix = " (free, defender)" if free_defend else ""
+            actions.append(Action("defend", actor.id,
+                                  label=f"Defend (+{_defend_value(actor)} temp HP){suffix}"))
         elif dslot != "removed":
             actions += _stance_actions(st, actor, "defend", dslot)
     # Move (§L-2.2): a live stack action, offered only in the main phase (the
@@ -5406,7 +5875,11 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     move_ok = not actor.used_move and (_proactive_open(actor, "move")
                                        or _has_kw(actor, "haste"))
     if mslot == "unchanged":
-        if move_ok:
+        # A `defender` is rooted: no voluntary Move, and haste does not buy one
+        # back. Gated on the BASIC move only, following the same line Pacifism
+        # draws on the attack slot — a stance replacement is its own ability, not
+        # the footwork the keyword forbids.
+        if move_ok and not _has_kw(actor, "defender"):
             free = " (free, haste)" if _has_kw(actor, "haste") else ""
             for row in ("front", "mid", "rear"):
                 if row != actor.row:
@@ -5439,11 +5912,20 @@ def _card_has_stance(card: Card) -> bool:
 
 def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     """An open reaction window: free instants, Mitigate (self / adjacent ally), a
-    First Strike basic attack, voluntary drop, or pass."""
+    First Strike basic attack, a `defend_as_reaction` Defend, voluntary drop, or
+    pass."""
     actions: List[Action] = []
     for card in actor.hand:
         if card.timing == Timing.instant and _can_pay(actor, card):
             actions += _cast_actions(st, actor, card)
+    # Defend held as a REACTION (`defend_as_reaction`): the proactive action is
+    # not required — that is the whole point, you may already have spent it — but
+    # it is still once per turn, and a stance that removed/replaced the slot still
+    # governs what Defend even is.
+    if (_has_action_mod(actor, "defend_as_reaction") and not actor.used_defend
+            and _stance_slot(actor, "defend") == "unchanged"):
+        actions.append(Action("defend", actor.id,
+                              label=f"Defend (+{_defend_value(actor)} temp HP, reaction)"))
     # First Strike (R-12): during the ENEMY step only, a character that did NOT spend its
     # basic attack (on its turn or already this enemy step) may swing NOW as a reaction —
     # it is a plain `attack`, not a special one. It stacks above the answered action, so it
@@ -5455,6 +5937,7 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     # (§D9-2.3): the BASIC attack is gone in every form.
     if (st.phase == "enemy" and _has_kw(actor, "first_strike") and not actor.used_attack
             and not _prevented_action(actor, "attack") and actor.stunned == 0
+            and not _has_kw(actor, "defender")   # no sword in any window
             and _stance_slot(actor, "attack") == "unchanged"):
         dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
         for e in _legal_attack_targets(st, actor):
@@ -5471,27 +5954,39 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
     # effects resolving instead of the reduction — and what it can ANSWER follows
     # those effects: a counter replacement (e.g. "cancel an enemy action") reacts
     # to any enemy top its filter matches, while a non-counter replacement keeps
-    # Mitigate's own attack-type trigger.
+    # Mitigate's own trigger — a basic attack, or a single-target Combat Ability
+    # (§M-A.7: an ability that deals damage is a swing by another name).
     x = _mitigate_value(actor)
     mit_slot = _stance_slot(actor, "mitigate")
-    if not actor.used_mitigate and top.source_side == "enemy":
+    # `mitigate_again` lifts the once-per-turn limit for as long as it rides.
+    mit_open = not actor.used_mitigate or _has_action_mod(actor, "mitigate_again")
+    if mit_open and top.source_side == "enemy":
         if mit_slot == "unchanged":
-            if top.kind == "attack":
+            if _mitigable(top):
                 struck = (lambda c: top.target_id == c.id
                           or (top.target_id is None and top.target_row == c.row))
                 if struck(actor):
                     actions.append(Action("mitigate", actor.id, target_id=actor.id,
                                           label=f"Mitigate self (−{x} per hit)"))
                 for ally in st.living_party():
-                    if (ally.id != actor.id and struck(ally)
+                    if not (ally.id != actor.id and struck(ally)
                             and abs(_row_rank(actor.row) - _row_rank(ally.row)) <= 1):
-                        actions.append(Action("mitigate", actor.id, target_id=ally.id,
-                                              label=f"Mitigate for {ally.name} (−{x} per hit, move to {ally.row})"))
+                        continue
+                    # Ally mode is an action-bound DASH (§M-A.6) — the guard
+                    # relocates to the ally's row. A `defender` is rooted, so it
+                    # can only cover someone already standing with it: allies come
+                    # to the wall, the wall does not come to them.
+                    same_row = ally.row == actor.row
+                    if _has_kw(actor, "defender") and not same_row:
+                        continue
+                    where = "" if same_row else f", move to {ally.row}"
+                    actions.append(Action("mitigate", actor.id, target_id=ally.id,
+                                          label=f"Mitigate for {ally.name} (−{x} per hit{where})"))
         elif mit_slot != "removed":
             # A counter replacement's target enumeration (_stance_actions →
             # _target_options_for) only offers matching enemy stack items, so an
             # unanswerable top simply yields no actions.
-            if _counter_filter(list(mit_slot.effects)) is not None or top.kind == "attack":
+            if _counter_filter(list(mit_slot.effects)) is not None or _mitigable(top):
                 actions += _stance_actions(st, actor, "mitigate", mit_slot)
     # The Skill no longer reacts (it is an activated ability — active speed,
     # main phase only), so no heroic offers appear in a reaction window.
@@ -5537,7 +6032,10 @@ def _heroic_actions(st: GameState, actor: CharacterState,
     out: List[Action] = []
     if not main_phase:
         return out
+    # Hamstring (`lock_skill`) bars the Skill while it rides — the Ultimate is a
+    # separate action and is deliberately untouched.
     if (_proactive_open(actor, "skill") and actor.skill is not None and not actor.skill_used
+            and not _has_action_mod(actor, "lock_skill")
             and _can_pay(actor, actor.skill)):
         skill = actor.skill
         # One stance at a time (§D9-2.3): a channeled stance-skill waits until
@@ -5567,7 +6065,13 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
     mode (the option is chosen here, at cast); a counter offers one option per
     enemy action it could answer; other cards offer one option per legal target.
     An {X}-cost card additionally offers one cast per affordable X value.
-    The engine enumerates every choice — the UI never invents one."""
+    The engine enumerates every choice — the UI never invents one.
+
+    Silence (`prevent cast`) is enforced HERE, at the one chokepoint every cast
+    offer funnels through (main-phase sorceries, main-phase instants, reaction
+    instants), so no offer site can leak a cast past it."""
+    if _silenced_for(actor, card):
+        return []
     base = _cost_total(card)
     # X options: every value the pool can cover beyond the base cost (the caller
     # already checked _can_pay, so spare >= 0). Non-X cards get the single None.
@@ -5714,6 +6218,13 @@ def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
     if kind == "control":
         opts = [(tid, tl) for tid, tl in opts
                 if not getattr(st.enemy(tid), "is_boss", False)]
+    if kind in ("destroy", "exile", "bounce"):
+        # §9.4 / §F-9: a boss above its execute window can't be REMOVED, so it is
+        # not a legal pick either — the removal was offered, aimed, and fizzled
+        # (and, worse, stayed offered while the boss healed back out of range).
+        # Whittle it into the window and the option returns on its own.
+        opts = [(tid, tl) for tid, tl in opts
+                if _removal_legal(st.enemy(tid))]
     if kind == "strip_intent":
         extra = []
         for tid, tl in opts:
@@ -5737,6 +6248,14 @@ def _effect_target_options(st: GameState, effect, card=None):
     side = desc.side.value if getattr(desc, "side", None) is not None else "any"
     return _pick_options(st, side, bool(getattr(desc, "targeted", False)),
                          effect.kind, getattr(desc, "state", None))
+
+
+def _removal_legal(enemy) -> bool:
+    """Whether a removal verb (destroy / exile / bounce) may even be AIMED at this
+    enemy: a boss outside its execute window shrugs every one off (§9.4 / §F-9),
+    so it is no more targetable than a hexproof creature. Anything else — a
+    minion, a corpse pick, a friendly target (enemy is None) — is fair game."""
+    return enemy is None or enemy.in_execute_window
 
 
 def _hexproof_hostile(st: GameState, tid) -> bool:
@@ -5782,27 +6301,32 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     effect's side decides the creature options; self/all/untargeted needs none.
     A `$T1` slot ref resolves its side via the card's `targets` map (the form the
     Deckbuilder emits), so single-target slot cards enumerate targets too."""
-    filt = _counter_filter(effects)
+    # Triggered effects pick their targets when the trigger FIRES, not at cast
+    # (mirrors the _target_sites exclusion) — so they are dropped before any of
+    # the stack-site scans below. Without this, a channeled ward whose triggered
+    # clause counters ("whenever an enemy attacks … cancel that attack") read as
+    # a cast-time counter and was never castable: the main phase has an empty
+    # stack, so its only "target" list came back empty. Nested effects never
+    # carry triggers, so filtering the top level before descending is enough.
+    live = [e for e in effects if getattr(e, "trigger", None) is None]
+    filt = _counter_filter(live)
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if s.source_side == "enemy" and _filter_matches(filt, s)]
     # A copy_spell targets a spell on the stack — EITHER side's (copy your
     # ally's Fireball or the enemy ritual's shape).
-    if any(e.kind == "copy_spell" for e in _iter_leaf(effects)):
+    if any(e.kind == "copy_spell" for e in _iter_leaf(live)):
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if _filter_matches("spell", s)]
     # A redirect with an UNCHOSEN new target (e.g. "to yourself" — the Bodyguard
     # shape) has one site: the stack action to turn. A chosen new target makes
     # it a two-site card, handled by the multi-site path above this one.
-    red = next((e for e in _iter_leaf(effects) if e.kind == "redirect"), None)
+    red = next((e for e in _iter_leaf(live) if e.kind == "redirect"), None)
     if red is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if _filter_matches(red.filter, s) and _stack_redirectable(st, s)]
     side, targeted, kind, state = None, False, None, None
-    # Triggered effects pick their targets when the trigger fires, not at cast
-    # (mirrors the _target_sites exclusion). Nested effects never carry triggers,
-    # so filtering the top level before descending is sufficient.
-    for e in _iter_leaf([e for e in effects if getattr(e, "trigger", None) is None]):
+    for e in _iter_leaf(live):
         desc = getattr(e, "target", None)
         if isinstance(desc, str):  # "$T1" slot ref — resolve its side from the card
             sd = card.targets.get(desc[1:]) if card is not None else None

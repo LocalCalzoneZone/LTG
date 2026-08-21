@@ -359,6 +359,7 @@ KEYWORDS = {
     "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
     "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
+    "defender": {"display": "Defender", "gloss": "can't attack or move; its Defend is FREE — it still casts, uses its Skill/Ultimate, and Mitigates. Hero-only: enemies ignore it", "grantable": True, "params": []},
     "haste": {"display": "Haste", "gloss": "may take its proactive action and also make a free voluntary move this turn — live, though never while its own action is unresolved (L-6.1)", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
@@ -556,6 +557,125 @@ class Wound(EffectBase):
     duration: Duration = Duration.this_turn
 
 
+class Sap(EffectBase):
+    """Attack the mana engine: reduce the target's mana CAPACITY by `amount` for
+    the duration — the mana-side twin of `wound`.
+
+    Capacity is the lands-equivalent (GDD §4.4), so this is the slowest, meanest
+    kind of pressure: it does not damage, it shrinks what the victim can do next
+    turn. It rides its own `capacity_mod` layer (never below 0 capacity) and
+    expires through the same End-step reset the stat layers use — `this_turn` is
+    a tempo hit, `encounter` is a real wound to the curve. The current pool is
+    trimmed too (mana already spent is gone; mana reserved by a held channel is
+    never stripped), so a sap landing mid-turn bites now rather than next turn."""
+
+    kind: Literal["sap"] = "sap"
+    amount: int = 1
+    target: TargetOrSlot
+    duration: Duration = Duration.this_turn
+
+
+# --------------------------------------------------------------------------- #
+# Action modifiers: change how one of a character's EVERGREEN actions works for
+# a duration, rather than dealing with HP or stats. Each modifier belongs to
+# exactly one action, and the pair is validated — the editor renders two linked
+# dropdowns, and a mismatched pair is rejected at authoring rather than silently
+# doing nothing.
+# --------------------------------------------------------------------------- #
+ModifiableAction = Literal["attack", "defend", "mitigate", "skill", "ultimate"]
+
+ACTION_MODIFIERS: Dict[str, Dict[str, str]] = {
+    "attack": {
+        "make_ranged": "the basic attack becomes ranged",
+        "make_melee": "the basic attack becomes melee",
+        "switch_mode": "the basic attack flips reach (melee ↔ ranged)",
+    },
+    "defend": {
+        "defend_as_reaction": "may Defend in a reaction window, without spending "
+                              "the proactive action",
+        "defend_double": "Defend grants double temp HP",
+    },
+    "mitigate": {
+        "mitigate_again": "Mitigate is no longer once per turn",
+        "mitigate_full": "Mitigate reduces by full Power instead of half",
+    },
+    "skill": {
+        "refresh_skill": "the once-per-encounter Skill is refreshed",
+        # Hamstring — the hostile mirror of refresh_skill.
+        "lock_skill": "the Skill cannot be activated",
+    },
+    "ultimate": {
+        "charge_ultimate": "fill the ultimate gauge by `amount`",
+        # Drain Ult — the hostile mirror of charge_ultimate.
+        "drain_ultimate": "drain `amount` from the ultimate gauge",
+    },
+}
+
+ActionModifier = Literal[
+    "make_ranged", "make_melee", "switch_mode",
+    "defend_as_reaction", "defend_double",
+    "mitigate_again", "mitigate_full",
+    "refresh_skill", "lock_skill",
+    "charge_ultimate", "drain_ultimate",
+]
+
+# Modifiers that happen ONCE and are over — they move a resource rather than
+# changing a rule, so they ignore `duration` (there is nothing to expire).
+INSTANT_ACTION_MODIFIERS = frozenset({"refresh_skill", "charge_ultimate",
+                                      "drain_ultimate"})
+
+# Modifiers that HARM the character they land on. These are the only ones an
+# enemy has any business using; the rest retune a hero's own actions in the
+# hero's favour. Enforced as authoring guidance, not a hard rule — a card may
+# legitimately aim a hostile modifier at an enemy-controlled ally token.
+HOSTILE_ACTION_MODIFIERS = frozenset({"make_melee", "lock_skill",
+                                      "drain_ultimate"})
+
+# The modifiers whose `amount` field is read (and must be positive).
+_AMOUNT_ACTION_MODIFIERS = frozenset({"charge_ultimate", "drain_ultimate"})
+
+
+class ModifyAction(EffectBase):
+    """Change how one of the target's evergreen actions works for a duration.
+
+    This is the "rules text" lane: it does not move HP or stats, it changes what
+    an action IS — a bow granted for a turn, a Defend you can hold as a reaction,
+    a Mitigate that stops being once-per-turn. `action` names which evergreen it
+    touches and `modifier` the change; the pair must match ACTION_MODIFIERS.
+
+    `amount` is read by the gauge modifiers (`charge_ultimate`,
+    `drain_ultimate`). The INSTANT_ACTION_MODIFIERS resolve once and ignore
+    `duration`; every other modifier rides the target for `this_turn` /
+    `encounter` / `while_channeled` and expires with the granted-keyword statics.
+
+    Most modifiers are hero-facing buffs; HOSTILE_ACTION_MODIFIERS are the ones
+    an enemy uses — Hamstring (`lock_skill`), Drain Ult (`drain_ultimate`), and
+    stripping an archer's reach (`make_melee`)."""
+
+    kind: Literal["modify_action"] = "modify_action"
+    action: ModifiableAction = "attack"
+    modifier: ActionModifier = "make_ranged"
+    amount: int = 0                      # charge_ultimate only
+    target: TargetOrSlot
+    duration: Duration = Duration.this_turn
+
+    @model_validator(mode="after")
+    def _check_pair(self) -> "ModifyAction":
+        allowed = ACTION_MODIFIERS[self.action]
+        if self.modifier not in allowed:
+            owner = next((a for a, m in ACTION_MODIFIERS.items()
+                          if self.modifier in m), None)
+            raise ValueError(
+                f"modifier '{self.modifier}' does not belong to action "
+                f"'{self.action}'"
+                + (f" (it modifies '{owner}')" if owner else "")
+                + f"; '{self.action}' accepts: {', '.join(sorted(allowed))}"
+            )
+        if self.modifier in _AMOUNT_ACTION_MODIFIERS and self.amount <= 0:
+            raise ValueError(f"{self.modifier} needs a positive `amount`")
+        return self
+
+
 class Counters(EffectBase):
     kind: Literal["counters"] = "counters"
     power: StatValue
@@ -570,9 +690,14 @@ class Counters(EffectBase):
 #                   (an enemy's "Slash"/"Claw" is narratively an attack)
 #   spell_damage  — arcane harm: spells and triggered abilities
 #   all_damage    — everything
-# `attack` is the one non-damage parameter: an ACTION shield (Pacifism) that stops
-# the target from attacking at all.
-PreventParameter = Literal["combat_damage", "spell_damage", "all_damage", "attack"]
+# `attack` and `cast` are the non-damage parameters: ACTION shields that stop the
+# target from taking that action at all — Pacifism binds the sword arm, Silence
+# binds the tongue. Silence stops CARDS being cast (spells and channels); it never
+# touches the basic attack, a Skill/Ultimate (activated abilities, not spells), or
+# a carried consumable — drinking a potion is not speech, and leaving those open
+# means a silenced character still has a turn to play.
+PreventParameter = Literal["combat_damage", "spell_damage", "all_damage",
+                           "attack", "cast"]
 
 # The combat-damage sub-lane qualifier, shared by every verb that can name
 # `combat_damage` (prevent / protection / amplify). `all` is every physical blow;
@@ -587,7 +712,8 @@ class Prevent(EffectBase):
     `prevent combat_damage` makes attacks AND activated-ability damage against the
     target deal nothing, `prevent spell_damage` blanks spell/triggered damage,
     `prevent all_damage` blanks everything, while `prevent attack` stops the
-    target from attacking at all (Pacifism).
+    target from attacking at all (Pacifism) and `prevent cast` stops them casting
+    cards at all (Silence — see PreventParameter for exactly what it spares).
 
     `uses` disambiguates the two "protection" shapes the parameter can take:
       * `"all"` — nullify EVERY matching instance until the duration ends (Fog:
@@ -949,6 +1075,8 @@ LEAF_EFFECT_CLASSES = [
     Stun,
     Pump,
     Wound,
+    Sap,
+    ModifyAction,
     Counters,
     Prevent,
     Protection,
@@ -1373,6 +1501,15 @@ class Card(BaseModel):
                     raise ValueError(
                         f"{effect.kind} cannot target an enemy (enemies have no library)"
                     )
+            if effect.kind == "sap":
+                # Same shape as the card-zone verbs above: only a player character
+                # runs a mana engine, so sapping an enemy's capacity is a silent
+                # no-op. Caught at authoring rather than shipped as a dead card.
+                desc = self.resolved_target(effect)
+                if desc is not None and desc.side == Side.enemy:
+                    raise ValueError(
+                        "sap cannot target an enemy (enemies have no mana capacity)"
+                    )
             if effect.kind == "charge":
                 # Charge is the enemy windup verb (D8-2.4); the player analogue is
                 # the ultimate gauge. Rejected in a loadout like `draw` on an enemy.
@@ -1600,6 +1737,7 @@ AnimTrigger = Literal[
     "ultimate",  # the Ultimate resolves
     "hit",       # the character takes damage
     "death",     # the character is incapacitated
+    "victory",   # the encounter is won — every standing hero plays it at once
 ]
 
 

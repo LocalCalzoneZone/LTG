@@ -182,8 +182,11 @@ def test_prevent_editor_spec_is_a_dropdown():
     spec = effect_specs()["prevent"]
     param = next(p for p in spec["params"] if p["name"] == "parameter")
     assert param["control"] == "enum"
+    # Three damage lanes plus the two ACTION shields (Pacifism / Silence). The
+    # deckbuilder derives this dropdown from the schema Literal, so widening the
+    # vocabulary reaches the authoring UI with no frontend change.
     assert set(param["options"]) == {"combat_damage", "spell_damage",
-                                     "all_damage", "attack"}
+                                     "all_damage", "attack", "cast"}
 
 
 def test_all_damage_blanks_both_lanes():

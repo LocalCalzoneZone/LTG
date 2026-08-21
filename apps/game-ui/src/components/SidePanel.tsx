@@ -223,7 +223,12 @@ export function SidePanel() {
 // The veiled category → a small tag colour: hostile reads blood, magic reads
 // spell-blue, gathering reads brass (the fuse), the rest stay mist.
 function categoryTint(category: string): string {
-  if (category === "threat" || category === "party assault" || category === "row assault")
+  // Interference is hostile too — it reads blood like the rest; the "FOIL" stamp
+  // and its own telegraph line carry what KIND of trouble it is. (Aether is
+  // spoken for by support/summon below, so borrowing it would recreate exactly
+  // the confusion the category exists to remove.)
+  if (category === "threat" || category === "party assault"
+      || category === "row assault" || category === "interference")
     return "text-blood/90 border-blood/50";
   if (category === "spellcraft") return "text-spell border-spell/50";
   if (category === "gathering") return "text-brass border-brass/50";

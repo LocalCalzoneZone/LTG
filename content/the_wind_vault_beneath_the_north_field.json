@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Wind-Vault Beneath the North Field",
+  "flavor": "Go down the sappers' shaft under Millhaven's unploughed field and stop Mawgrim's diggers before they unpin what the Long Gale buried.",
+  "phases": [
+    {
+      "narration": "You leave Millhaven by the mill-road with Ammeline's chalk rubbing folded in your pack and Elder Thistlewaite's story still sitting cold in your stomach. Forty white sails turn on the towers behind you; ahead, the north field \u2014 the one strip no farmer has ever broken \u2014 lies open like a wound, heaped with chalk spoil and lit by lanterns hung on pikes. Orc voices carry on the sea wind, and under them the scrape of picks on stone that was never meant to be scraped.",
+      "encounter_id": "the_wind_vault_beneath_the_north_field__phase1"
+    },
+    {
+      "narration": "You go down the shaft on their own ladder, past cut roots and then past cut letters \u2014 bands of graven cliff-stone spiralling away below you, wet and grey under lantern-amber. Chalk dust hangs in the air like flour in a mill-loft, and the boom of Millhaven's bell arrives through the rock rather than the air. On the wide stair-landing an orc chanter has her hands flat on the inscription and is singing the dust up off the floor; a slab-shouldered overseer stands between her and you, and there is no time to be clever about it.",
+      "encounter_id": "the_wind_vault_beneath_the_north_field__phase2"
+    },
+    {
+      "narration": "The stair ends and the walls open into a round room, and every hand's-breadth of it is written on. At the far side stands a door that is not a door \u2014 a disc of graven cliff-stone pinned all round with iron bolts as thick as your wrist, and through the pin-holes comes a low steady moan of moving air, as if the whole bay were breathing in the rock. Grukka Cinder-Tongue turns from her wedges with the brass plate glowing in her mouth, and starts telling you exactly when you are allowed to move.",
+      "encounter_id": "the_wind_vault_beneath_the_north_field__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

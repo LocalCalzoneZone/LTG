@@ -3,9 +3,12 @@
 
 A **town** is a pre-generated stage: name, region flavour, a scene, and its
 locations — the four REQUIRED functions (inn / weaponsmith / artificer /
-apothecary), one location each, plus 1–3 flavour locations — every location
-with 1–2 resident NPCs carrying persona prose (no dialogue, no inventory: those
-are act materializations). A town is the starting point for many scenarios.
+apothecary), one location each, plus flavour locations — every location with
+resident NPCs carrying persona prose and a few scenario-agnostic TOPICS (the
+flavour things they will talk about in any campaign). Quests, dialogue trees and
+shop stock are act materializations, not town content. A town is the starting
+point for many scenarios; locations and NPCs can be added to one at any time in
+the town editor.
 
 A **scenario** (pre-generated) is a town reference + an arc (villain, stakes,
 three act outlines) + Act I fully materialized (town portion + adventure) so
@@ -34,12 +37,22 @@ SCENARIO_HIDDEN_FILE = content.LOADOUTS_DIR / "scenarios_hidden.json"
 
 # §D17-5.1: the four required functions (one location each) …
 REQUIRED_FUNCTIONS = ("inn", "weaponsmith", "artificer", "apothecary")
-# … plus 1–3 flavour locations that host questgivers and handoff NPCs.
+# … the three that keep a shop counter (one vendor NPC each — see below) …
+MERCHANT_FUNCTIONS = ("weaponsmith", "artificer", "apothecary")
+# … plus flavour locations that host questgivers and handoff NPCs.
 FLAVOR_FUNCTIONS = ("tavern", "shrine", "witch_hut", "guard_post", "market",
                     "docks", "library", "graveyard", "gate", "manor", "well",
                     "chapel", "stables", "warrens", "flavor")
 MIN_FLAVOR = 1
-MAX_FLAVOR = 3
+# Generation asks for 1–3; the editor may add more places and more residents to
+# a town afterwards, so the gate is generous.
+MAX_FLAVOR = 8
+MIN_NPCS = 1
+MAX_NPCS = 4
+MAX_TOPICS = 4
+# A quest with fewer than this many ways to take it is not a choice (§D17-5.4).
+MIN_QUEST_OPTIONS = 2
+MAX_QUEST_OPTIONS = 4
 ACT_COUNT = 3
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -77,14 +90,48 @@ def _write(d: Path, item_id: str, raw: Dict[str, Any]) -> None:
 # --------------------------------------------------------------------------- #
 # Towns
 # --------------------------------------------------------------------------- #
+def clean_topics(raw: Any, where: str) -> List[Dict[str, str]]:
+    """An NPC's flavour exchanges: ``[{"ask": <what the party says>, "reply":
+    <the NPC's answer>}]``. Every NPC carries at least one so that talking to
+    ANYONE is a conversation with something in it, not a single greeting
+    (§D17-5.4). Town topics are scenario-agnostic; an act adds its own."""
+    if not raw:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"{where}: topics must be a list")
+    out: List[Dict[str, str]] = []
+    for t in raw[:MAX_TOPICS]:
+        if isinstance(t, str):
+            ask, reply = "", t.strip()
+        elif isinstance(t, dict):
+            ask = str(t.get("ask") or t.get("prompt") or t.get("label") or "").strip()
+            reply = str(t.get("reply") or t.get("line") or t.get("text") or "").strip()
+        else:
+            raise ValueError(f"{where}: a topic must be an object with ask and reply")
+        if not reply:
+            raise ValueError(f"{where}: a topic needs the NPC's reply")
+        out.append({"ask": ask or "Tell us something of this place.", "reply": reply})
+    return out
+
+
 def validate_town(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """§D17-5.1 town validation: the four functions present (one each), 1–3
-    flavour locations, every location has an INTERIOR scene (what a character
+    """§D17-5.1 town validation: the four functions present (one each), at least
+    one flavour location, every location has an INTERIOR scene (what a character
     standing inside sees — the location backdrop) and an EXTERIOR scene (its
-    frontage — the town-map card), 1–2 NPCs, every NPC a portrait_desc and
+    frontage — the town-map card), 1–%d NPCs, every NPC a portrait_desc and
     persona. Returns the cleaned town (ids slugged, unknown keys dropped).
+
+    Two things the cleaner settles rather than rejects:
+
+    - **the counter**: a shop location may house several people, but exactly ONE
+      of them sells (`vendor: true`); the rest are there to be talked to. The
+      first NPC marked `vendor` wins, else the first resident.
+    - **topics**: each NPC's scenario-agnostic flavour exchanges
+      (`[{"ask", "reply"}]`) — what they will talk about in any campaign. An act
+      adds its own on top; the runtime builds a conversation out of both.
+
     Legacy towns with a single `scene`/`art_url` load them as the interior.
-    Raises ValueError with a human message."""
+    Raises ValueError with a human message.""" % MAX_NPCS
     if not isinstance(raw, dict):
         raise ValueError("town must be an object")
     name = str(raw.get("name") or "").strip()
@@ -127,8 +174,8 @@ def validate_town(raw: Dict[str, Any]) -> Dict[str, Any]:
         interior_art = str(loc.get("interior_art_url") or loc.get("art_url") or "")
         exterior_art = str(loc.get("exterior_art_url") or "")
         npcs_raw = loc.get("npcs")
-        if not isinstance(npcs_raw, list) or not (1 <= len(npcs_raw) <= 2):
-            raise ValueError(f"location '{lname}' needs 1–2 resident NPCs")
+        if not isinstance(npcs_raw, list) or not (MIN_NPCS <= len(npcs_raw) <= MAX_NPCS):
+            raise ValueError(f"location '{lname}' needs {MIN_NPCS}–{MAX_NPCS} resident NPCs")
         npcs: List[Dict[str, Any]] = []
         for j, npc in enumerate(npcs_raw, start=1):
             if not isinstance(npc, dict):
@@ -150,7 +197,18 @@ def validate_town(raw: Dict[str, Any]) -> Dict[str, Any]:
                 "persona": str(npc.get("persona") or "").strip(),
                 "portrait_desc": str(npc.get("portrait_desc") or "").strip(),
                 "art_url": str(npc.get("art_url") or ""),
+                "topics": clean_topics(npc.get("topics"), f"NPC '{nname}'"),
+                "vendor": bool(npc.get("vendor")),
             })
+        # One counter per shop: the marked vendor, else the first resident. Any
+        # other merchant-location NPC is there for the conversation.
+        if fn in MERCHANT_FUNCTIONS:
+            seller = next((n for n in npcs if n["vendor"]), npcs[0])
+            for n in npcs:
+                n["vendor"] = n is seller
+        else:
+            for n in npcs:
+                n["vendor"] = False
         locations.append({
             "id": lid, "name": lname, "function": fn,
             "description": str(loc.get("description") or "").strip(),
@@ -185,6 +243,8 @@ def _town_meta(tid: str, raw: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": tid,
         "name": raw.get("name", tid),
+        "topics_missing": sum(1 for l in locs for n in (l.get("npcs") or [])
+                              if not (n.get("topics") or [])),
         "region_flavor": raw.get("region_flavor", ""),
         "art_url": raw.get("art_url", ""),
         "location_count": len(locs),
@@ -247,6 +307,15 @@ def find_npc(town: Dict[str, Any], npc_id: str) -> "Optional[tuple[Dict[str, Any
             if npc.get("id") == npc_id:
                 return loc, npc
     return None
+
+
+def vendor_of(location: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The one NPC who keeps the counter at a shop location, or None. Other
+    residents of a shop are there for the conversation only (§D17-5.1)."""
+    if (location or {}).get("function") not in MERCHANT_FUNCTIONS:
+        return None
+    npcs = location.get("npcs") or []
+    return next((n for n in npcs if n.get("vendor")), npcs[0] if npcs else None)
 
 
 def location_of_function(town: Dict[str, Any], fn: str) -> Optional[Dict[str, Any]]:
@@ -368,7 +437,11 @@ def save_scenario(raw: Dict[str, Any], scenario_id: Optional[str] = None) -> Dic
         "town_id": town_id,
         "town_name": town["name"],
         "arc": arc,
+        # `quest_id`: WHICH of Act I's quest options the pre-written adventure
+        # was written for. Take any other option and the run generates its own
+        # (§D17-6.3) — the ride out follows the choice, not the other way round.
         "act1": {"adventure_id": str(act1["adventure_id"]),
+                 "quest_id": str(act1.get("quest_id") or ""),
                  "materialization": copy.deepcopy(act1.get("materialization") or {})},
         "difficulty": str(raw.get("difficulty") or ""),
     }
@@ -394,23 +467,137 @@ def delete_scenario(scenario_id: str) -> None:
 # --------------------------------------------------------------------------- #
 # Act materialization — the act's generated town portion (§D17-6.2)
 # --------------------------------------------------------------------------- #
+def _resolve_npc(town: Dict[str, Any], key: str
+                 ) -> "Optional[tuple[Dict[str, Any], Dict[str, Any]]]":
+    """An NPC by id, tolerating the writer naming them by display name."""
+    found = find_npc(town, str(key))
+    if found is not None:
+        return found
+    for loc in town.get("locations") or []:
+        for npc in loc.get("npcs") or []:
+            if npc.get("name", "").lower() == str(key).lower():
+                return loc, npc
+    return None
+
+
+def _clean_quests(raw: Dict[str, Any]) -> List[Dict[str, str]]:
+    """The act's quest OPTIONS (§D17-5.4): what the party may agree to this act.
+    At least two — different problems to solve, different branches of the same
+    trouble, or different ways to go at it — because the combat half of the act
+    is not written until one is accepted, so the choice is free agency. A legacy
+    single ``quest`` object is read as one option."""
+    quests_raw = raw.get("quests")
+    if not quests_raw and isinstance(raw.get("quest"), dict):
+        quests_raw = [raw["quest"]]
+    if not isinstance(quests_raw, list) or not quests_raw:
+        raise ValueError("the act needs a quests list")
+    if len(quests_raw) < MIN_QUEST_OPTIONS:
+        raise ValueError(
+            f"the act offers {len(quests_raw)} quest — the party must have at least "
+            f"{MIN_QUEST_OPTIONS} to choose between (different troubles to answer, "
+            "different branches of the same trouble, or different ways to go at it)")
+    if len(quests_raw) > MAX_QUEST_OPTIONS:
+        raise ValueError(f"the act offers more than {MAX_QUEST_OPTIONS} quests — trim it")
+    quests: List[Dict[str, str]] = []
+    seen: set = set()
+    for i, q in enumerate(quests_raw, start=1):
+        if not isinstance(q, dict):
+            raise ValueError(f"quest {i} must be an object")
+        title = str(q.get("title") or "").strip()
+        text = str(q.get("text") or "").strip()
+        if not title or not text:
+            raise ValueError(f"quest {i} needs a title and text")
+        qid = _slug(str(q.get("id") or title)) or f"quest_{i}"
+        if qid in seen:
+            qid = f"{qid}_{i}"
+        seen.add(qid)
+        quests.append({"id": qid, "title": title, "text": text,
+                       # Optional: how THIS choice changes the ride out (the
+                       # shore approach, the other mine, the rescue instead of
+                       # the reprisal). Overrides the outline's theme.
+                       "adventure_theme": str(q.get("adventure_theme") or "").strip()})
+    return quests
+
+
+def _bind_quest_hooks(dialogues: Dict[str, Dict[str, Any]],
+                      quests: List[Dict[str, str]]) -> None:
+    """Resolve every ``grant_quest`` / ``defer_quest`` hook onto a real quest id
+    (bare hooks bind to the only option; a title is tolerated for an id), and
+    hold the two rules the town phase rests on:
+
+    - every quest option has at least one ACCEPT choice somewhere in the act —
+      one NPC may hold them all, or they may be spread across the town;
+    - every node that offers an accept also offers a DEFER ("let us get back to
+      you"), so the party is never cornered into agreeing to talk their way out.
+    """
+    by_id = {q["id"]: q for q in quests}
+    by_title = {q["title"].lower(): q for q in quests}
+    accepted: set = set()
+    for npc_id, tree in dialogues.items():
+        for nid, node in tree["nodes"].items():
+            offers = False
+            defers = False
+            for ch in node["choices"]:
+                kinds = {h["kind"] for h in ch["effects"]}
+                for h in ch["effects"]:
+                    if h["kind"] not in ("grant_quest", "defer_quest"):
+                        continue
+                    key = str(h.get("quest") or "")
+                    q = by_id.get(_slug(key)) or by_title.get(key.lower())
+                    if q is None:
+                        if key:
+                            raise ValueError(
+                                f"{npc_id}: node '{nid}' choice '{ch['label']}' points at "
+                                f"quest '{key}', which is not one of this act's quests "
+                                f"({', '.join(sorted(by_id))})")
+                        if len(quests) > 1 and h["kind"] == "grant_quest":
+                            raise ValueError(
+                                f"{npc_id}: node '{nid}' choice '{ch['label']}' accepts a quest "
+                                "without saying which — put the option's id in the hook: "
+                                '{"kind": "grant_quest", "quest": "<id>"}')
+                        q = quests[0]
+                        # A bare defer is just "not yet" — it names no option.
+                        if h["kind"] == "defer_quest":
+                            defers = True
+                            continue
+                    h["quest"] = q["id"]
+                    if h["kind"] == "grant_quest":
+                        if "unlock_adventure" not in kinds:
+                            raise ValueError(
+                                f"{npc_id}: node '{nid}' choice '{ch['label']}' grants a quest "
+                                "without unlock_adventure — an acceptance carries both hooks")
+                        offers = True
+                        accepted.add(q["id"])
+                    else:
+                        defers = True
+            if offers and not defers:
+                raise ValueError(
+                    f"{npc_id}: node '{nid}' offers the quest with no way to put the answer "
+                    'off — add a choice with effects [{"kind": "defer_quest"}] '
+                    '("Let us get back to you — we have business to see to first.")')
+    missing = [q["title"] for q in quests if q["id"] not in accepted]
+    if missing:
+        raise ValueError("no one in town offers " + ", ".join(f'"{t}"' for t in missing)
+                         + " — every quest option needs an accept choice carrying "
+                           'grant_quest (with its id) and unlock_adventure')
+
+
 def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
                              act_outline: Dict[str, Any]) -> Dict[str, Any]:
-    """``{quest: {title, text}, arrival: str, dialogues: {npc_id: tree},
-    flavor: {npc_id: line}, stock?: {location_id: [...]}}``. The questgiver's
-    tree must exist and carry the Quest Accept choice (a `grant_quest` +
-    `unlock_adventure` pair) — with a `defeated_once`-gated branch written up
-    front so a Normal-mode return re-offers the quest."""
+    """``{quests: [{id, title, text, adventure_theme?}, …], arrival: str,
+    dialogues: {npc_id: tree}, flavor: {npc_id: line}, topics: {npc_id:
+    [{ask, reply}]}, reask: {npc_id: line}, stock?: {location_id: [...]}}``.
+
+    The gates: at least two quest OPTIONS, each with an accept choice (a
+    ``grant_quest`` + ``unlock_adventure`` pair) somewhere in the act's trees; a
+    ``defer_quest`` out beside every offer; the outline's questgiver has a tree
+    with a ``defeated_once``-gated branch written up front so a Normal-mode
+    return re-offers the quest; and every NPC of the town has SOMETHING to say —
+    a tree, a topic (theirs or the act's), or at least a greeting line."""
     from .dialogue import validate_dialogue  # local: dialogue imports nothing here
     if not isinstance(raw, dict):
         raise ValueError("materialization must be an object")
-    quest = raw.get("quest") or {}
-    if not isinstance(quest, dict):
-        raise ValueError("quest must be an object")
-    qtitle = str(quest.get("title") or "").strip()
-    qtext = str(quest.get("text") or "").strip()
-    if not qtitle or not qtext:
-        raise ValueError("quest needs a title and text")
+    quests = _clean_quests(raw)
     arrival = str(raw.get("arrival") or "").strip()
     if not arrival:
         raise ValueError("materialization needs the arrival paragraph")
@@ -419,14 +606,7 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
         raise ValueError("dialogues must be a map of npc id → tree")
     dialogues: Dict[str, Dict[str, Any]] = {}
     for npc_id, tree in dialogues_raw.items():
-        npc_id = str(npc_id)
-        found = find_npc(town, npc_id)
-        if found is None:
-            # tolerate display names
-            for loc in town.get("locations") or []:
-                for npc in loc.get("npcs") or []:
-                    if npc.get("name", "").lower() == npc_id.lower():
-                        found = (loc, npc)
+        found = _resolve_npc(town, str(npc_id))
         if found is None:
             raise ValueError(f"dialogue for unknown NPC '{npc_id}'")
         try:
@@ -436,31 +616,42 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
     qnpc = act_outline.get("questgiver_npc")
     if qnpc not in dialogues:
         raise ValueError(f"the questgiver ({qnpc}) has no dialogue tree")
-    accept = False
-    for node in dialogues[qnpc]["nodes"].values():
-        for ch in node["choices"]:
-            kinds = {h["kind"] for h in ch["effects"]}
-            if "grant_quest" in kinds and "unlock_adventure" in kinds:
-                accept = True
-    if not accept:
-        raise ValueError("the questgiver's tree needs a Quest Accept choice carrying "
-                         "both grant_quest and unlock_adventure hooks")
-    flavor_raw = raw.get("flavor") or {}
+    _bind_quest_hooks(dialogues, quests)
     flavor: Dict[str, str] = {}
-    if isinstance(flavor_raw, dict):
-        for npc_id, line in flavor_raw.items():
-            found = find_npc(town, str(npc_id))
-            if found is None:
-                for loc in town.get("locations") or []:
-                    for npc in loc.get("npcs") or []:
-                        if npc.get("name", "").lower() == str(npc_id).lower():
-                            found = (loc, npc)
-            if found and str(line or "").strip():
-                flavor[found[1]["id"]] = str(line).strip()
+    for npc_id, line in (raw.get("flavor") or {}).items():
+        found = _resolve_npc(town, str(npc_id))
+        if found and str(line or "").strip():
+            flavor[found[1]["id"]] = str(line).strip()
+    topics: Dict[str, List[Dict[str, str]]] = {}
+    for npc_id, rows in (raw.get("topics") or {}).items():
+        found = _resolve_npc(town, str(npc_id))
+        if found is None:
+            continue
+        cleaned = clean_topics(rows, f"act topics for {found[1]['name']}")
+        if cleaned:
+            topics[found[1]["id"]] = cleaned
+    reask: Dict[str, str] = {}
+    for npc_id, line in (raw.get("reask") or {}).items():
+        found = _resolve_npc(town, str(npc_id))
+        if found and str(line or "").strip():
+            reask[found[1]["id"]] = str(line).strip()
+    # Nobody in town is a closed door: every resident answers with a tree, a
+    # topic of their own, the act's topics, or at least a greeting line.
+    silent = [npc["name"] for loc in town.get("locations") or [] for npc in loc.get("npcs") or []
+              if npc["id"] not in dialogues and npc["id"] not in topics
+              and npc["id"] not in flavor and not (npc.get("topics") or [])]
+    if silent:
+        raise ValueError("these townsfolk have nothing to say this act: "
+                         + ", ".join(silent)
+                         + " — give each one a line in \"flavor\" or an exchange in \"topics\"")
     return {
-        "quest": {"title": qtitle, "text": qtext},
+        "quests": quests,
+        # Legacy readers (and the journal before a choice is made) see the first.
+        "quest": {"title": quests[0]["title"], "text": quests[0]["text"]},
         "arrival": arrival,
         "dialogues": dialogues,
         "flavor": flavor,
+        "topics": topics,
+        "reask": reask,
         "stock": copy.deepcopy(raw.get("stock") or {}),
     }

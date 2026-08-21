@@ -8,7 +8,7 @@
   "points_price": 15,
   "flavor": "Never quite empty.",
   "art_desc": "A dented tin flask on a cord, a stamped pilgrim's shell on its face.",
-  "art_url": "/art/items/pilgrims_flask/item-07326a7a.png",
+  "art_url": "/art/items/pilgrims_flask/item-5366362e.png",
   "statics": [
     {
       "kind": "ability",
@@ -17,6 +17,7 @@
         "id": "pilgrims_sip",
         "name": "Pilgrim's Sip",
         "source_name": "Pilgrim's Sip",
+        "ignore_source": false,
         "rarity": "common",
         "level": 1,
         "type": "Ability",

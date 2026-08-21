@@ -19,7 +19,7 @@ Card.animation: anim_id | null                    # per-card pick (deck, Skill, 
 StanceReplacement.animation: anim_id | null       # per-slot pick for any replaced ability (attack/defend/mitigate/move)
 ```
 
-- `trigger` ∈ `attack | cast | channel | defend | mitigate | skill | ultimate | hit | death` — the action type the clip plays for **by default**.
+- `trigger` ∈ `attack | cast | channel | defend | mitigate | skill | ultimate | hit | death | victory` — the action type the clip plays for **by default**.
 - `alternate = true` removes the clip from the defaults; it is offered as an explicit pick on cards and stance-replaced abilities (e.g. Lasarre's *Crystal darts* stance attack vs her default *crystal blade slash*).
 - `speed` is the video playback rate, default 1.0 — clips are delivered at their final length and played as authored (retime before upload if needed). Animated images (WebP/GIF) cannot be retimed by browsers, so for those `duration_s` says how long the panel shows the clip before swapping back. WebM/VP9 is the recommended format.
 - `file` is a URL path (`/anim/<char_slug>/<file>`). Clips are **never inlined** into the loadout JSON (the JSON rides every game snapshot); the bytes live at `apps/deckbuilder/loadouts/anim/<char_slug>/` (gitignored, beside the loadout), with `content/anim/` as a tracked fallback for clips shipped with the repo.
@@ -29,18 +29,18 @@ StanceReplacement.animation: anim_id | null       # per-slot pick for any replac
 For a resolving action by a party character:
 
 1. An explicit pick — the card's `animation`, or for any stance-replaced ability the replacement's `animation` — wins if it names an existing clip (alternates included).
-2. Otherwise the first **non-alternate** clip whose `trigger` matches: `attack` (basic attack *and* a stance-replaced attack with no pick), `cast` (non-channeled card), `channel` (channeled card), `skill`, `ultimate`, `defend` / `mitigate` (the free actions *and* their stance replacements), `hit` (the character takes damage), `death` (incapacitated). A replaced **Move** has no default trigger — it plays only an explicit pick.
+2. Otherwise the first **non-alternate** clip whose `trigger` matches: `attack` (basic attack *and* a stance-replaced attack with no pick), `cast` (non-channeled card), `channel` (channeled card), `skill`, `ultimate`, `defend` / `mitigate` (the free actions *and* their stance replacements), `hit` (the character takes damage), `death` (incapacitated), `victory` (the encounter is won). A replaced **Move** has no default trigger — it plays only an explicit pick.
 3. A Skill with no clip falls back to `channel`/`cast` by its timing; an Ultimate falls back to `cast`.
 4. Nothing matches → the panel stays static.
 
 ## A-4. When it plays (engine → client)
 
-The engine's `resolve` log entry now carries `kind`, `side`, `card`, `heroic` (`skill`/`ultimate`), `stance_slot` and `channeled` — presentation tags read off the resolving `StackItem` (two new tag fields, `heroic` and `stance_slot`, no rules read them). The client's FX layer (`fxFromLog`) maps `resolve` (party side), `defend`, `mitigate`, `damage` (target = hero) and `incapacitated` onto a `panel` effect carrying the chosen clip id, scheduled on the existing choreography beats. **The clip leads:** when a batch opens with a hero's clip, the presentation queue **pre-rolls** — the clip plays over the *previous* board state and the new snapshot (HP, deaths, the lunge, hit flash and damage numbers) is held until the clip's `impact_s` (default 1.5 s — *when the blow lands in the clip*), so the world changes WITH the blow rather than before it. A later resolution in the same batch shifts by the same lead. Hit and death clips land on the impact beat of the enemy's action.
+The engine's `resolve` log entry now carries `kind`, `side`, `card`, `heroic` (`skill`/`ultimate`), `stance_slot` and `channeled` — presentation tags read off the resolving `StackItem` (two new tag fields, `heroic` and `stance_slot`, no rules read them). The client's FX layer (`fxFromLog`) maps `resolve` (party side), `defend`, `mitigate`, `damage` (target = hero) and `incapacitated` onto a `panel` effect carrying the chosen clip id, scheduled on the existing choreography beats. **The clip leads:** when a batch opens with a hero's clip, the presentation queue **pre-rolls** — the clip plays over the *previous* board state and the new snapshot (HP, deaths, the lunge, hit flash and damage numbers) is held until the clip's `impact_s` (default 1.5 s — *when the blow lands in the clip*), so the world changes WITH the blow rather than before it. A later resolution in the same batch shifts by the same lead. Hit and death clips land on the impact beat of the enemy's action. The `win` entry opens its own scene after the killing blow's: every hero who is still standing fires their `victory` clip on that one beat, so the panels celebrate **together**, under the screen's victory treatment and ahead of the end-of-fight splash (which holds 1.6 s and covers only the action bar, leaving the panels in view). The fallen are skipped — a downed panel holds its death frame instead of cheering.
 
 ## A-5. Playback rules (client)
 
 - Every video clip stays mounted (hidden, preloaded) so playback starts on the beat, not after a fetch; only the active one is visible, laid over the portrait with the same cover/top fit.
-- **Collisions on one panel:** death > ultimate > everything else > hit. A newcomer of equal or higher priority replaces the current clip; a lower one is skipped (a flinch never interrupts a cast). Death is terminal and holds its final frame until the hero is revived.
+- **Collisions on one panel:** death / victory > ultimate > everything else > hit. A newcomer of equal or higher priority replaces the current clip; a lower one is skipped (a flinch never interrupts a cast). Death is terminal and holds its final frame until the hero is revived.
 - A watchdog clears a clip whose `ended` never fires (a browser suspends muted video in hidden tabs), so a panel can never stick.
 - Enemies have no loadouts and therefore no panel animations (creature art is unchanged).
 

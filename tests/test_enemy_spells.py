@@ -107,7 +107,11 @@ def test_reaction_lands_as_triggered_and_spell_counter_ignores_it():
     # …the hit resolved, and the on_hit Retaliate now sits on the stack.
     row = next(r for r in _stack_list(st) if "Retaliate" in r["label"])
     assert row["kind"] == "triggered"
-    assert row["mode"] == "ability"                # UI vocabulary: it's an ability
+    # UI vocabulary: it is an ability, never a spell. This Retaliate DEALS DAMAGE,
+    # so it is a Combat Ability (§M-A.7) and the tag says so — the taxonomy under
+    # it is unchanged, which is what keeps the spell counter out below.
+    assert row["mode"] == "combat ability"
     casts = [a for a in legal_actions(st) if a.kind == "cast" and a.card_id == "negate"]
     assert casts == []                             # a spell counter can't touch it
     assert action_mode("triggered", "melee") == "ability"
+    assert action_mode("triggered", "melee", True) == "combat ability"

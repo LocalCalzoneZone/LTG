@@ -25,6 +25,9 @@ export interface CardView {
   level: number;
   type: string;
   text: string;
+  // Card art, when the card has any (today: a consumable inherits its item's
+  // art — §D17-4.4). "" / absent leaves the sigil placeholder.
+  image?: string;
 }
 
 export interface ManaColor {
@@ -82,7 +85,7 @@ export interface EvergreenBlock {
 // deckbuilder; the engine reads none of it.
 export type AnimTrigger =
   | "attack" | "cast" | "channel" | "defend" | "mitigate"
-  | "skill" | "ultimate" | "hit" | "death";
+  | "skill" | "ultimate" | "hit" | "death" | "victory";
 
 export interface PanelAnimation {
   id: string;
@@ -161,6 +164,9 @@ export interface CharacterView {
 export type IntentCategory =
   | "threat"
   | "spellcraft"
+  // Lockdown: stun/taunt/silence/hamstring/sap/discard — it takes away what you
+  // can DO rather than your HP, so it never wears the "assault" wording.
+  | "interference"
   | "row assault"
   | "party assault"
   | "gathering"
@@ -287,11 +293,16 @@ export interface StackRow {
   label: string;
   kind: string;
   // Engine vocabulary (serialize.py action_mode): "melee attack" | "ranged attack"
-  // | "spell" | "ability" — the damage lane, so what answers it is unambiguous.
+  // | "spell" | "ability" | "combat ability" — the damage lane, so what answers it
+  // is unambiguous.
   mode: string | null;
   source_id: string;
   source_name: string | null;
   source_side: string;
+  // §M-A.7: an ability-class action that DEALS DAMAGE. It sits in the combat
+  // lane (combat-damage shields cover it, on-attack effects see it), and a
+  // single-target one can be answered by Mitigate.
+  combat_ability?: boolean;
   target_id: string | null;
   target_name: string | null;
   reserved_pips: string;
@@ -610,6 +621,7 @@ export interface TownOption {
   location_count: number;
   npc_count: number;
   art_missing: number;
+  topics_missing: number;   // residents with no standing flavour topics yet
 }
 export interface SetupOptions {
   characters: CharacterOption[];
@@ -667,8 +679,6 @@ export interface TownLocationView {
   art_url: string;          // the EXTERIOR (map card)
   interior_art_url: string; // the backdrop once inside
   scene: string;
-  questgiver: boolean;
-  has_dialogue: boolean;
   npc_count: number;
 }
 export interface TownNpcView {
@@ -677,15 +687,14 @@ export interface TownNpcView {
   role: string;
   persona: string;
   art_url: string;
-  has_dialogue: boolean;
-  questgiver: boolean;
-  merchant: boolean;
+  merchant: boolean;   // the one NPC who keeps this shop's counter
   flavor: string;
 }
 export interface ConversationView {
   npc_id: string;
   node_id: string | null;
-  speaker: "npc" | "party" | null;
+  // "narration" is an unvoiced beat — stage direction / what the party notices.
+  speaker: "npc" | "party" | "narration" | null;
   text: string;
   attributed: string | null;
   choices: { index: number; label: string; party_wide: boolean; ends: boolean }[];
@@ -842,12 +851,17 @@ export interface TownDetail {
                exterior_scene: string; exterior_art_url: string;
                interior_scene: string; interior_art_url: string;
                scene?: string; art_url?: string; // legacy aliases of the interior
-               npcs: { id: string; name: string; role: string; persona: string; portrait_desc: string; art_url: string }[] }[];
+               npcs: { id: string; name: string; role: string; persona: string; portrait_desc: string;
+                       art_url: string; vendor?: boolean;
+                       topics?: { ask: string; reply: string }[] }[] }[];
 }
 export interface ScenarioDetail {
   id: string; title: string; town_id: string; town_name: string; difficulty: string;
   arc: { title: string; villain: string; stakes: string;
          acts: { title: string; hook: string; questgiver_location: string; questgiver_npc: string;
                  handoff: string | null; adventure_theme: string; tone_notes: string }[] };
-  act1: { adventure_id: string; materialization: { quest: { title: string; text: string }; arrival: string } };
+  act1: { adventure_id: string;
+          materialization: { quest?: { title: string; text: string };
+                             quests?: { id: string; title: string; text: string }[];
+                             arrival: string } };
 }

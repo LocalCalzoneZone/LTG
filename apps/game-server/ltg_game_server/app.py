@@ -169,7 +169,10 @@ async def _create_scenario_game(body: CreateGameBody) -> Dict[str, Any]:
     if materialization is None:
         _scenario_async(session, "materialize")
     elif pregen_adventure:
-        jobs.RUNNER.prepare_pregenerated(session, pregen_adventure)
+        session.pregenerated_act1 = {
+            "adventure_id": pregen_adventure,
+            "quest_id": (sdef.get("act1") or {}).get("quest_id", ""),
+        }
     return {"session_id": session.id, "run_id": meta["run_id"]}
 
 
@@ -193,9 +196,18 @@ def _scenario_async(session, kind: str) -> None:
             loop.create_task(_new_arc_task(session))
     elif kind == "adventure_job":
         sc = session.scenario
-        if sc is not None and sc.adventure_detail is not None \
-                and sc.adventure_job.get("state") == "ready":
-            return  # a pre-generated Act I (or a reload): already ready
+        if sc is None:
+            return
+        pre = session.pregenerated_act1
+        if pre is not None:
+            session.pregenerated_act1 = None
+            # The pre-written Act I only fits the option it was written for; any
+            # other answer takes the ordinary road and generates its own.
+            if not pre.get("quest_id") or pre["quest_id"] == sc.quest.get("id"):
+                jobs.RUNNER.prepare_pregenerated(session, pre["adventure_id"])
+                return
+        if sc.adventure_detail is not None and sc.adventure_job.get("state") == "ready":
+            return  # a reload: already ready
         jobs.RUNNER.start(session, _broadcast, _refresh_sessions_art)
     elif kind == "confirm_timer" and loop is not None:
         loop.create_task(_confirm_timer(session))
@@ -635,6 +647,17 @@ def delete_town(town_id: str) -> Dict[str, Any]:
 async def generate_town(body: GenerateTownBody) -> Dict[str, Any]:
     try:
         meta = await asyncio.to_thread(llm.generate_town, body.note)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+    return {"town": meta}
+
+
+@app.post("/api/towns/{town_id}/topics")
+async def generate_town_topics(town_id: str) -> Dict[str, Any]:
+    """Write the standing flavour topics of every resident who has none — the
+    scenario-agnostic exchanges that make each townsperson worth talking to."""
+    try:
+        meta = await asyncio.to_thread(llm.generate_town_topics, town_id)
     except ValueError as exc:
         raise HTTPException(502, str(exc))
     return {"town": meta}

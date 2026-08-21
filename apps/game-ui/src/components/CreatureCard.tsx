@@ -20,6 +20,7 @@ const NAME_LONG = "text-[clamp(8px,1.15vh,11px)]";
 const INTENT_CODE: Record<IntentCategory, string> = {
   threat: "ATK",
   spellcraft: "SPL",
+  interference: "FOIL",
   "row assault": "ROW",
   "party assault": "AOE",
   gathering: "GTH",
@@ -32,6 +33,7 @@ const INTENT_CODE: Record<IntentCategory, string> = {
 const HOSTILE_INTENT = new Set<IntentCategory>([
   "threat",
   "spellcraft",
+  "interference",
   "row assault",
   "party assault",
 ]);

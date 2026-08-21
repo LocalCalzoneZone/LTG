@@ -64,6 +64,7 @@ const ANIM_TRIGGERS = [
   ["attack", "Attack"], ["cast", "Cast (spell)"], ["channel", "Channel (channeled spell)"],
   ["defend", "Defend"], ["mitigate", "Mitigate"], ["skill", "Skill"],
   ["ultimate", "Ultimate"], ["hit", "Hit (takes damage)"], ["death", "Death"],
+  ["victory", "Victory (party wins the fight)"],
 ];
 const ANIM_TRIGGER_LABEL = Object.fromEntries(ANIM_TRIGGERS);
 const animList = () => (state.character.animations ||= []);

@@ -469,6 +469,8 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             attack_mode=attack_mode,
             components=components,
             is_boss=bool(e.get("is_boss", False)),
+            # A boss that acts twice a round from the opening bell (difficulty).
+            double_intent=bool(e.get("double_intent", False)),
             # The `rises` trait (§D9-1.5): the corpse stirs and the enemy revives
             # after this many Upkeeps (T-56: 2), once per encounter.
             rises=(int(e["rises"]) if e.get("rises") else None),

@@ -162,9 +162,21 @@ def _boss(hp=20, level=6, **extra):
     return e
 
 
-def test_boss_shrugs_destroy_above_25_percent():
+def test_boss_above_25_percent_is_not_a_legal_removal_target():
+    # A removal a boss shrugs off is not OFFERED at it: the option would only
+    # ever fizzle, and it used to linger while the boss healed back out of range.
     st = _state([_char("p", hand=[dict(_DOOM)])], [_boss(hp=20)])
+    assert not [a for a in legal_actions(st)
+                if a.kind == "cast" and a.card_id == "doom"]
+
+
+def test_boss_that_heals_out_of_the_window_shrugs_the_removal_on_the_stack():
+    # Aimed while the window was open, resolved after a heal closed it: the
+    # resolution-time guard still stands (the card fizzles, boss untouched).
+    st = _state([_char("p", hand=[dict(_DOOM)])], [_boss(hp=20)],
+                tweak=lambda s: setattr(s.enemies[0], "hp", 5))   # 25% of 20
     st = _act(st, kind="cast", card_id="doom", target_id="boss")
+    st.enemy("boss").hp = 20                                     # healed back out
     st = _pass_all(st)
     boss = st.enemy("boss")
     assert boss.alive and boss.hp == 20
@@ -180,13 +192,45 @@ def test_boss_destroyed_inside_execute_window():
     assert boss is None or not boss.alive
 
 
-def test_boss_shrugs_bounce_above_25_percent():
+def test_boss_above_25_percent_is_not_a_legal_bounce_target():
     st = _state([_char("p", hand=[dict(_UNDERTOW)])], [_boss(hp=20)])
-    st = _act(st, kind="cast", card_id="undertow", target_id="boss")
-    st = _pass_all(st)
-    boss = st.enemy("boss")
-    assert boss.alive and not boss.in_hand
-    assert any(ev.type == "boss_immune" for ev in st.log)
+    assert not [a for a in legal_actions(st)
+                if a.kind == "cast" and a.card_id == "undertow"]
+    # …and inside the window it is offered again.
+    st.enemy("boss").hp = 5
+    assert [a for a in legal_actions(st)
+            if a.kind == "cast" and a.card_id == "undertow" and a.target_id == "boss"]
+
+
+# --------------------------------------------------------------------------- #
+# Boss: two intents a round by difficulty (§D9-4's fury machinery, un-gated)
+# --------------------------------------------------------------------------- #
+def _first_intents(st):
+    """Run to the first player decision and read the boss's declared intents."""
+    boss = settle(st).enemy("boss")
+    return boss.intent, boss.intent2
+
+
+def test_double_intent_boss_declares_two_intents_before_enrage():
+    st = _state([_char("p")], [_boss(hp=40, double_intent=True)])
+    first, second = _first_intents(st)
+    assert first is not None and second is not None
+    assert not settle(st).enemy("boss").enraged   # not fury — the difficulty dial
+
+
+def test_plain_boss_still_declares_one_intent():
+    st = _state([_char("p")], [_boss(hp=40)])
+    first, second = _first_intents(st)
+    assert first is not None and second is None
+
+
+def test_apply_boss_difficulty_marks_bosses_by_difficulty():
+    from ltg_game_server.content import apply_boss_difficulty
+    for difficulty, expect in [("easy", False), ("standard", True), ("hard", True)]:
+        scen = {"enemies": [_boss(hp=40), _enemy("mook")]}
+        apply_boss_difficulty(scen, difficulty)
+        assert scen["enemies"][0].get("double_intent", False) is expect
+        assert "double_intent" not in scen["enemies"][1]   # minions are untouched
 
 
 # --------------------------------------------------------------------------- #

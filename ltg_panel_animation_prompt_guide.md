@@ -130,6 +130,7 @@ forward from it.
 | `ultimate` | The **Ultimate** per `ultimate.flavor_text` at the scale `translated_text` implies. This is the one clip allowed to leave the panel framing for most of its length (camera tilts/whips to sell scale) and only return in the last second. | `ultimate.flavor_text`, `ultimate.translated_text` | 3.0–4.0 |
 | `hit` | **Takes damage**: a rush of force slams in from frame right, they are knocked/staggered (not thrown), magic gutters, camera jolts; they catch themselves and recover. | portrait, colours | n/a (write 0) |
 | `death` | **Incapacitated**: their magic dies, they stagger and sink (to a knee, slumped) as light drains, ending on a still dark final image with a cold rim light. I2V only — no last-frame keyframe. "No fade to black." | portrait, colours | n/a (write 0) |
+| `victory` | **The fight is won**: the party's celebration, played on every standing hero's panel at once when the encounter ends. They straighten out of the fight and mark the win in their own register — a weapon raised or planted, a fist closed, magic flaring bright and settling, a breath let out, a grin or a cold nod — then return to the opening pose. Read it as *this one*'s victory, not a generic cheer, and keep it self-contained: it plays beside the others, so no gesture aimed at a teammate. | `description`, `colors`, `ability_flavor`, portrait bearing | n/a (write 0) |
 | **alternates** | One extra clip per **stance-replaced attack** (`skill.effects[kind=stance].attack.name`) depicting that ability, marked `alternate: true`, trigger `attack`. Optionally, alternates for a signature card if the JSON's flavour text is spectacular and clearly distinct from the generic cast. | the stance replacement `name`/`effects`; card `flavor_text` | 1.5–2.0 |
 
 If the JSON lacks the flavour for a slot, invent something on-theme, keep it
@@ -259,5 +260,5 @@ crashing down", 20 damage to a row and adjacent rows.
 > forms, a whistling plunge, then a thunderous crash decaying into a soft
 > crystalline ring.
 
-(Write the remaining clips — cast, defend, mitigate, skill, channel, hit, death —
+(Write the remaining clips — cast, defend, mitigate, skill, channel, hit, death, victory —
 in the same manner, each derived from the JSON fields named in §4.3.)

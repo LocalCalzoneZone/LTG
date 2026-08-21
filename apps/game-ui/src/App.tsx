@@ -10,7 +10,7 @@ import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { LoadGameModal } from "./components/LoadGameModal";
 import { CharacterSheetModal, ConfirmOverlay, DefeatSplash, TownScreen } from "./components/TownScreen";
-import { RewardsModal } from "./components/Items";
+import { ActSpoils } from "./components/Items";
 import { OptionsModal } from "./components/OptionsModal";
 import {
   CardPickPrompt,
@@ -171,7 +171,6 @@ export default function App() {
               {snapshot.party_sheet && (
                 <CharacterSheetModal rows={snapshot.party_sheet} editable={!!snapshot.gear_editable} inTown={false} />
               )}
-              {snapshot.rewards && <RewardsModal rewards={snapshot.rewards} />}
               <ConfirmOverlay confirm={snapshot.confirm} />
             </>
           ) : (
@@ -211,15 +210,21 @@ export default function App() {
             onMove={(y) => setConsoleH(window.innerHeight - y)}
             onReset={resetConsoleH}
           />
-          {/* The game-end splashes cover ONLY this bottom strip (absolute over
-              the bar): the battlefield and log above stay readable and clickable
-              so the final board state can be inspected on victory or defeat. */}
+          {/* The between- and post-combat screens cover ONLY this bottom strip
+              (absolute over the bar): the battlefield and log above stay readable
+              and clickable, so the board you just won on can be inspected while
+              you take the level-up, the spoils, or the game-over. The adventure
+              flow's full-screen narrative splash is the one exception — it opens
+              the NEXT phase, and renders `fixed` from in here. */}
           <div className="relative flex-none">
             <BottomBar height={consoleH || null} />
             {snapshot.defeat_pending && (
               <DefeatSplash adventureName={snapshot.adventure_name ?? snapshot.adventure?.name ?? ""}
                             hardcore={!!snapshot.scenario?.options.hardcore} />
             )}
+            {/* Adventure phase flow (Update 10): victory splash → level-up → narration */}
+            <AdventureFlow />
+            {snapshot.rewards && <ActSpoils rewards={snapshot.rewards} scenario={snapshot.scenario} />}
             <GameOverOverlay
               onNewGame={() => setShowNewGame(true)}
               onOptions={() => setShowOptions(true)}
@@ -244,8 +249,6 @@ export default function App() {
       <CardPickPrompt />
       {/* Full-screen combat FX (ultimates, boss enrage) — under the modals */}
       <ScreenFx />
-      {/* Adventure phase flow (Update 10): victory splash → level-up → narration */}
-      <AdventureFlow />
       <PhaseBanner />
       <Toast />
     </div>

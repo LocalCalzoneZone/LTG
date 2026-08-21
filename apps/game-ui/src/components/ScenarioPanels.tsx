@@ -13,6 +13,7 @@ import {
   generateScenario,
   generateTown,
   generateTownArt,
+  generateTownTopics,
   saveItem,
   saveTown,
   type TownArtKind,
@@ -75,6 +76,19 @@ export function TownsPanel() {
     } finally { setBusy(false); }
   };
 
+  // Standing flavour topics for every resident who has none (§D17-5.4).
+  const writeTopics = async () => {
+    if (!open) return;
+    setBusy(true); setErr(null);
+    try {
+      await generateTownTopics(open.id);
+      setOpen(await fetchTown(open.id));
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(false); }
+  };
+
   if (open) {
     return (
       <TownEditor
@@ -84,6 +98,7 @@ export function TownsPanel() {
         onBack={() => setOpen(null)}
         onChange={setOpen}
         onPaint={paint}
+        onWriteTopics={writeTopics}
         onSave={async () => {
           setBusy(true); setErr(null);
           try {
@@ -118,7 +133,7 @@ export function TownsPanel() {
             <div className="min-w-0 flex-1">
               <div className="caps-label text-[11px] tracking-[0.14em] text-parch">{t.name}</div>
               <div className="truncate text-xs font-light text-mist">{t.region_flavor}</div>
-              <div className="text-[10px] font-light text-dimmed">{t.location_count} locations · {t.npc_count} NPCs{t.art_missing ? ` · ${t.art_missing} images missing` : ""}</div>
+              <div className="text-[10px] font-light text-dimmed">{t.location_count} locations · {t.npc_count} NPCs{t.art_missing ? ` · ${t.art_missing} images missing` : ""}{t.topics_missing ? ` · ${t.topics_missing} without flavour topics` : ""}</div>
             </div>
             <button className={SMALL_BTN} onClick={() => fetchTown(t.id).then(setOpen)}>Open</button>
             {confirmDel === t.id ? (
@@ -194,8 +209,15 @@ export function ScenariosPanel({ onEditAdventure }: { onEditAdventure?: (adventu
               <div className="caps-label text-[11px] tracking-[0.14em] text-parch">Act {["I", "II", "III"][i]} — {a.title}</div>
               <p className="mt-1 text-xs text-mist">{a.hook}</p>
               <p className="mt-1 text-[11px] text-dimmed">Questgiver {a.questgiver_npc}{a.handoff ? ` · handoff ${a.handoff}` : ""} · {a.adventure_theme} · {a.tone_notes}</p>
-              {i === 0 && open.act1.materialization?.quest && (
-                <p className="mt-2 text-xs text-parch">Quest: <span className="text-brass">{open.act1.materialization.quest.title}</span> — {open.act1.materialization.quest.text}</p>
+              {i === 0 && (open.act1.materialization?.quests?.length || open.act1.materialization?.quest) && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {(open.act1.materialization.quests
+                    ?? [open.act1.materialization.quest!]).map((q, qi) => (
+                    <p key={qi} className="text-xs text-parch">
+                      Quest: <span className="text-brass">{q.title}</span> — {q.text}
+                    </p>
+                  ))}
+                </div>
               )}
             </div>
           ))}
@@ -453,10 +475,14 @@ const AREA = `${FIELD} w-full font-light`;
  * kept so painted art stays attached. */
 type Sel = { kind: "town" } | { kind: "loc"; i: number } | { kind: "npc"; i: number; k: number };
 
-function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
+const MAX_NPCS_PER_LOCATION = 4;   // mirrors scenario_content.MAX_NPCS
+const MERCHANT_FUNCTIONS = ["weaponsmith", "artificer", "apothecary"];
+
+function TownEditor({ town, busy, err, onBack, onChange, onPaint, onWriteTopics, onSave }: {
   town: TownDetail; busy: boolean; err: string | null;
   onBack: () => void; onChange: (t: TownDetail) => void;
   onPaint: (kind: TownArtKind, targetId?: string) => void;
+  onWriteTopics: () => void;
   onSave: () => void;
 }) {
   const [sel, setSel] = useState<Sel>({ kind: "town" });
@@ -466,14 +492,23 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
   const setNpc = (i: number, k: number, patch: Partial<TownDetail["locations"][number]["npcs"][number]>) =>
     setLoc(i, { npcs: town.locations[i].npcs.map((n, m) => (m === k ? { ...n, ...patch } : n)) });
   const addNpc = (i: number) => {
-    setLoc(i, { npcs: [...town.locations[i].npcs, { id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }] });
+    setLoc(i, { npcs: [...town.locations[i].npcs, { id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "", topics: [] }] });
     setSel({ kind: "npc", i, k: town.locations[i].npcs.length });
   };
+  // One counter per shop: marking a seller clears the others at that location.
+  const setVendor = (i: number, k: number) =>
+    setLoc(i, { npcs: town.locations[i].npcs.map((n, m) => ({ ...n, vendor: m === k })) });
+  const setTopic = (i: number, k: number, t: number, patch: { ask?: string; reply?: string }) =>
+    setNpc(i, k, { topics: (town.locations[i].npcs[k].topics ?? []).map((x, m) => (m === t ? { ...x, ...patch } : x)) });
+  const addTopic = (i: number, k: number) =>
+    setNpc(i, k, { topics: [...(town.locations[i].npcs[k].topics ?? []), { ask: "", reply: "" }] });
+  const removeTopic = (i: number, k: number, t: number) =>
+    setNpc(i, k, { topics: (town.locations[i].npcs[k].topics ?? []).filter((_, m) => m !== t) });
   const removeNpc = (i: number, k: number) => { setLoc(i, { npcs: town.locations[i].npcs.filter((_, m) => m !== k) }); setSel({ kind: "loc", i }); };
   const addLocation = () => {
     set({ locations: [...town.locations, { id: "", name: "New Place", function: "tavern", description: "",
                                            exterior_scene: "", exterior_art_url: "", interior_scene: "", interior_art_url: "",
-                                           npcs: [{ id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "" }] }] });
+                                           npcs: [{ id: "", name: "New Resident", role: "", persona: "", portrait_desc: "", art_url: "", topics: [] }] }] });
     setSel({ kind: "loc", i: town.locations.length });
   };
   const removeLocation = (i: number) => { set({ locations: town.locations.filter((_, j) => j !== i) }); setSel({ kind: "town" }); };
@@ -498,6 +533,10 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
         <span className="h-px flex-1 bg-line" />
         <ArtQueueButton target={{ townId: town.id }} subject="the town, every location and NPC"
                         onImage={() => fetchTown(town.id).then(onChange).catch(() => {})} />
+        <button className={GHOST_BTN} onClick={onWriteTopics} disabled={busy}
+                title="Write standing flavour topics for every resident who has none">
+          Write flavour topics
+        </button>
         <button className={GHOST_BTN} onClick={onSave} disabled={busy}>{busy ? "Saving…" : "Save town"}</button>
       </div>
       {err && <div className="mb-2 border border-blood/50 bg-blood/10 px-3 py-2 text-sm font-light text-blood">{err}</div>}
@@ -514,7 +553,7 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
           {town.locations.map((l, i) => (
             <div key={l.id || `new-${i}`} className="flex flex-col gap-1">
               <button className={treeBtn(sel.kind === "loc" && sel.i === i, "mt-1")} onClick={() => setSel({ kind: "loc", i })}>
-                {thumb(l.exterior_art_url, "h-10 w-8")}
+                {thumb(l.exterior_art_url, "h-8 w-14")}
                 <span className="min-w-0 flex-1">
                   <span className="caps-label block truncate text-[10px] tracking-[0.12em] text-parch">{l.name}</span>
                   <span className="block truncate text-[9px] font-light text-brass">{l.function.replace(/_/g, " ")}</span>
@@ -530,14 +569,16 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
                   </span>
                 </button>
               ))}
-              {l.npcs.length < 2 && (
+              {l.npcs.length < MAX_NPCS_PER_LOCATION && (
                 <button className={`${SMALL_BTN} ml-5 self-start`} onClick={() => addNpc(i)}>+ NPC</button>
               )}
             </div>
           ))}
           <button className={`${GHOST_BTN} mt-2 self-start`} onClick={addLocation}>+ Location</button>
           <div className="mt-2 text-[10px] font-light leading-relaxed text-dimmed">
-            One inn, weaponsmith, artificer, apothecary; 1–3 other places; every location an interior scene and 1–2 residents with a persona and a portrait description.
+            One inn, weaponsmith, artificer, apothecary; add as many other places as the town wants; every location an
+            interior scene and up to {MAX_NPCS_PER_LOCATION} residents with a persona, a portrait description, and a
+            flavour topic or two. At a shop, exactly one resident keeps the counter.
           </div>
         </div>
 
@@ -575,8 +616,8 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
                 <button className={DANGER_BTN} onClick={() => removeLocation(sel.i)}>Remove location</button>
               </div>
               <div className="flex gap-4">
-                <div className="flex w-[220px] shrink-0 flex-col gap-1">
-                  <div className="aspect-[3/4] w-full border border-line bg-ink-0" title="Exterior — the map card">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="aspect-[16/9] w-full border border-line bg-ink-0" title="Exterior — the map card">
                     {loc.exterior_art_url ? <img src={loc.exterior_art_url} alt="" className="h-full w-full object-cover" />
                       : <div className="flex h-full items-center justify-center text-dimmed"><IconSigil size={28} /></div>}
                   </div>
@@ -629,10 +670,42 @@ function TownEditor({ town, busy, err, onBack, onChange, onPaint, onSave }: {
                     <button className={DANGER_BTN} onClick={() => removeNpc(sel.i, sel.k)}>Remove</button>
                   )}
                 </div>
+                {MERCHANT_FUNCTIONS.includes(loc.function) && (
+                  <label className="flex items-center gap-2 text-[10px] font-light text-mist">
+                    <input type="radio" checked={!!npc.vendor} onChange={() => setVendor(sel.i, sel.k)} />
+                    Keeps the counter — the one resident here who sells. The others are for talking to.
+                  </label>
+                )}
                 <label className="flex flex-col gap-1 text-[10px] text-mist">Persona — prose: manner, voice, wants, a quirk (reused verbatim to write their dialogue)
                   <textarea rows={9} value={npc.persona} onChange={(e) => setNpc(sel.i, sel.k, { persona: e.target.value })} className={`${AREA} text-sm leading-relaxed`} /></label>
                 <label className="flex flex-col gap-1 text-[10px] text-mist">Portrait description — physical appearance for the painter
                   <textarea rows={4} value={npc.portrait_desc} onChange={(e) => setNpc(sel.i, sel.k, { portrait_desc: e.target.value })} className={`${AREA} text-sm italic leading-relaxed`} /></label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-mist">Flavour topics — what they will talk about in any campaign</span>
+                    <span className="h-px flex-1 bg-line" />
+                    <button className={SMALL_BTN} onClick={() => addTopic(sel.i, sel.k)}>+ Topic</button>
+                  </div>
+                  {(npc.topics ?? []).length === 0 && (
+                    <div className="text-[10px] font-light text-dimmed">
+                      None yet — add one, or use “Write flavour topics” above to fill in everyone who has none.
+                    </div>
+                  )}
+                  {(npc.topics ?? []).map((t, ti) => (
+                    <div key={ti} className="flex items-start gap-2 border border-line bg-white/[0.02] p-2">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <input value={t.ask} placeholder="What a visitor asks"
+                               onChange={(e) => setTopic(sel.i, sel.k, ti, { ask: e.target.value })}
+                               className={`${FIELD} text-[13px]`} />
+                        <textarea rows={2} value={t.reply} placeholder="Their answer, in their own voice"
+                                  onChange={(e) => setTopic(sel.i, sel.k, ti, { reply: e.target.value })}
+                                  className={`${AREA} text-sm leading-relaxed`} />
+                      </div>
+                      <button className={SMALL_BTN} title="Remove this topic"
+                              onClick={() => removeTopic(sel.i, sel.k, ti)}><IconX size={10} /></button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

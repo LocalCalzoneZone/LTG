@@ -91,7 +91,12 @@ export function TownScreen() {
       <div className="flex min-h-0 flex-1 gap-4 px-6 py-3">
         <PartyColumn party={town.party_sheet} />
         <div className="scroll-thin flex min-h-0 flex-1 items-center overflow-y-auto">
-          <div className="grid w-full grid-cols-[repeat(auto-fill,190px)] justify-center gap-4">
+          {/* The town map's cards are the buildings' wide frontages (the same
+              16:9 the interiors are painted at); inside, they are portraits.
+              Neither wears a marker: who holds the quest is learned by
+              walking in and asking (§D17-5.2). */}
+          <div className={`grid w-full justify-center gap-4 ${
+            loc ? "grid-cols-[repeat(auto-fill,190px)]" : "grid-cols-[repeat(auto-fill,260px)]"}`}>
             {loc
               ? loc.npcs.map((n) => (
                   <SlotCard
@@ -99,7 +104,6 @@ export function TownScreen() {
                     title={n.name}
                     subtitle={n.role}
                     art={n.art_url}
-                    marker={n.questgiver ? "Quest" : n.has_dialogue ? "Talk" : n.merchant ? "Wares" : ""}
                     onClick={() => setInspect({ kind: "npc", item: n })}
                   />
                 ))
@@ -109,7 +113,7 @@ export function TownScreen() {
                     title={l.name}
                     subtitle={fnLabel(l.function)}
                     art={l.art_url}
-                    marker={l.questgiver ? "Quest" : l.has_dialogue ? "Talk" : ""}
+                    wide
                     onClick={() => setInspect({ kind: "location", item: l })}
                   />
                 ))}
@@ -179,15 +183,16 @@ function PartyColumn({ party }: { party: PartySheetRow[] }) {
   );
 }
 
-function SlotCard({ title, subtitle, art, marker, onClick }: {
-  title: string; subtitle: string; art: string; marker: string; onClick: () => void;
+function SlotCard({ title, subtitle, art, wide, onClick }: {
+  title: string; subtitle: string; art: string; wide?: boolean; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex w-[190px] flex-col overflow-hidden border border-line bg-ink-0/70 text-left shadow-lg transition hover:border-brass/70 hover:shadow-[0_0_16px_rgba(233,204,130,0.12)]"
+      className={`group relative flex flex-col overflow-hidden border border-line bg-ink-0/70 text-left shadow-lg transition hover:border-brass/70 hover:shadow-[0_0_16px_rgba(233,204,130,0.12)] ${
+        wide ? "w-[260px]" : "w-[190px]"}`}
     >
-      <div className="aspect-[3/4] w-full bg-ink-0">
+      <div className={`w-full bg-ink-0 ${wide ? "aspect-[16/9]" : "aspect-[3/4]"}`}>
         {art ? (
           <img src={art} alt={title} className="h-full w-full object-cover object-top" />
         ) : (
@@ -196,11 +201,6 @@ function SlotCard({ title, subtitle, art, marker, onClick }: {
           </div>
         )}
       </div>
-      {marker && (
-        <span className="caps-label absolute right-1 top-1 border border-brass/70 bg-ink-0/85 px-1.5 py-0.5 text-[8px] tracking-[0.16em] text-brass">
-          {marker}
-        </span>
-      )}
       <div className="flex flex-col gap-0.5 bg-gradient-to-t from-ink-0/95 to-ink-0/60 p-2.5">
         <span className="caps-label truncate text-[12px] tracking-[0.1em] text-parch">{title}</span>
         <span className="truncate text-[10px] font-light text-mist">{subtitle}</span>
@@ -269,8 +269,8 @@ function InspectSheet({ inspect, onClose, onVisit, onTalk, onShop }: {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-[2px]" onClick={onClose}>
       <div className="panel-ticks flex w-[min(92vw,720px)] gap-5 border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="w-[220px] shrink-0">
-          <div className="aspect-[3/4] w-full border border-line bg-ink-0">
+        <div className={isNpc ? "w-[220px] shrink-0" : "w-[300px] shrink-0"}>
+          <div className={`w-full border border-line bg-ink-0 ${isNpc ? "aspect-[3/4]" : "aspect-[16/9]"}`}>
             {art ? (
               <img src={art} alt={item.name} className="h-full w-full object-cover object-top" />
             ) : (
@@ -368,7 +368,11 @@ function DialogueModal({ town, conv }: { town: TownSnapshot; conv: ConversationV
           </button>
         </div>
         <div className="mt-6 max-h-[40vh] overflow-y-auto">
-          <p className="font-display text-xl font-light leading-relaxed text-parch">
+          {/* A narration beat is nobody's line — no nameplate, set in italic so
+              stage direction never reads as something the NPC said aloud. */}
+          <p className={`font-display text-xl font-light leading-relaxed ${
+            conv.speaker === "narration" ? "italic text-mist" : "text-parch"
+          }`}>
             {conv.speaker === "party" && conv.attributed && (
               <span className="caps-label mr-2 text-[10px] tracking-[0.2em] text-mist">
                 {town.party_sheet.find((p) => p.id === conv.attributed)?.name ?? "The party"} —

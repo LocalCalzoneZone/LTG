@@ -1,0 +1,269 @@
+{
+  "kind": "town",
+  "name": "Nalindor",
+  "region_flavor": "A primordial woodland of colossal elderwood and ironbark trees whose dense canopy blocks the sky and shelters wild beasts, river wyrms, and ancient ruins.",
+  "scene": "Suspended hundreds of feet above the damp forest floor, Nalindor spreads across the interlocking boughs of six gargantuan ironwood trees connected by swaying rope bridges and wooden walkways. Carved timber halls cling directly to the living bark, illuminated by cage-lanterns filled with glowing green moss and pale star-lilies. Below, mist drifts through the colossal roots, while above, watchtowers pierce the high green canopy to watch for encroaching manticores and trespassers.",
+  "art_url": "/art/towns/nalindor/town-71ce29cd.png",
+  "locations": [
+    {
+      "id": "the_roosting_bough",
+      "name": "The Roosting Bough",
+      "function": "inn",
+      "description": "A warm, three-tiered guesthouse carved into the hollow heart of an ancient cedar, offering dry featherbeds and spiced blossom wine to ground-travelers.",
+      "exterior_scene": "Thick bark steps spiral up around a giant cedar trunk to a wide plank porch beneath a painted wooden sign shaped like a perched owl. Hand-woven reed screens frame the arched entrance, flanked by brass brazziers burning sweet pine resin.",
+      "exterior_art_url": "/art/towns/nalindor/ext-the_roosting_bough-e3898d84.png",
+      "interior_scene": "Low cedar beams arch overhead, hung with dried chamomile bundles and paper lanterns that cast a warm honey-colored glow across polished oak floorboards. A circular hearthstone in the center of the room vents woodsmoke up through a hollow chimney branch, surrounded by low couches stuffed with goose down and tables carved from polished burl. The air smells richly of baked honeyed nuts, elderberry cider, and wood ash.",
+      "interior_art_url": "/art/towns/nalindor/loc-the_roosting_bough-6b485c1f.png",
+      "scene": "Low cedar beams arch overhead, hung with dried chamomile bundles and paper lanterns that cast a warm honey-colored glow across polished oak floorboards. A circular hearthstone in the center of the room vents woodsmoke up through a hollow chimney branch, surrounded by low couches stuffed with goose down and tables carved from polished burl. The air smells richly of baked honeyed nuts, elderberry cider, and wood ash.",
+      "art_url": "/art/towns/nalindor/loc-the_roosting_bough-6b485c1f.png",
+      "npcs": [
+        {
+          "id": "faelen_greenmantle",
+          "name": "Faelen Greenmantle",
+          "role": "Innkeeper",
+          "persona": "Faelen is one of the few elves in Nalindor who genuinely welcomes outsiders, having spent forty years wandering human river-towns in his youth. He speaks in a smooth, rhythmic baritone and laughs easily, though he keeps a keen eye on every traveler to ensure they do not cause trouble with the tree wardens. He takes immense pride in his cellar of fermented forest-berry wines and his roasted acorn bread. He collects coin from foreign kingdoms as a hobby, storing them in a carved maple chest beneath the counter.",
+          "portrait_desc": "A slender wood elf of middle years with amber eyes, long honey-colored hair tied in braided loops, and laugh-lines around his mouth. He wears an emerald-green wool vest over an ivory linen tunic, with an embroidered apron depicting singing birds.",
+          "art_url": "/art/towns/nalindor/npc-faelen_greenmantle-5a78ce12.png",
+          "topics": [
+            {
+              "ask": "How do the locals feel about travelers staying here?",
+              "reply": "They prefer you stay above the lower boughs and pay in honest silver. Treat the living bark with respect, do not light torches near dry moss, and Captain Sylva's wardens will leave you in peace."
+            },
+            {
+              "ask": "What is the secret to this spiced cider?",
+              "reply": "Wild crabapples pressed with simmered ginger-root and three drops of dew collected from night-blooming moonflowers. It keeps the autumn chill from settling in your bones."
+            },
+            {
+              "ask": "Have you seen the giant spiders down in the low brush?",
+              "reply": "The weaver-spiders stay below the fog line unless someone drops salted meat near the root ladders. Keep your boots off the bottom rungs after sunset and you will keep your ankles."
+            }
+          ],
+          "vendor": false
+        },
+        {
+          "id": "orin_copperbraid",
+          "name": "Orin Copperbraid",
+          "role": "Stranded Carpenter",
+          "persona": "Orin is a stubborn mountain dwarf mason and carpenter who came to Nalindor two seasons ago to repair the main suspension pulley and never managed to leave. He speaks in a rasping grumble, constantly complaining about living in a tree while secretly admiring the elven joinery. He spends his evenings at the hearth whittling spruce whistle-flutes and grumbling about the lack of proper dark beer. He knows the structural strength of every walkway in the city down to the last iron nail.",
+          "portrait_desc": "A stout, broad-shouldered dwarf with a fiery copper beard woven into two thick ringed braids and steel-gray eyes. He wears sturdy leather work overalls reinforced with brass studs, stained with pitch and cedar sap.",
+          "art_url": "/art/towns/nalindor/npc-orin_copperbraid-023e85f7.png",
+          "topics": [
+            {
+              "ask": "Why are you still living up in the canopy?",
+              "reply": "Because these long-eared tree-climbers use bark-glue where they ought to use three-inch forged iron spikes! If I leave, the south cargo hoist will dump thirty crates of turnips right into the swamp below."
+            },
+            {
+              "ask": "Do you ever get used to the swaying bridges?",
+              "reply": "Never look through the floor slats on a windy afternoon. Look straight at the trunk in front of you, keep one hand on the guide rope, and say a prayer to the Stone Father."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "sunstrider_forge",
+      "name": "Sunstrider Forge",
+      "function": "weaponsmith",
+      "description": "A smoke-cowl workshop jutting out over open air, where master smiths temper star-iron and shape flexible bowstaves of cured yew.",
+      "exterior_scene": "A stone-floored terrace cantilevered on heavy iron braces between two great branches, sheltered by a peaked copper roof green with patina. A rack of blackened tongs and iron anvils sits visible behind an archway framed with hanging iron wind-chimes.",
+      "exterior_art_url": "/art/towns/nalindor/ext-sunstrider_forge-5936d3af.png",
+      "interior_scene": "A heavy stone furnace glows cherry-red against the rear rock-shelf, drawing draft from an intake pipe that vents sparks into the open sky. Neat timber racks line the walls, displaying re-curved yew bows, silver-inlaid leaf-blade swords, and quivers of fletched ash arrows. The scent of hot charcoal, quenching oil, and scorched iron fills the air above the rhythmic ping of hammer on anvil.",
+      "interior_art_url": "/art/towns/nalindor/loc-sunstrider_forge-f79c1853.png",
+      "scene": "A heavy stone furnace glows cherry-red against the rear rock-shelf, drawing draft from an intake pipe that vents sparks into the open sky. Neat timber racks line the walls, displaying re-curved yew bows, silver-inlaid leaf-blade swords, and quivers of fletched ash arrows. The scent of hot charcoal, quenching oil, and scorched iron fills the air above the rhythmic ping of hammer on anvil.",
+      "art_url": "/art/towns/nalindor/loc-sunstrider_forge-f79c1853.png",
+      "npcs": [
+        {
+          "id": "taenis_sunstrider",
+          "name": "Taenis Sunstrider",
+          "role": "Master Fletcher and Bladesmith",
+          "persona": "Taenis is a stern, traditionalist elven armorer who believes steel forged outside the deep forest is brittle and poorly balanced. He speaks curtly, judging warriors by how they hold a weapon's balance rather than their words or wealth. He holds a bitter grudge against the river bandits who stole a shipment of star-iron ingots from his pack-drakes last spring. Despite his haughty demeanor, he will spend hours adjusting a bow grip for a buyer who shows genuine skill.",
+          "portrait_desc": "A tall, silver-haired elf with soot-smudged bronze skin, piercing hazel eyes, and muscular arms scarred by forge sparks. He wears a heavy split-leather smithing apron over dark gray trousers and steel-toed boots.",
+          "art_url": "/art/towns/nalindor/npc-taenis_sunstrider-d810aa10.png",
+          "topics": [
+            {
+              "ask": "What makes your blades different from highland steel?",
+              "reply": "Highland smiths quench their metal in salt water; we fold star-iron seven times and quench it in cold mountain runoff infused with birch bark. Our edges do not chip when striking bone or scale."
+            },
+            {
+              "ask": "Can you craft a bow strong enough to bring down a forest boar?",
+              "reply": "A Sunstrider bow shaved from heart-yew will punch through a boar's armored shoulder-plate at sixty paces. The bow will not fail you; the only question is whether your aim will."
+            },
+            {
+              "ask": "What happened to your shipment of star-iron?",
+              "reply": "Those mud-footed brigands at Red Oak Ford ambushed my runner and took twelve stamped ingots. If someone brought those bars back to my forge, they would have their pick of my wall-racks."
+            }
+          ],
+          "vendor": true
+        },
+        {
+          "id": "kaelen",
+          "name": "Kaelen",
+          "role": "Smith's Apprentice",
+          "persona": "Kaelen is a wide-eyed young elf who was sent from the lower groves to learn metalworking, though his true passion is collecting monster claws to turn into dagger hilts. He speaks quickly with nervous enthusiasm, often asking customers about castles and stone walls he has only seen in picture books. He gets into trouble for sneaking off to test throwing knives against rotting stumps in the lower canopy. He treats every foreign adventurer like a legendary hero from an ancient song.",
+          "portrait_desc": "A wiry elven youth with messy copper curls, large inquisitive green eyes, and a smudge of soot across the bridge of his freckled nose. He wears a loose linen smock cinched with a raw-hide tool belt holding small files and pliers.",
+          "art_url": "/art/towns/nalindor/npc-kaelen-f21f9333.png",
+          "topics": [
+            {
+              "ask": "Is Master Taenis hard to work for?",
+              "reply": "If you drop an iron blank, he makes you pump the leather bellows until your arms feel like damp willow sticks! But he knows how to balance a spear better than anyone in the province."
+            },
+            {
+              "ask": "Have you ever seen a real stone castle?",
+              "reply": "Only the drawings in the Elder Archives! It seems impossible that you can stack rock upon rock without branches to hold them together against the autumn wind."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "the_moon_weaver_s_loom",
+      "name": "The Moon-Weaver's Loom",
+      "function": "artificer",
+      "description": "A tranquil sanctuary filled with crystal prisms, silver thread, and enchanted amulets that hum with gentle forest magic.",
+      "exterior_scene": "A dome-shaped arbor woven from living wisteria vines and flowering jasmine, marked by a swinging sign of polished silver slate. Glass globes containing tiny suspended glowing crystals hang from the door lintel, catching every breeze.",
+      "exterior_art_url": "/art/towns/nalindor/ext-the_moon_weaver_s_loom-a73feef4.png",
+      "interior_scene": "Soft blue light filters through stained-glass lenses set into the domed ceiling, illuminating velvet-lined cases of carved amber rings and silver torque bracelets. A tall standing loom made of polished birch sits in the corner, strung with glistening silk spun by crown-spiders. The room is quiet save for the gentle tinkling of glass chimes, smelling of crushed lavender and pure beeswax.",
+      "interior_art_url": "/art/towns/nalindor/loc-the_moon_weaver_s_loom-f4b579af.png",
+      "scene": "Soft blue light filters through stained-glass lenses set into the domed ceiling, illuminating velvet-lined cases of carved amber rings and silver torque bracelets. A tall standing loom made of polished birch sits in the corner, strung with glistening silk spun by crown-spiders. The room is quiet save for the gentle tinkling of glass chimes, smelling of crushed lavender and pure beeswax.",
+      "art_url": "/art/towns/nalindor/loc-the_moon_weaver_s_loom-f4b579af.png",
+      "npcs": [
+        {
+          "id": "lady_vespera",
+          "name": "Lady Vespera",
+          "role": "Star-Weaver Artificer",
+          "persona": "Lady Vespera is an ancient moon elf who remembers when the great trees of Nalindor were mere saplings. She moves with quiet, gliding grace and speaks in a hushed, melodic whisper that demands absolute attention. She is deeply suspicious of arcane sorcery that burns or corrupts the land, preferring subtle magic bound into woven cord, polished jade, and river-stone. She has a soft spot for riddle games and will knock a coin off her price for a clever answer.",
+          "portrait_desc": "An ageless moon elf with snow-white hair that falls to her waist, porcelain skin, and luminous violet eyes beneath slender arched brows. She wears layered robes of midnight-blue silk embroidered with crescent moons and silver stars.",
+          "art_url": "/art/towns/nalindor/npc-lady_vespera-f4a8362b.png",
+          "topics": [
+            {
+              "ask": "How do you capture star-magic in silk?",
+              "reply": "We wash the spider-silk in water drawn from the High Pool on moonless nights, then weave it under the light of the sister stars. The silver catches the light and holds the warding charm."
+            },
+            {
+              "ask": "What trinket would you recommend for travel through the bog?",
+              "reply": "Take the jade frog pendant on the cedar tray. It warms against your skin whenever swamp-leaping vipers or marsh gas draw near your boots."
+            },
+            {
+              "ask": "Why do you distrust fire-wizards so much?",
+              "reply": "A single careless flame can turn five hundred years of living wood to black cinder in an hour. Magic should preserve and protect, not consume everything it touches."
+            }
+          ],
+          "vendor": true
+        }
+      ]
+    },
+    {
+      "id": "bramble_spore",
+      "name": "Bramble & Spore",
+      "function": "apothecary",
+      "description": "A fragrant, cluttered apothecary packed with drying barks, hanging fungus clusters, and clay jars of restorative canopy salves.",
+      "exterior_scene": "A crooked wooden cottage built atop a massive burl, topped with a living sod roof sprouting flowering violets and wild leeks. Bunches of dried goldenrod and red-spotted mushrooms hang beneath the eaves beside a painted sign of a pestle crushing a fern leaf.",
+      "exterior_art_url": "/art/towns/nalindor/ext-bramble_spore-df4adf8b.png",
+      "interior_scene": "Shelves of rough-hewn pine line every wall, groaning under rows of glazed ceramic pots, glass vials filled with emerald liquids, and dried root bundles tied with twine. A large stone mortar rests on a thick stump counter alongside brass balances and bundles of damp moss. The sharp, pungent scents of crushed mint, wintergreen, and bitter willow bark dominate the room.",
+      "interior_art_url": "/art/towns/nalindor/loc-bramble_spore-0581cb6f.png",
+      "scene": "Shelves of rough-hewn pine line every wall, groaning under rows of glazed ceramic pots, glass vials filled with emerald liquids, and dried root bundles tied with twine. A large stone mortar rests on a thick stump counter alongside brass balances and bundles of damp moss. The sharp, pungent scents of crushed mint, wintergreen, and bitter willow bark dominate the room.",
+      "art_url": "/art/towns/nalindor/loc-bramble_spore-0581cb6f.png",
+      "npcs": [
+        {
+          "id": "master_orodan",
+          "name": "Master Orodan",
+          "role": "Canopy Herbalist",
+          "persona": "Orodan is a prickly, sharp-tongued herbalist who spends more time talking to his potted carnivorous plants than to other elves. He considers city doctors to be quacks who rely on leeches and stale chalk, while boasting that the forest provides a cure for every ailment known to flesh. He hates when customers touch his delicate glass pipettes with dirty hands. Despite his bad temper, he will stay up all night boiling fever-tonics if a child or ranger falls ill.",
+          "portrait_desc": "A gaunt, middle-aged wood elf with short graying brown hair, bushy eyebrows, and green eyes behind round brass reading spectacles. His hands are permanently stained with purple berry juice and yellow pollen, and he wears an earth-stained leather tunic.",
+          "art_url": "/art/towns/nalindor/npc-master_orodan-8a486e2b.png",
+          "topics": [
+            {
+              "ask": "Do you have something for deep puncture wounds?",
+              "reply": "Mallow-root paste mixed with crushed pine sap. Slap it directly into the hole, bind it tight with clean linen, and don't whine when it stings like five hornets."
+            },
+            {
+              "ask": "Where do you find those glowing purple mushrooms?",
+              "reply": "In the hollow rot of drowned willow logs near Blackroot Marsh. The bog-trolls feed on them, which is why you must bring three jars of sulfur-ash if you plan to gather your own."
+            },
+            {
+              "ask": "Why do your potions taste so foul?",
+              "reply": "Medicine is meant to heal your liver and knit your sinews, not satisfy a sweet tooth! If you want sugar, go buy honey-cakes at the tavern."
+            }
+          ],
+          "vendor": true
+        }
+      ]
+    },
+    {
+      "id": "the_high_watch_hollow",
+      "name": "The High Watch Hollow",
+      "function": "guard_post",
+      "description": "A fortified watch-post overlooking the canopy bridges, where the city wardens track forest movements and guard against invaders.",
+      "exterior_scene": "A heavy red-oak gatehouse built into the fork of two massive limbs, reinforced with thick ironwood palisades and arrow-slits. Bundles of green-fletched signaling arrows sit in brass quivers along the outer battlements beneath a fluttering emerald pennant.",
+      "exterior_art_url": "/art/towns/nalindor/ext-the_high_watch_hollow-9642dcdd.png",
+      "interior_scene": "A wide, utilitarian command room paneled in pale ash, with a large painted map of the surrounding canopy and forest floor spread across a central timber table. Racks of longbows, heavy boar-spears, and bronze horn-trumpets line the perimeter walls under hanging shields bearing the silver leaf crest. The smell of gun-oil, boot leather, and cedar shavings hangs in the breezy room.",
+      "interior_art_url": "/art/towns/nalindor/loc-the_high_watch_hollow-dae1645a.png",
+      "scene": "A wide, utilitarian command room paneled in pale ash, with a large painted map of the surrounding canopy and forest floor spread across a central timber table. Racks of longbows, heavy boar-spears, and bronze horn-trumpets line the perimeter walls under hanging shields bearing the silver leaf crest. The smell of gun-oil, boot leather, and cedar shavings hangs in the breezy room.",
+      "art_url": "/art/towns/nalindor/loc-the_high_watch_hollow-dae1645a.png",
+      "npcs": [
+        {
+          "id": "captain_sylva",
+          "name": "Captain Sylva",
+          "role": "Canopy Warden Captain",
+          "persona": "Sylva is an unyielding, battle-hardened commander tasked with the defense of Nalindor's heights. She speaks with clipped military precision and views every ground-dweller as a potential arsonist or spy until they prove their worth. She has hunted manticores across the cloud-crags and tracked bandit cart-trains through dense underbrush for over a century. She respects direct answers, bravery, and discipline, and will instantly expel any troublemaker from the canopy.",
+          "portrait_desc": "A stern, athletic wood elf with a sharp jawline, close-cropped raven hair, and cold gray eyes marked by a thin scar across her left cheekbone. She wears form-fitting armor of hardened stag-beetle chitin over dark green tunic and bracers.",
+          "art_url": "/art/towns/nalindor/npc-captain_sylva-de9c96ef.png",
+          "topics": [
+            {
+              "ask": "What threats are lurking beneath the trees right now?",
+              "reply": "A warband of moss-goblins has settled in the old logging trenches, and a winged manticore was spotted roosting on the eastern crags yesterday. Walk the central marked paths or carry a very good spear."
+            },
+            {
+              "ask": "How do your wardens patrol such a vast forest?",
+              "reply": "Rope gliders and trained crown-hawks. From three hundred feet up, we can spot the campfire smoke of poachers before they even finish boiling their kettle."
+            },
+            {
+              "ask": "What is the penalty for starting an open fire on the bridges?",
+              "reply": "Immediate disarmament, a heavy fine in star-silver, and being escorted to the lowest ladder by two wardens who will not care if you drop your baggage on the way down."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "the_whispering_glade",
+      "name": "The Whispering Glade",
+      "function": "shrine",
+      "description": "An open platform high in the canopy holding a living sapling of the Great Mother Oak, where travelers offer seeds for blessings.",
+      "exterior_scene": "A graceful circular pavilion of curved, interwoven white birch branches that arch together without ropes or nails. Polished marble bowls filled with pure spring water flank the petal-strewn entrance path.",
+      "exterior_art_url": "/art/towns/nalindor/ext-the_whispering_glade-a9a37174.png",
+      "interior_scene": "Soft sunlight filters through an open sky-dome onto a raised circular bed of rich dark earth, where a silver-leaved sapling grows amidst blue forest lilies. Stone benches carved with creeping ivy motifs ring the sacred tree, while clear rain-water trickles through a stone channel carved into the floor. The air is cool, still, and fragrant with blooming wild roses and damp pine needles.",
+      "interior_art_url": "/art/towns/nalindor/loc-the_whispering_glade-1cee41c7.png",
+      "scene": "Soft sunlight filters through an open sky-dome onto a raised circular bed of rich dark earth, where a silver-leaved sapling grows amidst blue forest lilies. Stone benches carved with creeping ivy motifs ring the sacred tree, while clear rain-water trickles through a stone channel carved into the floor. The air is cool, still, and fragrant with blooming wild roses and damp pine needles.",
+      "art_url": "/art/towns/nalindor/loc-the_whispering_glade-1cee41c7.png",
+      "npcs": [
+        {
+          "id": "elder_althea",
+          "name": "Elder Althea",
+          "role": "Keeper of the Root",
+          "persona": "Althea is a serene, gentle priestess who tends the sacred canopy garden and offers quiet blessings of safe travel. She speaks with a soft, comforting warmth, seeing the great forest as a living family that must be nourished through kindness and patience. She spends her mornings sprinkling dew on rare orchids and listening to the worries of younger elves. She carries a carved wooden staff topped with a dormant acorn that she claims will sprout when the world needs peace.",
+          "portrait_desc": "An elderly wood elf woman with hair like spun silver piled in an elegant coronet, warm dark brown eyes, and smooth, graceful posture. She wears flowing ivory vestments bordered with gold leaf embroidery and carries a polished hazel staff.",
+          "art_url": "/art/towns/nalindor/npc-elder_althea-1df26aa4.png",
+          "topics": [
+            {
+              "ask": "What is the meaning of the silver sapling in the center?",
+              "reply": "It was grown from a single seed of the First Mother Oak before the Great Shattering. As long as its silver leaves catch the morning sunlight, Nalindor's boughs will never rot or break."
+            },
+            {
+              "ask": "Will the spirits of the wood protect us on the road?",
+              "reply": "The forest honors those who take only deadwood for fires and leave the young deer in peace. Take a cup of clear water from the basin, pour half to the roots, and carry the rest for your road."
+            },
+            {
+              "ask": "Why do people leave carved acorns at the altar?",
+              "reply": "A promise made to the root is a promise that cannot be forgotten. When a hunter returns safely from the wild crags, they return their acorn to the soil as thanks."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    }
+  ]
+}

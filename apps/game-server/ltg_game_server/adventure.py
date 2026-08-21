@@ -191,6 +191,7 @@ class AdventureRun:
         adventure's stamped difficulty to the run's (see `difficulty`)."""
         scen = content.scenario_from_detail(self.detail["phases"][phase_index])
         made_at = str(self.detail.get("difficulty") or "standard")
+        content.apply_boss_difficulty(scen, self.difficulty or made_at)
         if self.difficulty and self.difficulty != made_at:
             from .llm import ENEMY_HP_MULT
             mult = ENEMY_HP_MULT.get(self.difficulty, 1.2) / ENEMY_HP_MULT.get(made_at, 1.2)

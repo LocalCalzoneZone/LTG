@@ -116,7 +116,7 @@ def _constant_pump_power(card, mode: str = "action") -> int:
 # wins. Fixed and dumb by design — an ordering, not an optimiser.
 _SINK_ORDER = ("heal", "pump", "wound", "poison", "strip_intent", "draw",
                "scry", "counters", "grant_keyword", "prevent", "protection",
-               "regen", "remove_keyword")
+               "regen", "modify_action", "remove_keyword")
 
 
 def _sink_ranks(card, mode: str = "action") -> List[int]:

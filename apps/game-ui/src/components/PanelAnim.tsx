@@ -10,11 +10,14 @@ import type { PanelAnimBundle, PanelAnimation } from "../lib/types";
 //
 // Trigger events arrive as `panel` fx (label = animation id) from lib/fx.ts.
 // This component owns the clip's lifetime; the fx entry itself is a short
-// pulse. Priority when clips collide on one panel: death > ultimate > the rest
-// > hit — a higher-or-equal-priority newcomer replaces the current clip; a
-// lower one is skipped (a flinch never interrupts a cast).
+// pulse. Priority when clips collide on one panel: death / victory > ultimate >
+// the rest > hit — a higher-or-equal-priority newcomer replaces the current
+// clip; a lower one is skipped (a flinch never interrupts a cast). Victory sits
+// at the top because the fight is over: nothing that follows should cut the
+// celebration short. Death still wins — it is terminal, so a hero who fell on
+// the last exchange keeps their held final frame instead of cheering.
 
-const PRIORITY: Record<string, number> = { hit: 0, death: 3, ultimate: 2 };
+const PRIORITY: Record<string, number> = { hit: 0, death: 3, ultimate: 2, victory: 3 };
 const prio = (a: PanelAnimation) => PRIORITY[a.trigger] ?? 1;
 const isVideo = (a: PanelAnimation) => /\.(webm|mp4)(\?|$)/i.test(a.file);
 

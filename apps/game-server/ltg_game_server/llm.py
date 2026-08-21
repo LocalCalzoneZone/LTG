@@ -166,6 +166,16 @@ parameters may list titles the player already owns: treat those as OFF-LIMITS
 creative territory — no reused names, locations, or central conceits, and no
 re-skins of them.
 
+BE CONCRETE. Every noun you write here becomes a painting the player looks at
+and a name on a battlefield, so write things a painter could paint and a player
+could point at. TROPES ARE GOOD — a goblin warren, a barrow-knight, a cult in
+the crypt, an ogre on the bridge read instantly and paint beautifully; be fresh
+in the DETAIL, not in the category. BANNED: abstract dread as a subject — no "a
+wrongness", "something is not right", "a wound in the world", "geometry that
+hurts to look at". If you catch yourself gesturing at the indescribable, name
+the monster instead. If a scene or flavour line would still be true after you
+swapped in a completely different faction, it is too vague — rewrite it.
+
 # The enemy framework (Design Update 04)
 
 An enemy is a **chassis** (its body: HP, Power, attack profile, home row) plus any
@@ -191,6 +201,8 @@ archetype (typical effect) — base cost:
 - Evasive (repositioning; pairs with flying/hexproof) — 2
 - Burst (extra damage above the basic attack) — 4
 - Debilitate (wound / stun / taunt / prevent / POISON) — 4
+- Resource attack (forced discard / SILENCE / mana SAP — see their own section;
+  at most one per encounter) — 4, and 5 for a sap (it compounds every turn)
 - Escalate (recurring self-pump / +1/+1 counters / CHARGE gathering) — 4
 - Drain (deal_damage + heal self, coupled) — 5
 - Counter (REACTIVE ONLY: cancel the hero action on the stack — a counterspell
@@ -232,9 +244,68 @@ once_per_encounter = ×0.5 · reactive timing = +2 flat after multipliers.
   assignment. Regen ticks count as healing (they cure poison).
 - CHARGE — the WINDUP pattern (see its own section below).
 
+## Resource attacks — hurting the PLAN, not the hit points
+Three verbs attack what the party can DO rather than how much HP they have.
+They are slow, they are mean, and they make a fight feel different from every
+other fight. Budget them by PARTY SIZE — see the LOCKDOWN BUDGET in this
+encounter's parameters below, and spend it. A four-hero party has four turns a
+round to spend against your one; taking one of those turns away is how an
+encounter stays a puzzle instead of a damage race. A solo hero has no such
+slack, which is why the budget is small at size 1 and generous at size 4.
+
+- FORCED DISCARD — `move_card` with `"source": "hand"`, `"destination":
+  "graveyard"`, aimed at a hero (`{"mode":"chosen","side":"ally","targeted":
+  true}` — it MUST target a hero; a self-targeted move_card does nothing on the
+  enemy side). The player chooses which card goes, so it costs them their worst
+  card and a real decision, not a random gut-punch. `"count": 1`. Price as
+  Debilitate. Give it to thieves, hags, mind-flayers, anything that steals.
+- SILENCE — `{"kind":"prevent","parameter":"cast","target":{...}}`. The hero
+  cannot cast CARDS. They keep their basic attack, their Skill/Ultimate and any
+  carried consumable, so this narrows the turn instead of deleting it — never
+  apologise for it, but never stack it on the same hero two turns running. As a
+  one-shot it lasts the turn; as a CHANNELLED aura it holds until the channel
+  breaks, which is the version worth building an encounter around (a Hush-Choir
+  whose channel the party must break to get their spells back). Price as
+  Debilitate; as a channel, ×1.5 like any channelled component.
+- MANA SAP — `{"kind":"sap","amount":<int>,"duration":"encounter","target":
+  {...}}`. Reduces the hero's mana CAPACITY, the lands-equivalent: the slowest,
+  cruellest pressure in the game, because it shrinks every future turn. Use
+  `"duration":"encounter"` — a `this_turn` sap from an enemy is nearly worthless,
+  since the enemy acts last and the End step lifts it almost immediately.
+  Magnitude 1–2, and give it `once_per_encounter` or a long cooldown: a sap that
+  fires every turn stacks into a party that cannot play the game. Price as
+  Debilitate +1 (it compounds).
+
+### Attacking the hero's OWN toolkit — the three hostile action modifiers
+`modify_action` normally buffs a hero; these three forms cut into what a hero can
+do, and are the only ones an enemy may use. They draw on the SAME lockdown budget
+as the resource attacks above (and so do stun and taunt) — spend it across
+different heroes and different answers rather than stacking every lock on one
+poor character.
+- HAMSTRING — `{"kind":"modify_action","action":"skill","modifier":"lock_skill",
+  "duration":"encounter","target":{...}}`. The hero's once-per-encounter Skill
+  cannot be activated. Their Ultimate is untouched (a separate action), so this
+  narrows the turn without flattening the character. `encounter` makes it a real
+  loss the party plans around; `this_turn` is a tempo tax. Give it to duellists,
+  crippling beasts, anything that goes for the tendons.
+- DRAIN ULT — `{"kind":"modify_action","action":"ultimate",
+  "modifier":"drain_ultimate","amount":<int>,"target":{...}}`. Takes `amount`
+  off the ultimate gauge (0–100 scale; it cannot go below 0, and drains only
+  what is there). This is anti-climax pressure: it pushes the party's big moment
+  further away every turn. Magnitude 10–25; give it a cooldown of 2+, and prefer
+  the `primed_hero` / `highest_threat` target rules — draining the hero who is
+  nearly full is the whole drama.
+- STRIP REACH — `{"kind":"modify_action","action":"attack","modifier":
+  "make_melee","duration":"encounter","target":{...}}`. The hero's basic attack
+  becomes melee: an archer is dragged into the mud and must now stand in the
+  front rank to swing. Use it on a party with a real ranged attacker, or it does
+  nothing at all.
+Price all three as Debilitate (4); Drain Ult at 5 if the amount is 20+.
+
 ## Verb magnitudes scale with the enemy's Level L
 deal_damage (Burst/Punish) = L+1 · Drain (damage & heal each) = ceil(L/2)+1 ·
 heal (Fortify) = L+2 · pump/wound = ±ceil(L/3) · Escalate counters = +1/+1 ·
+sap = 1 (2 only at L5+) · forced discard / silence = no magnitude (binary) ·
 lose_life (unpreventable) = ceil(L/2) · stun / taunt = no magnitude (binary) ·
 create_token = a Husk at level ceil(L/2), max 2 alive per creator.
 
@@ -408,6 +479,20 @@ Fireball / Meteor / Psionic Lance / a curse = "spell" · Life Leech / Sparkbomb 
 Spore Fog / venom / a war-cry = "ability" (omit the field). Casters and mystics
 should carry spell-classed components — it makes counterspell decks matter.
 
+### Combat Abilities are DERIVED — do not flag them
+Any ability-classed component that DEALS DAMAGE is automatically a Combat
+Ability: its damage lands in the combat lane (combat-damage shields cover it),
+it trips on-attack effects, and a SINGLE-TARGET one can be answered by Mitigate.
+You do not author this — the engine reads your verbs. Two things follow:
+- Do NOT reach for `"action_type": "spell"` to make a physical hit feel bigger.
+  Spell-classing a mundane swing ("Battering Ram — deal 5") takes it OUT of the
+  combat lane and out of Mitigate's reach. Classify by fiction, not by power.
+- A `mode: "all"` blast is deliberately unmitigable, so it is genuinely harder
+  to answer than a single-target hit of the same size. Price it that way, and
+  do not use it just to make a hit unanswerable.
+A damaging ability is no longer a way to bypass the party's defensive toolkit,
+so write them freely — but write them as what they are.
+
 ## Keywords (min level / cost)
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
 deathtouch (3/4) · protection (4/3) · hexproof (4/4) · indestructible (6/6).
@@ -492,6 +577,25 @@ is fine; overspending is impossible. Complexity self-prices into level.
     blast splash, upkeep tick, unpreventable lose_life, poison) and the
     target_rules (not everything "valuation" — use highest_threat,
     channeling_player, wounded_ally, trigger_source where the fiction fits).
+  * NO TWO ENEMIES IN THE POOL MAY SHARE THE SAME KIT. Two enemies whose
+    components are the same archetype pair with the same trigger are one enemy
+    with two names — reroll one of them. Concretely, across the pool:
+      - use at least FOUR distinct component archetypes (or one per enemy when
+        the pool is smaller than four);
+      - no single archetype on more than half the enemies;
+      - at least TWO different reactive triggers, and at least one component
+        gated by a `condition` (bloodied, timer, hero_count, channeling…);
+      - at least one enemy whose threat is NOT damage at all (control, movement,
+        a shield, a counter, a summon, a debuff clock).
+  * VARY THE SWING ITSELF, not just the abilities. An encounter where every
+    enemy's turn is "basic attack, basic attack, ability on cooldown 2" reads as
+    one enemy fought four times. Give bodies different attack profiles (melee /
+    ranged / both), different home rows, and different reasons to be feared —
+    the one that hits hardest, the one that will not die, the one you cannot
+    reach, the one you must not let act.
+  * Name the abilities like a bestiary, not a spreadsheet: the telegraph is the
+    player's whole read on a veiled intent, so "Gut-Hook", "Ashen Litany", and
+    "Toll the Bell" all beat "Heavy Attack" and "Buff Ally".
   * The request parameters below may ROLL suggested signature mechanics for
     this generation — treat a roll as the encounter's default identity unless
     the player's note pulls elsewhere.
@@ -521,7 +625,16 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
 - spends up to 2.5 × B(L) at its level (a level-6 boss spends up to 87) and counts
   as DOUBLE its level toward the encounter total. Surround it with real minions.
 - cannot be destroyed / exiled / bounced above 25% HP (the engine enforces this
-  "execute window") — so give it real HP; the party must whittle it down.
+  "execute window") — so give it real HP; the party must whittle it down. (The
+  engine also refuses to OFFER a removal at a boss above the window, so the
+  party never wastes a card finding out.)
+- ACTS TWICE A ROUND at Standard and Hard difficulty (the engine declares two
+  intents for every boss, and after Enrage on every difficulty). Design the kit
+  for that tempo: two intents drawn from the SAME small kit every turn is a
+  drum-beat, so give a boss 3–4 distinct proactive components with real
+  cooldowns and conditions, so the pair it shows each round keeps changing.
+  Budget the per-turn output accordingly — two medium threats a round, not two
+  copies of one alpha strike.
 - ENRAGES at 25% HP: give it one component with `"archetype": "Enrage"` — it costs
   no budget and auto-fires ONCE, going on the stack when the boss first drops below
   25%. Enraging is a HARD TURN: the engine also shakes off any stun/taunt on the
@@ -620,6 +733,12 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "counters", "power": <int>, "toughness": <int>, "target": {"mode": "self"}},  // PERMANENT (Escalate)
             {"kind": "stun",  "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero loses a turn
             {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me
+            // The three RESOURCE ATTACKS (see their section above). At most ONE per encounter.
+            {"kind": "move_card", "count": 1, "source": "hand", "destination": "graveyard", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // FORCED DISCARD — must target a hero
+            {"kind": "prevent", "parameter": "cast", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // SILENCE — no card casts (attack/Skill/items still work)
+            {"kind": "sap", "amount": <int>, "duration": "encounter", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // MANA SAP — capacity −N; use "encounter", pair with once_per_encounter
+            {"kind": "modify_action", "action": "skill", "modifier": "lock_skill", "duration": "encounter", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // HAMSTRING — the hero's Skill can't be activated (Ultimate untouched)
+            {"kind": "modify_action", "action": "ultimate", "modifier": "drain_ultimate", "amount": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // DRAIN ULT — take 10–25 off the gauge; cooldown 2+
             {"kind": "prevent", "parameter": "combat_damage", "combat_kind": "all", "uses": "next", "target": {"mode": "self"}},  // a duration shield; parameter ∈ combat_damage (attacks + activated abilities) | spell_damage (spells + triggered) | all_damage; combat_kind ∈ all|melee|ranged (combat_damage only)
             {"kind": "amplify", "event": "combat_damage", "multiplier": 2, "bonus": 0, "target": {"mode": "self"}},  // COMBO primer: its next matching damage ×2 (+bonus); event ∈ combat_damage|spell_damage|any_damage|heal; also targets an ally enemy
             {"kind": "double_next", "filter": "spell", "target": {"mode": "self"}},   // its next spell/ability to resolve, resolves twice; filter ∈ spell|ability|action
@@ -664,10 +783,16 @@ spells to rebound). `amplify` and `double_next` are combo primers: use them as a
 windup the party can see coming (prime, then swing) — priming is one-shot and
 holds until spent. NEVER use these verbs (player-only; they do nothing
 or break the fight): destroy, bounce, strip_intent, fight, revive, draw, scry,
-move_card, ramp, add_mana, stance. `control` is enemy-legal ONLY on corpses (the
+ramp, add_mana, stance. `modify_action` is enemy-legal ONLY in its three HOSTILE
+forms — see the resource-attack section (every other modifier retunes a hero's
+own actions in the hero's favour, so it would be a gift to the party).
+`move_card` is enemy-legal ONLY as FORCED DISCARD — see
+the resource-attack section below; every other shape of it does nothing on the
+enemy side. `control` is enemy-legal ONLY on corpses (the
 Necromancy shape above — never on a living hero), and `exile` is enemy-legal ONLY
 on an own-side corpse (the Corpse-burst shape). Never grant enemies first_strike /
-vigilance / haste.
+vigilance / haste / defender — `defender` is a HERO-only keyword (the engine
+ignores it on an enemy), so putting it on one buys nothing.
 
 # Three worked examples that build correctly (study these, then design your own)
 
@@ -919,6 +1044,23 @@ def _budget(size: int, avg_level: float, difficulty: str) -> int:
     return max(1, round(2 * size * avg_level * mult))
 
 
+def _lockdown_budget(size: int, difficulty: str) -> int:
+    """How many LOCKDOWN pieces a layout should carry (stun / taunt / silence /
+    hamstring / discard / sap / drain-ult / strip-reach).
+
+    Scales with party size, because that is what the effect actually costs the
+    party: taking one turn from a four-hero round removes a quarter of their
+    action economy, but taking the solo hero's turn removes all of it. Playtest
+    (standard difficulty) read as too easy at larger sizes precisely because a
+    bigger party got proportionally MORE slack, not less."""
+    base = {1: 0, 2: 1, 3: 2, 4: 3}.get(max(1, min(4, size)), 1)
+    if difficulty == "easy":
+        return max(0, base - 1)
+    if difficulty == "hard":
+        return base + 1
+    return base
+
+
 # Signature mechanics rolled per request (encounters) / per phase (adventures).
 # The instructions teach every one of these; sampling here — in code, not in the
 # model — is what actually spreads generations across the design space: an LLM
@@ -955,6 +1097,24 @@ SIGNATURE_POOL: List[str] = [
     "transform minions mid-fight into something worse",
     "a TIMER — a turn >= N condition unlocking a far bigger ability; turtling "
     "loses the race",
+    "GROUND-AIMED BARRAGE — positional `target_row` intents (the glowing floor "
+    "circle) that punish standing still; the party pays actions to scatter",
+    "the BODYGUARD KNOT — a Ward layering prevent/protection onto the one enemy "
+    "that matters, so the party must peel the shield before the threat",
+    "the DREAD-WINDOW TYRANT — gauge-punishers (hero_gauge_pct / on_ultimate_cast "
+    "/ primed_hero) that tax the party's big moment instead of their HP",
+    "EXECUTIONER PACK — on_hero_downed surges that make one hero falling a "
+    "crisis for the other three",
+    "UNPREVENTABLE BLEED — lose_life ticks that no shield, prevent, or Mitigate "
+    "answers; the party must out-heal or out-race it",
+    "DESPERATE SAVES — on_incoming_lethal emergency heals/prevents that break "
+    "exact-lethal maths; every kill must be overkilled or double-tapped",
+    "the DEATHTOUCH DUELLIST — a scarce deathtouch/trample/lifelink body whose "
+    "keyword, not its statline, dictates how the party may trade with it",
+    "CORPSE-BURST ARTILLERY — enemies that eat their OWN dead for row blasts; "
+    "leaving bodies on the field is the mistake",
+    "ANTI-PARTY CLEAVE — hero_count conditions that unlock wide blast shapes "
+    "only against a full party, so formation is the answer",
 ]
 
 
@@ -1057,18 +1217,28 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     size_lines = []
     for size in range(1, 5):
         budget = _budget(size, party["avg_level"], difficulty)
+        lock = _lockdown_budget(size, difficulty)
         size_lines.append(
             f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies (2× the '
             f"party, duplicates count), total enemy Levels about {budget} "
-            "(a boss counts double).")
+            f"(a boss counts double); lockdown "
+            + ("none at this size."
+               if lock == 0 else
+               f"{lock} piece{'s' if lock != 1 else ''}."))
     lines = [
         "# THIS ENCOUNTER'S PARAMETERS",
         f'- Designing party (they picked this fight): {party["size"]} hero(es) — {roster}.',
         f'- Average party level: {party["avg_level"]:.1f}.',
         f"- Difficulty: {difficulty}.",
         "- REQUIRED: a `layouts` object with keys \"1\", \"2\", \"3\" and \"4\". The party "
-        "must be outnumbered at EVERY size — per-size minimums and Level targets "
-        "(sum of the layout's enemies' levels; aim close, never far under):",
+        "must be outnumbered at EVERY size — per-size minimums, Level targets "
+        "(sum of the layout's enemies' levels; aim close, never far under) and "
+        "LOCKDOWN BUDGET below.",
+        "  The lockdown budget counts pieces that attack the party's TURNS rather "
+        "than their HP — stun, taunt, silence, hamstring, forced discard, mana "
+        "sap, drain-ult, strip-reach. Spend it: it scales with party size because "
+        "that is what the effect costs them, and it is the difference between a "
+        "puzzle and a damage race. Spread it across DIFFERENT heroes.",
         *size_lines,
         ("- This is a HARD fight: include a boss (is_boss: true, with a dramatic "
          "multi-verb Enrage component and phase-gated abilities), surrounded by real "
@@ -1379,7 +1549,9 @@ descriptions). This block adds the arc-level rules:
   PERSON, PRESENT TENSE, describing the party arriving into that phase's scene
   ("You push through the splintered gate. Beyond, the courtyard…"). Phase I's
   narration is the adventure's opening. No mechanics, no numbers — atmosphere
-  and forward motion.
+  and forward motion. Name what the party can SEE and what is about to fight
+  them; the concreteness rule above binds here hardest, because this paragraph
+  is the only thing the player reads before the board appears.
 - `flavor` is the adventure's one-line pitch, shown in the New Game list.
 
 # Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
@@ -1642,6 +1814,35 @@ SCENARIO_TIMEOUT = 300.0
 # setting replaces it verbatim.
 DEFAULT_SCENARIO_TONE = """CLASSIC HIGH FANTASY — think The Lord of the Rings, Dungeons & Dragons, Final Fantasy. Warm and wondrous, not grim: hearth-fires and market bells, elves and dwarves and halflings beside humans, old magic, ancient ruins, dragons and dark lords out in the wild. Towns are places worth saving — welcoming, lived-in, a little quaint, with humour and hope. Peril belongs to the villain and the road, not to the townsfolk's daily lives. Heroic register, PG rating: no gore, no misery-porn, no cynicism."""
 
+# --------------------------------------------------------------------------- #
+# The concreteness rule, shared by every Scenario-Mode writer (towns, arcs, acts)
+# and by adventure generation. Playtest note that produced it: "the scenarios
+# should avoid anything too vague (e.g. 'wrongness'). It doesn't need to be too
+# innovative, tropes are fine! Vague and weird is hard to depict, generate art
+# for, explain, or be understood — better suited for a novel than a video game."
+# This is a game the player LOOKS at: every noun here becomes a painting, a
+# sentence in a splash, or a thing on a battlefield.
+# --------------------------------------------------------------------------- #
+CONCRETENESS_RULE = """BE CONCRETE — this is the rule that overrides your instincts:
+
+- Write things a painter could paint and a player could point at. Every threat
+  is a THING with a body, a place, and a method: rats the size of dogs in the
+  granary; a bandit captain who has taken the toll bridge; a dead knight who
+  walks the barrow at night and takes the sword of anyone who enters.
+- BANNED: abstract dread as a subject. No "a wrongness", "something is not
+  right", "a wound in the world", "the shape of an idea", "geometry that hurts
+  to look at", "it is not a place so much as an absence". If you catch yourself
+  gesturing at the indescribable, name the monster instead.
+- TROPES ARE GOOD. A goblin warren, a haunted mill, a dragon's hoard, a cult in
+  the crypt, an ogre on the bridge, bandits, a necromancer, a corrupted
+  druid — the familiar shapes are familiar because they read instantly and paint
+  beautifully. Be FRESH IN THE DETAIL (the ogre's toll, the cult's day job), not
+  in the category.
+- Names are things, not moods: "the Greywater Mine", "Bellhollow Chapel",
+  "Marrow, the barrow-knight" — never "the Hollowing" or "the Quiet".
+- If a sentence would still be true after you swapped in a completely different
+  monster, it is too vague. Rewrite it."""
+
 TOWN_INSTRUCTIONS = r"""
 You are the world-builder for LTG, a painterly tactical fantasy card game. Design
 ONE TOWN that will be the home base for many campaigns — the place heroes ride
@@ -1649,6 +1850,8 @@ out from and come home to. Return ONLY JSON.
 
 TONE:
 %TONE%
+
+%CONCRETE%
 
 Rules:
 - The town has EXACTLY these REQUIRED locations, one each, "function" set to the
@@ -1662,14 +1865,29 @@ Rules:
   building's FRONTAGE as seen from the street — its shape, sign, doorway,
   materials; this paints the map card), "interior_scene" (2–3 sentences: ONLY
   what a character STANDING INSIDE would see — the room around them, its light,
-  furnishings, smells made visible; not the whole building, no people), and
+  furnishings, sounds, smells made visible; not the whole building, no people.
+  This text does DOUBLE duty: it paints the interior art AND it is the splash
+  the party reads the moment they walk in, so make it concrete and sensory —
+  named objects and materials, not atmosphere-in-the-abstract), and
   "npcs": 1–2 RESIDENT NPCs.
 - Every NPC has: "name", "role" (innkeeper, smith, priestess, retired ranger…),
   "persona" (3–5 sentences of PROSE: manner, voice, what they care about, a
   quirk or a story of their own — this text is reused verbatim to write their
-  dialogue later, so make it a character sheet in prose, no dialogue lines), and
+  dialogue later, so make it a character sheet in prose, no dialogue lines),
   "portrait_desc" (2–3 sentences of physical appearance for a portrait painter —
-  race, age, dress, bearing).
+  race, age, dress, bearing), and "topics".
+- "topics": 2–3 FLAVOUR EXCHANGES this person will have with anyone, in any
+  campaign — each {"ask": what a visitor says, "reply": their answer, 1–3
+  sentences in their own voice}. This is the floor of the game's texture: every
+  townsperson must be worth walking up to even when they hold no quest. Make
+  them SPECIFIC to this person and this town — the smith's feud with the river
+  guild, the innkeeper's opinion of the new bridge toll, the child-apprentice's
+  claim about what lives under the mill. Never a campaign plot (there isn't one
+  yet), never "the roads are dangerous these days".
+- At the weaponsmith, artificer and apothecary, EXACTLY ONE resident keeps the
+  counter: give that one "vendor": true. A second resident there (an apprentice,
+  a spouse, a customer who never leaves) does not sell anything — they are there
+  to be talked to.
 - Vary the folk: not every NPC is human, weathered, or sad. Give the town a
   cheerful innkeeper, a proud smith, a curious child-apprentice, a wise elder —
   the classic ensemble — with the tone above.
@@ -1681,7 +1899,35 @@ Output contract:
 {"name": "...", "region_flavor": "...", "scene": "...",
  "locations": [{"name": "...", "function": "inn", "description": "...",
                 "exterior_scene": "...", "interior_scene": "...",
-                "npcs": [{"name": "...", "role": "...", "persona": "...", "portrait_desc": "..."}]}, ...]}
+                "npcs": [{"name": "...", "role": "...", "persona": "...", "portrait_desc": "...",
+                          "vendor": true,
+                          "topics": [{"ask": "...", "reply": "..."}, ...]}]}, ...]}
+"""
+
+TOPICS_INSTRUCTIONS = r"""
+You write FLAVOUR DIALOGUE for the residents of an existing town in LTG, a
+painterly tactical fantasy card game. You get the town and its people's personas.
+Return ONLY JSON.
+
+TONE:
+%TONE%
+
+%CONCRETE%
+
+For EVERY NPC named below, write 2–3 TOPICS: exchanges this person will have
+with any party of adventurers, in any campaign. Each topic is
+{"ask": what a visitor says to open it, "reply": their answer — 1–3 sentences in
+their own voice, faithful to their persona}.
+
+- SPECIFIC to this person and this town: their trade, their neighbours, their
+  grudge, the thing they are proud of, the local landmark and what happened
+  there. A reader should be able to tell WHO is speaking from the reply alone.
+- NO campaign plot, no villain, no quest — those are written per scenario. This
+  is the town on an ordinary day.
+- No mechanics, no numbers, no stage directions. Just talk.
+
+Output contract:
+{"topics": {"<npc id>": [{"ask": "...", "reply": "..."}, ...], ...}}
 """
 
 ARC_INSTRUCTIONS = r"""
@@ -1694,6 +1940,8 @@ Return ONLY JSON.
 TONE:
 %TONE%
 
+%CONCRETE%
+
 Rules:
 - The villain is ONE named antagonist (a person, a cult, a beast-lord) whose
   hand shows in Act I, tightens in Act II, and is confronted in Act III's
@@ -1701,9 +1949,14 @@ Rules:
 - Each act outline: "title" (the act's story-beat name), "hook" (2–3 sentences:
   what the town needs and why the party rides out), "questgiver_npc" (the id of
   an NPC of this town — use the ids given, not names), "handoff" (optional: the
-  id of a second NPC who holds a clue or reward), "adventure_theme" (one line
-  naming the PLACE the adventure happens in and its faction — a mine, a manor,
-  a drowned chapel), "tone_notes" (one line: mood/palette for the writers).
+  id of a second NPC who holds a clue, a reward, or a competing plea),
+  "adventure_theme" (one line naming the PLACE the adventure happens in and its
+  faction — a mine, a manor, a drowned chapel), "tone_notes" (one line:
+  mood/palette for the writers).
+- LEAVE ROOM FOR A CHOICE. The town phase of every act puts at least two quests
+  in front of the party, so write each hook wide enough to fork: two troubles at
+  once, two ends of one thread, or one job with two ways in (overland by day, or
+  around by boat after dark). Say in the hook what the fork is.
 - Use different questgivers across acts where the town allows; keep the inn's
   and merchants' NPCs mostly out of quest-giving unless the persona begs for it.
 - Respect every persona verbatim: a coward stays a coward.
@@ -1725,14 +1978,36 @@ act. Return ONLY JSON.
 TONE:
 %TONE%
 
+%CONCRETE%
+
 Write:
-1. "quest": {"title", "text"} — the quest as the journal shows it (2–4 sentences).
+1. "quests": TWO to FOUR QUEST OPTIONS — what the party may agree to this act.
+   THIS IS THE ACT'S ONE REAL CHOICE, so make it a real one. The combat half of
+   the act is not written until they accept, so every option costs nothing and
+   buys the players agency. Each option: {"id": short_snake_case,
+   "title": "...", "text": the quest as the journal shows it (2–4 sentences),
+   "adventure_theme": one line naming the PLACE the ride-out happens in and how
+   they go at it — this steers the dungeon that gets written}.
+   Pick ONE of these shapes (or mix them):
+     * DIFFERENT TROUBLES: two things are wrong at once and the party decides
+       who they help — the flooded mine crew or the burned waystation.
+     * BRANCHES OF ONE TROUBLE: chase the raiders' camp, or cut them off at the
+       ford where they cross.
+     * ONE PLAN, DIFFERENT APPROACHES: the same objective, taken overland in
+       daylight, or by boat after dark along the shore, or by talking your way
+       in with the guild's seal. Same villain, different road, different fight.
+   The options may all sit with the outline's questgiver, or be spread across
+   two NPCs (one asking for help against the other's problem) — if they are
+   spread, the questgiver's tree must POINT AT the other NPC with a "direct_to"
+   hook, because the town wears no labels and the party will not find them
+   otherwise. Every option must be accept-able somewhere in the trees below.
 2. "arrival": ONE paragraph, second person, present tense: the party arriving in
    town at the start of this act (the entry splash). No mechanics.
 3. "dialogues": a map of NPC id → DIALOGUE TREE for: the questgiver (required),
-   the handoff NPC if the outline names one, and 1–2 others whose personas earn a
-   word (the innkeeper may greet). Each tree:
-   {"root": "<node id>", "nodes": {"<id>": {"speaker": "npc" | "party", "text": "...",
+   the handoff NPC if the outline names one, any NPC who holds one of the quest
+   options, and 1–2 others whose personas earn a word (the innkeeper may greet).
+   Each tree:
+   {"root": "<node id>", "nodes": {"<id>": {"speaker": "npc" | "party" | "narration", "text": "...",
       "choices": [{"label": "...", "next": "<node id or omit to end>",
                    "requires": ["<flag>", ...] (optional),
                    "effects": [<hook>, ...] (optional)}]}}}
@@ -1740,47 +2015,100 @@ Write:
      (never more than 8, counting every branch), 2–3 choices per node; a choice
      with no "next" ends the conversation. Node text 1–3 sentences in the NPC's
      voice.
+   - BE UNDERSTANDABLE. This is the single most important rule here. The player
+     is dropped into this conversation cold: they have not met this NPC, they do
+     not know the local names, and they cannot ask a follow-up you did not
+     write. So:
+       * NAME THINGS PLAINLY the first time. Not "the trouble at the old place"
+         — "the Greywater mine, two hours north, where the diggers stopped
+         coming back". A proper noun always arrives with a clause saying what it
+         is ("Hessa Vane — the reeve, she runs the town's ledgers").
+       * SAY WHAT IS ACTUALLY HAPPENING. Every questgiver tree must, out loud,
+         cover: what is wrong, where it is, who or what is behind it (as far as
+         anyone knows), what the party is being asked to DO, and what happens if
+         nobody does it. Concrete, physical, checkable — a missing shipment, a
+         chewed-through gate, twelve people who did not come home.
+       * NO PORTENTOUS FOG. Ban the register of "something is wrong", "a
+         wrongness", "it's not right down there", "you'll see". If a character
+         genuinely does not know something, they say so in plain words and say
+         what they DO know.
+       * REFER BACK. If this act follows an earlier one, someone says what
+         happened last time in one clear sentence.
+   - "speaker": "narration" is an unvoiced beat — stage direction, not a line
+     anyone speaks: what the NPC does with their hands, what the party notices
+     on the wall, what a name the NPC just used actually refers to. Use it
+     freely (roughly one per tree) to carry the context that would be clumsy in
+     someone's mouth. It renders in italic with no nameplate, so never write
+     narration as though it were dialogue and never put quotation marks in it.
    - HOOKS are a CLOSED vocabulary — use ONLY these shapes, nothing else:
        {"kind": "set_flag", "flag": "<name>"}
-       {"kind": "grant_quest"}            (the quest above)
+       {"kind": "grant_quest", "quest": "<quest id>"}   (accepts THAT option)
+       {"kind": "defer_quest"}            ("we'll think on it" — they may return)
        {"kind": "unlock_adventure"}       (opens Start Adventure — write-once)
        {"kind": "advance_quest"}
        {"kind": "give_gold", "amount": <int>}
        {"kind": "rest"}                   (full restore — the inn only)
-       {"kind": "open_shop"}              (merchants only)
+       {"kind": "open_shop"}              (the ONE vendor of a shop, marked below)
        {"kind": "direct_to", "npc": "<npc id>"}   (points the journal at someone)
-   - The QUESTGIVER'S tree MUST contain exactly one QUEST ACCEPT choice whose
-     effects are [{"kind":"grant_quest"},{"kind":"unlock_adventure"}] — label it
-     as an acceptance ("We'll go.", "Consider it done."). Offer at least one
-     flavour choice before it (a question about the danger, a haggle) and one
-     way to end without accepting (the player can return).
+   - EVERY quest option needs a QUEST ACCEPT choice: effects
+     [{"kind":"grant_quest","quest":"<that option's id>"},{"kind":"unlock_adventure"}],
+     labelled as an acceptance in the party's voice ("We'll take the shore road.",
+     "The mine first — those people are still down there."). The options an NPC
+     holds should sit together on ONE node, so the player reads them side by side
+     and picks.
+   - EVERY node that offers an acceptance MUST ALSO offer a DEFER choice with
+     effects [{"kind":"defer_quest"}] — "Let us get back to you; we've business
+     to see to." A party is never cornered into agreeing. (Coming back is
+     handled for you: the NPC will open by asking whether they have had time to
+     consider, with the same offers still standing. You may write that line
+     yourself in "reask" below.)
+   - Offer at least one flavour choice before the offers (a question about the
+     danger, a haggle, a doubt).
    - The questgiver's tree MUST ALSO carry a branch for a party that already
      tried and FAILED: a root choice with "requires": ["defeated_once"] leading
      to a node where the NPC reacts to the party returning bloodied and re-offers
-     the same quest (another Quest Accept choice is fine there — same two hooks).
+     the quests (accept choices there too — same hook pairs, plus a defer).
    - The innkeeper's tree, if present, offers a choice with effects
      [{"kind":"rest"}] ("Take a room.") — resting restores the party fully.
-   - Merchants' trees, if present, may offer [{"kind":"open_shop"}].
+   - Only an NPC marked (vendor) in the town block may offer
+     [{"kind":"open_shop"}]; the other residents of a shop just talk.
    - "requires" may reference flags your own set_flag hooks create in this tree,
      plus the standing flags: defeated_once, quest_accepted, act_1_complete,
      act_2_complete, act_3_complete.
    - NO other keys. No "freeform". No mechanics or numbers in text.
-4. "flavor": a map of NPC id → ONE fresh line of greeting for NPCs without a
-   tree (optional, 1–4 entries).
+4. "flavor": a map of NPC id → ONE fresh line of greeting, in their voice, for
+   EVERY NPC of the town who has no tree above. Nobody is a closed door.
+5. "topics": a map of NPC id → 1–2 exchanges [{"ask": "...", "reply": "..."}]
+   about THIS act's trouble, for NPCs without a tree — what the fisherman heard
+   on the water, what the priestess thinks of the reeve's plan. These sit
+   alongside the town's own standing topics, which you have been given; do not
+   repeat those.
+6. "reask" (optional): a map of NPC id → the line that NPC opens with when the
+   party comes back after saying they would think it over ("Well? Have you had
+   time to consider what I asked?"), in their own voice.
 
 Output contract:
-{"quest": {"title": "...", "text": "..."}, "arrival": "...",
- "dialogues": {"<npc id>": {tree}}, "flavor": {"<npc id>": "..."}}
+{"quests": [{"id": "...", "title": "...", "text": "...", "adventure_theme": "..."}, ×2–4],
+ "arrival": "...",
+ "dialogues": {"<npc id>": {tree}},
+ "flavor": {"<npc id>": "..."},
+ "topics": {"<npc id>": [{"ask": "...", "reply": "..."}]},
+ "reask": {"<npc id>": "..."}}
 """
 
 
-def _town_block(town: Dict[str, Any]) -> str:
+def _town_block(town: Dict[str, Any], topics: bool = True) -> str:
     lines = [f'# TOWN — {town.get("name", "")}', f'Region: {town.get("region_flavor", "")}',
              f'Scene: {town.get("scene", "")}', "Locations and resident NPCs (ids in brackets):"]
     for loc in town.get("locations") or []:
         lines.append(f'- [{loc["id"]}] {loc["name"]} ({loc.get("function", "")}): {loc.get("description", "")}')
         for npc in loc.get("npcs") or []:
-            lines.append(f'    * [{npc["id"]}] {npc["name"]}, {npc.get("role", "")} — {npc.get("persona", "")}')
+            # (vendor) marks the one person at a shop who actually sells.
+            tag = " (vendor — keeps this counter)" if npc.get("vendor") else ""
+            lines.append(f'    * [{npc["id"]}] {npc["name"]}, {npc.get("role", "")}{tag} — {npc.get("persona", "")}')
+            if topics:
+                for t in npc.get("topics") or []:
+                    lines.append(f'        · already says, asked "{t["ask"]}": {t["reply"]}')
     return "\n".join(lines)
 
 
@@ -1803,6 +2131,7 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
     if not settings["api_key"]:
         raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
     system = system.replace("%TONE%", settings.get("scenario_tone") or DEFAULT_SCENARIO_TONE)
+    system = system.replace("%CONCRETE%", CONCRETENESS_RULE)
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
@@ -1830,6 +2159,47 @@ def generate_town(note: str = "", attempts: int = 3) -> Dict[str, Any]:
     town = _scenario_chat(TOWN_INSTRUCTIONS, user, attempts, sc.validate_town, "town",
                           task="towns")
     return sc.save_town(town)
+
+
+def generate_town_topics(town_id: str, attempts: int = 3) -> Dict[str, Any]:
+    """Fill in the standing flavour topics of a town's residents (§D17-5.4) —
+    the ones who have none. Existing topics are left alone. Returns the town's
+    meta."""
+    from . import scenario_content as sc
+    town = sc.town_detail(town_id)
+    if town is None:
+        raise ValueError(f"unknown town: {town_id}")
+    wanted = [(loc, npc) for loc in town["locations"] for npc in loc["npcs"]
+              if not (npc.get("topics") or [])]
+    if not wanted:
+        return sc.save_town({k: v for k, v in town.items() if k != "id"}, town_id)
+    roster = "\n".join(f'- [{npc["id"]}] {npc["name"]}, {npc.get("role", "")} of '
+                       f'{loc["name"]} — {npc.get("persona", "")}' for loc, npc in wanted)
+    user = (_town_block(town, topics=False) + "\n\n# WRITE TOPICS FOR THESE PEOPLE "
+            "(and only these):\n" + roster + "\n\nReturn ONLY the topics JSON.")
+
+    def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
+        rows = raw.get("topics") if isinstance(raw.get("topics"), dict) else raw
+        if not isinstance(rows, dict):
+            raise ValueError("expected {\"topics\": {npc id: [{ask, reply}, …]}}")
+        out: Dict[str, Any] = {}
+        for npc_id, items_ in rows.items():
+            found = sc._resolve_npc(town, str(npc_id))
+            if found is None:
+                raise ValueError(f"'{npc_id}' is not an NPC of this town")
+            out[found[1]["id"]] = sc.clean_topics(items_, f"topics for {found[1]['name']}")
+        missing = [npc["name"] for _, npc in wanted if not out.get(npc["id"])]
+        if missing:
+            raise ValueError("no topics for " + ", ".join(missing))
+        return out
+
+    written = _scenario_chat(TOPICS_INSTRUCTIONS, user, attempts, fix, "topics", task="towns")
+    for loc in town["locations"]:
+        for npc in loc["npcs"]:
+            if written.get(npc["id"]):
+                npc["topics"] = written[npc["id"]]
+    town.pop("id", None)
+    return sc.save_town(town, town_id)
 
 
 def generate_arc(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
@@ -1879,7 +2249,7 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
         user.append("The party ALREADY RODE OUT ON THIS QUEST AND WAS DEFEATED — they return "
                     "bloodied. Write the questgiver's tree so the defeated_once branch is the "
                     "living one (reproach, worry, or dark humour per persona), and re-offer the "
-                    "same quest.")
+                    "same quest options there.")
     if previous_summary:
         user.append(f"\n# PREVIOUSLY: {previous_summary}")
     user.append("\nWrite this act's town portion now. Return ONLY the JSON.")
