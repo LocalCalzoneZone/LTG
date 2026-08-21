@@ -32,7 +32,8 @@ def runs(tmp_path):
 
 def _fake_materializer(town, arc, act_index, party_state, prev=""):
     m = materialization_raw()
-    m["quest"]["title"] = f"Quest {act_index + 1}"
+    m["quests"][0]["title"] = f"Quest {act_index + 1}"
+    m["quests"][1]["title"] = f"Quest {act_index + 1}, the other way"
     if party_state.get("flags", {}).get("defeated_once"):
         m["arrival"] = "You limp back up the causeway."
     outline = arc["acts"][act_index]
@@ -108,15 +109,22 @@ def _take_rewards(session, client="c1"):
     session.economy_verb(client, "reward_accept", {})
 
 
-def _accept_quest(session, client="c1"):
+def _walk_to_questgiver(session, client="c1"):
     scen = session.scenario
     outline = scen.outline
     session.clients[client] = object()
     session.town_verb(client, "visit", {"location_id": outline["questgiver_location"]})
     session.town_verb(client, "talk", {"npc_id": outline["questgiver_npc"]})
-    conv = scen.town_snapshot()["conversation"]
-    accept = next(c for c in conv["choices"] if c["party_wide"] and "go" in c["label"].lower())
-    session.town_verb(client, "choose", {"index": accept["index"]})
+    return scen.town_snapshot()["conversation"]
+
+
+def _accept_quest(session, client="c1", which=0):
+    """Take the ``which``-th offer on the questgiver's opening node."""
+    scen = session.scenario
+    conv = _walk_to_questgiver(session, client)
+    offers = [c for c in conv["choices"] if c["party_wide"]]
+    session.town_verb(client, "choose", {"index": offers[which]["index"]})
+    return offers
 
 
 def test_arrival_materializes_and_town_snapshot_shape(runs):
@@ -136,6 +144,101 @@ def test_arrival_materializes_and_town_snapshot_shape(runs):
     saves = runs.run_detail(run_id)["saves"]
     assert saves[-1]["kind"] == "act_start"
     assert saves[-1]["label"] == "Hollowmere · Scenario 1 · Act I · Town — arrival"
+
+
+def test_location_splash_describes_the_room_not_an_npc_line(runs):
+    # Walking into a room reads the ROOM (its interior scene, the same text the
+    # interior art is painted from) — not a greeting lifted out of an NPC's
+    # flavour line, which used to arrive as a snippet of a conversation nobody
+    # had started.
+    session, scen, _ = _start(runs)
+    session.clients["c1"] = object()
+    session.town_verb("c1", "visit", {"location_id": "tolls_forge"})
+    splash = session.snapshot_for("c1")["splash"]
+    loc = sc.find_location(scen.town, "tolls_forge")
+    assert splash["kind"] == "location" and splash["title"] == loc["name"]
+    assert splash["text"] == loc["interior_scene"]
+    assert splash["text"] != scen.act["flavor"].get("bram_toll")
+
+
+def test_the_town_wears_no_labels(runs):
+    # Which location holds the questgiver, and who has a tree, are NOT in the
+    # snapshot: the party finds out by walking in and talking (§D17-5.2).
+    session, scen, _ = _start(runs)
+    snap = session.snapshot_for("c1")
+    for loc in snap["town"]["locations"]:
+        assert "questgiver" not in loc and "has_dialogue" not in loc
+    session.clients["c1"] = object()
+    session.town_verb("c1", "visit", {"location_id": "the_salt_shrine"})
+    for npc in session.snapshot_for("c1")["location"]["npcs"]:
+        assert "questgiver" not in npc and "has_dialogue" not in npc
+
+
+def test_only_one_npc_at_a_shop_keeps_the_counter(runs):
+    town = sc.validate_town(town_raw())
+    town["locations"][1]["npcs"].append(
+        {"name": "Nessa Toll", "role": "apprentice", "persona": "Nessa sweeps and watches.",
+         "portrait_desc": "A soot-smudged girl with a broom."})
+    town = sc.validate_town(town)
+    session, scen, _ = _start(runs)
+    scen.town = town
+    session.clients["c1"] = object()
+    session.town_verb("c1", "visit", {"location_id": "tolls_forge"})
+    npcs = session.snapshot_for("c1")["location"]["npcs"]
+    assert [n["merchant"] for n in npcs] == [True, False]
+
+
+def test_the_act_offers_several_quests_and_the_choice_steers_the_adventure(runs):
+    session, scen, _ = _start(runs)
+    conv = _walk_to_questgiver(session)
+    offers = [c for c in conv["choices"] if c["party_wide"]]
+    assert len(offers) >= 2                                   # a real choice
+    assert len(scen.quest_options) == 2
+    session.town_verb("c1", "choose", {"index": offers[1]["index"]})
+    assert scen.quest["status"] == "accepted"
+    assert scen.quest["title"] == "Quest 1, the other way"
+    assert scen.quest["id"] == "the_shore_road"
+    # The accepted approach — not the arc outline's — is what the adventure
+    # generator is handed.
+    theme = scen.adventure_context()["arc_context"]["act"]["adventure_theme"]
+    assert "reed-shore at night" in theme
+    assert scen.arc["acts"][0]["adventure_theme"] not in theme
+
+
+def test_deferring_makes_the_npc_ask_again_next_time(runs):
+    session, scen, _ = _start(runs)
+    conv = _walk_to_questgiver(session)
+    defer = next(c for c in conv["choices"] if "get back to you" in c["label"])
+    assert defer["party_wide"] is False                        # nobody is bound by it
+    session.town_verb("c1", "choose", {"index": defer["index"]})
+    assert scen.conversation is None and not scen.flags.get("quest_accepted")
+    assert scen.flags["deferred_sister_aud"] is True
+    assert "think on it" in scen.journal[-1]["text"]
+    # Walking back up: the NPC opens by asking, with every offer still standing.
+    conv = _walk_to_questgiver(session)
+    assert conv["text"].startswith("Well —")
+    labels = [c["label"] for c in conv["choices"]]
+    assert len([c for c in conv["choices"] if c["party_wide"]]) == 2
+    assert any("Not yet" in l for l in labels)                 # and put it off again
+    offers = [c for c in conv["choices"] if c["party_wide"]]
+    session.town_verb("c1", "choose", {"index": offers[0]["index"]})
+    assert scen.quest["status"] == "accepted"
+    assert not any(f.startswith("deferred_") for f in scen.flags)
+
+
+def test_an_npc_without_a_tree_still_holds_a_conversation(runs):
+    # Every townsperson is worth walking up to: their greeting, then the topics
+    # the town and the act gave them, each as something the party can ask about.
+    session, scen, _ = _start(runs)
+    session.clients["c1"] = object()
+    session.town_verb("c1", "visit", {"location_id": "tolls_forge"})
+    session.town_verb("c1", "talk", {"npc_id": "bram_toll"})
+    conv = scen.town_snapshot()["conversation"]
+    assert conv["text"] == "Steel's honest. Lakes aren't."
+    labels = [c["label"] for c in conv["choices"]]
+    assert labels == ["Heard anything off the water?", "Farewell."]
+    session.town_verb("c1", "choose", {"index": 0})
+    assert "fishers" in scen.town_snapshot()["conversation"]["text"]
 
 
 def test_quest_accept_fires_hooks_saves_and_generates_the_adventure(runs):
@@ -294,12 +397,10 @@ def test_all_players_confirmation_gates_party_wide_moves(runs):
     assert scen.location_id is None
 
 
-def test_pregenerated_scenario_act_one_is_instant(runs):
-    """A scenario def with Act I materialized + its adventure: no generation
-    call at all — the job is ready on arrival."""
+def _pregen_session(runs, adventure_id, quest_id, generated=None):
+    """A scenario def with Act I materialized + its adventure already written."""
     town = sc.validate_town(town_raw())
     arc = sc.validate_arc(arc_raw(), town)
-    adv_meta = _fake_adventure_generator([], context={"arc_context": {"act_number": 1}})
     m = sc.validate_materialization(materialization_raw(), town, arc["acts"][0])
     loadouts = content.loadouts_for(["loadout_soren"])
     scen = ScenarioRun(town, arc, ["loadout_soren"], loadouts, {}, town_id="hollowmere",
@@ -307,9 +408,50 @@ def test_pregenerated_scenario_act_one_is_instant(runs):
     scen.materializer = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no LLM call"))
     meta = runs.create_scenario_run(scen)
     session = SessionManager().create(None, run_id=meta["run_id"], run_manager=runs, scenario=scen)
-    session.async_hook = lambda s, kind: None if kind == "adventure_job" else _drive(s, kind)
+    pending = {"adventure_id": adventure_id, "quest_id": quest_id}
+
+    def hook(s, kind):
+        """The app's `_scenario_async` for this job, in miniature."""
+        if kind != "adventure_job":
+            return _drive(s, kind)
+        pre = s.pregenerated_act1
+        if pre is not None:
+            s.pregenerated_act1 = None
+            if not pre["quest_id"] or pre["quest_id"] == s.scenario.quest.get("id"):
+                jobs.RUNNER.prepare_pregenerated(s, pre["adventure_id"])
+                return
+        def gen(*a, **kw):
+            if generated is not None:
+                generated.append(kw.get("context"))
+            return _fake_adventure_generator(*a, **kw)
+
+        jobs.AdventureJobRunner(gen).start(s, None, None)
+
+    session.async_hook = hook
     session.scenario_enter_town(m)
-    jobs.RUNNER.prepare_pregenerated(session, adv_meta["id"])
-    assert scen.adventure_job["state"] == "ready" and not scen.adventure_ready  # not unlocked yet
-    _accept_quest(session)
-    assert scen.adventure_ready
+    session.pregenerated_act1 = pending
+    return session, scen
+
+
+def test_pregenerated_scenario_act_one_is_instant(runs):
+    """Take the option Act I was written for and there is no generation call at
+    all — the pre-written adventure is frozen into the run and the job is ready."""
+    adv_meta = _fake_adventure_generator([], context={"arc_context": {"act_number": 1}})
+    session, scen = _pregen_session(runs, adv_meta["id"], "the_lantern_goes_out")
+    assert scen.adventure_job["state"] == "idle" and not scen.adventure_ready
+    _accept_quest(session, which=0)
+    assert scen.adventure_ready and scen.adventure_id == adv_meta["id"]
+
+
+def test_pregenerated_act_one_is_dropped_when_the_party_takes_the_other_road(runs):
+    """The pre-written adventure belongs to ONE of Act I's options; any other
+    answer generates its own, so the ride out always follows the choice."""
+    adv_meta = _fake_adventure_generator([], context={"arc_context": {"act_number": 1}})
+    generated = []
+    session, scen = _pregen_session(runs, adv_meta["id"], "the_lantern_goes_out", generated)
+    _accept_quest(session, which=1)
+    assert scen.quest["id"] == "the_shore_road"
+    assert scen.adventure_ready and session.pregenerated_act1 is None
+    # A fresh adventure was written, for the road the party actually took.
+    assert len(generated) == 1
+    assert "reed-shore at night" in generated[0]["arc_context"]["act"]["adventure_theme"]

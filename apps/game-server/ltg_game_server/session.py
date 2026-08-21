@@ -84,6 +84,9 @@ class Session:
         # The app layer's hook for work that must leave the lock (LLM calls
         # off-thread, timers): called with (session, kind) after a transition.
         self.async_hook: Optional[Callable[["Session", str], None]] = None
+        # A pre-generated Act I adventure waiting on the party's answer: it fits
+        # one of the act's quest options, and is only taken up if they choose it.
+        self.pregenerated_act1: Optional[Dict[str, Any]] = None
         # The all-players confirmation (T-84), or None.
         self.confirm: Optional[Dict[str, Any]] = None
         self._confirm_seq = 0
@@ -500,13 +503,9 @@ class Session:
             index = int(payload.get("index", -1))
             if sc.choice_is_party_wide(index):
                 label = sc.choice_label(index)
-                is_accept = False
-                node = sc.conversation.node if sc.conversation else None
-                if node:
-                    kinds = {h["kind"] for h in node["choices"][index].get("effects", [])}
-                    is_accept = "grant_quest" in kinds
-                prompt = (f'Accept "{sc.quest.get("title", "the quest")}" as your next quest?'
-                          if is_accept else f"{label}")
+                # An accept names the OPTION being taken — an act offers several.
+                title = sc.choice_quest_title(index)
+                prompt = (f'Accept "{title}" as your next quest?' if title else f"{label}")
                 self.request_confirm(client_id, "choice", prompt,
                                      lambda: self._fire_choice(index))
                 return []

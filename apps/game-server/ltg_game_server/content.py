@@ -136,6 +136,26 @@ ADVENTURE_HIDDEN_FILE = LOADOUTS_DIR / "adventures_hidden.json"
 PHASE_COUNT = 3
 
 # --------------------------------------------------------------------------- #
+# Boss tempo by difficulty.
+# --------------------------------------------------------------------------- #
+# Difficulties on which a BOSS declares two intents a round from the opening bell
+# (§D9-4's fury machinery, un-gated from enrage). Playtest: a boss acting once a
+# round is a punching bag with a big HP bar — the threat has to be in the tempo,
+# not just the HP. Easy leaves bosses on one intent until they enrage.
+DOUBLE_INTENT_DIFFICULTIES = frozenset({"standard", "hard"})
+
+
+def apply_boss_difficulty(scen: Dict[str, Any], difficulty: str) -> None:
+    """Mark every boss in an encounter spec for two intents a round, per the run's
+    difficulty. In place; a spec that already says otherwise is left alone."""
+    if difficulty not in DOUBLE_INTENT_DIFFICULTIES:
+        return
+    for e in scen.get("enemies", []) or []:
+        if isinstance(e, dict) and e.get("is_boss") and "double_intent" not in e:
+            e["double_intent"] = True
+
+
+# --------------------------------------------------------------------------- #
 # Balance register: the global enemy Power bump. Every enemy fields +2 Power
 # over its authored chassis (+4 for a boss) — applied at build time in
 # `build_state_from_loadouts`, the one choke point every real game passes
@@ -1150,6 +1170,10 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
     scenario = scale_encounter(scenario, len(loadouts))
     # Balance register: +2 Power to every enemy fielded, +4 to a boss.
     scenario = _bump_enemy_power(scenario)
+    # Boss tempo by difficulty (Standard/Hard: two intents a round). The adventure
+    # layer stamps this from the RUN's difficulty before we get here; this covers
+    # a plain encounter, which carries only the difficulty it was made at.
+    apply_boss_difficulty(scenario, str(scenario.get("difficulty") or "standard"))
     spec = compose_spec(loadouts, scenario)
     state = state_from_dict(spec, seed=seed)
     # spec["party"] keeps loadouts' order (compose_spec only dedupes ids in place),

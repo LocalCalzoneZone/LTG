@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
-from ltg_core.schema import Card
+from ltg_core.schema import Card, Timing
 from ltg_core.translation import channel_break_clause, render_effects
 from .state import Action, GameState
 
@@ -67,8 +67,25 @@ def card_dict(card: Card) -> Dict[str, Any]:
         "rarity": card.rarity.value,
         "level": card.level,
         "type": card.type,
-        "text": card.translated_text or card.original_text or "",
+        "text": card_text(card),
+        # Card art, when the card carries any: today only a consumable (it
+        # inherits its item's art — §D17-4.4). "" leaves the sigil placeholder.
+        "image": card.image or "",
     }
+
+
+def card_text(card: Card) -> str:
+    """The rules text a card FACE shows. Authored/translated text wins; a card
+    with neither (a consumable minted from an item — §D17-4.4 — has effects but
+    no prose) renders its effects, so every card in hand reads as a full card."""
+    text = card.translated_text or card.original_text or ""
+    if text:
+        return text
+    try:
+        return render_effects(list(card.effects), dict(card.targets),
+                              channeled=card.timing == Timing.channeled)
+    except Exception:  # never let a display render break a snapshot
+        return ""
 
 
 def _pip_str(colors: List[str]) -> str:
@@ -83,16 +100,48 @@ def _pip_str(colors: List[str]) -> str:
 # line below is presentation (freely rewordable without touching the engine).
 # --------------------------------------------------------------------------- #
 _HOSTILE_KINDS = {"deal_damage", "lose_life", "destroy", "exile", "bounce", "stun",
-                  "taunt", "wound", "poison", "fight", "strip_intent",
+                  "taunt", "wound", "sap", "poison", "fight", "strip_intent",
+                  # Enemies only ever use the HOSTILE action modifiers (Hamstring,
+                  # Drain Ult, stripping reach), so one on an intent is hostile —
+                  # without this it would classify as "support" to the player.
+                  "modify_action",
                   "remove_keyword", "counter"}
+
+# The lockdown family: hostile verbs that take away what a hero can DO rather
+# than chewing through HP. They read as their own category ("interference") so a
+# Hamstring or a Silence never wears the same word as a sword swing — the player
+# needs to know which kind of trouble is coming, since the answers differ.
+_CONTROL_KINDS = {"stun", "taunt", "strip_intent", "remove_keyword", "counter",
+                  "sap", "modify_action", "prevent", "move_card"}
+
+# Side-sensitive verbs: hostile only when they reach the PARTY. An enemy's
+# `prevent` is usually a Ward on itself (support); aimed at a hero it is a
+# Silence or a Pacifism. A `move_card` means nothing unless it hits a hand.
+_SIDE_SENSITIVE_HOSTILE = {"prevent", "move_card"}
+
+
+def _aims_at_party(effect) -> bool:
+    desc = getattr(effect, "target", None)
+    side = getattr(desc, "side", None)
+    return getattr(side, "value", side) in ("ally", "any")
+
+
+def _hostile_verb(effect) -> bool:
+    """Does this verb harm the party? (Read from the ENEMY's authoring frame,
+    where side "ally" means the hero side.)"""
+    kind = getattr(effect, "kind", None)
+    if kind in _SIDE_SENSITIVE_HOSTILE:
+        return _aims_at_party(effect)
+    return kind in _HOSTILE_KINDS
 
 
 def intent_category(intent) -> str:
-    """One of the closed set: threat / spellcraft / row assault / party assault /
-    gathering / support / summon / manoeuvre (§D8-1.2). Multi-verb intents
-    classify by their first hostile verb; a `charge` verb anywhere classifies as
-    gathering (the windup dominates the fiction). Row-scoped shapes (§D9-3.2 —
-    a `rows` filter or a row/blast `scope`) read as a row assault."""
+    """One of the closed set: threat / spellcraft / interference / row assault /
+    party assault / gathering / support / summon / manoeuvre (§D8-1.2). Multi-verb
+    intents classify by their first hostile verb; a `charge` verb anywhere
+    classifies as gathering (the windup dominates the fiction). Row-scoped shapes
+    (§D9-3.2 — a `rows` filter or a row/blast `scope`) read as a row assault, and
+    lockdown verbs read as interference whatever their shape."""
     if intent is None:
         return "threat"
     if getattr(intent, "kind", "action") == "move":
@@ -106,9 +155,14 @@ def intent_category(intent) -> str:
         return "spellcraft"
     if "create_token" in kinds:
         return "summon"
-    first_hostile = next((e for e in intent.effects
-                          if getattr(e, "kind", None) in _HOSTILE_KINDS), None)
+    first_hostile = next((e for e in intent.effects if _hostile_verb(e)), None)
     if first_hostile is not None:
+        # Lockdown classifies as INTERFERENCE whatever its shape — a party-wide
+        # Hamstring is not an "assault", and calling it one would send the player
+        # reaching for the wrong answer. A mixed intent still reads by its FIRST
+        # hostile verb, so "deal 5 and stun" stays a threat: the damage dominates.
+        if getattr(first_hostile, "kind", None) in _CONTROL_KINDS:
+            return "interference"
         desc = getattr(first_hostile, "target", None)
         mode = getattr(desc, "mode", None)
         mode = getattr(mode, "value", mode)
@@ -203,6 +257,10 @@ def _veiled_line(enemy, category: str, target_id, target_name,
         if target_row is not None:  # §L-5: the telegraph IS the floor circle
             return f"{name} prepares an assault on the {target_row} of your party."
         return f"{name} prepares an assault on a row of your party."
+    if category == "interference":
+        if target_id is None:
+            return f"{name} moves to foil your party."
+        return f"{name} moves to foil {tname}."
     if category == "gathering":
         return f"{name} gathers its power."
     if category == "support":
@@ -244,13 +302,36 @@ def _lane_text(parameter: str, combat_kind: str = "all") -> str:
     return parameter
 
 
+# Short status-line words for the durational action modifiers (the two instant
+# ones never ride a character, so they never appear here).
+_ACTION_MOD_TAG = {
+    "make_ranged": "attack: ranged", "make_melee": "attack: melee",
+    "switch_mode": "attack: reach switched",
+    "defend_as_reaction": "defend: reaction", "defend_double": "defend: ×2",
+    "mitigate_again": "mitigate: unlimited", "mitigate_full": "mitigate: full Power",
+    "lock_skill": "hamstrung (no Skill)",
+}
+
+
 def _status_tags(char) -> List[str]:
     tags = []
     if getattr(char, "temp_mod", 0):
         tags.append(f"{'+' if char.temp_mod >= 0 else ''}{char.temp_mod} temp HP")
     if char.prevent_pool:
         tags.append(f"reduce {char.prevent_pool}")
+    if getattr(char, "capacity_mod", 0):
+        tags.append(f"{char.capacity_mod} mana capacity")   # `sap` (always negative)
+    for mod in _action_mods(char):
+        tags.append(_ACTION_MOD_TAG.get(mod, mod.replace("_", " ")))
     for tag in getattr(char, "prevent_tags", []):
+        # The ACTION shields read as their condition, not as "prevent <x>":
+        # "silenced" and "pacified" are what the player is actually looking for.
+        if tag.parameter == "cast":
+            tags.append("silenced")
+            continue
+        if tag.parameter == "attack":
+            tags.append("pacified")
+            continue
         span = "next " if tag.uses is not None else ""
         tags.append(f"prevent {span}{_lane_text(tag.parameter, getattr(tag, 'combat_kind', 'all'))}")
     for tag in getattr(char, "amplify_tags", []):
@@ -286,9 +367,29 @@ def _status_tags(char) -> List[str]:
     return tags
 
 
+def _action_mods(char) -> Dict[str, str]:
+    return getattr(char, "action_mods", None) or {}
+
+
 def _mitigate_value(char) -> int:
-    """X = ceil(current Power / 2) — the per-hit Mitigate reduction (Update 02 §M-A.2)."""
-    return math.ceil(max(0, char.current_power) / 2)
+    """X = ceil(current Power / 2) — the per-hit Mitigate reduction (Update 02
+    §M-A.2), or full Power under a `mitigate_full` action modifier."""
+    power = max(0, char.current_power)
+    if "mitigate_full" in _action_mods(char):
+        return power
+    return math.ceil(power / 2)
+
+
+def _defend_value(char) -> int:
+    """Defend's temp-HP buffer = BASE Power, doubled by `defend_double` (mirrors
+    engine._defend_value; this module states rules for display only, the same way
+    _mitigate_value does)."""
+    value = max(0, getattr(char, "power", 0))
+    return value * 2 if "defend_double" in _action_mods(char) else value
+
+
+def _has_defender(char) -> bool:
+    return "defender" in (getattr(char, "keywords", {}) or {})
 
 
 def _character_dict(state: GameState, char) -> Dict[str, Any]:
@@ -386,7 +487,10 @@ def _evergreen_block(char) -> Dict[str, Any]:
         "offensive": entry("attack", "Basic Attack",
                            f"Deal {char.attack_mode} damage equal to Power ({char.current_power})."),
         "defensive_action": entry("defend", "Defend",
-                                  "Gain temporary HP — a buffer that fades at end of turn."),
+                                  f"Gain temporary HP equal to base Power "
+                                  f"({_defend_value(char)}) — a buffer that fades at "
+                                  f"end of turn."
+                                  + (" Free (Defender)." if _has_defender(char) else "")),
         "defensive_reaction": entry("mitigate", "Mitigate",
                                     f"Reduce each hit of an incoming attack by ceil(Power/2) = "
                                     f"{_mitigate_value(char)}; or intercept for an adjacent ally."),
@@ -513,22 +617,27 @@ def _name_of(state: GameState, cid: Optional[str]) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Stack
 # --------------------------------------------------------------------------- #
-def action_mode(kind: str, attack_mode: Optional[str]) -> Optional[str]:
+def action_mode(kind: str, attack_mode: Optional[str],
+                combat_ability: bool = False) -> Optional[str]:
     """The classification tag shown beside an action (stack row / banner / intent),
-    in the engine's own vocabulary: **spell | attack | ability** (GDD taxonomy).
+    in the engine's own vocabulary: **spell | attack | ability | combat ability**
+    (GDD taxonomy).
 
     Melee/ranged qualifies ATTACKS ONLY — "melee attack" / "ranged attack". An
     ability always reads "ability", even when its owner is a ranged creature: the
     old behaviour let an enemy ability wear its owner's reach ("Life Leech (ranged)"),
     which read as an attack and hid why combat-damage prevention didn't stop it.
-    The tag names the item's damage lane, so what answers it is legible at a glance."""
+    The tag names the item's damage lane, so what answers it is legible at a glance
+    — which is why a DAMAGING ability reads "combat ability" (§M-A.7): it sits in
+    the combat lane, so a plain "ability" tag would now hide the very thing the tag
+    exists to show."""
     if kind == "spell":
         return "spell"
     if kind == "attack":
         reach = attack_mode if attack_mode in ("melee", "ranged") else "melee"
         return f"{reach} attack"
     if kind in ("ability", "activated", "triggered"):
-        return "ability"
+        return "combat ability" if combat_ability else "ability"
     return None
 
 
@@ -561,6 +670,15 @@ def _stack_mechanics(state: GameState, item) -> str:
     if item.starts_channel:
         parts.append("On resolve this begins a channelled effect — counter it "
                      "on the stack to stop the channel from ever starting.")
+    if item.combat_ability and item.kind != "attack":
+        # §M-A.7: say WHY a raised guard answers an "ability", or the player reads
+        # the offer as a bug. The AoE case earns the plainer second sentence.
+        parts.append("This ability DEALS DAMAGE, so it counts as combat damage — "
+                     "combat-damage shields cover it and on-attack effects see it."
+                     + (" Mitigate can answer it."
+                        if item.target_id is not None and item.target_row is None
+                        else " Its damage is too broad for one character to "
+                             "step in front of."))
     return " ".join(parts)
 
 
@@ -570,10 +688,13 @@ def _stack_list(state: GameState) -> List[Dict[str, Any]]:
         out.append({
             "label": item.label,
             "kind": item.kind,
-            "mode": action_mode(item.kind, item.attack_mode),
+            "mode": action_mode(item.kind, item.attack_mode, item.combat_ability),
             "source_id": item.source_id,
             "source_name": _name_of(state, item.source_id),
             "source_side": item.source_side,
+            # §M-A.7: an ability-class action that deals damage — the client badges
+            # it so "why can I Mitigate this?" answers itself.
+            "combat_ability": item.combat_ability,
             "target_id": item.target_id,
             "target_name": _name_of(state, item.target_id),
             "reserved_pips": _pip_str(item.reserved),

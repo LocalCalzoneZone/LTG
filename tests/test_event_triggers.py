@@ -315,3 +315,111 @@ def test_death_event_renders():
                         ("ally", "Whenever an ally dies or is incapacitated")]:
         card = Card.model_validate(_channel("c", {"event": "death", "who": who}))
         assert expect in render_effects(card.effects, channeled=True)
+
+
+# --- the general rule: a channelled card SETS UP a triggered ability ---------- #
+# A channelled card's whole job is to install a trigger that fires later. So a
+# triggered clause is never enumerated, aimed, or gated at CAST time — whatever
+# it contains — and whatever it needs (a creature pick, an action on the stack)
+# is supplied when the trigger FIRES. These tests pin the rule, not one card.
+def _conditional_ward(cid, payload, condition=None, event="attack", who="enemy"):
+    """A free channelled card whose triggered clause is a conditional wrapping
+    `payload` — the canonical "while channeled, whenever X, if Y, do Z" shape."""
+    cond = condition or {"kind": "caster_property", "property": "row", "row": "front"}
+    return {
+        "id": cid, "name": cid, "source_name": cid, "rarity": "rare",
+        "level": 1, "type": "Enchantment", "timing": "channeled",
+        "cost": {"generic": 0, "colors": {}},
+        "effects": [{"trigger": {"event": event, "who": who}, "kind": "conditional",
+                     "condition": cond, "effects": [payload]}],
+        "validated": True,
+    }
+
+
+# One payload per SHAPE a triggered clause can take: a creature-targeting verb,
+# a stack-answering verb, and an untargeted one.
+_WARD_PAYLOADS = {
+    "creature": {"kind": "deal_damage", "amount": 2,
+                 "target": {"mode": "chosen", "side": "enemy", "targeted": True}},
+    "stack": {"kind": "counter", "filter": "attack",
+              "target": {"class": "action", "side": "enemy"}},
+    "untargeted": {"kind": "heal", "amount": 1, "target": {"mode": "self"}},
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_WARD_PAYLOADS))
+def test_triggered_clause_never_gates_the_cast(shape):
+    # The main phase has an empty stack and (for a trigger) nothing to aim at
+    # yet. None of that may make the card uncastable: the cast installs the
+    # channel, the clause is enumerated when it fires.
+    st = _state([_conditional_ward("ward", _WARD_PAYLOADS[shape])])
+    assert [a for a in legal_actions(st)
+            if a.kind == "cast" and a.card_id == "ward"], f"{shape} payload blocked the cast"
+
+
+def test_triggered_clause_targeting_a_creature_is_aimed_when_it_fires():
+    # The pick belongs to the moment the trigger goes on the stack — and it must
+    # be found even though it is nested inside the conditional.
+    st = _state([_conditional_ward("ward", _WARD_PAYLOADS["creature"])], hp=20)
+    st = _cast(st, "ward")
+    hp = st.enemy("ogre").hp               # never swing back — the ogre's own attack fires it
+    for _ in range(300):
+        if st.enemy("ogre") is None or st.enemy("ogre").hp < hp or st.turn >= 3:
+            break
+        acts = legal_actions(st)
+        if not acts:
+            break
+        pick = next((a for a in acts if a.kind == "choose_target"), None)
+        a = pick or (next((x for x in acts if x.kind == "pass"), None)
+                     or next((x for x in acts if x.kind == "end_turn"), None) or acts[0])
+        assert a.kind != "attack"          # the only damage may be the trigger's
+        st = apply_action(st, a)[0]
+    assert any(e.type == "target_chosen" for e in st.log)   # the pick was raised
+    assert st.enemy("ogre").hp == hp - 2                    # …and the payload landed
+
+
+# --- the ward shape: a triggered clause that answers the stack ---------------- #
+def _ward(cid="inspired_defence"):
+    """Turin's Inspired Defence: while channeled, an enemy attack is cancelled if
+    the holder stands in the front row — a conditional whose nested `counter`
+    answers the very swing that fired it."""
+    return {
+        "id": cid, "name": cid, "source_name": cid, "rarity": "rare",
+        "level": 1, "type": "Enchantment", "timing": "channeled",
+        "cost": {"generic": 0, "colors": {}},
+        "effects": [{
+            "trigger": {"event": "attack", "who": "enemy"},
+            "kind": "conditional",
+            "condition": {"kind": "caster_property", "property": "row", "row": "front"},
+            "effects": [{"kind": "counter", "filter": "attack",
+                         "target": {"class": "action", "side": "enemy"}}],
+        }],
+        "validated": True,
+    }
+
+
+def test_triggered_counter_is_castable_with_an_empty_stack():
+    # The counter lives inside a TRIGGERED clause, so it must not be read as a
+    # cast-time counter — that made the card uncastable (the main phase has an
+    # empty stack, so it enumerated no targets at all).
+    st = _state([_ward()])
+    assert [a for a in legal_actions(st)
+            if a.kind == "cast" and a.card_id == "inspired_defence"]
+
+
+def test_ward_cancels_the_enemy_attack_that_fired_it():
+    st = _state([_ward()], hp=20, enemy_damage=5)
+    st = _cast(st, "inspired_defence")
+    assert st.character("p").channels
+    hp = st.character("p").hp
+    for _ in range(300):
+        if st.turn >= 3 or any(e.type == "countered" for e in st.log):
+            break
+        acts = legal_actions(st)
+        if not acts:
+            break
+        a = (next((x for x in acts if x.kind == "pass"), None)
+             or next((x for x in acts if x.kind == "end_turn"), None) or acts[0])
+        st = apply_action(st, a)[0]
+    assert any(e.type == "countered" for e in st.log)
+    assert st.character("p").hp == hp  # the cancelled swing dealt nothing

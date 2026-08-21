@@ -217,6 +217,20 @@ class CharacterState:
     # spending the buffer shrinks the encounter share with it (`_sync_enc_temp`).
     enc_temp_mod: int = 0
     enc_power_bonus: int = 0
+    # Mana capacity debuff (`sap`) — always ≤ 0, and the same two-layer shape as
+    # the stat modifiers above: the live layer expires at End, the encounter share
+    # survives it. Folded into `capacity` (never below 0) and into the refresh.
+    capacity_mod: int = 0
+    enc_capacity_mod: int = 0
+    # Action modifiers riding this character: {modifier name: duration}, exactly
+    # the shape (and expiry rule) `keywords` uses. They change what an evergreen
+    # ACTION is — a bow for a turn, a Defend held as a reaction, a Mitigate that
+    # is no longer once per turn. See schema.ACTION_MODIFIERS.
+    action_mods: Dict[str, str] = field(default_factory=dict)
+    # The authored basic-attack reach, captured the first time a mode modifier
+    # touches `attack_mode` so it can be restored when the modifier expires.
+    # Empty until then — `attack_mode` is the live value everything else reads.
+    base_attack_mode: str = ""
     prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
     prevent_tags: List[PreventTag] = field(default_factory=list)  # shields (R-11 prevent)
     # Combo primings: one-shot outgoing-damage/heal multipliers (`amplify`) and
@@ -295,7 +309,10 @@ class CharacterState:
 
     @property
     def capacity(self) -> int:
-        return len(self.mana_colors)
+        """Locked mana slots, less any live `sap` (never below 0). The colour
+        LOCKS themselves are untouched — a sap suppresses capacity, it doesn't
+        un-choose the colours you committed, so it lifting restores them intact."""
+        return max(0, len(self.mana_colors) + self.capacity_mod)
 
     @property
     def reserved(self) -> List[str]:
@@ -407,6 +424,9 @@ class Intent:
     # live — so a wound (or anthem) landing AFTER declaration blunts/boosts the swing
     # (R-7). None for component telegraphs / Moves, which carry their own amounts.
     attack_power: Optional[int] = None
+    # A COMBAT ABILITY (§M-A.7): an ability-class intent that DEALS DAMAGE. Derived
+    # from the verbs, never authored — see engine._is_combat_ability.
+    combat_ability: bool = False
 
     def attack_damage(self, power_bonus: int = 0) -> Optional[int]:
         """Live attack damage: the base attack Power adjusted by the enemy's CURRENT
@@ -514,6 +534,10 @@ class EnemyState:
     cooldowns: Dict[str, int] = field(default_factory=dict)
     is_boss: bool = False       # §F-9: removal-immune outside the execute window; enrages ≤25%
     enraged: bool = False       # one-way: set the first time a boss falls to ≤25% max HP
+    # A boss that declares TWO intents every round, not only after enrage — the
+    # difficulty dial for boss fights (Standard and Hard set it; Easy does not).
+    # Enrage still applies on top: it is the same two-slot machinery (§D9-4).
+    double_intent: bool = False
     created_by: Optional[str] = None  # the enemy that spawned this token (§F-4 per-creator cap)
     # The `rises` trait (§D9-1.5): on death the corpse STIRS and the enemy revives
     # after this many Upkeeps at half max HP (T-52), once per encounter. Cleared
@@ -645,6 +669,19 @@ class StackItem:
     # mode, an ally's id for interception). Applied per hit at resolution.
     mitigate_by: Optional[str] = None
     mitigate_for: Optional[str] = None
+    # What that Mitigate actually did, filled in as the damage resolves: keys
+    # `protected` (whose hit it answered), `landed_on` (who took the residual —
+    # the mitigator in ally mode) and `residual` (total damage that got through).
+    # Read by the §M-A.7 rider rule. Lives on the ITEM, not the resolution
+    # context, so it survives a mid-resolution pause for a player's pick.
+    mitigation_outcome: Optional[Dict[str, Any]] = None
+    # A COMBAT ABILITY (§M-A.7): an ability-class action (ability / activated /
+    # triggered) that DEALS DAMAGE. Derived from the verbs as the item is pushed
+    # (engine._is_combat_ability), never authored. It puts the hit in the
+    # COMBAT-damage lane, trips on-attack triggers, and — when the damage is aimed
+    # at one named victim — lets Mitigate answer it. Spells are excluded: a
+    # spell-classed action is answered by Negate, not by a raised shield.
+    combat_ability: bool = False
     # A COPY on the stack (copy_spell / a double_next echo): resolves normally but
     # never consumes another double_next tag (no infinite echo chains).
     is_copy: bool = False

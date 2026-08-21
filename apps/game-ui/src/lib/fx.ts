@@ -379,7 +379,16 @@ export function fxFromLog(
         beat = cursor;
         break;
       case "win":
+        // The celebration opens its own scene, after the killing blow's — the
+        // party cheers because the fight ended, not on top of the last hit.
+        beat = cursor;
         push("victory", "screen", { screen: true });
+        // Update 16: every hero still standing plays their `victory` clip, all
+        // on the one beat, so the panels celebrate together. The fallen keep
+        // their held death frame — a downed panel never cheers.
+        for (const c of snapshot.characters) {
+          if (!c.incapacitated) panel(c.id, "victory");
+        }
         break;
       case "loss":
         push("defeat", "screen", { screen: true });

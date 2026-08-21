@@ -22,9 +22,13 @@ const SMALL_BTN =
  * confirmation) → narrative splash over the next phase's scene → combat. The
  * narrative splash also opens Phase I (its narration is the adventure's opening).
  *
- * Every screen here sits BELOW the 42px top ribbon (top-[42px], z-20 — under
- * the z-40 modals): players must be able to Copy Link, claim seats, and reach
- * Options/Quit during splashes, e.g. inviting an ally before Phase I begins.
+ * WHERE these render: the component is mounted INSIDE the bottom action-bar
+ * wrapper, and the two post-combat screens (phase victory, level-up) cover only
+ * that strip — `absolute inset-0`, exactly like the game-over splash. The board
+ * you just won on and the log stay readable and inspectable underneath. Only the
+ * narrative splash, which opens the NEXT phase over its own scene art, goes
+ * full-screen (`fixed`, below the 42px ribbon so Copy Link / seats / Options
+ * stay reachable — e.g. inviting an ally before Phase I begins).
  */
 export function AdventureFlow() {
   const snapshot = useGame((s) => s.snapshot);
@@ -59,6 +63,11 @@ export function AdventureFlow() {
     return <LevelUpScreen adventure={adventure} />;
   }
 
+  // Nothing left to open: the adventure is won and the act is wrapping up (the
+  // spoils, then the ride back to town). A client that connects or reloads here
+  // must not be shown the phase's opening narration all over again.
+  if (adventure.complete || snapshot.rewards) return null;
+
   // Combat (or the moment a phase opens): the narrative splash, once per phase.
   if (!narrationSeen[key] && adventure.narration) {
     return (
@@ -79,26 +88,24 @@ function PhaseVictorySplash({ phase, phaseName, onContinue }: {
   onContinue: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[42px] z-20 flex items-center justify-center bg-black/70 backdrop-blur-[2px]">
-      <div className="panel-ticks border border-line2 bg-ink-2/95 px-12 py-9 text-center shadow-2xl">
-        <div className="flex items-center justify-center gap-5">
-          <span className="h-px w-16 bg-gradient-to-r from-transparent to-vigor/70" />
-          <div
-            className="caps-label pl-[0.3em] text-4xl tracking-[0.3em] text-vigor"
-            style={{ textShadow: "0 0 30px rgba(132,199,147,.4)" }}
-          >
-            Phase {roman(phase)} — Clear
-          </div>
-          <span className="h-px w-16 bg-gradient-to-l from-transparent to-vigor/70" />
-        </div>
-        <div className="mt-3 text-sm font-light text-mist">{phaseName}</div>
-        <button
-          onClick={onContinue}
-          className="chamfer-x caps-label mt-6 bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 overflow-y-auto bg-ink-0/95 px-6 py-3 text-center">
+      <div className="flex items-center justify-center gap-5">
+        <span className="h-px w-16 bg-gradient-to-r from-transparent to-vigor/70" />
+        <div
+          className="caps-label pl-[0.3em] text-2xl tracking-[0.3em] text-vigor"
+          style={{ textShadow: "0 0 30px rgba(132,199,147,.4)" }}
         >
-          Level Up
-        </button>
+          Phase {roman(phase)} — Clear
+        </div>
+        <span className="h-px w-16 bg-gradient-to-l from-transparent to-vigor/70" />
       </div>
+      <div className="text-sm font-light text-mist">{phaseName}</div>
+      <button
+        onClick={onContinue}
+        className="chamfer-x caps-label mt-2 bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
+      >
+        Level Up
+      </button>
     </div>
   );
 }
@@ -214,61 +221,60 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
   const mine = lu.characters.filter((r) => you.includes(r.id) && r.build);
   const active = mine.find((r) => !r.confirmed) ?? null;
 
+  // Sits in the bottom strip, anchored to its floor, so the board you just
+  // cleared stays visible above. The layout is built for a short strip — seat
+  // lights ride the header row instead of a footer of their own, and only the
+  // stat rows scroll — but a points-buy screen has a floor below which it stops
+  // being usable, so `h-full` + `min-h` lets it grow UPWARD over the board on a
+  // strip the player has dragged very short. (Dragging the strip taller gives
+  // it the room; it never covers more than it needs.)
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[42px] z-20 flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
-      <div className="panel-ticks flex max-h-[90vh] w-[min(94vw,880px)] flex-col border border-line2 bg-ink-2 shadow-2xl">
-        <div className="flex items-center gap-3 border-b border-line px-5 py-3">
-          <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">
-            Level Up — Level {lu.next_level}
-          </h2>
-          <span className="h-px flex-1 bg-line" />
-          <span className="caps-label text-[10px] tracking-[0.2em] text-mist">
-            +{lu.points_per_level} points · bankable · irreversible
-            {active?.points_to_next_level != null && active.earned_points != null && (
-              <> · {active.earned_points} earned · {active.points_to_next_level} to level {(active.next_level ?? lu.next_level) + 1}</>
-            )}
+    <div className="absolute inset-x-0 bottom-0 z-30 flex h-full min-h-[min(340px,60vh)] flex-col bg-ink-0/95">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5">
+        <h2 className="caps-label text-[12px] tracking-[0.25em] text-brass">
+          Level Up — Level {lu.next_level}
+        </h2>
+        <span className="caps-label text-[9px] tracking-[0.2em] text-mist">
+          +{lu.points_per_level} points · bankable · irreversible
+          {active?.points_to_next_level != null && active.earned_points != null && (
+            <> · {active.earned_points} earned · {active.points_to_next_level} to level {(active.next_level ?? lu.next_level) + 1}</>
+          )}
+        </span>
+        <span className="h-px min-w-[1rem] flex-1 bg-line" />
+        {lu.characters.map((r) => (
+          <span
+            key={r.id}
+            className={`caps-label border px-2 py-0.5 text-[9px] tracking-[0.14em] ${
+              r.confirmed ? "border-vigor/60 text-vigor" : "border-line text-mist"
+            }`}
+          >
+            {r.name} · {r.confirmed ? "confirmed" : "choosing…"}
           </span>
-        </div>
-
-        {active ? (
-          <BuildPanel
-            key={active.id}
-            row={active}
-            prices={lu.prices}
-            nextLevel={lu.next_level}
-            pointsPerLevel={lu.points_per_level}
-            onConfirm={(build) => confirmLevelUp(active.id, build)}
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-3 px-8 py-12 text-center">
-            <div className="h-2 w-2 rotate-45 border border-brass/60" aria-hidden />
-            <div className="caps-label text-[12px] tracking-[0.2em] text-parch">
-              {mine.length ? "Your characters are ready" : "Claim a seat to level up"}
-            </div>
-            <div className="max-w-md text-sm font-light text-mist">
-              {mine.length
-                ? "Waiting for the other players to confirm — the next phase begins when every character is confirmed."
-                : "You control no characters. Claim a seat in the top ribbon to confirm its level-up."}
-            </div>
-          </div>
-        )}
-
-        {/* Everyone's confirmed / waiting status */}
-        <div className="flex flex-wrap items-center gap-2 border-t border-line px-5 py-3">
-          {lu.characters.map((r) => (
-            <span
-              key={r.id}
-              className={`caps-label border px-2.5 py-1 text-[9px] tracking-[0.14em] ${
-                r.confirmed
-                  ? "border-vigor/60 text-vigor"
-                  : "border-line text-mist"
-              }`}
-            >
-              {r.name} · {r.confirmed ? "confirmed" : "choosing…"}
-            </span>
-          ))}
-        </div>
+        ))}
       </div>
+
+      {active ? (
+        <BuildPanel
+          key={active.id}
+          row={active}
+          prices={lu.prices}
+          nextLevel={lu.next_level}
+          pointsPerLevel={lu.points_per_level}
+          onConfirm={(build) => confirmLevelUp(active.id, build)}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 overflow-y-auto px-8 py-4 text-center">
+          <div className="h-2 w-2 rotate-45 border border-brass/60" aria-hidden />
+          <div className="caps-label text-[12px] tracking-[0.2em] text-parch">
+            {mine.length ? "Your characters are ready" : "Claim a seat to level up"}
+          </div>
+          <div className="max-w-md text-sm font-light text-mist">
+            {mine.length
+              ? "Waiting for the other players to confirm — the next phase begins when every character is confirmed."
+              : "You control no characters. Claim a seat in the top ribbon to confirm its level-up."}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -350,7 +356,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
   return (
     <div className="flex min-h-0 flex-1">
       {/* Portrait, full height on the left */}
-      <div className="relative w-[280px] shrink-0 overflow-hidden border-r border-line bg-ink-0">
+      <div className="relative hidden w-[180px] shrink-0 overflow-hidden border-r border-line bg-ink-0 sm:block">
         {base.portrait ? (
           <img src={base.portrait} alt={row.name} className="h-full w-full object-cover object-top" />
         ) : (
@@ -358,18 +364,20 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
             <IconSigil size={48} />
           </div>
         )}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-0/95 to-transparent p-3 pt-8">
-          <div className="caps-label text-[13px] tracking-[0.2em] text-parch">{row.name}</div>
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-0/95 to-transparent p-2 pt-8">
+          <div className="caps-label text-[12px] tracking-[0.2em] text-parch">{row.name}</div>
           <div className="caps-label mt-0.5 text-[9px] tracking-[0.18em] text-brass">
             Level {base.level} → {nextLevel}
           </div>
         </div>
       </div>
 
-      {/* The points-buy panel, locked-baseline mode */}
-      <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-5">
+      {/* The points-buy panel, locked-baseline mode. The ledger and the Confirm
+          are pinned; only the stat rows scroll, so the screen still works at the
+          bottom strip's shortest height. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-1 p-3">
         {/* Locked · new · banked — always visible (§D10-3.3) */}
-        <div className="mb-3 flex items-center gap-4 border border-line bg-black/25 px-3 py-2">
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 border border-line bg-black/25 px-3 py-1.5">
           <Figure label="Locked" value={row.locked ?? 0} title="The entering build's spend — nothing can be sold back" />
           <Figure label="New" value={pointsPerLevel} accent title="This level-up's grant" />
           <Figure label="Banked" value={row.banked ?? 0} title="Unspent points carried from earlier" />
@@ -383,6 +391,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
           />
         </div>
 
+        <div className="scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
         <StatRow
           name="Hit Points"
           value={String(draft.hp)}
@@ -478,8 +487,9 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
             set at character creation
           </span>
         </div>
+        </div>
 
-        <div className="mt-auto flex items-center gap-3 pt-4">
+        <div className="flex items-center gap-3 pt-2">
           <button
             onClick={() =>
               onConfirm({

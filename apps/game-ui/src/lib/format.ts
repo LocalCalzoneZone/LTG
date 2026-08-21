@@ -33,7 +33,9 @@ export function modifierText(mod: number): string {
 export function actionModeColor(mode: string | null): string {
   if (mode === "spell") return "text-spell";
   if (mode === "ability") return "text-aether";
-  return "text-brass"; // "melee attack" / "ranged attack"
+  // A "combat ability" (§M-A.7) deals damage, so it answers to the same shields
+  // and reactions an attack does — it wears the attack's brass, not aether.
+  return "text-brass"; // "melee attack" / "ranged attack" / "combat ability"
 }
 
 /** Creature level as a roman numeral (fantasy sigil, replaces "L2"). */

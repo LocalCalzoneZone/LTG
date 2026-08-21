@@ -515,7 +515,8 @@ def _prevent_phrase(parameter: str, combat_kind: str = "all") -> str:
             "all_damage": "damage",
             "damage": "damage",  # legacy spellings
             "all": "damage",
-            "attack": "attacks"}.get(parameter, parameter.replace("_", " "))
+            "attack": "attacks",
+            "cast": "casting"}.get(parameter, parameter.replace("_", " "))
 
 
 def _lane_phrase(e) -> str:
@@ -535,8 +536,13 @@ def _protection_phrase(e) -> str:
 def _render_prevent(e) -> str:
     """A full `prevent` sentence that spells out its span so an "all this turn"
     shield (Fog) never reads the same as a one-shot (Gods Willing) — R-11."""
-    if e.parameter in ("attack",):  # an action shield, not damage prevention
+    # Action shields, not damage prevention. Silence spells out its exceptions:
+    # a silenced character keeps their sword, their Skill/Ultimate and their items.
+    if e.parameter == "attack":
         return f"{_tgt(e.target).capitalize()} can't attack."
+    if e.parameter == "cast":
+        return (f"{_tgt(e.target).capitalize()} is silenced — can't cast cards "
+                f"(items still work).")
     phrase = _lane_phrase(e)
     if getattr(e, "uses", "all") == "next":
         return f"Prevent the next {phrase} to {_tgt(e.target)}."
@@ -793,6 +799,43 @@ def _render_wound(e) -> str:
     return f"{subj.capitalize()} {verb} {_stat_pair(e.power, e.toughness, 'attack', 'HP', sign='-')}{_duration_suffix(e)}."
 
 
+def _render_sap(e) -> str:
+    subj, verb = _subject_conj(e.target, "lose", "loses")
+    return (f"{subj.capitalize()} {verb} {e.amount} mana capacity"
+            f"{_duration_suffix(e)}.")
+
+
+_ACTION_MOD_PHRASE = {
+    "make_ranged": "their basic attack becomes ranged",
+    "make_melee": "their basic attack becomes melee",
+    "switch_mode": "their basic attack switches reach (melee ↔ ranged)",
+    "defend_as_reaction": "they may Defend as a reaction, without spending their action",
+    "defend_double": "their Defend grants double temp HP",
+    "mitigate_again": "their Mitigate is no longer once per turn",
+    "mitigate_full": "their Mitigate reduces by full Power instead of half",
+    "refresh_skill": "their Skill is refreshed",
+    "lock_skill": "their Skill cannot be activated",
+}
+
+
+def _action_mod_phrase(e) -> str:
+    if e.modifier == "charge_ultimate":
+        return f"their ultimate gauge fills by {e.amount}"
+    if e.modifier == "drain_ultimate":
+        return f"their ultimate gauge is drained by {e.amount}"
+    return _ACTION_MOD_PHRASE.get(e.modifier, e.modifier.replace("_", " "))
+
+
+def _render_modify_action(e) -> str:
+    subj = _tgt(e.target).capitalize()
+    phrase = _action_mod_phrase(e)
+    # The instant modifiers happen once and are over — no duration to state.
+    from .schema import INSTANT_ACTION_MODIFIERS
+    suffix = "" if e.modifier in INSTANT_ACTION_MODIFIERS else _duration_suffix(e)
+    # "<Target>: <phrase>" reads cleanly for both the possessive phrasings above.
+    return f"{subj} — {phrase}{suffix}."
+
+
 def _render_counters(e) -> str:
     subj, verb = _subject_conj(e.target, "gain", "gains")
     return f"{subj.capitalize()} {verb} {_slash_pair(e.power, e.toughness, 'attack', 'HP')}{_duration_suffix(e) or ' for the encounter'}."
@@ -960,6 +1003,8 @@ RENDERERS = {
     "stun": _render_stun,
     "pump": _render_pump,
     "wound": _render_wound,
+    "sap": _render_sap,
+    "modify_action": _render_modify_action,
     "counters": _render_counters,
     "prevent": _render_prevent,
     "protection": _render_protection,
@@ -1015,6 +1060,8 @@ _CLAUSE = {
     ),
     "pump": lambda e: f"gain {_slash_pair(e.power, e.toughness, 'attack', 'temp HP')} this turn",
     "wound": lambda e: f"suffer {_slash_pair(e.power, e.toughness, 'attack', 'HP', sign='-')} this turn",
+    "sap": lambda e: f"lose {e.amount} mana capacity",
+    "modify_action": _action_mod_phrase,
     "poison": lambda e: (f"are poisoned: {_value(e.amount)} −0/−1 counter(s) now and "
                          f"at each Upkeep{_affliction_suffix(e)} (any healing cures it)"),
     "regen": lambda e: (f"regenerate: {_value(e.amount)} +0/+1 counter(s) now and "
@@ -1041,6 +1088,8 @@ _CLAUSE = {
     ),
     "prevent": lambda e: (
         "can't attack" if e.parameter == "attack"
+        else "are silenced (can't cast cards; items still work)"
+        if e.parameter == "cast"
         else f"have {'the next ' if getattr(e, 'uses', 'all') == 'next' else 'all '}"
              f"{_lane_phrase(e)} prevented"),
     "amplify": lambda e: (f"have their next {_amplify_what(e)} "
@@ -1137,6 +1186,11 @@ def _channeled_body(e, targets) -> str:
     if k == "wound":
         subj, verb = _subject_conj(e.target, "have", "has", channeled=True)
         return f"{subj} {verb} {_stat_pair(e.power, e.toughness, 'attack', 'HP', sign='-')}"
+    if k == "sap":
+        subj, verb = _subject_conj(e.target, "have", "has", channeled=True)
+        return f"{subj} {verb} {e.amount} less mana capacity"
+    if k == "modify_action":
+        return f"{_subject(e.target, None, True)} — {_action_mod_phrase(e)}"
     if k == "grant_keyword":
         subj, verb = _subject_conj(e.target, "have", "has", channeled=True)
         return f"{subj} {verb} {_keyword_phrase(e.keywords, e.params)}"
@@ -1148,6 +1202,8 @@ def _channeled_body(e, targets) -> str:
     if k == "prevent":
         if e.parameter == "attack":
             return f"{_subject(e.target, targets, True)} can't attack"
+        if e.parameter == "cast":
+            return f"{_subject(e.target, targets, True)} is silenced"
         span = "the next" if getattr(e, "uses", "all") == "next" else "all"
         return (f"prevent {span} {_lane_phrase(e)} "
                 f"to {_subject(e.target, targets, True)}")

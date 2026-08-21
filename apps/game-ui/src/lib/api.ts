@@ -411,6 +411,16 @@ export async function saveTown(town: Record<string, unknown>, id?: string): Prom
   }
   return (await res.json()).town;
 }
+/** Fill in the standing flavour topics of every resident who has none. */
+export async function generateTownTopics(id: string): Promise<TownOption> {
+  const res = await fetch(`/api/towns/${encodeURIComponent(id)}/topics`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `topic generation failed: ${res.status}`);
+  }
+  return (await res.json()).town;
+}
+
 export type TownArtKind = "town" | "location_exterior" | "location_interior" | "npc";
 export async function generateTownArt(townId: string, kind: TownArtKind, targetId?: string): Promise<{ url: string }> {
   const res = await fetch(`/api/towns/${encodeURIComponent(townId)}/art`, {

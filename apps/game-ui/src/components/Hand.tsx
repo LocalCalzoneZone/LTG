@@ -94,9 +94,15 @@ export function HandCard({ card, playable, active, justDrawn, onClick }: {
           <Pips cost={card.cost} size={15} />
         </div>
       </div>
-      {/* Reserved art slot (3:2) — sigil placeholder until card art exists */}
-      <div className="relative my-1 flex aspect-[3/2] w-full items-center justify-center border border-line bg-[radial-gradient(70%_60%_at_50%_40%,rgba(90,110,120,0.22),transparent_75%),linear-gradient(180deg,#1c222c,#141821)] text-[#6f7f8f]">
-        <IconSigil className="h-2/5 w-2/5 opacity-50" />
+      {/* Art slot (3:2) — the card's own art when it has any (a consumable
+          carries its item's, painted at 3:2 for exactly this frame), else the
+          sigil placeholder. */}
+      <div className="relative my-1 flex aspect-[3/2] w-full items-center justify-center overflow-hidden border border-line bg-[radial-gradient(70%_60%_at_50%_40%,rgba(90,110,120,0.22),transparent_75%),linear-gradient(180deg,#1c222c,#141821)] text-[#6f7f8f]">
+        {card.image ? (
+          <img src={card.image} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <IconSigil className="h-2/5 w-2/5 opacity-50" />
+        )}
       </div>
       {/* Effect text (left-aligned, fills) */}
       <div className="flex-1 overflow-hidden text-[clamp(8px,1.1vh,11px)] font-light leading-snug text-mist">

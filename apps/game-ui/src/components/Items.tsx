@@ -1,6 +1,10 @@
 import { useState } from "react";
+import { roman } from "../lib/format";
+import { SPLASH_HOLD_MS, useAfterHold } from "../lib/hooks";
 import { useGame } from "../lib/store";
-import type { GearView, ItemView, PartySheetRow, RewardsView, ShopView } from "../lib/types";
+import type {
+  GearView, ItemView, PartySheetRow, RewardsView, ScenarioInfo, ShopView,
+} from "../lib/types";
 import { ManaIcon } from "./Pips";
 import { IconSigil, IconX } from "./Icons";
 
@@ -33,7 +37,9 @@ export function ItemCard({ item, small, footer, onClick, selected }: {
       } ${selected ? "ring-1 ring-brass" : ""}`}
       title={`${item.name}${item.flavor ? ` — “${item.flavor}”` : ""}`}
     >
-      <div className={`${small ? "aspect-square" : "aspect-[4/3]"} w-full bg-ink-0`}>
+      {/* 3:2 — the aspect item art is painted at (art.py), the same frame a
+          consumable's card face uses. */}
+      <div className="aspect-[3/2] w-full bg-ink-0">
         {item.art_url ? (
           <img src={item.art_url} alt={item.name} className="h-full w-full object-cover" />
         ) : (
@@ -61,7 +67,7 @@ export function ItemDetailModal({ item, onClose }: { item: ItemView; onClose: ()
          onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="panel-ticks flex w-[min(92vw,680px)] gap-5 border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="w-[240px] shrink-0">
-          <div className={`aspect-square w-full border bg-ink-0 ${tint}`}>
+          <div className={`aspect-[3/2] w-full border bg-ink-0 ${tint}`}>
             {item.art_url ? (
               <img src={item.art_url} alt={item.name} className="h-full w-full object-cover" />
             ) : (
@@ -257,6 +263,70 @@ export function ShopModal({ shop, party, onClose }: { shop: ShopView; party: Par
         </div>
       </div>
       {detail && <ItemDetailModal item={detail} onClose={() => setDetail(null)} />}
+    </div>
+  );
+}
+
+/** The end of an act: the victory screen FIRST, then the spoils (§D17-4.5).
+ *
+ * The act's win used to jump straight to the loot — no beat between the boss
+ * falling and a grid of dropdowns. This renders the act-clear splash over the
+ * bottom strip (the board you just cleared stays visible above it, exactly like
+ * the game-over splash), and only opens the Rewards modal once it is dismissed.
+ * The acknowledgement is per act, so a reconnect mid-loot does not replay it. */
+export function ActSpoils({ rewards, scenario }: {
+  rewards: RewardsView;
+  scenario?: ScenarioInfo;
+}) {
+  const sessionId = useGame((s) => s.sessionId);
+  const key = `${sessionId}:${scenario?.scenario_number ?? 0}:${scenario?.act_number ?? 0}`;
+  const [seen, setSeen] = useState<Record<string, boolean>>({});
+  // Hold the splash back so the killing blow (and its death animation) reads on
+  // the board before the screen changes — the same beat every other end uses.
+  const ready = useAfterHold(true, SPLASH_HOLD_MS);
+  if (scenario && !seen[key]) {
+    if (!ready) return null;
+    return (
+      <ActVictorySplash
+        scenario={scenario}
+        onContinue={() => setSeen((m) => ({ ...m, [key]: true }))}
+      />
+    );
+  }
+  return <RewardsModal rewards={rewards} />;
+}
+
+/** "Act II — Cleared": the act-labelled victory treatment, over the bottom strip. */
+function ActVictorySplash({ scenario, onContinue }: {
+  scenario: ScenarioInfo;
+  onContinue: () => void;
+}) {
+  const final = scenario.act_number >= scenario.acts_total;
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1.5 overflow-y-auto bg-ink-0/95 px-6 py-3 text-center">
+      <div className="caps-label text-[10px] tracking-[0.3em] text-mist">{scenario.title}</div>
+      <div className="flex items-center justify-center gap-5">
+        <span className="h-px w-16 bg-gradient-to-r from-transparent to-vigor/70" />
+        <div
+          className="caps-label pl-[0.3em] text-2xl tracking-[0.3em] text-vigor"
+          style={{ textShadow: "0 0 30px rgba(132,199,147,.4)" }}
+        >
+          Act {roman(scenario.act_number)} — Cleared
+        </div>
+        <span className="h-px w-16 bg-gradient-to-l from-transparent to-vigor/70" />
+      </div>
+      <div className="text-sm font-light text-parch">{scenario.act_title}</div>
+      <div className="text-xs font-light text-mist">
+        {final
+          ? `${scenario.villain} is beaten. Take the spoils, then ride back to town.`
+          : `Act ${scenario.act_number} of ${scenario.acts_total} is behind you. The spoils are yours to divide.`}
+      </div>
+      <button
+        onClick={onContinue}
+        className="chamfer-x caps-label mt-2 bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
+      >
+        The Spoils
+      </button>
     </div>
   );
 }

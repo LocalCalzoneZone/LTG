@@ -104,7 +104,8 @@ def test_action_mode_vocabulary():
 
 def test_stack_row_tags_drain_as_ability_not_ranged():
     """Drive the ranged Sovereign's Drain onto the stack and read the row the UI
-    renders: it must say 'ability', never the owner's reach."""
+    renders: it must never wear the owner's reach. Life Leech deals damage, so it
+    reads as a Combat Ability (§M-A.7) — still no melee/ranged qualifier."""
     from ltg_combat.serialize import _stack_list
     st = _state(components=[_drain()])
     # Advance until the enemy's action sits on the stack (the reaction window).
@@ -116,5 +117,6 @@ def test_stack_row_tags_drain_as_ability_not_ranged():
         st = apply_action(st, a)[0]
     rows = _stack_list(st)
     leech = next(r for r in rows if "Life Leech" in r["label"])
-    assert leech["mode"] == "ability"
+    assert leech["mode"] == "combat ability"
+    assert "ranged" not in leech["mode"] and "melee" not in leech["mode"]
     assert leech["kind"] == "ability"

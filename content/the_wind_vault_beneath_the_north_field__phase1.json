@@ -1,0 +1,315 @@
+{
+  "name": "Picks on the North Field",
+  "scene": "Dusk on the barley downs: the last daylight bleeds off the bay while the north field lies gouged open, chalk spoil piled in pale ridges among trampled grain. Lanterns swing from pikes around a timbered shaft-mouth with its windlass and coiled rope, and the lip of the shaft is a ring of wet grey cliff-stone cut with weathered inscription. Behind it all, the mill sails turn and turn in the wind that never sleeps.",
+  "scene_image": "/art/the_wind_vault_beneath_the_north_field__phase1/scene-3fae38bb.png",
+  "enemies": [
+    {
+      "id": "vault_rot_grub",
+      "name": "Vault-Rot Grub",
+      "flavor": "Every bite it lands leaves rot in the wound \u2014 a job for your healer, not your sword.",
+      "description": "A pallid segmented grub the length of a plough-blade, skin translucent over dark churning innards, ringed with hooked digging bristles and a puckered mouth of grinding chalk-worn plates.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "infect"
+      ],
+      "components": [
+        {
+          "id": "gorge_on_spoil",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Gorge on Spoil \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reflex_bite",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Reflex Bite \u2014 deal 5 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase1/vault_rot_grub-d81746a6.png"
+    },
+    {
+      "id": "sapper_pickman",
+      "name": "Sapper Pickman",
+      "flavor": "Bellows a challenge to drag you into pick-range, and answers every blow.",
+      "description": "A thick-shouldered orc stripped to a leather digging apron, grey hide powdered white with chalk, hefting a long iron pick with a haft bound in tarred rope.",
+      "hp": 9,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "pick_challenge",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Pick Challenge \u2014 taunt a hero into reach",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "back_swing",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Back-Swing \u2014 deal 5 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase1/sapper_pickman-c8fe900d.png"
+    },
+    {
+      "id": "lantern_runner",
+      "name": "Lantern Runner",
+      "flavor": "Flings burning oil, then scurries out of reach and flashes a lamp in your eyes.",
+      "description": "A wiry goblin in a soot-blackened smock, four clay oil-flasks slung on a chest strap, a shuttered brass lantern swinging from one long-fingered hand as it darts between spoil heaps.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "lamp_oil_flask",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Oil Flask \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "scurry",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Scurry behind the spoil heaps"
+        },
+        {
+          "id": "flash_pan",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Lantern Flash \u2014 wound the hunter -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase1/lantern_runner-fa946426.png"
+    },
+    {
+      "id": "bore_bosun",
+      "name": "Bore-Song Bosun",
+      "flavor": "Holds the digging-song: it grinds the party down every turn and drives the gang harder \u2014 break it.",
+      "description": "A barrel-chested orc with a bell-mouthed horn slung across her back, beating time on a stretched hide drum with two mallets of pin-bone, her tusks capped in dull brass.",
+      "hp": 8,
+      "power": 2,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "bore_song",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Bore-Song \u2014 a held work-chant: 3 damage every turn and the gang digs at +1/+0",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "hoist_the_hurt",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "wounded_ally",
+          "telegraph": "Hoist the Hurt \u2014 heal a wounded digger 7",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "dig_in",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Dig In \u2014 heal 7 and stand",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 7,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase1/bore_bosun-933bb0ae.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "vault_rot_grub",
+      "sapper_pickman",
+      "bore_bosun"
+    ],
+    "2": [
+      "vault_rot_grub",
+      "sapper_pickman",
+      "sapper_pickman",
+      "lantern_runner",
+      "lantern_runner",
+      "bore_bosun"
+    ],
+    "3": [
+      "vault_rot_grub",
+      "sapper_pickman",
+      "sapper_pickman",
+      "sapper_pickman",
+      "lantern_runner",
+      "lantern_runner",
+      "bore_bosun",
+      "bore_bosun"
+    ],
+    "4": [
+      "vault_rot_grub",
+      "sapper_pickman",
+      "sapper_pickman",
+      "sapper_pickman",
+      "sapper_pickman",
+      "lantern_runner",
+      "lantern_runner",
+      "lantern_runner",
+      "bore_bosun",
+      "bore_bosun",
+      "bore_bosun"
+    ]
+  }
+}

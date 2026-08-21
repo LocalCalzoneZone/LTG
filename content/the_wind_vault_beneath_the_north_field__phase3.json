@@ -1,0 +1,488 @@
+{
+  "name": "The Wind-Door",
+  "scene": "A circular vault at the bottom of the shaft, floor and walls covered in unbroken bands of graven cliff-stone, chalk dust hanging in the lantern-amber like smoke. At the far wall waits a great pinned disc of stone ringed with iron bolts, three already prised half out, air moaning steadily through the empty holes. Sledges, wedges and spilled lamp-oil lie where the gang dropped them; far above, the Mill Bell tolls and the dust jumps.",
+  "scene_image": "/art/the_wind_vault_beneath_the_north_field__phase3/scene-fb36ed4c.png",
+  "enemies": [
+    {
+      "id": "grukka_cinder_tongue",
+      "name": "Grukka Cinder-Tongue",
+      "flavor": "Mawgrim's pit-boss: she spends your turns before she spends your blood, and after she breaks she takes two actions a round.",
+      "description": "A towering orc in a smith's leather coat scaled with hammered lamp-tin, her lower jaw replaced by a glowing brass plate bolted to the bone so that every word comes out with a gout of ember-smoke; she drags a wedge-hammer taller than a man and her breath scorches the chalk dust to sparks.",
+      "hp": 41,
+      "power": 4,
+      "level": 7,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "iron_word",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "highest_threat",
+          "telegraph": "Iron Word \u2014 the strongest hero stands still and loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "furnace_breath",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_row": "mid",
+          "target_rule": "valuation",
+          "telegraph": "Furnace Breath \u2014 7 to everyone standing in the middle of the vault",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "mid"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "chain_of_tithes",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Chain of Tithes \u2014 a hero is pinned where they stand and burned for 5",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "slag_wind",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "self",
+          "telegraph": "Slag Wind \u2014 5 to ALL heroes",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tyrants_contempt",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "once_per_encounter": true,
+          "priority": 10,
+          "action_type": "spell",
+          "target_rule": "trigger_source",
+          "telegraph": "Tyrant's Contempt \u2014 she speaks over your masterwork and it dies unspoken",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        },
+        {
+          "id": "pit_boss_rebuke",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Pit-Boss Rebuke \u2014 deal 8 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 8,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "grukka_enrage",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "PULL THE LAST PIN \u2014 +3/+3 permanently, the vault flashes for 4, and the pit answers her call",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "create_token",
+              "token_id": "pit_scrag",
+              "count": 2,
+              "hp": 4,
+              "power": 2
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase3/grukka_cinder_tongue-54268da6.png"
+    },
+    {
+      "id": "smoke_chanter",
+      "name": "Smoke-Chanter",
+      "flavor": "His held chant names one hero a turn and forces them to answer him; he veils himself while it runs.",
+      "description": "A soot-streaked orc acolyte swaying in a coat of hanging lamp-wicks, mouth stitched half shut around a smouldering reed, exhaling ropes of grey smoke that curl into pointing shapes.",
+      "hp": 12,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "bind_chant",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Bind-Chant \u2014 a held naming: each turn a hero must come at him, and the party swings at -1/-0",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ash_veil",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 3,
+          "priority": 15,
+          "condition": {
+            "kind": "self_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "target_rule": "self",
+          "action_type": "spell",
+          "telegraph": "Ash-Veil \u2014 negate the next blow that lands on the chant",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "combat_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase3/smoke_chanter-5a3b719a.png"
+    },
+    {
+      "id": "pin_breaker",
+      "name": "Pin-Breaker",
+      "flavor": "Roars heroes onto her wedge-bar and punishes anyone who touches her boss.",
+      "description": "A broad orc bracing a six-foot iron wedge-bar against the door's bolts, forearms banded with scar-tissue, half her face blistered pale from working too near Grukka's breath.",
+      "hp": 9,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "iron_bellow",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Iron Bellow \u2014 taunt a hero onto the wedge-bar",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "guard_the_boss",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Bar-Swing \u2014 deal 5 to whoever struck her kin",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase3/pin_breaker-997be74f.png"
+    },
+    {
+      "id": "slag_drover",
+      "name": "Slag-Whip Drover",
+      "flavor": "Cracks a heated whip from the middle rank to steal a turn \u2014 and gluts when a hero drops.",
+      "description": "A lanky orc drover in a fireman's apron of grey hide, coiling a long chain-whip whose last three links glow dull orange, teeth filed and lacquered black.",
+      "hp": 5,
+      "power": 3,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "crack_the_whip",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Crack the Whip \u2014 a hero reels and loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "drovers_glut",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Drover's Glut \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase3/slag_drover-23e83b15.png"
+    },
+    {
+      "id": "lantern_bearer",
+      "name": "Lantern-Bearer",
+      "flavor": "Throws burning lamps from the back and takes one last swing when a comrade falls.",
+      "description": "A soot-grey goblin hung with six lit lanterns on a shoulder-yoke, singed ears pinned back, hurling them one at a time with a whooping laugh.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "hurl_lantern",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Hurl Lantern \u2014 deal 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "last_flask",
+          "archetype": "Burst",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "valuation",
+          "telegraph": "Last Flask \u2014 deal 4 in a spiteful arc",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase3/lantern_bearer-7b0e3974.png"
+    }
+  ],
+  "tokens": {
+    "pit_scrag": {
+      "name": "Pit-Scrag",
+      "hp": 4,
+      "power": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase3/pit_scrag-4554df2f.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "grukka_cinder_tongue",
+      "smoke_chanter",
+      "pin_breaker"
+    ],
+    "2": [
+      "grukka_cinder_tongue",
+      "smoke_chanter",
+      "pin_breaker",
+      "pin_breaker",
+      "slag_drover",
+      "lantern_bearer"
+    ],
+    "3": [
+      "grukka_cinder_tongue",
+      "smoke_chanter",
+      "pin_breaker",
+      "pin_breaker",
+      "slag_drover",
+      "slag_drover",
+      "lantern_bearer",
+      "lantern_bearer",
+      "lantern_bearer"
+    ],
+    "4": [
+      "grukka_cinder_tongue",
+      "smoke_chanter",
+      "smoke_chanter",
+      "pin_breaker",
+      "pin_breaker",
+      "pin_breaker",
+      "slag_drover",
+      "slag_drover",
+      "slag_drover",
+      "lantern_bearer",
+      "lantern_bearer",
+      "lantern_bearer"
+    ]
+  }
+}

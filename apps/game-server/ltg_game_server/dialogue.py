@@ -2,16 +2,18 @@
 
 A dialogue tree::
 
-    {"root": id, "nodes": {id: {"speaker": "npc" | "party", "text": str,
+    {"root": id, "nodes": {id: {"speaker": "npc" | "party" | "narration", "text": str,
                                 "choices": [{"label", "next"?, "requires"?: [flag…],
                                              "effects"?: [hook…]}]}}}
 
 2–4 nodes deep on the main line (a hard cap of MAX_DEPTH — generous, since a
 defeated_once branch stacks on top), 2–3 choices per node; a choice without
 ``next`` ends the conversation. **Hooks are a closed vocabulary** (like effect verbs):
-``set_flag``, ``grant_quest``, ``advance_quest``, ``unlock_adventure`` (write-
-once per act), ``give_gold``, ``give_item``, ``rest``, ``open_shop``,
-``direct_to``. Nothing else validates; the prompt is told so.
+``set_flag``, ``grant_quest`` (which quest option the party took), ``defer_quest``
+(they will think it over — the NPC asks again next time), ``advance_quest``,
+``unlock_adventure`` (write-once per act), ``give_gold``, ``give_item``,
+``rest``, ``open_shop``, ``direct_to``. Nothing else validates; the prompt is
+told so.
 
 ``requires`` reads flags the hooks set. Flags live in the run state and persist
 across acts and scenarios; standing flags the runtime sets itself:
@@ -30,14 +32,17 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Set
 
-HOOKS = ("set_flag", "grant_quest", "advance_quest", "unlock_adventure",
-         "give_gold", "give_item", "rest", "open_shop", "direct_to")
+HOOKS = ("set_flag", "grant_quest", "defer_quest", "advance_quest",
+         "unlock_adventure", "give_gold", "give_item", "rest", "open_shop",
+         "direct_to")
 # Hooks whose choice is party-wide: they open the all-players confirmation
 # (§D17-5.4). Flavour choices don't.
 PARTY_WIDE_HOOKS = frozenset({"grant_quest", "unlock_adventure", "rest"})
 MAX_DEPTH = 10
 MIN_CHOICES = 1     # a leaf may carry one "Farewell"; the prompt asks 2–3
-MAX_CHOICES = 4
+# An offer node carries every quest option the NPC has plus the "let us think
+# on it" out, so the ceiling is a little above the 2–3 the prompt asks for.
+MAX_CHOICES = 5
 
 
 def _clean_hook(h: Any, where: str) -> Dict[str, Any]:
@@ -47,7 +52,13 @@ def _clean_hook(h: Any, where: str) -> Dict[str, Any]:
     if kind not in HOOKS:
         raise ValueError(f"{where}: unknown hook '{kind}' — allowed: {', '.join(HOOKS)}")
     out: Dict[str, Any] = {"kind": kind}
-    if kind == "set_flag":
+    if kind in ("grant_quest", "defer_quest"):
+        # Which of the act's quest options this choice takes / puts off. Bare
+        # (no id) is legal and means "the act's only quest".
+        quest = str(h.get("quest") or h.get("quest_id") or "").strip()
+        if quest:
+            out["quest"] = quest
+    elif kind == "set_flag":
         flag = str(h.get("flag") or "").strip()
         if not flag:
             raise ValueError(f"{where}: set_flag needs a flag name")
@@ -95,8 +106,12 @@ def validate_dialogue(raw: Dict[str, Any], flags_known: Optional[Set[str]] = Non
         if not isinstance(node, dict):
             raise ValueError(f"node '{nid}' must be an object")
         speaker = str(node.get("speaker") or "npc").strip()
-        if speaker not in ("npc", "party"):
-            raise ValueError(f"node '{nid}': speaker must be npc or party")
+        # "narration": an unvoiced beat between lines — what the NPC does, what
+        # the party notices, what a name or a rumour actually MEANS. Playtest:
+        # dialogue that only ever speaks is hard to follow, because everything
+        # the characters already know goes unsaid. Rendered without a nameplate.
+        if speaker not in ("npc", "party", "narration"):
+            raise ValueError(f"node '{nid}': speaker must be npc, party, or narration")
         text = str(node.get("text") or "").strip()
         if not text:
             raise ValueError(f"node '{nid}' has no text")

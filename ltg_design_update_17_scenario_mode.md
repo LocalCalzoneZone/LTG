@@ -186,8 +186,9 @@ town = { id, name, region_flavor, scene, art_url?,
                         npcs: [ { id, name, role, persona, portrait_desc, art_url? } ] } ] }
 ```
 
-- **Required functions**, one location each: **inn** (rest / restore / save), **weaponsmith**, **artificer** (accessories), **apothecary** (consumables). Plus **1–3 flavor locations** (tavern, shrine, witch's hut, guard post) that host questgivers and handoff NPCs.
-- Each location has 1–2 **resident NPCs** with a role and **persona prose** — but **no dialogue and no inventory**: those are act materializations. The persona prose is **injected verbatim** into every later generation so the innkeeper is the same person across acts and scenarios.
+- **Required functions**, one location each: **inn** (rest / restore / save), **weaponsmith**, **artificer** (accessories), **apothecary** (consumables). Plus **flavor locations** (tavern, shrine, witch's hut, guard post) that host questgivers and handoff NPCs — generation writes 1–3, *and more can be added to a town at any time in the editor* (§D17-13.1).
+- Each location has **resident NPCs** (generation writes 1–2; up to 4) with a role, **persona prose**, and **standing topics** (§D17-13.2) — but **no quest dialogue and no inventory**: those are act materializations. The persona prose is **injected verbatim** into every later generation so the innkeeper is the same person across acts and scenarios.
+- At a shop, **exactly one resident keeps the counter** (`vendor: true`); the others are there to be talked to (§D17-13.2).
 - Town validation: the four functions present, every location has a scene, every NPC has a portrait_desc.
 
 ### D17-5.2 The town screen — the battlefield grammar, repurposed
@@ -195,7 +196,7 @@ town = { id, name, region_flavor, scene, art_url?,
 The town reuses the combat screen's shell: backdrop + card slots + inspect modal + a verb button + splash on entry.
 
 - **Entering town:** the splash (town scene + a paragraph from the act's materialization).
-- **Town map:** the town scene; the card slots show **locations** (name, art, function badge) instead of enemies. Console: no hand, no mana; action buttons **Save Game · Quest Log · Leave Location · Start Adventure**, greyed unless actionable.
+- **Town map:** the town scene; the card slots show **locations** (name, art) instead of enemies — **and nothing else: no “Quest” / “Talk” badges** (§D17-13.3). Where the quest is, is something the party learns by walking in and asking. Console: no hand, no mana; action buttons **Save Game · Quest Log · Leave Location · Start Adventure**, greyed unless actionable.
 - **Click a location** → inspect modal (description) → **Visit X**.
 - **Visiting:** splash (location scene + a line of narrative) → location screen: location scene; the slots show its **NPCs**. Click an NPC → inspect (persona) → **Talk to X** or, for merchants, **See their wares** (§D17-5.5). **Leave Location** returns to the map.
 - **Movement is party-wide:** Visit / Leave / Start Adventure open the **all-players confirmation** (every *player*, not character; **30s auto-yes**, initiator may cancel — T-84). Browsing inspects and shopping are per-player and asynchronous.
@@ -217,10 +218,10 @@ dialogue = { root, nodes: { id: { speaker: "npc" | "party", text,
 ```
 
 - 2–4 nodes deep, 2–3 choices per node; a choice with no `next` ends the conversation.
-- **Hooks — a closed vocabulary**, like effect verbs: `set_flag`, `grant_quest`, `advance_quest`, `unlock_adventure` (sets the act's Start-Adventure gate — **write-once per act**), `give_gold`, `give_item`, `rest` (full restore), `open_shop`, `direct_to` (journal points at another NPC/location). Nothing else; the prompt is told so.
+- **Hooks — a closed vocabulary**, like effect verbs: `set_flag`, `grant_quest` (naming which option — §D17-13.4), `defer_quest` (§D17-13.5), `advance_quest`, `unlock_adventure` (sets the act's Start-Adventure gate — **write-once per act**), `give_gold`, `give_item`, `rest` (full restore), `open_shop`, `direct_to` (journal points at another NPC/location). Nothing else; the prompt is told so.
 - **`requires` reads flags** the hooks set. Flags live in the run state and persist across acts and scenarios; standing flags the runtime sets itself: `defeated_once` (Normal-mode defeat this act — the questgiver's tree carries a "you return bloodied" branch, written up front), `act_<n>_complete`, `quest_accepted`.
 - **The dialogue modal:** party portraits **left** — a slightly zoomed 3:4 crop of each character portrait's upper portion, tiled; NPC portrait and text center; choices as ghost buttons. **The initiating player chooses** and advances; everyone sees the same text. Before choosing, the initiator may **click a party portrait to attribute the line to that character** (`speaker: "party"` nodes carry the attributed id) — cosmetic today, the seam for LLM-written party lines later. Choices carrying **party-wide hooks** (`grant_quest`, `unlock_adventure`, `rest`) open the all-players confirmation; flavor choices don't.
-- **Quest Accept** is the `grant_quest` + `unlock_adventure` choice; it is **irreversible per act** — its confirmation reads *"Accept ‹quest› as your next quest?"* On yes: hooks fire → auto-save → the adventure generation job starts (§D17-6.3). If a future act offers several quests, accepting one closes the others.
+- **Quest Accept** is the `grant_quest` + `unlock_adventure` choice; it is **irreversible per act** — its confirmation reads *"Accept ‹quest› as your next quest?"* On yes: hooks fire → auto-save → the adventure generation job starts (§D17-6.3). **Every act offers two or more quests** and accepting one closes the others (§D17-13.4); every offer sits beside a **defer** (§D17-13.5).
 
 ### D17-5.5 Shops (design-later stub)
 
@@ -330,5 +331,48 @@ The single trigger for everything the adventure needs. On accept: (1) auto-save;
 - **Adventure job** — the persisted generation state (`pending → generated → art_queued → ready | failed`) behind the Start Adventure button.
 - **Primary / secondary weapon, accessory, belt, inventory** — the gear slots (§D17-4.1). **Consumable** — a belt item that is an always-in-hand, mana-free, activated-ability card in every encounter until used.
 - **Effective level** — derived level plus worn-gear points ÷ 30; what encounter budgets read.
-- **Hook** — a closed-vocabulary dialogue effect (`set_flag`, `grant_quest`, `advance_quest`, `unlock_adventure`, `give_gold`, `give_item`, `rest`, `open_shop`, `direct_to`).
+- **Hook** — a closed-vocabulary dialogue effect (`set_flag`, `grant_quest`, `defer_quest`, `advance_quest`, `unlock_adventure`, `give_gold`, `give_item`, `rest`, `open_shop`, `direct_to`).
+- **Quest option** — one of the two-or-more quests an act puts in front of the party (§D17-13.4); the accepted one names the adventure that gets written.
+- **Topic** — an NPC's flavour exchange (`{ask, reply}`), written with the town and added to per act, so every resident holds a conversation (§D17-13.2).
+- **Vendor** — the one NPC at a shop who actually sells (§D17-13.2).
 - **All-players confirmation** — the party-wide yes/no every player answers for movement, quest acceptance, and rewards; 30 s auto-yes.
+
+---
+
+## D17-13. Amendment — the town speaks first *(amends §D17-5.1, §D17-5.2, §D17-5.4, §D17-6.2)*
+
+Playtest note behind it: the town was a corridor. The map told you where the quest was, the quest was the only quest, and everyone who wasn't holding it had one line. This amendment turns the town phase into the part of the act the *players* author.
+
+### D17-13.1 A town is editable content, not a fixed set
+
+Locations and NPCs can be **added to a town at any time** — Options → Towns → the editor's **+ Location** / **+ NPC**. The gates move accordingly: **1 or more flavour locations** (up to 8), **1–4 residents** per location. Generation still writes the modest version (1–3 flavour locations, 1–2 residents); the editor is where a town grows.
+
+### D17-13.2 One counter per shop; everyone has something to say
+
+- **Vendors.** A shop may house several people, but **exactly one sells** — the NPC carrying `vendor: true` (unmarked, the first resident takes the counter). *See their wares* appears on that person only; the smith's apprentice, the herbalist's nephew and the artificer's talkative customer are there for the conversation.
+- **Topics.** Every NPC carries **`topics`: `[{ask, reply}]`** — scenario-agnostic flavour exchanges written **with the town** ("Whose forge is this?" → "Mine, on the days he lets me sell."). An act **adds its own** on top (`topics` in the materialization) for the trouble currently in the air. An NPC with no authored tree this act therefore still holds a real conversation: their greeting, then a thing or two to ask about. **Nobody is a closed door** — the act materialization is rejected if a resident has neither a tree, a topic, nor a line.
+- Existing towns fill their gaps with **Options → Towns → Write flavour topics**, one LLM pass over every resident who has none.
+
+### D17-13.3 The map wears no labels
+
+The town snapshot no longer carries `questgiver` / `has_dialogue`, and the cards no longer show **Quest** / **Talk** / **Wares** badges. Direction is **earned**: you walk in, you ask, and an NPC's `direct_to` hook writes the pointer into the journal. The location's function still names it (an inn is visibly an inn from the street) — what is hidden is *what the act has put there*.
+
+### D17-13.4 Every act offers a choice of quests
+
+The materialization's `quest` becomes **`quests`: two to four options**, each `{id, title, text, adventure_theme?}`. The shapes:
+
+- **different troubles** — the flooded mine crew or the burned waystation, and the party decides who they help;
+- **branches of one trouble** — the raiders' camp, or the ford where they cross;
+- **one plan, different approaches** — overland at first light, or around by boat after dark. Same villain, different road, different fight.
+
+Because **the combat half of the act is not written until a quest is accepted** (§D17-6.3), this agency is free: the accept hook carries the option's id (`{"kind": "grant_quest", "quest": "the_shore_road"}`), and the option's `adventure_theme` — not the arc outline's — is what the adventure generator is handed. Options may sit with one NPC or be spread across two; if they are spread, the questgiver's tree must `direct_to` the other, since the map will not.
+
+**Pre-generated scenarios** (§D17-6.1) still ship Act I's adventure pre-written, tagged with the option it belongs to (`act1.quest_id`). Take that option and the ride out is instant; take another and the run generates its own, exactly as every later act does.
+
+### D17-13.5 Every offer comes with a way to put it off
+
+A node that offers a quest **must** also offer a **`defer_quest`** choice — *"Let us get back to you; we've business to see to."* Deferring sets a per-NPC, per-act flag; the next time the party walks up to that NPC the conversation **opens on the re-ask** — *"Well — have you had time to consider what I asked?"* — carrying every offer they had made, plus the option to put it off again. The runtime builds that node from the tree's own accept choices, so it is correct even when the writer forgets; a materialization may supply the line itself in **`reask`**.
+
+### D17-13.6 Aspect ratios
+
+A location's **exterior** (the town-map card) is painted **16:9**, the same as its interior, and the map's tiles are 16:9 to match — the town map now reads as a row of wide frontages rather than portrait cards. NPC portraits stay 1:1, and the party column stays 3:4.

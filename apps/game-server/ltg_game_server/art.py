@@ -37,7 +37,8 @@ ART_MODEL = llm.ART_MODEL
 COMFY_TIMEOUT = 300.0
 COMFY_POLL_INTERVAL = 1.0
 # Pixel sizes injected for the %width%/%height% placeholders, per aspect.
-COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024), "3:4": (896, 1152)}
+COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024), "3:4": (896, 1152),
+               "3:2": (1216, 832)}
 
 # Generated images write into the tracked content dir, beside the encounter /
 # adventure JSON they belong to, so a commit ships the art to every install.
@@ -396,24 +397,24 @@ def paint(prompt: str, aspect: str, folder: str, slot: str) -> str:
 
 _TOWN_TASK = (
     "Paint a wide establishing view of a fantasy town for a painterly tactical "
-    "card game — the TOWN MAP backdrop, classic high fantasy (a place worth "
-    "coming home to). Environment and architecture only: NO people, NO "
-    "creatures. Warm light, painted edge to edge.\n\nThe town:\n"
+    "card game — the TOWN MAP backdrop, classic high fantasy. Environment and "
+    "architecture only: NO people, NO creatures. Painted edge to edge.\n\n"
+    "The town:\n"
 )
 _EXTERIOR_TASK = (
-    "Paint the EXTERIOR of ONE building in a fantasy town — its frontage seen "
-    "from the street — as the card art for a location on a town map, in a "
-    "painterly tactical card game (classic high fantasy, welcoming rather than "
-    "grim). The building fills the frame, portrait composition; NO people, NO "
-    "creatures. Warm light.\n\nThe building:\n"
+    "Paint the EXTERIOR of ONE building in a fantasy town — as seen from the "
+    "outside — as the card art for a location on a town map, in a painterly "
+    "tactical card game (classic high fantasy), matching the interior backdrops: "
+    "the building fills the frame across its width, with the surrounding area "
+    "falling away to either side; NO people, NO creatures. Warm light.\n\n"
+    "The building:\n"
 )
 _INTERIOR_TASK = (
     "Paint the INTERIOR of ONE location in a fantasy town from the eye level of "
     "someone standing inside it — the room around them — as a wide backdrop for "
-    "a painterly tactical card game (classic high fantasy, welcoming rather than "
-    "grim). Environment only: NO people, NO creatures. Wide composition, an "
-    "uncluttered middle ground where figures will stand, warm atmospheric light."
-    "\n\nWhat they see:\n"
+    "a painterly tactical card game (classic high fantasy). Environment only: "
+    "NO people, NO creatures. Wide composition, an uncluttered middle ground "
+    "where figures will stand, warm atmospheric light.\n\nWhat they see:\n"
 )
 _NPC_TASK = (
     "Paint a single character portrait for a townsperson card in a painterly "
@@ -434,6 +435,14 @@ def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
     if town is None:
         raise ValueError(f"unknown town: {town_id}")
     style = _style()
+    # Exteriors belong to this town — hint its own scene so a treetop village's
+    # buildings don't drift into generic-town material/architecture (same trick
+    # as enemy_prompt anchoring an enemy portrait to its encounter's scene).
+    # Interiors skip this: the town scene bled through into the room itself.
+    town_scene = str(town.get("scene") or "").strip()
+    town_context = (f"\n\nThis stands in this town (match its architecture, "
+                    f"materials, and mood; do NOT paint the wider town in "
+                    f"detail): {town_scene}") if town_scene else ""
     if kind == "town":
         prompt = f"{style}\n\n{_TOWN_TASK}{text or town.get('scene', '')}"
         aspect, slot = "16:9", "town"
@@ -441,7 +450,8 @@ def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
         loc = sc.find_location(town, str(target_id))
         if loc is None:
             raise ValueError(f"unknown location: {target_id}")
-        prompt = f"{style}\n\n{_INTERIOR_TASK}{text or loc.get('interior_scene') or loc.get('scene', '')}"
+        prompt = (f"{style}\n\n{_INTERIOR_TASK}"
+                  f"{text or loc.get('interior_scene') or loc.get('scene', '')}")
         aspect, slot = "16:9", f"loc-{loc['id']}"
     elif kind == "location_exterior":
         loc = sc.find_location(town, str(target_id))
@@ -449,8 +459,10 @@ def generate_town_art(town_id: str, kind: str, target_id: Optional[str] = None,
             raise ValueError(f"unknown location: {target_id}")
         if not (text or loc.get("exterior_scene")):
             raise ValueError(f"{loc['name']} has no exterior scene to paint from")
-        prompt = f"{style}\n\n{_EXTERIOR_TASK}{loc['name']}. {text or loc.get('exterior_scene', '')}"
-        aspect, slot = "3:4", f"ext-{loc['id']}"
+        prompt = (f"{style}\n\n{_EXTERIOR_TASK}{loc['name']}. "
+                  f"{text or loc.get('exterior_scene', '')}{town_context}")
+        # The map card is the same 16:9 as the interior it opens into.
+        aspect, slot = "16:9", f"ext-{loc['id']}"
     elif kind == "npc":
         found = sc.find_npc(town, str(target_id))
         if found is None:
@@ -533,7 +545,10 @@ def generate_item_art(item_id: str, text: str = "") -> Dict[str, Any]:
     if item is None:
         raise ValueError(f"unknown item: {item_id}")
     prompt = f"{_style()}\n\n{_ITEM_TASK}{item.name}. {text or item.art_desc or item.flavor}"
-    url = paint(prompt, "1:1", f"items/{item_id}", "item")
+    # 3:2 — the art frame on a card face (§D17-4.4: a consumable is played AS a
+    # card, so its art is painted for that slot; the square inventory tiles crop
+    # it with object-cover).
+    url = paint(prompt, "3:2", f"items/{item_id}", "item")
     _items.set_item_art(item_id, url)
     return {"url": url}
 

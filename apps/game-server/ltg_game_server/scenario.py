@@ -32,12 +32,17 @@ from ltg_core.schema import LEVEL_UP_POINTS, level_for_points, points_to_next_le
 
 from . import content, items, llm, scenario_content as sc
 from .adventure import AdventureRun, HP_FLOOR_PCT
-from .dialogue import Conversation
+from .dialogue import MAX_CHOICES, Conversation
 
 # T-85: gold earned per phase level-up, per character (= points).
 GOLD_PER_LEVEL_UP = 30
 STANDING_FLAGS = ("defeated_once", "quest_accepted", "act_1_complete",
                   "act_2_complete", "act_3_complete")
+# A party that said "let us get back to you" is asked again the next time they
+# walk up to that NPC (§D17-5.4); the flag is per-NPC and lasts the act.
+DEFERRED_PREFIX = "deferred_"
+DEFAULT_REASK = "Well — have you had time to consider what I asked?"
+DEFAULT_DEFER_LABEL = "Not yet — we have business to see to first."
 
 
 class ScenarioRun:
@@ -77,7 +82,8 @@ class ScenarioRun:
         self.act_ref: Optional[str] = None
         self.materializing = False
         self.materialize_error: Optional[str] = None
-        self.quest: Dict[str, Any] = {"status": "none", "title": "", "text": "", "direct_to": None}
+        self.quest: Dict[str, Any] = {"status": "none", "title": "", "text": "", "id": "",
+                                      "adventure_theme": "", "direct_to": None}
         self.adventure_unlocked = False          # write-once per act (§D17-5.4)
         self.adventure_id: Optional[str] = None  # this act's adventure (content id)
         self.adventure_ref: Optional[str] = None # its frozen detail's hash
@@ -158,8 +164,11 @@ class ScenarioRun:
         self.adventure_detail = None
         self.adventure_job = {"state": "idle", "progress": [0, 0],
                               "adventure_ref": None, "error": None}
-        self.quest = {"status": "none", "title": "", "text": "", "direct_to": None}
+        self.quest = {"status": "none", "title": "", "text": "", "id": "",
+                      "adventure_theme": "", "direct_to": None}
         self.flags.pop("quest_accepted", None)
+        for flag in [f for f in self.flags if f.startswith(DEFERRED_PREFIX)]:
+            self.flags.pop(flag, None)
         self.act = None
         self.act_ref = None
         self.materialize_error = None
@@ -188,8 +197,14 @@ class ScenarioRun:
                 if rolled:
                     stock[loc["id"]] = [it.model_dump(mode="json", exclude_none=True) for it in rolled]
             self.act["stock"] = stock
-        self.quest = {"status": "offered", "title": m["quest"]["title"],
-                      "text": m["quest"]["text"], "direct_to": None}
+        first = (self.quest_options or [{"id": "", "title": m.get("quest", {}).get("title", ""),
+                                         "text": m.get("quest", {}).get("text", ""),
+                                         "adventure_theme": ""}])[0]
+        # "offered" holds the first option only as a placeholder: which quest the
+        # act actually becomes is settled by the accept choice the party takes.
+        self.quest = {"status": "offered", "id": first.get("id", ""),
+                      "title": first.get("title", ""), "text": first.get("text", ""),
+                      "adventure_theme": first.get("adventure_theme", ""), "direct_to": None}
         if self.splash and self.splash.get("kind") == "town":
             self.splash["text"] = m.get("arrival", "")
 
@@ -214,13 +229,15 @@ class ScenarioRun:
             raise ValueError("no such location")
         self.location_id = location_id
         self.conversation = None
-        line = ""
-        if self.act:
-            for npc in loc.get("npcs") or []:
-                line = self.act.get("flavor", {}).get(npc["id"], "") or line
+        # The entry splash describes the ROOM the party just walked into — what
+        # they see, hear, and smell standing in it (`interior_scene`, the same
+        # text the interior art is painted from). It used to borrow an NPC's
+        # greeting line from the act's flavour map, which read as a stray snippet
+        # of a conversation nobody had started yet; those lines belong to `talk`.
         self.splash = {"kind": "location", "title": loc["name"],
                        "subtitle": loc.get("function", "").replace("_", " "),
-                       "text": line or loc.get("description", "")}
+                       "text": (loc.get("interior_scene")
+                                or loc.get("description", ""))}
 
     def leave(self) -> None:
         self.location_id = None
@@ -231,6 +248,17 @@ class ScenarioRun:
         self.splash = None
 
     # -- dialogue (§D17-5.4) ------------------------------------------------ #
+    @property
+    def quest_options(self) -> List[Dict[str, Any]]:
+        """This act's quest offers — what the party may agree to (§D17-5.4)."""
+        return list((self.act or {}).get("quests") or [])
+
+    def quest_option(self, quest_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        options = self.quest_options
+        if not options:
+            return None
+        return next((q for q in options if q["id"] == quest_id), options[0])
+
     def talk(self, npc_id: str) -> None:
         found = sc.find_npc(self.town, npc_id)
         if found is None:
@@ -240,14 +268,69 @@ class ScenarioRun:
             raise ValueError("you are not at that location")
         tree = (self.act or {}).get("dialogues", {}).get(npc_id)
         if tree is None:
-            # No authored tree this act: a one-line greeting from the flavour
-            # map (or the persona's first sentence) — a leaf conversation.
-            line = (self.act or {}).get("flavor", {}).get(npc_id) or npc.get("persona", "").split(". ")[0] + "."
-            tree = {"root": "r", "nodes": {"r": {"speaker": "npc", "text": line,
-                                                 "choices": [{"label": "Farewell.", "next": None,
-                                                              "requires": [], "effects": []}]}}}
+            tree = self._flavor_tree(npc)
+        elif (self.flags.get(DEFERRED_PREFIX + npc_id)
+              and not self.flags.get("quest_accepted")):
+            # "Let us get back to you" — so they do: the NPC opens by asking
+            # again, with the same offers still on the table.
+            tree = self._reask_tree(npc_id, tree)
         self.conversation = Conversation(npc_id, tree)
         self._note_npc_line()
+
+    @staticmethod
+    def _choice(label: str, nxt: Optional[str] = None,
+                effects: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        return {"label": label, "next": nxt, "requires": [], "effects": effects or []}
+
+    def _flavor_tree(self, npc: Dict[str, Any]) -> Dict[str, Any]:
+        """An NPC with no authored tree this act still holds a conversation: a
+        greeting, then their TOPICS — the town's scenario-agnostic ones plus
+        whatever this act added to them — each as a thing the party can ask
+        about (§D17-5.4). Every townsperson is worth walking up to."""
+        act = self.act or {}
+        greeting = (act.get("flavor", {}).get(npc["id"])
+                    or npc.get("persona", "").split(". ")[0] + ".")
+        topics = list(act.get("topics", {}).get(npc["id"]) or []) + list(npc.get("topics") or [])
+        nodes: Dict[str, Any] = {"r": {"speaker": "npc", "text": greeting, "choices": []}}
+        for i, topic in enumerate(topics[:MAX_CHOICES - 1], start=1):
+            nid = f"t{i}"
+            nodes[nid] = {"speaker": "npc", "text": topic["reply"],
+                          "choices": [self._choice("Farewell.")]}
+            nodes["r"]["choices"].append(self._choice(topic["ask"], nid))
+        nodes["r"]["choices"].append(self._choice("Farewell."))
+        return {"root": "r", "nodes": nodes}
+
+    def _reask_tree(self, npc_id: str, tree: Dict[str, Any]) -> Dict[str, Any]:
+        """The deferred-answer opening: the same tree with a new root where the
+        NPC asks whether the party has thought it over, carrying every accept
+        choice they had offered — and the option to put it off again."""
+        accepts: List[Dict[str, Any]] = []
+        seen: set = set()
+        for node in tree["nodes"].values():
+            for ch in node["choices"]:
+                quests = tuple(sorted(h.get("quest", "") for h in ch["effects"]
+                                      if h["kind"] == "grant_quest"))
+                if not quests or quests in seen:
+                    continue
+                seen.add(quests)
+                accepts.append(copy.deepcopy(ch))
+        if not accepts:
+            return tree
+        # Ungated offers first: a bloodied-return branch's accept only shows
+        # once its flag is set, and the walker filters it either way.
+        accepts.sort(key=lambda ch: len(ch["requires"]))
+        accepts = accepts[:MAX_CHOICES - 1]
+        nodes = copy.deepcopy(tree["nodes"])
+        root = "reask"
+        while root in nodes:
+            root = "_" + root
+        nodes[root] = {
+            "speaker": "npc",
+            "text": (self.act or {}).get("reask", {}).get(npc_id) or DEFAULT_REASK,
+            "choices": accepts + [self._choice(DEFAULT_DEFER_LABEL,
+                                               effects=[{"kind": "defer_quest"}])],
+        }
+        return {"root": root, "nodes": nodes}
 
     def attribute(self, character_id: str) -> None:
         if self.conversation is None:
@@ -263,6 +346,22 @@ class ScenarioRun:
             if ch["index"] == index:
                 return bool(ch["party_wide"])
         raise ValueError("that choice is not available")
+
+    def choice_quest_title(self, index: int) -> str:
+        """The title of the quest the choice at ``index`` would accept, or ""
+        when it accepts nothing — the all-players confirmation names it."""
+        if self.conversation is None:
+            return ""
+        node = self.conversation.node or {}
+        try:
+            effects = node["choices"][index].get("effects") or []
+        except (KeyError, IndexError):
+            return ""
+        for h in effects:
+            if h.get("kind") == "grant_quest":
+                option = self.quest_option(h.get("quest"))
+                return option["title"] if option else self.quest.get("title", "")
+        return ""
 
     def choice_label(self, index: int) -> str:
         if self.conversation is None:
@@ -297,10 +396,27 @@ class ScenarioRun:
         if kind == "set_flag":
             self.flags[h["flag"]] = bool(h.get("value", True))
         elif kind == "grant_quest":
+            # WHICH offer the party took decides the act — and, with it, what
+            # the adventure generator is handed (§D17-5.4).
+            option = self.quest_option(h.get("quest"))
+            if option is not None:
+                self.quest.update({"id": option["id"], "title": option["title"],
+                                   "text": option["text"],
+                                   "adventure_theme": option.get("adventure_theme", "")})
             if self.quest.get("status") in ("none", "offered"):
                 self.quest["status"] = "accepted"
             self.flags["quest_accepted"] = True
+            for flag in [f for f in self.flags if f.startswith(DEFERRED_PREFIX)]:
+                self.flags.pop(flag, None)
             self.add_journal("quest", f'You agreed to take on "{self.quest.get("title", "")}": {self.quest.get("text", "")}')
+        elif kind == "defer_quest":
+            npc_id = self.conversation.npc_id if self.conversation is not None else ""
+            if npc_id:
+                self.flags[DEFERRED_PREFIX + npc_id] = True
+            found = sc.find_npc(self.town, npc_id)
+            if found is not None:
+                self.add_journal("event", f"You told {found[1]['name']} you would think on it "
+                                          "and come back.")
         elif kind == "advance_quest":
             if self.quest.get("status") == "accepted":
                 self.quest["status"] = "advanced"
@@ -354,7 +470,11 @@ class ScenarioRun:
 
     # -- the adventure (§D17-6.3 / §D17-6.4) -------------------------------- #
     def adventure_context(self) -> Dict[str, Any]:
-        outline = self.outline
+        outline = dict(self.outline)
+        # The accepted option may name its own approach ("by boat, after dark")
+        # or its own place; it wins over the arc outline's theme.
+        if self.quest.get("adventure_theme"):
+            outline["adventure_theme"] = self.quest["adventure_theme"]
         return {
             "arc_context": {"title": self.arc["title"], "villain": self.arc["villain"],
                             "stakes": self.arc["stakes"], "act": dict(outline),
@@ -705,8 +825,11 @@ class ScenarioRun:
                               "consumables": [view(x) for x in g["inventory"]["consumables"]]}}
 
     def town_snapshot(self) -> Dict[str, Any]:
+        """The town screen's state. Note what is NOT here: which location holds
+        the questgiver, which NPC has an authored tree. The town wears no
+        labels (§D17-5.2) — where the quest is, is something the party learns by
+        walking in and asking, and the journal remembers where they were sent."""
         loc = sc.find_location(self.town, self.location_id) if self.location_id else None
-        dialogues = (self.act or {}).get("dialogues", {})
         outline = self.outline
         return {
             "town": {
@@ -721,8 +844,6 @@ class ScenarioRun:
                      "art_url": l.get("exterior_art_url") or "",
                      "interior_art_url": l.get("interior_art_url") or l.get("art_url", ""),
                      "scene": l.get("exterior_scene") or l.get("interior_scene") or l.get("scene", ""),
-                     "questgiver": any(n["id"] == outline["questgiver_npc"] for n in l["npcs"]),
-                     "has_dialogue": any(n["id"] in dialogues for n in l["npcs"]),
                      "npc_count": len(l["npcs"])}
                     for l in self.town["locations"]
                 ],
@@ -737,9 +858,8 @@ class ScenarioRun:
                 "npcs": [
                     {"id": n["id"], "name": n["name"], "role": n.get("role", ""),
                      "persona": n.get("persona", ""), "art_url": n.get("art_url", ""),
-                     "has_dialogue": n["id"] in dialogues,
-                     "questgiver": n["id"] == outline["questgiver_npc"],
-                     "merchant": loc.get("function") in ("weaponsmith", "artificer", "apothecary"),
+                     # One counter per shop: the other residents only talk.
+                     "merchant": (sc.vendor_of(loc) or {}).get("id") == n["id"],
                      "flavor": (self.act or {}).get("flavor", {}).get(n["id"], "")}
                     for n in loc["npcs"]
                 ],
@@ -887,6 +1007,8 @@ def pregenerate_scenario(town_id: str, difficulty: str = "standard",
                          {"character": {"name": "the second hero", "colors": ["U"], "starting_mana": ["U"]}}],
                         {"difficulty": difficulty}, town_id=town_id)
     probe.arrive(act1)
+    # The adventure is written for the FIRST of Act I's quest options; a party
+    # that takes another gets one generated on acceptance, as every later act does.
     probe.quest["status"] = "accepted"
     context = probe.adventure_context()
     adv_meta = llm.generate_adventure(
@@ -894,5 +1016,6 @@ def pregenerate_scenario(town_id: str, difficulty: str = "standard",
         base_level=1, context=context, run_only=True)
     return sc.save_scenario({
         "town_id": town_id, "arc": arc, "difficulty": difficulty,
-        "act1": {"adventure_id": adv_meta["id"], "materialization": act1},
+        "act1": {"adventure_id": adv_meta["id"], "quest_id": probe.quest.get("id", ""),
+                 "materialization": act1},
     })

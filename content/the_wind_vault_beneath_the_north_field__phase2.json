@@ -1,0 +1,468 @@
+{
+  "name": "The Pinned Stair",
+  "scene": "A broad landing three turns down the shaft, where a timbered stair clings to walls of graven cliff-stone cut in unbroken bands of old script. Lanterns hang from driven pins, throwing amber over wet grey letters and a churning haze of chalk dust; iron wedges and abandoned baskets litter the steps. Every few breaths the Mill Bell's note comes up through the stone itself, and the dust shivers in rings.",
+  "scene_image": "/art/the_wind_vault_beneath_the_north_field__phase2/scene-3d823df6.png",
+  "enemies": [
+    {
+      "id": "chalk_chanter",
+      "name": "Chalk-Chanter",
+      "flavor": "Her held dirge grinds the whole party down; she veils herself while she sings.",
+      "description": "A lean orc woman kneeling with both palms pressed to the inscribed floor, arms white to the elbow with chalk, a fan of pin-bone quills bound in her braids as grey dust rises and turns around her in slow rings.",
+      "hp": 15,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "dust_dirge",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Dust Dirge \u2014 a held chant: the party fights at -1/-1 and one hero chokes for 2 each turn",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "grit_veil",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 3,
+          "priority": 15,
+          "condition": {
+            "kind": "self_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "target_rule": "self",
+          "action_type": "spell",
+          "telegraph": "Grit-Veil \u2014 negate the next damage that finds her",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase2/chalk_chanter-c315eb2a.png"
+    },
+    {
+      "id": "undermaster_skolk",
+      "name": "Undermaster Skolk",
+      "flavor": "The wall in front of the chant: shields her, sweeps the front rank, and brings the props down when bloodied.",
+      "description": "A hugely broad orc in a coat of overlapping shovel-blades riveted to hide, one arm ending in a strapped-on sledge, jaw plated with a brass guard and a lantern hooked at his shoulder like an eye.",
+      "hp": 27,
+      "power": 4,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "shield_the_chant",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Shovel-Wall \u2014 negate the next damage aimed at an ally",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "timber_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_row": "front",
+          "action_type": "attack",
+          "target_rule": "valuation",
+          "telegraph": "Timber Sweep \u2014 5 to everyone standing in the front rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "overseers_rebuke",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Overseer's Rebuke \u2014 deal 6 to whoever struck his gang",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "bring_down_the_props",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Bring Down the Props \u2014 4 to ALL heroes as the stair shudders",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "skolk_enrage",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "DIG OR DIE \u2014 +3/+2 permanently, the landing buckles, and Skolk shakes off his wounds",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 7,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase2/undermaster_skolk-e5406b62.png"
+    },
+    {
+      "id": "stair_sapper",
+      "name": "Stair Sapper",
+      "flavor": "A sledge in the front rank that grows meaner each time a comrade drops.",
+      "description": "A stocky orc in a chalk-crusted quilted jerkin, goggles of smoked horn pushed up on his brow, both hands wrapped around a short spalling sledge.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "spalling_blow",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Spalling Blow \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "gang_spite",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Gang-Spite \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase2/stair_sapper-70d82a79.png"
+    },
+    {
+      "id": "chalk_slinger",
+      "name": "Chalk-Sling Slinger",
+      "flavor": "Rains stone chips every turn and cracks anyone who dares patch a wound.",
+      "description": "A gangly goblin perched on a stair-rail with a long leather sling, a satchel of razor chalk chips at her hip and a rag knotted over her mouth against the dust.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "chip_shot",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 1,
+          "target_rule": "valuation",
+          "telegraph": "Chip Shot \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "no_patching",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_healed",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "No Patching \u2014 deal 5 to the one who mended",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase2/chalk_slinger-5b9958d4.png"
+    },
+    {
+      "id": "spoil_hauler",
+      "name": "Spoil-Hauler",
+      "flavor": "Cheap muscle that knits itself back together if left alone.",
+      "description": "A hunched half-orc porter under an enormous wicker spoil-basket, back ridged with old rope burns, hands like flat grey spades.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "shake_it_off",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Shake It Off \u2014 begin regenerating",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "flailing_swing",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Flailing Basket \u2014 deal 4 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_wind_vault_beneath_the_north_field__phase2/spoil_hauler-f4f7d451.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "chalk_chanter",
+      "undermaster_skolk"
+    ],
+    "2": [
+      "undermaster_skolk",
+      "chalk_chanter",
+      "stair_sapper",
+      "stair_sapper",
+      "chalk_slinger",
+      "spoil_hauler"
+    ],
+    "3": [
+      "undermaster_skolk",
+      "chalk_chanter",
+      "stair_sapper",
+      "stair_sapper",
+      "stair_sapper",
+      "stair_sapper",
+      "chalk_slinger",
+      "chalk_slinger",
+      "spoil_hauler",
+      "spoil_hauler"
+    ],
+    "4": [
+      "undermaster_skolk",
+      "chalk_chanter",
+      "stair_sapper",
+      "stair_sapper",
+      "stair_sapper",
+      "stair_sapper",
+      "stair_sapper",
+      "chalk_slinger",
+      "chalk_slinger",
+      "chalk_slinger",
+      "chalk_slinger",
+      "spoil_hauler",
+      "spoil_hauler",
+      "spoil_hauler"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "chalk_chanter",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Dust Answers \u2014 the graven bands go dark",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 3,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "nonlethal": false
+        }
+      ]
+    },
+    "resolved": false
+  }
+}
