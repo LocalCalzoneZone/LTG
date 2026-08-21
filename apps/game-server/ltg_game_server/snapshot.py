@@ -46,6 +46,24 @@ HIDDEN_LOG_TYPES = {"intent_declared"}
 # --------------------------------------------------------------------------- #
 # priority.kind — derived (INTERFACE_NOTES §2)
 # --------------------------------------------------------------------------- #
+def _holder_id(view: GameState, actions: List[Action]) -> Optional[str]:
+    """The character the engine is waiting on: the actor the legal set belongs
+    to when there is one, else the raw priority seat."""
+    return actions[0].actor_id if actions else view.priority
+
+
+def priority_fields(stored: GameState) -> Dict[str, Any]:
+    """Just the public priority pair (holder + kind).
+
+    The ws `prompt` message needs only these two, and it goes out on every
+    broadcast — building (and throwing away) a whole snapshot to read them is
+    pure waste, so this derives them directly, exactly as `build_snapshot` does.
+    """
+    view = settle(stored)
+    return {"holder_character_id": _holder_id(view, legal_actions(stored)),
+            "kind": priority_kind(view)}
+
+
 def priority_kind(view: GameState) -> Optional[str]:
     """Which decision the engine is waiting on, mirroring `_legal`'s dispatch."""
     if view.priority is None:
@@ -286,7 +304,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
     art = art or {}
     view = settle(stored)
     actions: List[Action] = legal_actions(stored)
-    holder_id = actions[0].actor_id if actions else view.priority
+    holder_id = _holder_id(view, actions)
     kind = priority_kind(view)
 
     # Seat-filtered legal actions: only ship them if this client controls the holder.
@@ -336,7 +354,8 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
             "source_id": r["source_id"], "source_name": r["source_name"],
             "source_side": r["source_side"], "target_id": r["target_id"],
             "target_name": r["target_name"], "reserved_pips": r["reserved_pips"],
-            "card": r["card"], "top": r["top"], "uid": r["raw"].get("uid"),
+            "card": r["card"], "mechanics": r.get("mechanics", ""),
+            "top": r["top"], "uid": r["raw"].get("uid"),
         }
         for r in _stack_list(view)
     ]

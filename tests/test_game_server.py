@@ -4,6 +4,7 @@ the authority/relay layer — seat gating and hidden-hand filtering."""
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
@@ -147,20 +148,60 @@ def test_snapshot_carries_portrait_field():
 
 
 def test_import_loadout_roundtrip_and_portrait_flows_to_game():
+    """The imported portrait reaches a built game — as a URL, not the inline
+    data URL it was stored as (see content.portrait_url): the file it points at
+    holds the original bytes."""
     raw = content.loadout_for("loadout_soren")
     raw["character"]["name"] = "Portrait Test Zzz"
     raw["character"]["portrait"] = "data:image/png;base64,AAAA"
     meta = content.save_loadout(raw)
     path = content.LOADOUTS_DIR / f"{meta['id']}.json"  # save_loadout writes characters here
+    cached = content.PORTRAIT_DIR / Path(meta["portrait"]).name
     try:
         # Now discoverable as an available character, with its portrait.
         assert any(c["id"] == meta["id"] for c in content.list_characters())
-        assert meta["portrait"].startswith("data:image")
+        assert meta["portrait"].startswith(content.PORTRAIT_URL_PREFIX + "/")
+        assert cached.read_bytes() == base64.b64decode("AAAA")
         # And the portrait flows through into a built game's session map.
         _state, portraits, _art = content.build_state([meta["id"]], "builtin_a", seed=1)
-        assert list(portraits.values())[0].startswith("data:image")
+        assert list(portraits.values())[0] == meta["portrait"]
     finally:
         path.unlink(missing_ok=True)
+        cached.unlink(missing_ok=True)
+
+
+def test_portrait_url_is_content_addressed_and_passes_other_forms_through():
+    """Same bytes -> same URL (so a browser cache stays warm and a deleted
+    cache rebuilds to the same name); different bytes -> a different URL (so a
+    repaint is never served stale). Anything that is not a data URL is left
+    exactly as it is."""
+    a = content.portrait_url("data:image/png;base64,AAAA")
+    b = content.portrait_url("data:image/png;base64,AAAA")
+    c = content.portrait_url("data:image/png;base64,BBBB")
+    try:
+        assert a == b and a != c
+        # Idempotent: feeding a served URL back through changes nothing.
+        assert content.portrait_url(a) == a
+        for passthrough in ("", "/art/whatever.png", "https://example.com/x.png"):
+            assert content.portrait_url(passthrough) == passthrough
+        # A malformed data URL is returned untouched rather than raising.
+        assert content.portrait_url("data:image/png;base64,%%%") == \
+            "data:image/png;base64,%%%"
+    finally:
+        for url in (a, c):
+            (content.PORTRAIT_DIR / Path(url).name).unlink(missing_ok=True)
+
+
+def test_snapshot_never_inlines_a_portrait_data_url():
+    """The multiplayer-lag guard: a portrait is a URL in every broadcast state,
+    so a snapshot stays kilobytes. Inlining one put megabytes per character on
+    the wire for EVERY client on EVERY action."""
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren"])
+    snap = s.snapshot_for("A")
+    assert all(not c["portrait"].startswith("data:") for c in snap["characters"])
+    assert len(json.dumps(snap)) < 400_000
 
 
 def test_import_rejects_invalid_loadout():

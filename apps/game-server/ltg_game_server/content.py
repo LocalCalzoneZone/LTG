@@ -9,9 +9,12 @@ it computes no rules. All composition goes through the engine's own
 
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
 import json
 import re
+import secrets
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -53,6 +56,65 @@ _SCAN_DIRS = [
     LOADOUTS_DIR,
     REPO_ROOT / "examples",
 ]
+
+# --------------------------------------------------------------------------- #
+# Portrait cache: loadout portraits as files, not inline data URLs
+# --------------------------------------------------------------------------- #
+# The Deckbuilder stores a character's portrait INLINE, as a base64 data URL of
+# a few MB. That is fine on disk, but every state broadcast embeds one per
+# character (snapshot.py), and a scenario snapshot embeds them twice over (the
+# party sheet as well) — so a three-player table pushed tens of megabytes per
+# click and clicks took seconds to land. Materialize each portrait to a file
+# once and hand out its URL instead: the browser caches it, and a snapshot drops
+# from megabytes to kilobytes.
+#
+# Content-addressed, so the same art always resolves to the same URL: a repaint
+# gets a fresh one (never a stale browser cache), identical portraits share one
+# file, and a deleted cache rebuilds byte-identically the next time the
+# character loads — so even an old save's URL starts resolving again. Written
+# into the gitignored loadouts dir (derived per-install data, never the tracked
+# content dir), under the /art URL space app.py already serves.
+PORTRAIT_DIR = LOADOUTS_DIR / "art" / "portraits"
+PORTRAIT_URL_PREFIX = "/art/portraits"
+
+_DATA_URL_RE = re.compile(r"^data:image/([\w.+-]+);base64,(.*)$", re.DOTALL)
+_PORTRAIT_EXT = {"png": "png", "jpeg": "jpg", "jpg": "jpg", "webp": "webp",
+                 "gif": "gif", "svg+xml": "svg"}
+
+
+def portrait_url(portrait: str) -> str:
+    """A servable URL for a portrait, caching the decoded bytes to disk.
+
+    Pass-through for anything that is not a base64 data URL (already a URL, or
+    empty) and for any decode/write failure: a portrait must never be able to
+    break a game, so the worst case is simply the old inline behaviour.
+    """
+    if not portrait or not portrait.startswith("data:"):
+        return portrait
+    m = _DATA_URL_RE.match(portrait)
+    if m is None:
+        return portrait
+    try:
+        raw = base64.b64decode(m.group(2))
+    except Exception:
+        return portrait
+    if not raw:
+        return portrait
+    ext = _PORTRAIT_EXT.get(m.group(1).lower(), "png")
+    name = f"{hashlib.sha256(raw).hexdigest()[:16]}.{ext}"
+    path = PORTRAIT_DIR / name
+    if not path.is_file():
+        try:
+            PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
+            # Write-then-rename, under a name unique to this write: two callers
+            # racing on the same portrait can never expose a half-written file.
+            tmp = PORTRAIT_DIR / f"{name}.{secrets.token_hex(4)}.part"
+            tmp.write_bytes(raw)
+            tmp.replace(path)
+        except OSError:
+            return portrait
+    return f"{PORTRAIT_URL_PREFIX}/{name}"
+
 
 # Built-in enemies-only encounters (always available, no file needed).
 _BUILTIN_ENCOUNTERS: Dict[str, Dict[str, Any]] = {
@@ -188,6 +250,12 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
             continue
         cid = path.stem
         char = lo.character
+        # Swap the inline portrait for its cached URL (see portrait_url) here,
+        # in the ONE place every loadout is read — so the meta, the copies
+        # `loadout_for` / `loadouts_for` hand out, and every snapshot built from
+        # them all carry the short form, and no hot path repeats this work.
+        portrait = portrait_url(char.portrait)
+        raw = {**raw, "character": {**raw["character"], "portrait": portrait}}
         reg[cid] = {
             "meta": {
                 "id": cid,
@@ -201,7 +269,7 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
                 "colors": [c.value for c in char.colors],
                 "identity": [c.value for c in char.starting_mana],
                 "description": char.description,
-                "portrait": char.portrait,  # data URL / image URL (may be "")
+                "portrait": portrait,  # served URL (may be "") — see portrait_url
                 "card_count": len(lo.cards),
                 # Every roster character can be removed from the picker: imported
                 # ones delete their file, examples are hidden (see delete_loadout).
@@ -1110,9 +1178,10 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
 
 
 def panel_anim_bundle(raw: dict) -> dict:
-    """{animations: [...], cards: {card_id: anim_id}, stances: {card_id: anim_id}}
+    """{animations: [...], cards: {card_id: anim_id}, stances: {card_id: {slot: anim_id}}}
     from a raw loadout dict — an empty bundle when the loadout has no clips, so
-    the client behaves exactly as before."""
+    the client behaves exactly as before. `stances` carries the per-slot clip
+    picks of a stance's replaced abilities (attack/defend/mitigate/move)."""
     char = raw.get("character", {}) or {}
     anims = [a for a in (char.get("animations") or []) if isinstance(a, dict)]
     if not anims:
@@ -1127,7 +1196,8 @@ def panel_anim_bundle(raw: dict) -> dict:
             cards[card["id"]] = card["animation"]
         for eff in card.get("effects") or []:
             if isinstance(eff, dict) and eff.get("kind") == "stance":
-                repl = eff.get("attack")
-                if isinstance(repl, dict) and repl.get("animation") in ids:
-                    stances[card["id"]] = repl["animation"]
+                for slot in ("attack", "defend", "mitigate", "move"):
+                    repl = eff.get(slot)
+                    if isinstance(repl, dict) and repl.get("animation") in ids:
+                        stances.setdefault(card["id"], {})[slot] = repl["animation"]
     return {"animations": anims, "cards": cards, "stances": stances}

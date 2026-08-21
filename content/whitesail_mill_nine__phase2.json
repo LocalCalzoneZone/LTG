@@ -1,0 +1,423 @@
+{
+  "name": "The Mill Yard Tally",
+  "scene": "A trodden yard at the mill's foot: cook-fires, a trestle desk of ledgers weighted with stones, carts stacked with meal sacks, and dog-crates lashed under a cart-shed. Flour hangs in the air thick enough to taste, four canvas sails turn slowly overhead, and on the mill's cap-walk a pitch barrel has begun to smoke against the blue.",
+  "scene_image": "/art/whitesail_mill_nine__phase2/scene-f3caaffe.png",
+  "enemies": [
+    {
+      "id": "pitchfire_mate",
+      "name": "Pitch-Barrel Mate",
+      "flavor": "Works the signal fire from the cap-walk; the smoke burns a hero every turn until he falls.",
+      "description": "A soot-blackened orc balanced on the mill's cap-walk railing, sleeves burned to the elbow, feeding tar-rags into a barrel of pitch with a long iron hook.",
+      "hp": 10,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "stoke_the_beacon",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Stoke the Beacon \u2014 a held fire: choking pitch-smoke burns a hero for 3 every turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "kicks_the_barrel",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Kicks the Barrel \u2014 burning pitch sheets down for 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase2/pitchfire_mate-a9d695af.png"
+    },
+    {
+      "id": "grist_rot_hound",
+      "name": "Grist-Rot Hound",
+      "flavor": "Its bite drives smutted grain into the wound \u2014 every landed hit becomes a healer's problem, and it hates poultices.",
+      "description": "A rangy war-hound the size of a pony, ribs showing through a brindle hide, muzzle crusted grey-green with mouldering meal, a snapped kennel chain still swinging from its collar.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "infect"
+      ],
+      "components": [
+        {
+          "id": "snapping_lunge",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Snapping Lunge \u2014 5 to a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "smells_the_poultice",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_healed",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Smells the Poultice \u2014 5 to whoever tended a wound",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase2/grist_rot_hound-b55f738b.png"
+    },
+    {
+      "id": "sackcloth_shieldbearer",
+      "name": "Sackcloth Shieldbearer",
+      "flavor": "Throws a shield over whoever the crew can least afford to lose.",
+      "description": "A heavy orc bundled in layered sacking over scale, carrying a cart-door as a shield with a black sail daubed on it in tar.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "cart_door_cover",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Cart-Door Cover \u2014 the next blow on a crewmate is turned aside",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "step_across",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "once_per_encounter": true,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Step Across \u2014 taunt the attacker onto his shield",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase2/sackcloth_shieldbearer-f72d3cf4.png"
+    },
+    {
+      "id": "yoke_chain_drover",
+      "name": "Yoke-Chain Drover",
+      "flavor": "Sweeps a chained ox-yoke through the whole front rank.",
+      "description": "A thick-armed orc drover in a leather apron white with meal, swinging a broken ox-yoke on two feet of chain, teeth capped in brass.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "yoke_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_row": "front",
+          "action_type": "attack",
+          "target_rule": "valuation",
+          "telegraph": "Yoke Sweep \u2014 3 to everyone standing in the front rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "backswing",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Backswing \u2014 4 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase2/yoke_chain_drover-03260885.png"
+    },
+    {
+      "id": "yard_hand_titheman",
+      "name": "Yard-Hand Tithe-man",
+      "flavor": "Blocks, bellows, and grows angrier every time a crewmate drops.",
+      "description": "A stocky orc in a millhand's smock and a rusted helm, one boot on a meal sack, gripping a flail made from a threshing bat.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "bellow_the_count",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Bellow the Count \u2014 taunt a hero",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "one_off_the_roll",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "One Off the Roll \u2014 +1/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase2/yard_hand_titheman-fe56d47d.png"
+    },
+    {
+      "id": "loft_slinger",
+      "name": "Loft-Slinger",
+      "flavor": "Slings weighing-stones down from the grain loft.",
+      "description": "A skinny orc perched in the loft doorway with legs dangling, whirling a leather sling, a bag of brass weighing-stones between his knees.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "weighing_stone",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Weighing-Stone \u2014 3 to the hardest hitter",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "dust_in_the_eyes",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Dust in the Eyes \u2014 a hero fights at -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase2/loft_slinger-f5e13579.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "pitchfire_mate",
+      "yard_hand_titheman"
+    ],
+    "2": [
+      "pitchfire_mate",
+      "grist_rot_hound",
+      "sackcloth_shieldbearer",
+      "yard_hand_titheman"
+    ],
+    "3": [
+      "pitchfire_mate",
+      "grist_rot_hound",
+      "sackcloth_shieldbearer",
+      "yoke_chain_drover",
+      "yard_hand_titheman",
+      "loft_slinger"
+    ],
+    "4": [
+      "pitchfire_mate",
+      "grist_rot_hound",
+      "sackcloth_shieldbearer",
+      "yoke_chain_drover",
+      "yoke_chain_drover",
+      "yard_hand_titheman",
+      "yard_hand_titheman",
+      "loft_slinger"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "pitchfire_mate",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Beacon Answers \u2014 Grinstone's launch crews whistle back across the barley",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 1,
+          "toughness": 1,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 3,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "nonlethal": false
+        }
+      ]
+    },
+    "resolved": false
+  }
+}

@@ -95,8 +95,9 @@ Three mechanisms, layered strongest-first:
 - **Card editor → Panel animation**: any card (deck, Skill, Ultimate) can pick a
   specific clip; blank = the default for its kind (Cast / Channel / Skill /
   Ultimate). Skill/Ultimate with no clip of their own fall back to Cast/Channel.
-- **Stance attack replacement**: the `attack — replacement` row in a stance gets
-  an **animation** select; blank = the default Attack clip.
+- **Stance replacements**: every replacement row in a stance (attack / defend /
+  mitigate / move) gets an **animation** select; blank = that slot's default
+  clip (Move has none — blank means no clip).
 - **In game**: the panel plays the clip when the action **resolves** (`resolve`
   log entry, now tagged with kind / card / heroic / stance slot), plus `defend`,
   `mitigate`, `damage` (→ hit) and `incapacitated` (→ death). Latest clip wins;

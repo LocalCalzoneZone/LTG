@@ -1,0 +1,473 @@
+{
+  "kind": "scenario",
+  "title": "The Black Sail at Millhaven",
+  "town_id": "millhaven",
+  "town_name": "Millhaven",
+  "arc": {
+    "title": "The Black Sail at Millhaven",
+    "villain": "Ozgar Mawgrim, the Tithe-Taker — a deserter orc captain of a broken warhost who has beached his galley Grinstone in the bay and declared himself lord of the barley coast, demanding homage in flour, iron and bent knees while his sappers dig the headland for the thing the Long Gale buried there.",
+    "stakes": "If Mawgrim is not broken, Millhaven grinds its harvest for an orc warband instead of the coast, the mills fall silent as the farms stop sending carts, and every village from here to the Saltmarch learns that a black sail buys obedience. Worse, what his diggers are prying loose beneath the north field was chained down for a reason, and a wind that has been kept out of this bay for ninety years will come ashore again.",
+    "acts": [
+      {
+        "title": "Homage in Flour",
+        "hook": "A low black galley slid past the breakwater at dawn and its captain sent a tithe-list ashore: forty sacks of meal, all the iron in Grendorn's racks, and the Alderman's own knee on the quay-stones by Sunday. Cobb Trethaway has already made three speeches about it and hired the only help he can get, because Mawgrim's shore-crew have taken the ninth mill out among the barley and are holding its millers and their wheat. The town needs the mill back and the tithe-men sent running before the western farms decide the coast road is closed.",
+        "questgiver_location": "the_mealmarket",
+        "questgiver_npc": "alderman_cobb_trethaway",
+        "handoff": "harbourmaster_odile_kerrick",
+        "adventure_theme": "Whitesail Mill Nine, a lonely windmill deep in the barley, occupied by Mawgrim's Tithe-men and their kennelled war-hounds",
+        "tone_notes": "Gold barley, flour-white air, canvas sails still turning above a camp of cook-fires — bright daylight menace, comedy in the orcs' bookkeeping, no cruelty shown to the captive millers."
+      },
+      {
+        "title": "The Two Last Lines",
+        "hook": "Ammeline has finally admitted what the shrine floor says: the old cliff-tongue ends in a warning about something set down under the headland and pinned there by the wind. Now there are orc sappers on the north field with picks and lanterns, digging exactly where nobody has farmed in living memory. She asks the party to go down before Mawgrim's diggers reach the bottom, and Elder Thistlewaite — if they will sit and listen properly — will tell them what came ashore with the Long Gale.",
+        "questgiver_location": "the_shrine_of_the_turning_wind",
+        "questgiver_npc": "priestess_ammeline_roke",
+        "handoff": "elder_thistlewaite",
+        "adventure_theme": "the Wind-Vault beneath the north field — a shaft-and-stair undercroft of graven cliff-stone, held by Grukka Cinder-Tongue and Mawgrim's sapper-gang",
+        "tone_notes": "Lantern-amber on wet grey inscriptions, chalk dust, the boom of the Mill Bell felt through the rock; awe and old warning rather than horror."
+      },
+      {
+        "title": "What the Gale Left",
+        "hook": "Mawgrim has his prize — a black wind-horn out of the vault — and the Grinstone has slipped round the headland into Cormorant Cove to sound it where no one can stop him. Sarn Kelleway takes his bow off the boathouse peg for the first time in eleven years and offers to row the party in on the turning tide, by a channel only he still remembers. Grendorn will not let them go without weapons he has named himself, and he wants to hear exactly what they intend to do with them.",
+        "questgiver_location": "coalhaul_quay",
+        "questgiver_npc": "sarn_kelleway",
+        "handoff": "grendorn_haleblack",
+        "adventure_theme": "Cormorant Cove and the beached galley Grinstone — deck, hold and stern-castle of Ozgar Mawgrim's tithe-crew, with the wind-horn at its heart",
+        "tone_notes": "Sea-mist and rising gale, tin-bright water going slate, torn black canvas snapping — heroic boarding action, triumph and salt spray at the end."
+      }
+    ]
+  },
+  "act1": {
+    "adventure_id": "whitesail_mill_nine",
+    "materialization": {
+      "quest": {
+        "title": "Homage in Flour",
+        "text": "A black galley lies inside Millhaven's breakwater, and its captain — Ozgar Mawgrim, the Tithe-Taker — has sent a list ashore: forty sacks of meal, every blade on Grendorn's racks, and Alderman Trethaway's knee on the quay-stones by Sunday. His shore-crew have already seized Whitesail Mill Nine out among the barley, holding the millers and their wheat while they tally their plunder in a ledger. Take the mill back and send the tithe-men running before the western farms decide the coast road is closed. Harbourmaster Kerrick knows the ground and the men holding it — speak with her before you walk out into the barley."
+      },
+      "arrival": "The coast road turns, and Millhaven arrives all at once: whitewashed cottages with slate-blue roofs tumbling down a green headland to a crescent of blue harbour, and above them forty windmills turning their canvas in slow bright unison, the sea wind never once pausing for breath. Flour dust hangs pale in the air of every street, gulls quarrel over the gutters, and the Mill Bell booms once as you pass under it into the market — but the barrows are half-loaded and the bargaining has gone quiet, because out past the breakwater a low black galley sits at anchor where no honest grain ship ever moors, and every eye in the square keeps sliding down to look at it. Somewhere up the hill a portly man in a flour-dusted coat is beginning, for the fourth time, a speech about roads.",
+      "dialogues": {
+        "alderman_cobb_trethaway": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Ah — armed persons! Splendid. Splendid. I have made three speeches about this business and not one of them has moved a single sack of meal, so I am obliged to try hiring instead. Alderman Cobb Trethaway, grain-factor, and — do have a pastry, they're from under the scales, they're perfectly good.",
+              "choices": [
+                {
+                  "label": "What business? Start at the beginning.",
+                  "next": "the_list",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We've been out to the mill already. It went badly.",
+                  "next": "returned",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "We'll take the pastry and think on it.",
+                  "next": "later",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "the_list": {
+              "speaker": "npc",
+              "text": "At dawn a black galley slid past the breakwater as though it owned the tide, and by breakfast there was a list nailed to my weighing-scales. Forty sacks of meal. Every blade off Grendorn's racks. And my own knee, on the quay-stones, by Sunday — as though a knee were a commodity one could weigh out.",
+              "choices": [
+                {
+                  "label": "And the mill out in the barley?",
+                  "next": "mill_nine",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Why not simply pay him and be rid of him?",
+                  "next": "why_not_pay",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "why_not_pay": {
+              "speaker": "npc",
+              "text": "Because a tithe is never once, sir or madam — it is a subscription. And because the western farms are watching. The moment they believe the coast road is closed, the carts stop, the mills go quiet, and Millhaven becomes a very picturesque ruin with excellent views.",
+              "choices": [
+                {
+                  "label": "Then tell us about the mill.",
+                  "next": "mill_nine",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "mill_nine": {
+              "speaker": "npc",
+              "text": "Whitesail Mill Nine, out among the barley, a good hour's walk from any help. His shore-crew have taken it and they are holding the millers and their wheat while they — I am told — write everything down in a ledger. War-hounds kennelled at the door. I want my millers back and I want those tithe-men running.",
+              "choices": [
+                {
+                  "label": "Consider it done.",
+                  "next": "accepted",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Who in this town knows that ground best?",
+                  "next": "who_knows",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We'll consider it and come back.",
+                  "next": "later",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "who_knows": {
+              "speaker": "npc",
+              "text": "Harbourmaster Kerrick, without question. She has counted every man off that galley's boat and she coils a rope properly, which in her estimation is the whole of virtue. She'll tell you what she knows if she decides you're useful.",
+              "choices": [
+                {
+                  "label": "Then we'll go. Consider it done.",
+                  "next": "accepted",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll speak to her first.",
+                  "next": "later",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "accepted": {
+              "speaker": "npc",
+              "text": "Oh, that is a weight off — and I shall say so at length in the next meeting, whether they like it or not. Go down to the quay and see Odile Kerrick before you walk out; she has the count of them, and I would rather you knew what you were walking into than heard it from me.",
+              "choices": [
+                {
+                  "label": "The quay it is.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "direct_to",
+                      "npc": "harbourmaster_odile_kerrick",
+                      "location": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "returned": {
+              "speaker": "npc",
+              "text": "Merciful mills, look at the state of you. Sit down — sit down, there's a bench, there's pastry. No, I shall not be making a speech about it. The list is still nailed to my scales and Sunday has not moved an inch, and you are still the only help this town could get.",
+              "choices": [
+                {
+                  "label": "We're going back. Consider it done.",
+                  "next": "accepted",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "First, food and a bed.",
+                  "next": "later",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "later": {
+              "speaker": "npc",
+              "text": "Of course, of course. I shall be here — I am never anywhere else, it is my chief civic qualification. Bessa's chowder, then, and mind you eat it hot.",
+              "choices": []
+            }
+          }
+        },
+        "harbourmaster_odile_kerrick": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Mind the coil! — right, you're the Alderman's hired swords. I could tell by the way you looked at that black hull instead of the harbour. Odile Kerrick. I keep the tide-book and I count everything that comes off a boat, including orcs.",
+              "choices": [
+                {
+                  "label": "How many came ashore?",
+                  "next": "the_count",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "What sort of captain are we dealing with?",
+                  "next": "mawgrim",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We'll come back when we're ready.",
+                  "next": "off_you_go",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "the_count": {
+              "speaker": "npc",
+              "text": "Eleven off the boat at dawn, and four went back for the hounds, so call it a dozen in the mill with dogs. They walked inland by the cart track — no scouts, no flankers, singing. They do not expect anybody to come and ask for the mill back.",
+              "choices": [
+                {
+                  "label": "How do we get close, then?",
+                  "next": "the_way_in",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Tell us about their captain.",
+                  "next": "mawgrim",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "mawgrim": {
+              "speaker": "npc",
+              "text": "Ozgar Mawgrim. Deserter, from a warhost that broke somewhere east, and he's fetched up here playing lord because barley cannot fight back. He keeps a ledger, if you can credit it — every sack tallied, every knee. A man who writes things down can be embarrassed, and an embarrassed man makes mistakes.",
+              "choices": [
+                {
+                  "label": "How do we get close to the mill?",
+                  "next": "the_way_in",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Good. We'll go and embarrass him.",
+                  "next": "off_you_go",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "the_way_in": {
+              "speaker": "npc",
+              "text": "Barley's high as your chest and the wind's off the sea all day — it moves, it hisses, it hides you. Come up the west side with the sun at your back, not by the cart track. And the mill's sails are still turning, which means the millers are alive and working, so mind where you swing.",
+              "choices": [
+                {
+                  "label": "Understood. Anything else?",
+                  "next": "the_hounds",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "That's all we needed. Our thanks.",
+                  "next": "off_you_go",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "the_hounds": {
+              "speaker": "npc",
+              "text": "The hounds are kennelled by the door and they'll cry before the orcs do. Cookfires on the lee side, so that's where they'll be lounging. Go on — and coil your ropes when you're done out there. I'll know if you didn't.",
+              "choices": [
+                {
+                  "label": "We'll leave the mill tidier than we found it.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "kerrick_briefed",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "off_you_go": {
+              "speaker": "npc",
+              "text": "Fair enough. I'll be on this quay till the tide turns and after it, most likely. Bring my millers home and there's a drink in it from every captain on this coast, whether they like it or not.",
+              "choices": []
+            }
+          }
+        },
+        "bessa_cobblewick": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "In, in, don't stand in the draught — sit, there's chowder on and it's the good batch, no sea-fennel in it, we don't speak of the sea-fennel. Names after, bowls first. That's the rule of this house and it's older than you are.",
+              "choices": [
+                {
+                  "label": "Take a room.",
+                  "next": "room",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "You keep a lot of empty rooms, for a full house.",
+                  "next": "the_rooms",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Just the chowder, thank you.",
+                  "next": "goodbye",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "the_rooms": {
+              "speaker": "npc",
+              "text": "I keep them for folk who haven't come back down the coast road yet. That's all I'll say about it. Two of them are millers' rooms, from out at the ninth, and I would dearly love to be needing the sheets again by Sunday.",
+              "choices": [
+                {
+                  "label": "Then we'd best go and fetch them.",
+                  "next": "goodbye",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Take a room.",
+                  "next": "room",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "room": {
+              "speaker": "npc",
+              "text": "Top of the spiral, bed in the round, and the sails turning over you all night — folk say they can't sleep for it and then sleep like stones. Boots off. I'll have breakfast at you before you get out the door.",
+              "choices": []
+            },
+            "goodbye": {
+              "speaker": "npc",
+              "text": "Off you go then, and mind — nobody in the history of this world ever solved a thing on an empty stomach. Perrin! Stop asking them about wyverns and shift those oats!",
+              "choices": []
+            }
+          }
+        },
+        "grendorn_haleblack": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "SPEAK UP — anvil took half my hearing and the wind took the rest! You'll be the ones the Alderman hired. That orc wants my racks. My racks. Eighty years of naming blades and he sends a list.",
+              "choices": [
+                {
+                  "label": "Will you sell us steel for it?",
+                  "next": "what_for",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "You'd hand over your work?",
+                  "next": "never",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "what_for": {
+              "speaker": "npc",
+              "text": "Tell me what you mean to do with it. No — properly. I don't put a blade in a hand that can't finish that sentence, and I've turned away lords for it.",
+              "choices": [
+                {
+                  "label": "Take back Mill Nine and get the millers out alive.",
+                  "next": "good_answer",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Kill orcs. Isn't that enough?",
+                  "next": "bad_answer",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "good_answer": {
+              "speaker": "npc",
+              "text": "HA! Good answer. A rescue, not a slaughter — that's a job for a short blade and a steady wrist, and you're gripping like you're wringing a hen's neck, but we'll fix that. Come back when Mawgrim's still afloat and I'll name you something proper.",
+              "choices": [
+                {
+                  "label": "We'll hold you to it.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "bad_answer": {
+              "speaker": "npc",
+              "text": "Then buy an axe off a tinker. Idrel — no, hold on. Idrel says I'm being grand again. She's right, she generally is. Come back with a better sentence and the racks are open to you.",
+              "choices": [
+                {
+                  "label": "Fair. We'll come back.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "never": {
+              "speaker": "npc",
+              "text": "Every blade in this shop has a name and I remember all of them. He'll not have Windbite off a peg to hack barley with. Bring those millers home and I'll talk to you about steel like a serious person.",
+              "choices": [
+                {
+                  "label": "Then it's settled.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "flavor": {
+        "priestess_ammeline_roke": "Ribbons for the wind, if you're walking out today — and I'd take one, in your place. There's a thing I ought to say to somebody soon, but not today, and not before the mill's back.",
+        "perrin_ashlow": "You're the hired swords, aren't you — is that a real notch or a maker's mark, how far can you walk in a day, does a war-hound smell worse than a wyvern? I'm the fastest legs in Millhaven, ask anyone, ask Bessa!",
+        "nib_sowerby": "Copper for a guide, or free if you let me ask things. I deliver to Mill Nine on Thursdays and there were eleven of them counting sacks out loud, and one of them can't count past nine.",
+        "tullow_bramblebrook": "Foxes have all come down off the north field. Whole hedgerow's gone quiet up there, which it doesn't, normally... sorry. Sorry. That was a chough."
+      },
+      "stock": {}
+    }
+  },
+  "difficulty": "standard"
+}

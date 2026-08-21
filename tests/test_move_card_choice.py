@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from ltg_combat.engine import apply_action, legal_actions
 from ltg_combat.scenario import state_from_dict
+from ltg_core.schema import Card
 
 _ATTACK = {"name": "Hit", "amount": 1, "action_type": "ability",
            "intent_type": "attack", "targeting": "lowest_hp_party", "mode": "melee"}
@@ -108,3 +109,69 @@ def test_no_prompt_and_empty_log_when_no_legal_cards():
     state, events = apply_action(state, next(a for a in legal_actions(state) if a.kind == "pass"))
     assert state.pending_choice is None
     assert any(e.type == "move_card_empty" for e in state.log)
+
+
+# --- a move_card over a SET of targets: every player gets their own pick ------- #
+ALL_ALLY = {"mode": "all", "side": "ally", "exclude_self": False, "targeted": False}
+
+
+def _two_player_state(gy_each: int, count: int):
+    """Two PCs, `gy_each` cards in each graveyard, and a sorcery on the caster that
+    returns `count` of them to the library — for both players."""
+    recall = _spell("recall", [{"kind": "move_card", "count": count,
+                                "source": "graveyard", "destination": "library_shuffle",
+                                "target": ALL_ALLY}])
+    spec = {"party": [{"id": "p", "name": "Caster", "hp": 30, "power": 2, "hand_size": 1,
+                       "identity": ["U"], "library": [recall]},
+                      {"id": "q", "name": "Ally", "hp": 30, "power": 2, "hand_size": 0,
+                       "identity": ["R"], "library": []}],
+            "enemies": [{"id": "ea", "name": "EnemyA", "hp": 12, "level": 1,
+                         "intent": dict(_ATTACK)}]}
+    st = state_from_dict(spec)
+    for c in st.party:
+        c.graveyard = [Card.model_validate(_plain(f"{c.id}g{i}"))
+                       for i in range(gy_each)]
+    return st
+
+
+def _resolve_stack(st):
+    while st.stack:
+        st = _do(st, kind="pass")
+    return st
+
+
+def test_move_card_over_all_allies_moves_every_players_cards():
+    """The deterministic path (candidates ≤ count) already served every target; the
+    interactive one used to serve only the caster."""
+    st = _two_player_state(gy_each=3, count=5)
+    st = _resolve_stack(_do(st, kind="cast", card_id="recall"))
+    assert st.pending_choice is None                       # no genuine pick anywhere
+    assert all(not c.graveyard and len(c.library) >= 3 for c in st.party)
+
+
+def test_move_card_choice_chains_through_every_targeted_player():
+    st = _two_player_state(gy_each=3, count=2)             # 3 candidates, 2 move
+    st = _resolve_stack(_do(st, kind="cast", card_id="recall"))
+
+    picked = []
+    while st.pending_choice is not None:
+        picked.append(st.pending_choice.chooser_id)
+        st = apply_action(st, legal_actions(st)[0])[0]
+    # two picks for the caster, then two for the ally — nobody is skipped
+    assert picked == ["p", "p", "q", "q"]
+    # each player kept exactly one of their three and returned the other two
+    for c in st.party:
+        assert len([x for x in c.graveyard if x.name.startswith(f"{c.id}g")]) == 1
+        assert len([x for x in c.library if x.name.startswith(f"{c.id}g")]) == 2
+
+
+def test_move_card_over_allies_skips_a_token_that_holds_no_cards():
+    """An ally token caught by `all ally` has no zones — it is passed over, not
+    crashed on (this used to raise AttributeError mid-resolution)."""
+    from ltg_combat.state import TokenState
+
+    st = _two_player_state(gy_each=3, count=5)
+    st.tokens.append(TokenState(id="tok", name="Spirit", max_hp=3, hp=3, power=2,
+                                row="front"))
+    st = _resolve_stack(_do(st, kind="cast", card_id="recall"))
+    assert all(not c.graveyard for c in st.party)

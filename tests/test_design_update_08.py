@@ -515,3 +515,59 @@ def test_session_auto_drives_no_decision_stops():
     sess.apply_index("cli", next(i for i, a in enumerate(acts) if a.kind == "pass"))
     # After the real pass, the rest of the round auto-drives to the next decision.
     assert sess.state.turn == 2
+
+
+# ========================================================================== #
+# Vigilance: a SECOND proactive action, whichever pair (GDD §7)
+# ========================================================================== #
+def _vig_state(**kw):
+    st = _heroic_state(**kw)
+    st.character("p").keywords["vigilance"] = ""
+    return st
+
+
+def _kinds(st):
+    return {a.kind for a in legal_actions(st)}
+
+
+def test_defend_alone_still_spends_the_turn_without_vigilance():
+    st = _do(_heroic_state(), "defend")
+    assert "attack" not in _kinds(st) and "defend" not in _kinds(st)
+
+
+def test_vigilance_lets_a_defender_still_attack():
+    """The playtest bug: vigilance covered attack→cast and attack→skill but not
+    anything after a Defend, so a vigilant character who defended was disarmed."""
+    st = _do(_vig_state(), "defend")
+    assert "attack" in _kinds(st)
+    st = _do(st, "attack")
+    st = _do(st, "pass")
+    p = st.character("p")
+    assert p.used_attack and p.used_defend
+    assert p.proactive_modes == ["defend", "attack"]
+
+
+def test_vigilance_lets_an_attacker_still_defend():
+    st = _do(_vig_state(), "attack")
+    st = _do(st, "pass")
+    assert "defend" in _kinds(st)
+
+
+def test_vigilance_stops_at_two_proactive_actions():
+    st = _do(_vig_state(), "attack")
+    st = _do(st, "pass")
+    st = _do(st, "defend")            # the second (and last) action
+    kinds = _kinds(st)
+    assert "attack" not in kinds and "defend" not in kinds
+    assert "use_skill" not in kinds   # the Skill would be a third
+    assert "end_turn" in kinds
+
+
+def test_ultimate_is_never_the_second_action_but_vigilance_follows_it():
+    st = _vig_state(gauge=100)
+    st = _do(st, "attack")
+    st = _do(st, "pass")
+    assert "use_ultimate" not in _kinds(st)   # it opens the turn or not at all
+    st2 = _do(_vig_state(gauge=100), "use_ultimate")
+    st2 = _do(st2, "pass")
+    assert "attack" in _kinds(st2)            # …but the vigilant swing still follows

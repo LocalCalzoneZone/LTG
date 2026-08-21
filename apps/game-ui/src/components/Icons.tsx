@@ -109,6 +109,33 @@ export const IconPlus = make(<path d="M12 5v14M5 12h14" />);
 
 export const IconX = make(<path d="M6 6l12 12M18 6L6 18" />);
 
+// The battlefield camera: pull back, push in, and snap to the default framing.
+export const IconZoomOut = make(
+  <>
+    <circle cx="10.5" cy="10.5" r="6" />
+    <path d="M15 15l5 5" />
+    <path d="M7.5 10.5h6" />
+  </>,
+);
+
+export const IconZoomIn = make(
+  <>
+    <circle cx="10.5" cy="10.5" r="6" />
+    <path d="M15 15l5 5" />
+    <path d="M7.5 10.5h6M10.5 7.5v6" />
+  </>,
+);
+
+/** Corner brackets closing on the whole board — "fit the field". */
+export const IconFitView = make(
+  <>
+    <path d="M4 9V4h5" />
+    <path d="M20 9V4h-5" />
+    <path d="M4 15v5h5" />
+    <path d="M20 15v5h-5" />
+  </>,
+);
+
 export const IconUpload = make(
   <>
     <path d="M12 16V4" />

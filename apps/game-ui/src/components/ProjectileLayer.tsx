@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { FxEvent } from "../lib/fx";
+import { scaleOf } from "../lib/fieldView";
 import { rectOf } from "../lib/motion";
 import { useGame } from "../lib/store";
 import { schoolTint } from "./FxLayer";
@@ -42,10 +43,13 @@ function Bolt({ fx, field }: { fx: FxEvent; field: RefObject<HTMLDivElement | nu
       return;
     }
     const fr = root.getBoundingClientRect();
-    const x0 = s.left + s.width / 2 - fr.left;
-    const y0 = s.top + s.height * 0.42 - fr.top;
-    const x1 = t.left + t.width / 2 - fr.left;
-    const y1 = t.top + t.height * 0.45 - fr.top;
+    // Rects are viewport pixels; the bolt is a child of the (possibly zoomed)
+    // stage, so its flight path is converted back to stage-local pixels.
+    const z = scaleOf(root);
+    const x0 = (s.left + s.width / 2 - fr.left) / z;
+    const y0 = (s.top + s.height * 0.42 - fr.top) / z;
+    const x1 = (t.left + t.width / 2 - fr.left) / z;
+    const y1 = (t.top + t.height * 0.45 - fr.top) / z;
     // Both fly FLAT — an arrow barely off the sightline, spellfire a shallow
     // arc of light fired straight at its mark (the lob is gone).
     const mx = (x0 + x1) / 2;

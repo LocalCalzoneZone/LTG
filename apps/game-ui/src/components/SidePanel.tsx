@@ -70,17 +70,17 @@ export function SidePanel() {
     // quest, and where the story points next.
     const log = town.quest_log;
     return (
-      <div className="flex h-full flex-col gap-2 bg-ink-2 p-2.5">
-        <Panel title="Journal">
-          <div className="text-xs font-light">
+      <div className="flex h-full min-h-0 flex-col gap-2 bg-ink-2 p-2.5">
+        <Panel title="Journal" className="min-h-0 flex-1">
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto pr-1 text-xs font-light">
             <div className="caps-label text-[9px] tracking-[0.16em] text-mist">{log.arc_title} · Act {log.act_number} — {log.act_title}</div>
-            <div className="mt-2"><JournalEntries log={log} /></div>
+            <div className="mt-2"><JournalEntries log={log} full /></div>
             {log.quest.title && (
               <div className="caps-label mt-2 text-[9px] tracking-[0.16em] text-brass">Quest: {log.quest.title} · {log.quest.status}</div>
             )}
           </div>
         </Panel>
-        <Panel title="Party">
+        <Panel title="Party" className="flex-none">
           <div className="flex flex-col gap-1 text-xs font-light">
             {town.party_sheet.map((p) => (
               <div key={p.id} className="flex items-center justify-between">
@@ -136,7 +136,16 @@ export function SidePanel() {
                 <span className={s.source_side === "enemy" ? "text-blood" : "text-tide"}>
                   {s.source_name}
                 </span>
-                <span className="text-mist"> · {withCardName(s.label, s.card?.name)}</span>
+                <span className="text-mist">
+                  {" · "}
+                  {s.card ? (
+                    withCardName(s.label, s.card.name)
+                  ) : s.mechanics ? (
+                    <span className="text-spell underline decoration-dotted underline-offset-2">{s.label}</span>
+                  ) : (
+                    s.label
+                  )}
+                </span>
                 {s.mode && (
                   <span
                     className={`caps-label ml-1.5 border border-current px-1 text-[9px] tracking-[0.12em] opacity-90 ${actionModeColor(s.mode)}`}
@@ -150,6 +159,14 @@ export function SidePanel() {
                 {s.card && (
                   <div className="pointer-events-none absolute right-full top-0 z-50 mr-2 hidden h-72 w-48 group-hover:block">
                     <HandCard card={s.card} playable active={false} onClick={() => {}} />
+                  </div>
+                )}
+                {/* A non-card action (an enemy ability's flavour name means
+                    nothing alone): hovering pops its complete mechanics. */}
+                {!s.card && s.mechanics && (
+                  <div className="pointer-events-none absolute right-full top-0 z-50 mr-2 hidden w-64 border border-line2 bg-ink-2 p-2.5 shadow-2xl group-hover:block">
+                    <div className="caps-label mb-1 text-[9px] tracking-[0.16em] text-brass">{s.label}</div>
+                    <div className="text-[11px] font-light leading-relaxed text-parch">{s.mechanics}</div>
                   </div>
                 )}
               </div>

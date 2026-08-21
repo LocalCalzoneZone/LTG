@@ -51,6 +51,49 @@ export function ItemCard({ item, small, footer, onClick, selected }: {
   );
 }
 
+/** The item detail view (click a card on the spoils / shop / gear screens):
+ * the art large, the name and rarity, the COMPLETE mechanics (server
+ * items.describe — one clause per line), the flavour, the prices. */
+export function ItemDetailModal({ item, onClose }: { item: ItemView; onClose: () => void }) {
+  const tint = RARITY_TINT[item.rarity] ?? RARITY_TINT.common;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]"
+         onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div className="panel-ticks flex w-[min(92vw,680px)] gap-5 border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="w-[240px] shrink-0">
+          <div className={`aspect-square w-full border bg-ink-0 ${tint}`}>
+            {item.art_url ? (
+              <img src={item.art_url} alt={item.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-dimmed"><IconSigil size={40} /></div>
+            )}
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start gap-3">
+            <div>
+              <div className="caps-label text-[14px] tracking-[0.22em] text-brass">{item.name}</div>
+              <div className="mt-0.5 text-xs font-light italic text-mist">
+                {item.rarity} {item.slot} · level {item.level_min}+{item.points_price ? ` · ${item.points_price} pts` : ""}
+              </div>
+            </div>
+            <span className="h-px flex-1 self-center bg-line" />
+            <button onClick={onClose} className="text-mist hover:text-parch"><IconX size={14} /></button>
+          </div>
+          <p className="mt-4 whitespace-pre-line text-sm font-light leading-relaxed text-parch">
+            {item.description || item.summary || "No mechanics beyond what it is."}
+          </p>
+          {item.flavor && <p className="mt-3 text-sm font-light italic text-mist">“{item.flavor}”</p>}
+          <div className="mt-auto flex items-center justify-end gap-4 pt-4 text-[10px] font-light text-mist">
+            {item.buy_price != null && <span>buys for {item.buy_price}g</span>}
+            {item.sell_price != null && <span>sells for {item.sell_price}g</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptySlot({ label, small }: { label: string; small?: boolean }) {
   return (
     <div className={`flex ${small ? "h-[104px] w-[104px]" : "h-[150px] w-[150px]"} flex-col items-center justify-end border border-dashed border-line/70 pb-1`}>
@@ -67,6 +110,7 @@ export function GearSheet({ row, editable, inTown, party }: {
 }) {
   const sendTown = useGame((s) => s.sendTown);
   const [sel, setSel] = useState<{ item: ItemView; where: string } | null>(null);
+  const [detail, setDetail] = useState<ItemView | null>(null);
   const [give, setGive] = useState<string>("");
   const g: GearView = row.gear;
   const cid = row.id;
@@ -122,6 +166,9 @@ export function GearSheet({ row, editable, inTown, party }: {
           <span className="text-[10px] font-light text-mist">{sel.item.summary}</span>
           {sel.item.flavor && <span className="text-[10px] font-light italic text-dimmed">“{sel.item.flavor}”</span>}
           <span className="h-px flex-1 bg-line" />
+          <button className={SMALL_BTN} onClick={() => setDetail(sel.item)} title="Art, stats, and the complete mechanics">
+            Details
+          </button>
           {editable ? (
             <>
               {sel.item.slot === "weapon" && sel.where !== "primary" && (
@@ -166,6 +213,7 @@ export function GearSheet({ row, editable, inTown, party }: {
           )}
         </div>
       )}
+      {detail && <ItemDetailModal item={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }
@@ -176,6 +224,7 @@ export function GearSheet({ row, editable, inTown, party }: {
 export function ShopModal({ shop, party, onClose }: { shop: ShopView; party: PartySheetRow[]; onClose: () => void }) {
   const sendTown = useGame((s) => s.sendTown);
   const [buyer, setBuyer] = useState(party[0]?.id ?? "");
+  const [detail, setDetail] = useState<ItemView | null>(null);
   const wallet = party.find((p) => p.id === buyer)?.gold ?? 0;
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-[2px]" onClick={onClose}>
@@ -195,11 +244,11 @@ export function ShopModal({ shop, party, onClose }: { shop: ShopView; party: Par
         <div className="scroll-thin flex min-h-0 flex-1 flex-wrap content-start gap-3 overflow-y-auto pr-1">
           {shop.stock.length === 0 && <div className="text-xs font-light text-dimmed">Sold out for this act.</div>}
           {shop.stock.map((it) => (
-            <ItemCard key={it.id} item={it} footer={
+            <ItemCard key={it.id} item={it} onClick={() => setDetail(it)} footer={
               <button
                 className={`${SMALL_BTN} mt-1 self-start ${wallet < (it.buy_price ?? 0) ? "" : "border-brass/60 text-brass"}`}
                 disabled={!buyer || wallet < (it.buy_price ?? 0)}
-                onClick={() => sendTown("buy", { location_id: shop.location_id, item_id: it.id, character_id: buyer })}
+                onClick={(e) => { e.stopPropagation(); sendTown("buy", { location_id: shop.location_id, item_id: it.id, character_id: buyer }); }}
               >
                 Buy · {it.buy_price}g
               </button>
@@ -207,6 +256,7 @@ export function ShopModal({ shop, party, onClose }: { shop: ShopView; party: Par
           ))}
         </div>
       </div>
+      {detail && <ItemDetailModal item={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }
@@ -216,12 +266,13 @@ export function ShopModal({ shop, party, onClose }: { shop: ShopView; party: Par
  * everything is placed (the all-players confirmation follows). */
 export function RewardsModal({ rewards }: { rewards: RewardsView }) {
   const sendTown = useGame((s) => s.sendTown);
+  const [detail, setDetail] = useState<ItemView | null>(null);
   return (
     <div className="fixed inset-x-0 bottom-0 top-[42px] z-30 flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
       <div className="panel-ticks flex max-h-[88vh] w-[min(94vw,980px)] flex-col border border-line2 bg-ink-2 p-5 shadow-2xl">
         <div className="mb-3 flex items-center gap-3">
           <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">The Spoils</h2>
-          <span className="text-[10px] font-light text-mist">the boss falls — assign each find to a character, or discard it</span>
+          <span className="text-[10px] font-light text-mist">the boss falls — click a find for its details, assign each to a character or discard it</span>
           <span className="h-px flex-1 bg-line" />
         </div>
         <div className="scroll-thin flex min-h-0 flex-1 flex-wrap content-start gap-3 overflow-y-auto pr-1">
@@ -229,9 +280,10 @@ export function RewardsModal({ rewards }: { rewards: RewardsView }) {
             const room = rewards.room[String(i)] ?? {};
             const value = rewards.assign[String(i)] ?? "";
             return (
-              <ItemCard key={it.id} item={it} footer={
+              <ItemCard key={it.id} item={it} onClick={() => setDetail(it)} footer={
                 <select
                   value={value}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={(e) => sendTown("reward_assign", { index: i, target: e.target.value || null })}
                   className={`mt-1 border bg-ink-0 px-1 py-0.5 text-[10px] font-light ${value ? "border-brass/60 text-parch" : "border-line text-mist"}`}
                 >
@@ -256,6 +308,7 @@ export function RewardsModal({ rewards }: { rewards: RewardsView }) {
           </button>
         </div>
       </div>
+      {detail && <ItemDetailModal item={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

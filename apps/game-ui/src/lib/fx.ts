@@ -5,6 +5,7 @@
 
 import type {
   AnimTrigger, GameSnapshot, LogEntry, PanelAnimBundle, PanelAnimation,
+  StanceSlotName,
 } from "./types";
 
 export type FxKind =
@@ -118,6 +119,16 @@ const num = (v: unknown): number | undefined =>
   typeof v === "number" ? v : undefined;
 
 // ---- panel animations (Update 16) --------------------------------------- //
+// A replaced Move's clip: explicit pick only — there is no "move" trigger, so
+// with no pick the panel stays static.
+function bundle_pick_move(
+  bundle: PanelAnimBundle | null | undefined, cardId: string | undefined,
+): PanelAnimation | undefined {
+  if (!bundle || !cardId) return undefined;
+  const id = bundle.stances[cardId]?.move;
+  return id ? bundle.animations.find((a) => a.id === id) : undefined;
+}
+
 // Which clip a hero's panel plays for an action: an explicit per-card /
 // per-stance pick wins; otherwise the first NON-alternate clip wired to the
 // trigger; a Skill / Ultimate with no clip of its own falls back to the
@@ -125,13 +136,15 @@ const num = (v: unknown): number | undefined =>
 export function pickPanelAnim(
   bundle: PanelAnimBundle | null | undefined,
   trigger: AnimTrigger,
-  opts: { cardId?: string; stance?: boolean; channeled?: boolean } = {},
+  opts: { cardId?: string; stanceSlot?: StanceSlotName; channeled?: boolean } = {},
 ): PanelAnimation | undefined {
   if (!bundle || !bundle.animations.length) return undefined;
   const byId = (id: string | undefined) =>
     id ? bundle.animations.find((a) => a.id === id) : undefined;
   if (opts.cardId) {
-    const picked = byId(opts.stance ? bundle.stances[opts.cardId] : bundle.cards[opts.cardId]);
+    const picked = byId(opts.stanceSlot
+      ? bundle.stances[opts.cardId]?.[opts.stanceSlot]
+      : bundle.cards[opts.cardId]);
     if (picked) return picked;
   }
   const dflt = (t: AnimTrigger) =>
@@ -218,7 +231,7 @@ export function fxFromLog(
     // Returns the clip so a resolution can read its impact lead.
     const panel = (
       charId: string, trigger: AnimTrigger,
-      opts: { cardId?: string; stance?: boolean; channeled?: boolean } = {},
+      opts: { cardId?: string; stanceSlot?: StanceSlotName; channeled?: boolean } = {},
       extra: Partial<FxEvent> = {},
     ): PanelAnimation | undefined => {
       const anim = pickPanelAnim(partyIds.get(charId)?.anims, trigger, opts);
@@ -258,10 +271,20 @@ export function fxFromLog(
             const slot = str(d.stance_slot);
             if (heroic === "skill" || heroic === "ultimate") {
               lead(panel(src, heroic, { cardId, channeled }));
-            } else if (slot === "attack") {
-              lead(panel(src, "attack", { cardId, stance: true }));
-            } else if (slot === "defend" || slot === "mitigate") {
-              panel(src, slot);
+            } else if (slot === "attack" || slot === "defend" || slot === "mitigate") {
+              // A stance-replaced main ability: its own clip pick wins,
+              // else the slot's default clip.
+              lead(panel(src, slot, { cardId, stanceSlot: slot as StanceSlotName }));
+            } else if (slot === "move") {
+              // A replaced Move has no default trigger — only an explicit
+              // pick plays. The picker needs SOME trigger for fallback
+              // matching; "attack" never matches because the pick wins or
+              // nothing does.
+              const anim = bundle_pick_move(partyIds.get(src)?.anims, cardId);
+              if (anim) {
+                push("panel", src, { label: anim.id });
+                lead(anim);
+              }
             }
           }
         }

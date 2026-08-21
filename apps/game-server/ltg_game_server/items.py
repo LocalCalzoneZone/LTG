@@ -26,6 +26,7 @@ from ltg_core.schema import (
     BANNED_CREATION_KEYWORDS, BELT_SIZE, BUY_MULT, INVENTORY_CONSUMABLES,
     INVENTORY_GEAR, LEVEL_UP_POINTS, SELL_MULT, Item,
 )
+from ltg_core.translation import render_effects
 
 from . import content
 
@@ -75,8 +76,18 @@ def item_meta(item: Item, source: str = "catalogue") -> Dict[str, Any]:
         "id": item.id, "name": item.name, "slot": item.slot, "rarity": item.rarity,
         "level_min": item.level_min, "points_price": item.points_price,
         "flavor": item.flavor, "art_url": item.art_url, "source": source,
-        "summary": summarize(item),
+        "summary": summarize(item), "description": describe(item),
     }
+
+
+def _consumable_text(item: Item) -> str:
+    """The consumable's effects in LTG card language ("Restore 3 HP to an
+    ally."), falling back to the bare verb list only if rendering fails."""
+    try:
+        text = render_effects(list(item.effects), dict(item.targets))
+    except Exception:
+        text = ""
+    return text or ", ".join(e.kind.replace("_", " ") for e in item.effects)
 
 
 def summarize(item: Item) -> str:
@@ -88,7 +99,7 @@ def summarize(item: Item) -> str:
         elif st.kind == "power_bonus":
             parts.append(f"+{st.amount} Power")
         elif st.kind == "keyword":
-            parts.append(str(st.keyword))
+            parts.append(str(st.keyword).replace("_", " "))
         elif st.kind == "stat":
             label = {"hp": "HP", "mana": "mana", "cards": "starting card"}[st.stat or "hp"]
             parts.append(f"+{st.amount} {label}{'s' if st.stat == 'cards' and st.amount != 1 else ''}")
@@ -96,9 +107,41 @@ def summarize(item: Item) -> str:
             parts.append(f"grants {st.card.name}")
     if item.slot == "consumable":
         timing = item.consumable.timing if item.consumable else "instant"
-        kinds = ", ".join(e.kind.replace("_", " ") for e in item.effects)
-        parts.append(f"{timing}: {kinds}")
+        parts.append(f"{timing}: {_consumable_text(item)}")
     return " · ".join(parts)
+
+
+def describe(item: Item) -> str:
+    """The COMPLETE mechanics, one clause per line — the item detail view
+    (`summarize` stays the compact one-liner for lists and cards)."""
+    lines: List[str] = []
+    for st in item.statics:
+        if st.kind == "attack_mode":
+            lines.append(f"A {st.mode.value if st.mode else ''} weapon.")
+        elif st.kind == "power_bonus":
+            lines.append(f"+{st.amount} Power while worn.")
+        elif st.kind == "keyword":
+            lines.append(f"Grants {str(st.keyword).replace('_', ' ')} while worn.")
+        elif st.kind == "stat":
+            noun = {"hp": "maximum HP", "mana": "mana capacity",
+                    "cards": f"starting card{'s' if st.amount != 1 else ''}"}[st.stat or "hp"]
+            lines.append(f"+{st.amount} {noun} while worn.")
+        elif st.kind == "ability" and st.card:
+            try:
+                text = (st.card.translated_text or st.card.original_text
+                        or render_effects(list(st.card.effects), dict(st.card.targets)))
+            except Exception:
+                text = ""
+            lines.append(f"Grants the card “{st.card.name}” each encounter"
+                         + (f": {text}" if text else "."))
+    if item.slot == "consumable":
+        timing = item.consumable.timing if item.consumable else "instant"
+        speed = ("Drink it any time you could react (instant speed)."
+                 if timing == "instant"
+                 else "Drink it on your own turn, stack empty (sorcery speed).")
+        lines.append(_consumable_text(item))
+        lines.append(f"{speed} One use — it is consumed when it resolves.")
+    return "\n".join(l for l in lines if l)
 
 
 def list_items() -> List[Dict[str, Any]]:

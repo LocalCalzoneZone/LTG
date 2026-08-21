@@ -95,10 +95,13 @@ export interface PanelAnimation {
   impact_s: number; // when the action lands in the clip — the board's effects wait for it
 }
 
+export type StanceSlotName = "attack" | "defend" | "mitigate" | "move";
+
 export interface PanelAnimBundle {
   animations: PanelAnimation[];
   cards: Record<string, string>; // card id -> animation id (per-card pick)
-  stances: Record<string, string>; // stance card id -> animation id (replaced attack)
+  // stance card id -> per-slot animation picks for its replaced abilities
+  stances: Record<string, Partial<Record<StanceSlotName, string>>>;
 }
 
 export interface CharacterView {
@@ -295,6 +298,9 @@ export interface StackRow {
   // The full card behind the action (cast / card-carried trigger), for the
   // hover tooltip; null for basic attacks and enemy components.
   card: CardView | null;
+  // The complete mechanical read of a NON-card action (an enemy ability's
+  // flavour name means nothing alone) — shown on hover; "" when card is set.
+  mechanics?: string;
   top: boolean;
   uid: number;
 }
@@ -730,6 +736,9 @@ export interface ItemView {
   art_desc: string;
   art_url: string;
   summary?: string;
+  // The complete mechanics, one clause per line (server items.describe) —
+  // rendered whitespace-pre-line in the item detail view.
+  description?: string;
   sell_price?: number;
   buy_price?: number;
   statics?: unknown[];

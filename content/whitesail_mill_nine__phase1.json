@@ -1,0 +1,322 @@
+{
+  "name": "The Tithe-Post on the Barley Track",
+  "scene": "A cart-track cut through shoulder-high barley under a wide blue morning, wheel-ruts white with spilled flour. A fence post at the crossing has been hung with a black rag-sail and a nailed sheet of tally-marks, and a cook-pot bubbles over sticks beside a heap of confiscated sacks. Far off across the gold, four canvas sails turn on the tower of Mill Nine.",
+  "scene_image": "/art/whitesail_mill_nine__phase1/scene-5e38fd19.png",
+  "enemies": [
+    {
+      "id": "tithe_runner",
+      "name": "Tithe-Runner",
+      "flavor": "Shouts you onto the list once, throws a flour sack once, then swings a stick.",
+      "description": "A knock-kneed young orc in a farmer's stolen smock, arms and eyebrows dusted white, a notched tally-stick shoved through his belt and a burst sack under one arm.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "flour_sack",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Flour Sack \u2014 bursts white over a hero and everyone near them for 2",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "blast"
+              }
+            }
+          ]
+        },
+        {
+          "id": "onto_the_list",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Onto the List! \u2014 a hero must answer him",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase1/tithe_runner-0761a28c.png"
+    },
+    {
+      "id": "hobnail_picket",
+      "name": "Hobnail Picket",
+      "flavor": "A wall with a hooked pole that drags your attention; kicks back once, hard.",
+      "description": "A squat orc in a mail shirt worn over sacking, hobnailed boots caked with field mud, holding a boat-hook lashed to a hay-fork haft.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "hook_and_holler",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Hook and Holler \u2014 taunt a hero into his reach",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shin_crack",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Shin-Crack \u2014 3 to the one who hit him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase1/hobnail_picket-1b3060b2.png"
+    },
+    {
+      "id": "brass_tally_clerk",
+      "name": "Brass Tally-Clerk",
+      "flavor": "Blows a whistle and a hero loses their turn; resents being looked at.",
+      "description": "A lean orc in a clerk's ink-stained waistcoat over a leather jack, a brass boatswain's whistle on a chain and a ledger board strapped to his forearm.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "brass_whistle",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Muster Whistle \u2014 a hero is shouted still and loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "struck_from_the_ledger",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Struck From the Ledger \u2014 the hunter fights at -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase1/brass_tally_clerk-6655292a.png"
+    },
+    {
+      "id": "grain_hook_rigger",
+      "name": "Grain-Hook Rigger",
+      "flavor": "Casts a rope-hook and hauls a back-line hero into the front rank.",
+      "description": "A wiry orc sailor in tarred trousers, bare chested and rope-burned, whirling a grapnel on a coil of hemp with a second hook slung at his hip.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "grain_hook_cast",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Grain-Hook Cast \u2014 a hero is hauled into the front rank",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "into_the_press",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 35,
+          "target_rule": "valuation",
+          "telegraph": "Into the Press \u2014 taunt the hauled hero",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase1/grain_hook_rigger-42457c7c.png"
+    },
+    {
+      "id": "ledger_chanter",
+      "name": "Ledger-Chanter",
+      "flavor": "Chants the tithe-list aloud; while it holds, every tithe-man fights harder.",
+      "description": "A broad-shouldered orc with a scroll of tally-sheets pinned across his chest like a breastplate, beating time on a flour scoop, throat tattooed with counting marks.",
+      "hp": 8,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "roll_call",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Roll-Call of the Tithe \u2014 a held chant: every tithe-man fights at +1/+1",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ledger_amendment",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Amendment to the Ledger \u2014 4 to whoever interrupted him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase1/ledger_chanter-e1bc7063.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "tithe_runner",
+      "hobnail_picket"
+    ],
+    "2": [
+      "tithe_runner",
+      "tithe_runner",
+      "hobnail_picket",
+      "brass_tally_clerk"
+    ],
+    "3": [
+      "tithe_runner",
+      "tithe_runner",
+      "tithe_runner",
+      "hobnail_picket",
+      "brass_tally_clerk",
+      "ledger_chanter"
+    ],
+    "4": [
+      "tithe_runner",
+      "tithe_runner",
+      "tithe_runner",
+      "tithe_runner",
+      "hobnail_picket",
+      "brass_tally_clerk",
+      "grain_hook_rigger",
+      "ledger_chanter"
+    ]
+  }
+}

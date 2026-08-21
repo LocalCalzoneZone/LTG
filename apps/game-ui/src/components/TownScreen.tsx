@@ -422,7 +422,7 @@ function QuestLogPanel({ log, onClose }: { log: QuestLogView; onClose: () => voi
         <span className="h-px flex-1 bg-line" />
         <button onClick={onClose} className="text-mist hover:text-parch"><IconX size={14} /></button>
       </div>
-      <div className="scroll-thin flex flex-col gap-3 overflow-y-auto pr-1 text-sm font-light">
+      <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1 text-sm font-light">
         <JournalEntries log={log} full />
         {log.completed.length > 0 && (
           <div className="mt-2 border-t border-line pt-2">

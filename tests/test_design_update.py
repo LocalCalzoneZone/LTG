@@ -174,3 +174,69 @@ def test_defend_temp_hp_absorbs_incoming_damage():
             break
         st, _ = apply_action(st, p)
     assert st.character("hero").hp == 25
+
+
+# --- pump duration: `encounter` outlives the End step (R-7 + Duration) --------- #
+def _pump_spell(duration, cid="ward", power=0, toughness=4):
+    return {"id": cid, "name": cid.title(), "source_name": cid, "rarity": "common",
+            "level": 1, "type": "Sorcery", "timing": "sorcery",
+            "cost": {"colors": {"U": 1}},
+            "effects": [{"kind": "pump", "power": power, "toughness": toughness,
+                         "duration": duration, "target": {"mode": "self"}}],
+            "validated": True}
+
+
+def _cast_and_settle(st):
+    st, _ = apply_action(st, next(a for a in legal_actions(st) if a.kind == "cast"))
+    while st.stack:
+        st, _ = apply_action(st, next(a for a in legal_actions(st) if a.kind == "pass"))
+    return st
+
+
+def _next_turn(st):
+    turn = st.turn
+    while st.result is None and st.turn == turn:
+        acts = legal_actions(st)
+        if not acts:
+            break
+        st, _ = apply_action(st, next((a for a in acts if a.kind in ("end_turn", "pass")),
+                                      acts[0]))
+    return st
+
+
+def _pump_state(duration):
+    return state_from_dict({
+        "party": [{"id": "h", "name": "H", "hp": 20, "power": 3, "hand_size": 1,
+                   "identity": ["U"], "library": [_pump_spell(duration)]}],
+        "enemies": [_enemy("orc", "Orc", 30, amount=0)]})
+
+
+def test_this_turn_pump_expires_at_the_end_step():
+    st = _cast_and_settle(_pump_state("this_turn"))
+    assert st.character("h").temp_mod == 4
+    assert _next_turn(st).character("h").temp_mod == 0
+
+
+def test_encounter_pump_survives_the_end_step():
+    st = _cast_and_settle(_pump_state("encounter"))
+    assert st.character("h").temp_mod == 4
+    st = _next_turn(st)
+    assert st.character("h").temp_mod == 4      # the buffer holds for the fight
+    assert st.character("h").effective_hp == 24
+    st = _next_turn(st)
+    assert st.character("h").temp_mod == 4      # and keeps holding
+
+
+def test_encounter_pump_buffer_is_spent_by_damage_for_good():
+    st = state_from_dict({
+        "party": [{"id": "h", "name": "H", "hp": 20, "power": 3, "hand_size": 1,
+                   "identity": ["U"], "library": [_pump_spell("encounter")]}],
+        "enemies": [_enemy("orc", "Orc", 30, amount=3)]})
+    st = _cast_and_settle(st)
+    assert st.character("h").temp_mod == 4
+    st = _next_turn(st)                         # the Orc swings for 3 into the buffer
+    hero = st.character("h")
+    assert hero.hp == 20                        # base HP untouched — the buffer soaked it
+    assert hero.temp_mod == 1                   # spent points do not come back at End
+    st = _next_turn(st)
+    assert st.character("h").temp_mod == 0      # …and the last point goes the same way

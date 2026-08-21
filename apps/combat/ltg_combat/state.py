@@ -211,6 +211,12 @@ class CharacterState:
     # is the net of end-of-turn pump (+) / wound (−) modifiers and expires at End.
     # Lethality is checked on effective_hp = hp + temp_mod.
     temp_mod: int = 0
+    # The share of `temp_mod` / `power_bonus` granted for the ENCOUNTER rather than
+    # the turn (a `duration: encounter` pump or wound). The End step resets the live
+    # layers to these instead of to 0, so the buffer/anthem survives the turn; damage
+    # spending the buffer shrinks the encounter share with it (`_sync_enc_temp`).
+    enc_temp_mod: int = 0
+    enc_power_bonus: int = 0
     prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
     prevent_tags: List[PreventTag] = field(default_factory=list)  # shields (R-11 prevent)
     # Combo primings: one-shot outgoing-damage/heal multipliers (`amplify`) and
@@ -257,6 +263,10 @@ class CharacterState:
     used_mitigate: bool = False
     used_move: bool = False  # a stance-replaced Move spent this turn (§D9-2.3)
     acted_mode: Optional[str] = None  # None | "attack" | "cast" | "defend" | "move" this turn
+    # The DISTINCT proactive actions taken this turn, in order. One is the normal
+    # allowance; vigilance grants a second (§7 "may attack and still act/defend").
+    # Several sorcery-speed casts ride one entry — Cast is a single action.
+    proactive_modes: List[str] = field(default_factory=list)
     turn_ended: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
     # Spells cast this turn (reset at upkeep) — read by `spells_cast` conditions.
@@ -339,6 +349,8 @@ class TokenState:
     control_left: Optional[int] = None
     revert: Optional["EnemyState"] = None
     temp_mod: int = 0
+    enc_temp_mod: int = 0     # the encounter-scoped share (see CharacterState)
+    enc_power_bonus: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
     amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
@@ -535,6 +547,8 @@ class EnemyState:
     # Mirror the character's HP model so one damage routine serves both. An enemy's
     # `power_bonus` adjusts its declared intent damage (so a wound blunts its attack).
     temp_mod: int = 0
+    enc_temp_mod: int = 0     # the encounter-scoped share (see CharacterState)
+    enc_power_bonus: int = 0
     prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
     amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
@@ -742,6 +756,10 @@ class PendingChoice:
     top: List["Card"] = field(default_factory=list)
     bottom: List["Card"] = field(default_factory=list)
     looked: int = 0                      # how many top cards were revealed (scry X)
+    # move_card across a SET of targets ("each player returns N cards"): the ids of
+    # the targeted characters whose own pick is still to come. Each is prompted in
+    # turn; the effect is done — and `remaining` resumes — once this empties.
+    movers_left: List[str] = field(default_factory=list)
 
 
 @dataclass

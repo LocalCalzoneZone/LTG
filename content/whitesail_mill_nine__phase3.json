@@ -1,0 +1,528 @@
+{
+  "name": "The Grinding Floor",
+  "scene": "The mill's interior: a cathedral of white dust and slanted sunlight, the great stones grinding empty above a barrel-top desk of ledgers, tally-weights and spilled ink. Sacks are stacked to the rafters, the shaft groans overhead as the sails turn, and every footprint on the boards shows black through the flour.",
+  "scene_image": "/art/whitesail_mill_nine__phase3/scene-3ad5db45.png",
+  "enemies": [
+    {
+      "id": "skaddo_ninefingers",
+      "name": "Skaddo Ninefingers, the Tally-Bosun",
+      "flavor": "Mawgrim's shore-captain: prices the strongest hero first, silences chanting, and makes your grand moment cost extra.",
+      "description": "A slab-shouldered orc a head taller than any of his crew, grey-green hide powdered white to the collarbone, a ledger chained at his belt and a whaler's cleaver-hook in his fist; brass tally-weights hang from his baldric like medals and one hand is short two fingers, healed to knuckle stubs.",
+      "hp": 32,
+      "power": 4,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "ledger_mark",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Struck From the Ledger \u2014 6 to the hero he prices highest",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "silence_the_chant",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "condition": {
+            "kind": "hero_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "target_rule": "channeling_player",
+          "telegraph": "Tally-Weights \u2014 a brass weight to the teeth; the chanting hero loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "thatll_cost_extra",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "cooldown": 2,
+          "priority": 12,
+          "target_rule": "trigger_source",
+          "telegraph": "That'll Cost Extra \u2014 6 damage and -2/-2 to the hero spending their moment",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hobnail_kick",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "trigger_source",
+          "telegraph": "Hobnail Kick \u2014 6 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "cleaver_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 20,
+          "target_row": "front",
+          "action_type": "attack",
+          "target_rule": "valuation",
+          "telegraph": "Cleaver Sweep \u2014 5 to everyone standing in the front rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "into_the_hopper",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "valuation",
+          "telegraph": "Into the Hopper \u2014 a hero is hauled under the stones for 6",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "ledger_in_the_stones",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "THE LEDGER GOES IN THE STONES \u2014 +3/+2 permanently, the mill fills with flying grit for 4, and he shrugs off 7 wounds",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 7,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase3/skaddo_ninefingers-59e4ab18.png"
+    },
+    {
+      "id": "sackhood_cutter",
+      "name": "Sackhood Cutter",
+      "flavor": "Goes for the sword arm, and parries the first blow that comes back.",
+      "description": "A lithe orc knife-fighter with a flour sack cut into a hood, two short cleavers reversed along the forearms, moving on bare silent feet through the dust.",
+      "hp": 5,
+      "power": 3,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "price_the_arm",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "highest_threat",
+          "telegraph": "Price the Arm \u2014 5 to the hardest hitter",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "crossed_cleavers",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "cooldown": 3,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Crossed Cleavers \u2014 the swing is turned aside",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "attack"
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase3/sackhood_cutter-3865d9e4.png"
+    },
+    {
+      "id": "hopper_hexer",
+      "name": "Hopper-Wife Grulla",
+      "flavor": "Chants over the empty stones; while the grind holds, the whole party withers.",
+      "description": "A hunched old orc woman perched on the hopper rail in a shawl of stitched flour sacks, hands blue with grain-mould, humming into the turning stones as dust spirals up around her.",
+      "hp": 10,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "grind_of_the_empty_stone",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "self",
+          "telegraph": "Grind of the Empty Stone \u2014 a held rite: the party chokes and fights at -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mould_in_the_lungs",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "action_type": "spell",
+          "cooldown": 2,
+          "priority": 24,
+          "target_rule": "channeling_player",
+          "telegraph": "Mould in the Lungs \u2014 poison the hero holding a spell",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase3/hopper_hexer-62bad82a.png"
+    },
+    {
+      "id": "dust_shot_bosun",
+      "name": "Dust-Shot Bosun",
+      "flavor": "Fires blinding meal-shot at whoever is holding a spell together.",
+      "description": "A one-eyed orc in a tar-stained pea-coat, working a leather bellows packed with flour and grit, powder-horns of ground chaff strung across his chest.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "meal_shot",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 26,
+          "target_rule": "channeling_player",
+          "telegraph": "Meal-Shot \u2014 4 into the face of the hero holding a spell",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "chaff_cloud",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 32,
+          "target_rule": "valuation",
+          "telegraph": "Chaff Cloud \u2014 a hero and those beside them fight at -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "row"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase3/dust_shot_bosun-9dc92ff4.png"
+    },
+    {
+      "id": "millstone_bruiser",
+      "name": "Millstone Bruiser",
+      "flavor": "A wall who shields the bosun and gets meaner when bloodied.",
+      "description": "An enormous orc with a cracked quern-stone lashed to his forearm as a shield, chest bare and grey with dust, breathing like a bellows.",
+      "hp": 11,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "stone_in_the_way",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Stone in the Way \u2014 the next blow against a crewmate is negated",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "grudge_and_grit",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 14,
+          "target_rule": "self",
+          "telegraph": "Grudge and Grit \u2014 +2/+1, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase3/millstone_bruiser-7f5bc755.png"
+    },
+    {
+      "id": "kennel_boy",
+      "name": "Kennel-Boy with the Last Hound",
+      "flavor": "Sics the hound, then throws himself in front of the bosun once.",
+      "description": "A gangling orc youth in a leather apron three sizes too big, dragging a barking mastiff on a doubled chain, sling of dog-biscuit at his hip.",
+      "hp": 4,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "sic_him",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Sic Him! \u2014 the hound taunts the hardest hitter",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "gets_in_the_way",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "once_per_encounter": true,
+          "priority": 16,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Gets in the Way \u2014 the next blow on that crewmate is negated",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/whitesail_mill_nine__phase3/kennel_boy-2942a5c7.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "skaddo_ninefingers",
+      "kennel_boy"
+    ],
+    "2": [
+      "skaddo_ninefingers",
+      "hopper_hexer",
+      "sackhood_cutter",
+      "kennel_boy"
+    ],
+    "3": [
+      "skaddo_ninefingers",
+      "hopper_hexer",
+      "sackhood_cutter",
+      "millstone_bruiser",
+      "dust_shot_bosun",
+      "kennel_boy",
+      "kennel_boy"
+    ],
+    "4": [
+      "skaddo_ninefingers",
+      "hopper_hexer",
+      "sackhood_cutter",
+      "sackhood_cutter",
+      "millstone_bruiser",
+      "millstone_bruiser",
+      "dust_shot_bosun",
+      "dust_shot_bosun",
+      "kennel_boy"
+    ]
+  }
+}
