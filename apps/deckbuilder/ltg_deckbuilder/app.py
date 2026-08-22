@@ -34,6 +34,7 @@ from ltg_core.schema import (
     MAX_POWER_BOUGHT,
     MODE_VALUES,
     PRICE_STATS,
+    CORPSE_LEGAL_EFFECTS,
     REF_VALUES,
     Row,
     SIDE_VALUES,
@@ -202,7 +203,11 @@ def api_effect_specs() -> dict:
     `refs` is the registry of resolvable value references (name → display label)
     that backs the editor's reference dropdown."""
     return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES,
-            "refs": REF_VALUES}
+            "refs": REF_VALUES,
+            # §D19-5: the verbs whose chosen target may be CORPSE-exclusive
+            # (state: "corpse") — the editor shows its "corpse only" checkbox
+            # for exactly these.
+            "corpse_kinds": sorted(CORPSE_LEGAL_EFFECTS)}
 
 
 class CharacterPriceBody(BaseModel):

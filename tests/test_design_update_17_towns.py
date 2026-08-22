@@ -243,7 +243,8 @@ def test_materialization_offers_several_quests_each_acceptable():
         sc.validate_materialization(bad, town, arc["acts"][0])
     # An offer nobody can take.
     bad = materialization_raw()
-    bad["quests"].append({"id": "the_third_way", "title": "The Third Way", "text": "Nobody offers this."})
+    bad["quests"].append({"id": "the_third_way", "title": "The Third Way", "text": "Nobody offers this.",
+                          "adventure_theme": "the eel-weirs south of the lake, waded at dawn"})
     with pytest.raises(ValueError, match="The Third Way"):
         sc.validate_materialization(bad, town, arc["acts"][0])
     # No acceptance at all.

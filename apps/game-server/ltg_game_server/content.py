@@ -183,6 +183,42 @@ ROW_ABILITY_BONUS = 2
 _HOSTILE_DAMAGE_VERBS = ("deal_damage", "lose_life")
 
 
+def _retell_numbers(comp: Dict[str, Any], swaps: List["tuple[int, int]"],
+                    pt_swaps: "List[tuple[tuple[int, int], tuple[int, int]]]" = ()) -> None:
+    """§D18-2 (playtest): the register lifts a component's VERB amounts — the
+    authored `telegraph` prose kept the old ones, so the log read "deal 2 to the
+    attacker" while the hit landed for 4. Rewrite the numbers the register moved,
+    in place.
+
+    ``pt_swaps`` handles the "+P/+T" pattern of a scaled Enrage pump first (its
+    two halves scale differently, so a bare-number pass would be ambiguous).
+    Bare numbers are then swapped on word boundaries — but only when the OLD
+    value is unambiguous within this component: if the same number also sits on
+    a verb the register did NOT touch (a heal, a stun count), the text is left
+    alone rather than falsified."""
+    text = str(comp.get("telegraph") or "")
+    if not text:
+        return
+    for (op, ot), (np_, nt) in pt_swaps:
+        text = re.sub(rf"\+{op}/\+{ot}\b", f"+{np_}/+{nt}", text)
+    untouched: set = set()
+    for verb in comp.get("verbs") or []:
+        if isinstance(verb, dict) and isinstance(verb.get("amount"), int)                 and verb.get("kind") not in _HOSTILE_DAMAGE_VERBS:
+            untouched.add(verb["amount"])
+    for old, new in swaps:
+        if old == new:
+            continue
+        if old in untouched:
+            # Ambiguous within this component (the same number sits on a heal /
+            # stun the register left alone) — swap only where the prose marks it
+            # as the damage: "deal(s) 4", "4 damage", "for 4".
+            text = re.sub(rf"((?:\bdeals?|\bfor)\s+){old}\b", rf"\g<1>{new}", text)
+            text = re.sub(rf"\b{old}(\s+damage\b)", rf"{new}\g<1>", text)
+            continue
+        text = re.sub(rf"\b{old}\b", str(new), text)
+    comp["telegraph"] = text
+
+
 def _hostile_target(verb: Dict[str, Any]) -> bool:
     """Does this verb point at the hero side? (Enemy authoring frame: side
     "ally" is the party.)"""
@@ -222,23 +258,30 @@ def _scale_enrage(enemy: Dict[str, Any], party_size: int) -> None:
     for comp in enemy.get("components") or []:
         if not isinstance(comp, dict) or comp.get("archetype") != "Enrage":
             continue
+        swaps: List[tuple] = []
+        pt_swaps: List[tuple] = []
         for verb in comp.get("verbs") or []:
             if not isinstance(verb, dict):
                 continue
             kind = verb.get("kind")
             if kind in ("counters", "pump"):
+                op, ot = verb.get("power"), verb.get("toughness")
                 if isinstance(verb.get("power"), int):
                     verb["power"] = ceil(verb["power"] * lethal)
                 if isinstance(verb.get("toughness"), int):
                     verb["toughness"] = ceil(verb["toughness"] * pad)
+                if isinstance(op, int) and isinstance(ot, int):
+                    pt_swaps.append(((op, ot), (verb["power"], verb["toughness"])))
                 if isinstance(verb.get("hp"), int):
                     verb["hp"] = ceil(verb["hp"] * pad)
             elif kind in ("deal_damage", "lose_life", "heal"):
                 if isinstance(verb.get("amount"), int):
+                    swaps.append((verb["amount"], ceil(verb["amount"] * pad)))
                     verb["amount"] = ceil(verb["amount"] * pad)
             elif kind == "create_token":
                 if isinstance(verb.get("count"), int):
                     verb["count"] = verb["count"] + max(0, int(party_size) - 1)
+        _retell_numbers(comp, swaps, pt_swaps)
 
 
 def _bump_enemy_power(scenario: Dict[str, Any],
@@ -277,6 +320,7 @@ def _bump_enemy_power(scenario: Dict[str, Any],
             if not isinstance(comp, dict) or comp.get("archetype") == "Enrage":
                 continue  # the Enrage is scaled by party size instead, below
             row_bonus = ROW_ABILITY_BONUS if comp.get("target_row") else 0
+            swaps: List[tuple] = []
             for verb in comp.get("verbs") or []:
                 if (not isinstance(verb, dict)
                         or verb.get("kind") not in _HOSTILE_DAMAGE_VERBS
@@ -285,7 +329,9 @@ def _bump_enemy_power(scenario: Dict[str, Any],
                 if not (_hostile_target(verb) or comp.get("target_row")):
                     continue
                 extra = ROW_ABILITY_BONUS if (row_bonus or _row_shaped(verb)) else 0
+                swaps.append((verb["amount"], verb["amount"] + ability + extra))
                 verb["amount"] += ability + extra
+            _retell_numbers(comp, swaps)   # the telegraph tells the lifted number
         _scale_enrage(e, party_size)
         enemies.append(e)
     out["enemies"] = enemies

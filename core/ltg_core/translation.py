@@ -388,6 +388,14 @@ def _value(v) -> str:
             return "its Power"
         if v.ref == "target_hp":
             return "its current HP"
+        if v.ref == "caster_base_power":
+            return "your base Power"
+        if v.ref == "caster_base_hp":
+            return "your maximum HP"
+        if v.ref == "target_base_power":
+            return "its base Power"
+        if v.ref == "target_base_hp":
+            return "its maximum HP"
         if v.ref == "casting_cost":
             return "its casting cost"
         if v.ref == "caster_last_damage":

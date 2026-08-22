@@ -2238,19 +2238,51 @@ Rules:
   "adventure_theme" (one line naming the PLACE the adventure happens in and its
   faction — a mine, a manor, a drowned chapel), "tone_notes" (one line:
   mood/palette for the writers).
-- LEAVE ROOM FOR A CHOICE. The town phase of every act puts at least two quests
-  in front of the party, so write each hook wide enough to fork: two troubles at
-  once, two ends of one thread, or one job with two ways in (overland by day, or
-  around by boat after dark). Say in the hook what the fork is.
-- Use different questgivers across acts where the town allows; keep the inn's
-  and merchants' NPCs mostly out of quest-giving unless the persona begs for it.
+- LEAVE ROOM FOR A REAL CHOICE. The town phase of every act puts at least two
+  quests in front of the party, and they must be MATERIALLY DIFFERENT — each its
+  own place, its own objective, its own consequences — because only the one they
+  accept gets written. Two troubles at once (help the mine crew OR the burned
+  waystation), or two ends of one thread that land in different places (the
+  raiders' camp in the hills OR the fence who buys from them in the sea-caves).
+  NEVER "the same job by two roads" — same dungeon, different door, is not a
+  choice. Say in the hook what the fork is.
+- THE SCENARIO MAY BRING ITS OWN PEOPLE AND PLACES (optional, and worth doing):
+  * "cast": 0–3 NPCs this scenario brings to town — a wounded messenger, a
+    rival company's captain, the villain's agent posing as a friend. Each:
+    {"id": snake_case, "name", "role", "persona" (2–3 sentences, like a town
+    NPC's), "portrait_desc" (what the painter needs), "location": <the id of the
+    town location or arc place where they stand>, "acts": [1,2,3] (optional —
+    which acts they are in town; omit for all), "secret": one line only the
+    WRITERS see — what this person is actually up to (empty if nothing)}.
+    A cast member may be an act's questgiver — a stranger asking for help lands
+    differently than the same innkeeper three acts running. A cast member with a
+    "secret" is the long game: write them warm in Act I and pay it off later —
+    the act writers will read the secret and turn the knife when the outline
+    calls for it.
+  * "places": 0–2 locations this scenario adds to the town — the plague tent
+    outside the walls, the wrecked barge on the strand. Each: {"id", "name",
+    "function": "flavor" (or tavern/shrine/market/…), "description",
+    "interior_scene" (what a visitor standing inside sees — it will be painted),
+    "exterior_scene" (its frontage on the town map), "acts": [..] optional}.
+    Cast members may stand at an arc place; give a place a reason to visit —
+    someone standing in it, or something an act's dialogue sends the party to.
+- Use different questgivers across acts where the town (and cast) allows; keep
+  the inn's and merchants' NPCs mostly out of quest-giving unless the persona
+  begs for it.
 - Respect every persona verbatim: a coward stays a coward.
 - "stakes": what is lost if the party fails (2 sentences). "title": the
   scenario's title.
 
 Output contract:
 {"title": "...", "villain": "...", "stakes": "...",
- "acts": [{"title": "...", "hook": "...", "questgiver_npc": "<npc id>", "handoff": "<npc id or null>",
+ "cast": [{"id": "...", "name": "...", "role": "...", "persona": "...",
+           "portrait_desc": "...", "location": "<location id>",
+           "acts": [1, 2], "secret": "..."}, ×0–3],
+ "places": [{"id": "...", "name": "...", "function": "flavor",
+             "description": "...", "interior_scene": "...",
+             "exterior_scene": "...", "acts": [1]}, ×0–2],
+ "acts": [{"title": "...", "hook": "...", "questgiver_npc": "<npc id — town or cast>",
+           "handoff": "<npc id or null>",
            "adventure_theme": "...", "tone_notes": "..."}, ×3]}
 """
 
@@ -2267,20 +2299,23 @@ TONE:
 
 Write:
 1. "quests": TWO to FOUR QUEST OPTIONS — what the party may agree to this act.
-   THIS IS THE ACT'S ONE REAL CHOICE, so make it a real one. The combat half of
-   the act is not written until they accept, so every option costs nothing and
-   buys the players agency. Each option: {"id": short_snake_case,
+   THIS IS THE ACT'S ONE REAL CHOICE, so make it a real one: the options must be
+   MATERIALLY DIFFERENT. Each option: {"id": short_snake_case,
    "title": "...", "text": the quest as the journal shows it (2–4 sentences),
-   "adventure_theme": one line naming the PLACE the ride-out happens in and how
-   they go at it — this steers the dungeon that gets written}.
-   Pick ONE of these shapes (or mix them):
+   "adventure_theme": one line naming the PLACE that option's ride-out happens
+   in and what the party does there — REQUIRED, DISTINCT per option (it is
+   rejected otherwise), because the dungeon is generated from it}.
+   Legal shapes:
      * DIFFERENT TROUBLES: two things are wrong at once and the party decides
-       who they help — the flooded mine crew or the burned waystation.
-     * BRANCHES OF ONE TROUBLE: chase the raiders' camp, or cut them off at the
-       ford where they cross.
-     * ONE PLAN, DIFFERENT APPROACHES: the same objective, taken overland in
-       daylight, or by boat after dark along the shore, or by talking your way
-       in with the guild's seal. Same villain, different road, different fight.
+       who they help — the flooded mine crew or the burned waystation. The one
+       they refuse stays refused; let an NPC or the next act's dialogue note it.
+     * BRANCHES OF ONE TROUBLE that land in DIFFERENT PLACES with different
+       objectives: storm the raiders' camp in the hills, or take the fence who
+       buys from them in the sea-caves alive.
+   NOT a legal shape: the same objective by two roads (overland vs. by boat,
+   day vs. night, front door vs. back). Same place, different door is a
+   flavour choice, not a fork — the two rides must genuinely differ in where
+   they go, what they fight, and what the town gets out of it.
    The options may all sit with the outline's questgiver, or be spread across
    two NPCs (one asking for help against the other's problem) — if they are
    spread, the questgiver's tree must POINT AT the other NPC with a "direct_to"
@@ -2357,17 +2392,44 @@ Write:
      [{"kind":"rest"}] ("Take a room.") — resting restores the party fully.
    - Only an NPC marked (vendor) in the town block may offer
      [{"kind":"open_shop"}]; the other residents of a shop just talk.
-   - "requires" may reference flags your own set_flag hooks create in this tree,
+   - GATE KNOWLEDGE (this is how the town stays a mystery worth walking):
+     the act's trouble is a SECRET until someone in town actually tells it.
+       * When an NPC EXPLAINS a thing — the trouble, a name, a place, who is
+         behind it — put {"kind": "set_flag", "flag": "knows_<thing>"} on the
+         choice that hears it (e.g. knows_orc_camp, knows_reeve_missing).
+       * Any choice ANYWHERE ELSE whose label presumes that knowledge ("What of
+         the orc camp?", "We heard about the reeve") MUST carry
+         "requires": ["knows_<thing>"]. A stranger cannot ask about what nobody
+         has told them — an ungated question that names the trouble reads as
+         the UI leaking the plot.
+       * A tree's ROOT choices (no requires) must all read as things a stranger
+         could say to this person: a greeting, their trade, the town, "you look
+         troubled". The specific questions unlock as the party learns.
+       * Every knows_* flag you require must be SET somewhere in this act's
+         trees (it is checked; unreachable gates are rejected). One or two
+         knowledge flags per act is plenty — gate the SPECIFIC, leave the vague.
+     The questgiver's own tree needs no gates to reach its offers — walking up
+     and hearing them out IS how the party learns. The gates belong on everyone
+     ELSE's reactions to the trouble.
+   - "requires" may reference flags your own set_flag hooks create in this act,
      plus the standing flags: defeated_once, quest_accepted, act_1_complete,
      act_2_complete, act_3_complete.
+   - CAST MEMBERS (NPCs the scenario brought to town, marked in the town block)
+     are yours to use like any resident — and if one carries a SECRET (shown to
+     you beside their persona), honour it: write them as the persona presents
+     and let the secret steer what they steer. Never reveal a secret before the
+     outline calls for it; foreshadow in word choice, not in fact.
    - NO other keys. No "freeform". No mechanics or numbers in text.
 4. "flavor": a map of NPC id → ONE fresh line of greeting, in their voice, for
    EVERY NPC of the town who has no tree above. Nobody is a closed door.
-5. "topics": a map of NPC id → 1–2 exchanges [{"ask": "...", "reply": "..."}]
-   about THIS act's trouble, for NPCs without a tree — what the fisherman heard
-   on the water, what the priestess thinks of the reeve's plan. These sit
-   alongside the town's own standing topics, which you have been given; do not
-   repeat those.
+5. "topics": a map of NPC id → 1–2 exchanges [{"ask": "...", "reply": "...",
+   "requires": ["knows_<thing>"] (optional)}] about THIS act's trouble, for NPCs
+   without a tree — what the fisherman heard on the water, what the priestess
+   thinks of the reeve's plan. GATE these the same way as tree choices: an
+   exchange whose ask names the trouble carries "requires" on the knowledge
+   flag, so the question only appears once somebody has told the party. These
+   sit alongside the town's own standing topics, which you have been given; do
+   not repeat those.
 6. "reask" (optional): a map of NPC id → the line that NPC opens with when the
    party comes back after saying they would think it over ("Well? Have you had
    time to consider what I asked?"), in their own voice.
@@ -2377,7 +2439,7 @@ Output contract:
  "arrival": "...",
  "dialogues": {"<npc id>": {tree}},
  "flavor": {"<npc id>": "..."},
- "topics": {"<npc id>": [{"ask": "...", "reply": "..."}]},
+ "topics": {"<npc id>": [{"ask": "...", "reply": "...", "requires": ["knows_x"]}]},
  "reask": {"<npc id>": "..."}}
 """
 
@@ -2386,10 +2448,15 @@ def _town_block(town: Dict[str, Any], topics: bool = True) -> str:
     lines = [f'# TOWN — {town.get("name", "")}', f'Region: {town.get("region_flavor", "")}',
              f'Scene: {town.get("scene", "")}', "Locations and resident NPCs (ids in brackets):"]
     for loc in town.get("locations") or []:
-        lines.append(f'- [{loc["id"]}] {loc["name"]} ({loc.get("function", "")}): {loc.get("description", "")}')
+        # A place the SCENARIO added (§D20-2) is flagged so the writer knows it
+        # is this arc's own ground, not a standing fixture of the town.
+        ltag = " — BROUGHT BY THIS SCENARIO" if loc.get("_scenario") else ""
+        lines.append(f'- [{loc["id"]}] {loc["name"]} ({loc.get("function", "")}{ltag}): {loc.get("description", "")}')
         for npc in loc.get("npcs") or []:
             # (vendor) marks the one person at a shop who actually sells.
             tag = " (vendor — keeps this counter)" if npc.get("vendor") else ""
+            if npc.get("_scenario"):
+                tag += " (CAST — brought to town by this scenario)"
             lines.append(f'    * [{npc["id"]}] {npc["name"]}, {npc.get("role", "")}{tag} — {npc.get("persona", "")}')
             if topics:
                 for t in npc.get("topics") or []:
@@ -2400,6 +2467,14 @@ def _town_block(town: Dict[str, Any], topics: bool = True) -> str:
 def _arc_block(arc: Dict[str, Any]) -> str:
     lines = [f'# ARC — "{arc.get("title", "")}"', f'Villain: {arc.get("villain", "")}',
              f'Stakes: {arc.get("stakes", "")}']
+    for c in arc.get("cast") or []:
+        acts = f' (in town for acts {", ".join(map(str, c["acts"]))})' if c.get("acts") else ""
+        secret = f' SECRET (writers only — never reveal early): {c["secret"]}' if c.get("secret") else ""
+        lines.append(f'- Cast: [{c["id"]}] {c["name"]}, {c.get("role", "")} at [{c.get("location", "")}]'
+                     f'{acts} — {c.get("persona", "")}{secret}')
+    for pl in arc.get("places") or []:
+        acts = f' (present acts {", ".join(map(str, pl["acts"]))})' if pl.get("acts") else ""
+        lines.append(f'- Place: [{pl["id"]}] {pl["name"]}{acts} — {pl.get("description", "")}')
     for i, act in enumerate(arc.get("acts") or [], start=1):
         lines.append(f'- Act {i}: "{act.get("title", "")}" — {act.get("hook", "")} '
                      f'(questgiver [{act.get("questgiver_npc", "")}]'
@@ -2520,6 +2595,9 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
     the questgiver's tree open on the bloodied-return branch."""
     from . import scenario_content as sc
     outline = arc["acts"][act_index]
+    # §D20-2: the town AS THIS ACT SEES IT — the arc's cast and places merged in,
+    # so the writer can hand them dialogue and the validator accepts it.
+    town = sc.town_for_act(town, arc, act_index)
     flags = party_state.get("flags") or {}
     members = "; ".join(f'{m["name"]} (level {m["level"]})' for m in party_state.get("members", []))
     user = [_town_block(town), "", _arc_block(arc), "",
@@ -2538,5 +2616,7 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
     if previous_summary:
         user.append(f"\n# PREVIOUSLY: {previous_summary}")
     user.append("\nWrite this act's town portion now. Return ONLY the JSON.")
+    known = {k for k, v in flags.items() if v}
     return _scenario_chat(ACT_INSTRUCTIONS, "\n".join(user), attempts,
-                          lambda raw: sc.validate_materialization(raw, town, outline), "act")
+                          lambda raw: sc.validate_materialization(raw, town, outline,
+                                                                 flags_known=known), "act")

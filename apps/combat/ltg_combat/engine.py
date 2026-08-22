@@ -782,6 +782,7 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     _pick_enemy_intent(st, e, swing, force)
     _note_swing(e)
     if not double or e.round_intent_status != "declared":
+        _consume_pending_strips(st, e)
         return
     # Slot 2: spend slot 1's component cooldown NOW so it can't be picked twice,
     # then run the whole pass again and file the result in the second slot.
@@ -800,6 +801,15 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
      e.round_intent_status, e.round_intent_reveal) = first
     if e.intent2 is not None and e.intent2.source_component is not None:
         _start_cooldown(st, e, e.intent2.source_component)
+    _consume_pending_strips(st, e)
+
+
+def _consume_pending_strips(st: GameState, e: EnemyState) -> None:
+    """§D19-5: strips that landed while nothing was declared smother the fresh
+    declarations now — slot 1 first, then a boss's second."""
+    while e.strip_pending > 0 and (e.intent is not None or e.intent2 is not None):
+        e.strip_pending -= 1
+        _strip_slot(st, e, slot2=e.intent is None)
 
 
 def _is_basic_swing(intent: Optional[Intent]) -> bool:
@@ -2453,12 +2463,16 @@ def _do_defend(st: GameState, action: Action) -> None:
 
 
 def _mitigate_value(combatant) -> int:
-    """X = ceil(current Power / 2) (Update 02 §M-A.2) — read at resolution, never 0
-    for a Power-1 character. A `mitigate_full` modifier pays out full Power."""
+    """X = ceil(current Power / 2) (Update 02 §M-A.2) — read at resolution, and
+    NEVER 0 (§D19-5 playtest): a hero wounded to 0 Power was still offered the
+    Mitigate, spent the once-per-turn reaction, and reduced nothing — the guard
+    went up and the blow came through untouched. Raising a guard always turns at
+    least one point. A `mitigate_full` modifier pays out full Power (floored the
+    same way)."""
     power = max(0, combatant.current_power)
     if _has_action_mod(combatant, "mitigate_full"):
-        return power
-    return math.ceil(power / 2)
+        return max(1, power)
+    return max(1, math.ceil(power / 2))
 
 
 def _do_move(st: GameState, action: Action) -> None:
@@ -3030,11 +3044,14 @@ def _start_channel(st: GameState, item: StackItem) -> None:
         if _is_continuous(effect):
             _apply_continuous(st, channel, effect)
     # channel_start effects resolve as a list so an interactive scry/move_card
-    # pauses for the player's pick (same as any stack resolution).
+    # pauses for the player's pick (same as any stack resolution). The ctx is the
+    # CAST's (§D19-5): it carries the per-site target bindings, so a chosen-target
+    # start effect lands on the creature picked at cast rather than falling back
+    # to the card's primary target.
     starts = [e for e in item.card.effects
               if getattr(e, "trigger", None) == "channel_start"]
     if starts:
-        _resolve_effect_list(st, item, starts, _channel_ctx(st, holder, channel))
+        _resolve_effect_list(st, item, starts, _new_ctx(st, item))
     # State-based check: a wound aura that drops a creature to ≤0 effective HP kills it
     # now (GDD §8: a −X/−X that empties toughness is lethal). The death sticks — the
     # channel keeps holding, its target simply gone, until the caster drops it. Losing
@@ -3910,6 +3927,10 @@ def _value(amount, ctx: dict) -> int:
             return _live_stat(ctx.get("caster_obj"), amount.ref.split("_", 1)[1])
         if amount.ref in ("target_power", "target_hp"):
             return _live_stat(ctx.get("target_obj"), amount.ref.split("_", 1)[1])
+        if amount.ref in ("caster_base_power", "caster_base_hp"):
+            return _base_stat(ctx.get("caster_obj"), amount.ref.rsplit("_", 1)[1])
+        if amount.ref in ("target_base_power", "target_base_hp"):
+            return _base_stat(ctx.get("target_obj"), amount.ref.rsplit("_", 1)[1])
         if amount.ref == "caster_last_damage":
             return max(0, int(getattr(ctx.get("caster_obj"), "last_damage_taken", 0) or 0))
         if amount.ref == "target_last_damage":
@@ -3918,6 +3939,17 @@ def _value(amount, ctx: dict) -> int:
     if amount == "all":
         return 0  # guarded earlier; never reached for a real effect
     return int(amount)
+
+
+def _base_stat(obj, stat: str) -> int:
+    """A combatant's PRINTED stat for a *_base_* value ref (§D19-5): `power` =
+    the base Power (no bonuses, no counters), `hp` = max HP (base toughness,
+    wounds and buffers ignored). 0 when there is no such combatant."""
+    if obj is None:
+        return 0
+    if stat == "power":
+        return max(0, int(getattr(obj, "power", 0) or 0))
+    return max(0, int(getattr(obj, "max_hp", 0) or 0))
 
 
 def _live_stat(obj, stat: str) -> int:
@@ -4485,15 +4517,10 @@ def _intent_reveal(intent: Intent, enemy: EnemyState) -> str:
     return f"{intent.name} — {text}" if text else intent.name
 
 
-def _r_strip_intent(st, item, effect, target, ctx):
-    if not isinstance(target, EnemyState):
-        return
-    # §D9-4: against an enraged boss the player chose WHICH declared intent to
-    # strip — the '::2' handle marked the second (recorded in ctx by _lookup_target).
-    slot2 = ctx.get("intent_slot") == 2
+def _strip_slot(st: GameState, target: EnemyState, slot2: bool) -> None:
+    """Strip one declared intent slot: reveal it (D8-1.3 — the log names what was
+    prevented, the intents window annotates the struck line) and clear it."""
     intent = target.intent2 if slot2 else target.intent
-    if intent is None:
-        return
     reveal = _intent_reveal(intent, target)
     if slot2:
         target.intent2 = None
@@ -4501,13 +4528,34 @@ def _r_strip_intent(st, item, effect, target, ctx):
         target.round_intent2_reveal = reveal
     else:
         target.intent = None
-        # Stripping an intent reveals it (D8-1.3): the log names what was
-        # prevented, and the intents window annotates the struck line.
         target.round_intent_status = "stripped"
         target.round_intent_reveal = reveal
     _log(st, "strip_intent",
          f"{target.name}'s intent is unravelled — it would have been "
          f"*{reveal}*.", enemy=target.id, reveal=reveal, slot=2 if slot2 else 1)
+
+
+def _r_strip_intent(st, item, effect, target, ctx):
+    if not isinstance(target, EnemyState):
+        return
+    # §D9-4: against an enraged boss the player chose WHICH declared intent to
+    # strip — the '::2' handle marked the second (recorded in ctx by _lookup_target).
+    slot2 = ctx.get("intent_slot") == 2
+    intent = target.intent2 if slot2 else target.intent
+    if intent is None and not slot2 and target.intent2 is not None:
+        slot2, intent = True, target.intent2   # only the second slot still holds one
+    if intent is None:
+        # §D19-5: NOTHING is declared right now — a channel's upkeep strip
+        # resolves in the intents window, before declaration, and used to no-op
+        # in silence (the player picked a target and nothing visibly happened).
+        # The strip LINGERS instead: the enemy's next intent is smothered as it
+        # is declared.
+        target.strip_pending += 1
+        _log(st, "strip_intent_pending",
+             f"The unravelling clings to {target.name} — its next intent will be "
+             f"smothered as it forms.", enemy=target.id)
+        return
+    _strip_slot(st, target, slot2)
 
 
 def _r_stun(st, item, effect, target, ctx):
@@ -6680,7 +6728,10 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     # a cast-time counter and was never castable: the main phase has an empty
     # stack, so its only "target" list came back empty. Nested effects never
     # carry triggers, so filtering the top level before descending is enough.
-    live = [e for e in effects if getattr(e, "trigger", None) is None]
+    # `channel_start` is live (§D19-5): it fires inline as the cast resolves, so
+    # its pick is a cast-time pick — mirrors the _target_sites exception.
+    live = [e for e in effects
+            if getattr(e, "trigger", None) in (None, "channel_start")]
     filt = _counter_filter(live)
     if filt is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
@@ -6763,7 +6814,13 @@ def _target_sites(effects, card: Card):
         # picked when the trigger fires (MTG-style — see _raise_next_trigger_pick).
         # A `$slot` still becomes a cast site when an untriggered effect (a
         # continuous aura) shares it — the fired effect then reuses that target.
-        if getattr(e, "trigger", None) is not None:
+        # EXCEPTION (§D19-5 playtest): `channel_start` fires INLINE as the cast
+        # resolves — it never routes through the trigger-pick machinery — so a
+        # chosen-target start effect ("when this channel begins: strip an
+        # intent") fell back to the card's primary target and silently no-opped.
+        # Its fire moment IS the cast's resolution, so its pick is a cast-time
+        # site like any untriggered effect's.
+        if getattr(e, "trigger", None) not in (None, "channel_start"):
             continue
         if e.kind == "counter":
             # The counter's target is an enemy action on the stack, not a creature.

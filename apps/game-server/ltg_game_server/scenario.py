@@ -56,9 +56,14 @@ class ScenarioRun:
                  options: Optional[Dict[str, Any]] = None,
                  town_id: str = "", scenario_id: str = "") -> None:
         self.town_id = town_id or town.get("id", "")
-        self.town: Dict[str, Any] = copy.deepcopy(town)
-        self.town.pop("id", None)
+        # `base_town` is the town as saved; `town` is the town AS THIS ACT SEES
+        # IT — base plus the arc's cast and places present this act (§D20-2).
+        # Recomposed at every arrival / arc change / art reload, never mutated
+        # in place, so a visitor leaves no trace once their acts are over.
+        self.base_town: Dict[str, Any] = copy.deepcopy(town)
+        self.base_town.pop("id", None)
         self.arc: Dict[str, Any] = copy.deepcopy(arc)
+        self.town: Dict[str, Any] = sc.town_for_act(self.base_town, self.arc, 0)
         # The scenario's loot vocabulary (§D17-4.5): drawn when the scenario is
         # made and frozen onto the arc, so what the bosses drop sounds like THIS
         # scenario and reads the same after a reload. An arc that arrives
@@ -174,6 +179,7 @@ class ScenarioRun:
         take a supplied materialization (a pre-generated Act I, or a reload) or
         mark the act as needing one (`materialize` then runs off-thread)."""
         self.mode = "town"
+        self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
         self.location_id = None
         self.conversation = None
         self.adventure = None
@@ -326,7 +332,11 @@ class ScenarioRun:
             nid = f"t{i}"
             nodes[nid] = {"speaker": "npc", "text": topic["reply"],
                           "choices": [self._choice("Farewell.")]}
-            nodes["r"]["choices"].append(self._choice(topic["ask"], nid))
+            ask = self._choice(topic["ask"], nid)
+            # §D20-1: a gated act topic only becomes askable once the party has
+            # LEARNED of the thing (the walker filters on the run's flags).
+            ask["requires"] = list(topic.get("requires") or [])
+            nodes["r"]["choices"].append(ask)
         nodes["r"]["choices"].append(self._choice("Farewell."))
         return {"root": "r", "nodes": nodes}
 
@@ -661,7 +671,9 @@ class ScenarioRun:
         return "scenario_complete"
 
     def begin_next_arc(self, arc: Dict[str, Any]) -> None:
-        """Everquest: the previous arc is done; a fresh arc for the same town."""
+        """Everquest: the previous arc is done; a fresh arc for the same town.
+        The old arc's cast and places leave with it (the recompose on the next
+        arrival drops them)."""
         self.previous_arcs.append({"title": self.arc["title"], "villain": self.arc["villain"],
                                    "outcome": "defeated"})
         self.arc = copy.deepcopy(arc)
@@ -725,6 +737,22 @@ class ScenarioRun:
         for row in (self.rewards or {}).get("items", []):
             if row.get("id") == item_id:
                 row["art_url"] = url
+
+    def set_cast_art(self, kind: str, entry_id: str, url: str) -> None:
+        """A cast portrait / arc-place backdrop landed (§D20-2): onto the ARC —
+        the run's saves re-put the arc, so it persists — then recompose the town
+        so the merged copies show it. ``kind``: cast / place_interior /
+        place_exterior."""
+        if kind == "cast":
+            for npc in self.arc.get("cast") or []:
+                if npc.get("id") == entry_id:
+                    npc["art_url"] = url
+        else:
+            field = "interior_art_url" if kind == "place_interior" else "exterior_art_url"
+            for pl in self.arc.get("places") or []:
+                if pl.get("id") == entry_id:
+                    pl[field] = url
+        self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
 
     def assign_reward(self, index: int, target: Optional[str]) -> None:
         if self.rewards is None:
@@ -1072,6 +1100,8 @@ class ScenarioRun:
         self.journal = copy.deepcopy(block.get("journal") or [])
         self.conversation = None
         self.splash = None
+        # The saved act may not be act 0 — recompose the town for it (§D20-2).
+        self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
         if act is not None:
             self.act = copy.deepcopy(act)
             self.materializing = False
@@ -1089,7 +1119,8 @@ class ScenarioRun:
         fresh = sc.town_detail(self.town_id)
         if fresh:
             fresh.pop("id", None)
-            self.town = fresh
+            self.base_town = fresh
+            self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
 
 
 # --------------------------------------------------------------------------- #
@@ -1103,11 +1134,12 @@ def _generic_party() -> Dict[str, Any]:
 
 def pregenerate_scenario(town_id: str, difficulty: str = "standard",
                          note: str = "") -> Dict[str, Any]:
-    """Options → Scenarios → Generate: arc for the town, Act I's town portion,
-    and Act I's adventure (generated for a generic level-1 party — layouts
-    cover parties of 1–4 anyway). The adventure is written at STANDARD; the
-    run's chosen difficulty rescales it at play (AdventureRun.difficulty), so
-    a pre-generated scenario carries no difficulty of its own. Persists the
+    """Options → Scenarios → Generate: arc for the town + Act I's TOWN portion.
+    New Scenario is instant because the town half is ready; the ADVENTURE is
+    generated on quest accept, as every act's is (§D20-3) — pre-baking one
+    meant the quest options were only real for parties that dodged the baked
+    choice. The run's chosen difficulty scales combat at play, so a
+    pre-generated scenario carries no difficulty of its own. Persists the
     scenario; returns its meta."""
     difficulty = "standard"
     town = sc.town_detail(town_id)
@@ -1119,20 +1151,7 @@ def pregenerate_scenario(town_id: str, difficulty: str = "standard",
     arc["loot_lexicon"] = loot.build_lexicon(town, arc)
     party_state = {"members": [{"name": "the party", "level": 1}], "flags": {}, "gold": {}}
     act1 = llm.generate_act(town, arc, 0, party_state)
-    probe = ScenarioRun(town, arc, ["hero_1", "hero_2"],
-                        [{"character": {"name": "the first hero", "colors": ["W"], "starting_mana": ["W"]}},
-                         {"character": {"name": "the second hero", "colors": ["U"], "starting_mana": ["U"]}}],
-                        {"difficulty": difficulty}, town_id=town_id)
-    probe.arrive(act1)
-    # The adventure is written for the FIRST of Act I's quest options; a party
-    # that takes another gets one generated on acceptance, as every later act does.
-    probe.quest["status"] = "accepted"
-    context = probe.adventure_context()
-    adv_meta = llm.generate_adventure(
-        [], difficulty, note=note, loadouts=probe.loadouts, levels=[1, 1],
-        base_level=1, context=context, run_only=True)
     return sc.save_scenario({
         "town_id": town_id, "arc": arc, "difficulty": difficulty,
-        "act1": {"adventure_id": adv_meta["id"], "quest_id": probe.quest.get("id", ""),
-                 "materialization": act1},
+        "act1": {"adventure_id": "", "quest_id": "", "materialization": act1},
     })

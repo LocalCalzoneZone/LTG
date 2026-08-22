@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import re
 import secrets
@@ -568,6 +569,105 @@ def generate_item_art(item_id: str, text: str = "") -> Dict[str, Any]:
 # boss falls, the Rewards modal has pictures instead of sigils.
 SPOILS_ROOT = LEGACY_ART_DIR
 SPOILS_FOLDER = "spoils"
+
+
+# --------------------------------------------------------------------------- #
+# Scenario cast & places (§D20-2): the arc's own people and ground, painted
+# content-addressed so every run of the scenario shares one set of pictures —
+# the first run to arrive paints them, every later one adopts from disk.
+# --------------------------------------------------------------------------- #
+CAST_FOLDER = "cast"
+PLACES_FOLDER = "places"
+
+
+def _cast_key(entry: Dict[str, Any], *texts: str) -> str:
+    """A stable id from the entry's id + its describing prose, so two scenarios'
+    unrelated "the_stranger"s never share a face, while the same scenario's
+    stranger keeps theirs across runs."""
+    blob = "|".join([str(entry.get("id") or "")] + [str(t or "") for t in texts])
+    return f"{_slug(str(entry.get('id') or 'cast'))[:32]}_{hashlib.sha256(blob.encode('utf-8')).hexdigest()[:10]}"
+
+
+def _keyed_art_url(folder: str, key: str) -> str:
+    d = SPOILS_ROOT / folder / key
+    if d.is_dir():
+        for p in sorted(d.glob("*.*")):
+            return f"{ART_URL_PREFIX}/{folder}/{key}/{p.name}"
+    return ""
+
+
+def generate_cast_art(npc: Dict[str, Any]) -> Dict[str, Any]:
+    """Paint one cast member's portrait from their portrait_desc."""
+    key = _cast_key(npc, npc.get("portrait_desc"))
+    existing = _keyed_art_url(CAST_FOLDER, key)
+    if existing:
+        return {"url": existing}
+    prompt = (f"{_style()}\n\n{_NPC_TASK}{npc.get('name', '')}, {npc.get('role', '')}. "
+              f"{npc.get('portrait_desc', '')}")
+    url = paint(prompt, "1:1", f"{CAST_FOLDER}/{key}", "npc", root=SPOILS_ROOT)
+    return {"url": url}
+
+
+def generate_place_art(place: Dict[str, Any], which: str,
+                       town_scene: str = "") -> Dict[str, Any]:
+    """Paint one arc place's ``interior`` backdrop or ``exterior`` map card."""
+    scene = str(place.get(f"{which}_scene") or "").strip()
+    if not scene:
+        raise ValueError(f"{place.get('name')} has no {which} scene to paint from")
+    key = _cast_key(place, scene)
+    slot = "int" if which == "interior" else "ext"
+    existing = _keyed_art_url(PLACES_FOLDER, f"{key}/{slot}")
+    if existing:
+        return {"url": existing}
+    if which == "interior":
+        prompt = f"{_style()}\n\n{_INTERIOR_TASK}{scene}"
+    else:
+        ctx = (f"\n\nThis stands in this town (match its architecture, materials, "
+               f"and mood; do NOT paint the wider town in detail): {town_scene}"
+               if town_scene else "")
+        prompt = f"{_style()}\n\n{_EXTERIOR_TASK}{place.get('name', '')}. {scene}{ctx}"
+    url = paint(prompt, "16:9", f"{PLACES_FOLDER}/{key}/{slot}", slot, root=SPOILS_ROOT)
+    return {"url": url}
+
+
+def scenario_cast_art_items(arc: Dict[str, Any], town_scene: str,
+                            on_painted: Callable[[str, str, str], None]
+                            ) -> List[Dict[str, Any]]:
+    """Queue items for every arc cast portrait and place backdrop still without
+    a picture. ``on_painted(kind, entry_id, url)`` — kind is ``cast`` /
+    ``place_interior`` / ``place_exterior`` — writes the URL back onto the
+    run's arc (and, via recomposition, the merged town)."""
+    out: List[Dict[str, Any]] = []
+    for npc in arc.get("cast") or []:
+        if npc.get("art_url"):
+            continue
+        known = _keyed_art_url(CAST_FOLDER, _cast_key(npc, npc.get("portrait_desc")))
+        if known:
+            on_painted("cast", npc["id"], known)
+            continue
+
+        def _paint_npc(npc=npc) -> None:
+            on_painted("cast", npc["id"], generate_cast_art(npc)["url"])
+        out.append({"label": f'cast — {npc.get("name", npc["id"])}',
+                    "paint": _paint_npc, "refresh_key": "cast"})
+    for pl in arc.get("places") or []:
+        for which, url_key in (("interior", "interior_art_url"),
+                               ("exterior", "exterior_art_url")):
+            if pl.get(url_key) or not str(pl.get(f"{which}_scene") or "").strip():
+                continue
+            slot = "int" if which == "interior" else "ext"
+            known = _keyed_art_url(PLACES_FOLDER,
+                                   f"{_cast_key(pl, pl.get(f'{which}_scene'))}/{slot}")
+            if known:
+                on_painted(f"place_{which}", pl["id"], known)
+                continue
+
+            def _paint_pl(pl=pl, which=which) -> None:
+                on_painted(f"place_{which}", pl["id"],
+                           generate_place_art(pl, which, town_scene)["url"])
+            out.append({"label": f'place — {pl.get("name", pl["id"])} ({which})',
+                        "paint": _paint_pl, "refresh_key": "cast"})
+    return out
 
 
 def spoil_art_url(item_id: str) -> str:

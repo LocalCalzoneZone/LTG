@@ -272,3 +272,156 @@ def test_warded_is_the_dearest_rider_in_the_affix_table():
     # curse, stun, silence, sap, drain and snipe an encounter carries.
     assert warded["points"] > by_id["unbroken"]["points"]
     assert all(warded["points"] >= a["points"] for a in AFFIXES)
+
+
+# --------------------------------------------------------------------------- #
+# §D19-5 — playtest follow-ups: the register tells the truth, Mitigate always
+# turns a point, and a channel's strip_intent works at both trigger moments.
+# --------------------------------------------------------------------------- #
+def test_the_register_retells_its_numbers_in_the_telegraph():
+    """Playtest: the log read "deal 2 damage to the attacker" while the lifted
+    verb hit for 4 — the register moved the amount and left the prose."""
+    from ltg_game_server.content import _bump_enemy_power
+    scen = {"enemies": [{"id": "e", "name": "e", "level": 3, "power": 1, "components": [
+        {"id": "snap", "archetype": "Punish",
+         "telegraph": "Flare-Snap — deal 2 to the attacker",
+         "verbs": [{"kind": "deal_damage", "amount": 2,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+        {"id": "syphon", "telegraph": "Syphon — deals 4 damage and heals 4 HP",
+         "verbs": [{"kind": "deal_damage", "amount": 4,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}},
+                   {"kind": "heal", "amount": 4, "target": {"mode": "self"}}]},
+    ]}]}
+    comps = _bump_enemy_power(scen, 1)["enemies"][0]["components"]
+    assert comps[0]["telegraph"] == "Flare-Snap — deal 4 to the attacker"
+    # The ambiguous case: only the DAMAGE 4 moves; the heal's 4 stands.
+    assert comps[1]["telegraph"] == "Syphon — deals 6 damage and heals 4 HP"
+
+
+def test_a_scaled_enrage_retells_its_pump_and_burn():
+    from ltg_game_server.content import _bump_enemy_power
+    boss = {"id": "b", "name": "b", "level": 6, "power": 3, "is_boss": True,
+            "components": [{"id": "fury", "archetype": "Enrage",
+                            "telegraph": "FURY — +2/+2 permanently, and the hall burns for 3",
+                            "verbs": [{"kind": "counters", "power": 2, "toughness": 2,
+                                       "target": {"mode": "self"}},
+                                      {"kind": "deal_damage", "amount": 3,
+                                       "target": {"mode": "all", "side": "ally"}}]}]}
+    comp = _bump_enemy_power({"enemies": [boss]}, 4)["enemies"][0]["components"][0]
+    assert comp["telegraph"] == "FURY — +8/+5 permanently, and the hall burns for 8"
+
+
+def test_mitigate_never_reduces_by_zero():
+    """Playtest sweep: a hero wounded to 0 Power was offered the Mitigate, spent
+    the once-per-turn reaction, and reduced nothing. X floors at 1."""
+    from ltg_combat.engine import _mitigate_value
+
+    class _C:
+        current_power = 0
+        modify_action_tags = []
+    assert _mitigate_value(_C()) == 1
+    _C.current_power = 1
+    assert _mitigate_value(_C()) == 1
+    _C.current_power = 5
+    assert _mitigate_value(_C()) == 3
+
+
+def _unravel_state():
+    card = {"id": "unravel", "name": "Unravel", "source_name": "Unravel",
+            "rarity": "common", "level": 1, "type": "Enchantment",
+            "timing": "channeled", "cost": {"generic": 0, "colors": {}},
+            "effects": [
+                {"kind": "strip_intent", "trigger": "channel_start",
+                 "target": {"mode": "chosen", "side": "enemy", "targeted": True}},
+                {"kind": "strip_intent", "trigger": "upkeep",
+                 "target": {"mode": "chosen", "side": "enemy", "targeted": True}},
+            ], "validated": True}
+    filler = {"id": "x", "name": "x", "source_name": "x", "rarity": "common",
+              "level": 1, "type": "Instant", "timing": "instant",
+              "cost": {"generic": 0, "colors": {}},
+              "effects": [{"kind": "draw", "amount": 0}]}
+    return state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": 30, "power": 2, "hand_size": 1,
+                   "identity": ["U"], "row": "front", "attack_mode": "melee",
+                   "library": [card, filler]}],
+        "enemies": [{"id": "ogre", "name": "ogre", "hp": 40, "level": 1,
+                     "intent": {"name": "Bash", "amount": 5, "action_type": "attack",
+                                "intent_type": "attack",
+                                "targeting": "lowest_hp_party", "mode": "melee"}}]})
+
+
+def test_channel_start_and_upkeep_strips_both_work():
+    """The reported card: 'on channel start, strip intent' + 'on upkeep, strip
+    intent'. The start half fell back to the card's (absent) primary target and
+    silently no-opped; the upkeep half resolved BEFORE intents were declared and
+    no-opped too. Now: the start strip is a cast-time pick, and a strip landing
+    on an intent-less enemy lingers and smothers the next declaration."""
+    st = _unravel_state()
+    cast_seen = False
+    for _ in range(400):
+        acts = legal_actions(st)
+        if not acts or st.result is not None:
+            break
+        cast = next((a for a in acts if a.kind == "cast"), None)
+        if cast is not None and not cast_seen:
+            assert cast.target_id == "ogre"      # the start strip is aimed at cast
+            cast_seen = True
+            st = apply_action(st, cast)[0]
+            continue
+        pick = next((a for a in acts if a.kind.startswith("choose")), None)
+        if pick is not None:
+            st = apply_action(st, pick)[0]
+            continue
+        a = next((a for a in acts if a.kind == "pass"), None) or \
+            next((a for a in acts if a.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+        if st.turn >= 4:
+            break
+    strips = [l for l in st.log if l.type == "strip_intent"]
+    assert len(strips) >= 3                      # cast + two upkeeps
+    assert st.character("p").hp == 30            # every Bash was smothered
+    assert any(l.type == "strip_intent_pending" for l in st.log)
+
+
+def test_base_stat_refs_read_the_printed_numbers():
+    """§D19-5 deckbuilder ask: base Power / base toughness references, beside
+    the live ones."""
+    from ltg_combat.engine import _value
+    from ltg_core.schema import REF_VALUES, Ref
+
+    class _Obj:
+        power = 2          # printed
+        power_bonus = 3    # pumped
+        max_hp = 20
+        hp = 7
+
+        @property
+        def current_power(self):
+            return self.power + self.power_bonus
+
+        @property
+        def effective_hp(self):
+            return self.hp
+    ctx = {"caster_obj": _Obj(), "target_obj": _Obj()}
+    assert _value(Ref(ref="caster_power"), ctx) == 5        # live: base + bonus
+    assert _value(Ref(ref="caster_base_power"), ctx) == 2   # printed only
+    assert _value(Ref(ref="target_base_power"), ctx) == 2
+    assert _value(Ref(ref="caster_hp"), ctx) == 7           # current
+    assert _value(Ref(ref="caster_base_hp"), ctx) == 20     # max (base toughness)
+    assert _value(Ref(ref="target_base_hp"), ctx) == 20
+    for r in ("caster_base_power", "caster_base_hp",
+              "target_base_power", "target_base_hp"):
+        assert r in REF_VALUES                              # the editor dropdown sees them
+
+
+def test_a_corpse_exclusive_pick_offers_corpses_only():
+    """§D19-5 deckbuilder ask: `state: "corpse"` on a corpse-legal verb means the
+    pick CANNOT name a living enemy — the editor's "corpse only" checkbox."""
+    from ltg_combat.engine import _pick_options
+    st = _state([_char("p")], [_enemy("living_one")])
+    _lay_a_corpse(st, cid="fallen")
+    opts = _pick_options(st, "enemy", True, "exile", state="corpse")
+    assert [tid for tid, _ in opts] == ["fallen"]           # never the living
+    # Without the flag, exile offers the living AND the corpses.
+    both = _pick_options(st, "enemy", True, "exile", state=None)
+    assert {"living_one", "fallen"} <= {tid for tid, _ in both}
