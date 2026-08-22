@@ -65,3 +65,32 @@ When it is spoiled, `_swing_instead` strikes with the basic attack: the telegrap
 - **A strip with nothing to strip lingers.** The other half of the reported card — `upkeep: strip_intent` — resolved during the intents window, BEFORE the enemy declared, and no-opped in silence every turn. A strip landing on an enemy with no declared intent now sets `strip_pending`: the next intent is smothered AS IT IS DECLARED (slot 1 first, then a boss's second), logged both when it clings and when it lands.
 - **Base stat references.** The deckbuilder's value dropdown gains `caster_base_power` / `target_base_power` (printed Power, no bonuses or counters) and `caster_base_hp` / `target_base_hp` (max HP — base toughness), beside the live `*_power` / `*_hp` refs. Registry → engine resolver (`_base_stat`) → translation, so the editor picks them up from `/api/effect-specs` with no frontend change.
 - **Corpse-exclusive targeting in the editor.** The target builder shows a **"corpse only"** checkbox on chosen targets of corpse-legal verbs (`control` / `exile` / `consume_corpse`, shipped as `corpse_kinds` in `/api/effect-specs`). Checked, it authors `state: "corpse"` (§D9-1.3): the cast offers corpses on the battlefield only — it cannot name a living enemy — and fizzles if the body is gone by resolution. This replaces the "conditional: if target is a corpse" workaround for cards that should be corpse-exclusive outright.
+
+## D19-6. The corpse-anchored blast (Corpse Explosion)
+
+**Origin (playtest).** A player card "consume a corpse, blast its row" could not be authored: a shared target slot cannot be both `state: "corpse"` (what `consume_corpse` needs) and living (what `deal_damage` demands) — the §D9-1.3 corpse axis made the two verbs mutually exclusive on one pick.
+
+**The rule.** A `deal_damage` whose chosen target is a corpse **and which carries a splash `scope`** is legal: the body is the **blast point**, not a victim. It takes nothing (it is already dead; a sibling `consume_corpse` spends it, resolving last per §D19-1), and the damage lands on every living enemy in the footprint — the corpse's row for `scope: "row"`, plus adjacent rows for `"blast"`. The splash victims are incidental, never targeted, exactly as in §D9-3.2. An *unscoped* damage verb still may not aim at a corpse — there is nothing for it to do there.
+
+Mechanics threaded through:
+- **Schema**: the corpse-axis check admits the exception (and its error message teaches it).
+- **Enumeration**: `state: "corpse"` now means *corpses only* whatever verb owns the pick — the schema has already vetted who may author it — so the cast offers bodies and never the living.
+- **Resolution**: the §D19-1 corpse-binding intercept resolves `$slot` refs too (player cards author the shared corpse slot); the splash guard admits a corpse anchor for `deal_damage`, `_splash_targets` treats a corpse as the enemy-side body it is, and the corpse is dropped from the victims list. An empty footprint logs a fizzle.
+- **Translation**: reads as ground — *"Choose an enemy corpse — the blast covers every enemy on its row: they take 4 damage, then the corpse is consumed."*
+- **Deckbuilder**: the "corpse only" checkbox now also appears on `deal_damage` (checking it seeds `scope: "row"`), and shared target slots gain the same checkbox beside their existing scope select.
+
+**The canonical card:**
+
+```json
+{
+  "name": "Corpse Explosion", "type": "Sorcery", "timing": "sorcery",
+  "targets": {"T1": {"mode": "chosen", "side": "enemy", "targeted": true,
+                      "state": "corpse", "scope": "row"}},
+  "effects": [
+    {"kind": "deal_damage", "amount": 4, "target": "$T1"},
+    {"kind": "consume_corpse", "target": "$T1"}
+  ]
+}
+```
+
+One pick serves both verbs; the engine guarantees the blast resolves before the body is spent, whatever order the effects are authored in.

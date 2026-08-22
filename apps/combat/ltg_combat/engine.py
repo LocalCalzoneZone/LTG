@@ -3647,18 +3647,33 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
         # Row/blast splash (§D9-3.2): the effect resolves on the legal pick PLUS
         # every other same-side creature in scope — incidental, never targeted.
         # An illegal pick already fizzled above: no pick, no blast.
+        # §D19-6 — the CORPSE-ANCHORED BLAST: a scoped `deal_damage` may aim at a
+        # corpse. The body is the blast point, not a victim — it takes nothing
+        # (it is already dead; a sibling `consume_corpse` spends it, resolving
+        # last) — and the damage lands on everything living in its footprint.
         victims = [target]
         desc = _effect_desc(item, effect)
         scope = getattr(getattr(desc, "scope", None), "value",
                         getattr(desc, "scope", None))
-        if scope is not None and target is not None and not isinstance(target, Corpse):
+        corpse_anchor = (isinstance(target, Corpse) and scope is not None
+                         and effect.kind == "deal_damage")
+        if scope is not None and target is not None and (
+                not isinstance(target, Corpse) or corpse_anchor):
             splash = _splash_targets(st, target, scope, effect.kind)
             if splash:
-                _log(st, "splash", f"{item.label} splashes across the "
-                     f"{'row' if scope == 'row' else 'row and adjacent rows'}: "
+                _log(st, "splash", f"{item.label} "
+                     + ("erupts from the corpse across the "
+                        if corpse_anchor else "splashes across the ")
+                     + f"{'row' if scope == 'row' else 'row and adjacent rows'}: "
                      + ", ".join(c.name for c in splash) + ".",
-                     scope=scope, victims=[_tid(c) for c in splash])
+                     scope=scope, victims=[_tid(c) for c in splash],
+                     corpse_anchor=corpse_anchor)
             victims += splash
+        if corpse_anchor:
+            victims = [v for v in victims if not isinstance(v, Corpse)]
+            if not victims:
+                _log(st, "fizzle", f"{item.label}'s blast finds nothing living "
+                     f"near the corpse.", kind=effect.kind)
         # target_* value refs read the creature this iteration lands on (each of
         # a mode:all set reads its own stats); caster_obj is set by the ctx builder.
         for victim in victims:
@@ -3713,11 +3728,13 @@ def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> Lis
     # whatever living body the action's primary target happens to name. Enemy
     # components routinely aim their payload at a hero (`target_rule: valuation`)
     # while a corpse verb rides along; without this the "burn a fallen ally"
-    # rider bound to the HERO and exiled them outright.
-    if (not isinstance(desc, str) and desc is not None
-            and getattr(getattr(desc, "state", None), "value",
-                        getattr(desc, "state", None)) == "corpse"
-            and getattr(desc, "mode", None) != TargetMode.all):
+    # rider bound to the HERO and exiled them outright. A "$slot" ref resolves
+    # its descriptor first (§D19-6: player cards author the shared corpse slot).
+    real = _effect_desc(item, effect) if isinstance(desc, str) else desc
+    if (real is not None
+            and getattr(getattr(real, "state", None), "value",
+                        getattr(real, "state", None)) == "corpse"
+            and getattr(real, "mode", None) != TargetMode.all):
         tid = item.corpse_id or _site_target(item, ctx, effect, desc)
         return _mitigation_reroute(st, item, effect, [st.corpse(tid) if tid else None])
     if isinstance(desc, str) or desc is None:
@@ -4951,7 +4968,9 @@ def _splash_targets(st: GameState, pick, scope: str, kind: Optional[str] = None)
     incidental — never targeted, so hexproof/shroud do not shelter them. A downed
     ally standing in the scope is covered by a restorative verb and passed over by
     a harmful one, exactly as for a side-wide target (`_REACHES_DOWNED`)."""
-    if isinstance(pick, EnemyState):
+    if isinstance(pick, (EnemyState, Corpse)):
+        # Corpses are enemy-side bodies (§D9-1.1) — a corpse-anchored blast
+        # (§D19-6) covers the living enemies standing around it.
         pool = [c for c in st.living_enemies() if c is not pick]
     else:
         pool = [c for c in _party_pool(st, kind) + list(st.living_tokens())
@@ -6626,7 +6645,10 @@ def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
     needed. An explicit `state: "corpse"` narrows the pick to corpses only
     (enemy necromancy, Raise Dead)."""
     state = getattr(state, "value", state) or "living"
-    corpse_only = state == "corpse" and kind in CORPSE_LEGAL_EFFECTS
+    # An explicit corpse state means CORPSES ONLY, whatever verb owns the pick —
+    # the schema has already vetted which verbs may author it (corpse-legal, or
+    # a §D19-6 scoped deal_damage anchoring its blast on a body).
+    corpse_only = state == "corpse"
     opts = [] if corpse_only else _side_options(st, side)
     if targeted:
         opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
@@ -6649,7 +6671,7 @@ def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
             if e is not None and e.intent2 is not None:
                 extra.append((f"{tid}::2", f"{tl} — second intent"))
         opts = opts + extra
-    if kind in CORPSE_LEGAL_EFFECTS:
+    if kind in CORPSE_LEGAL_EFFECTS or corpse_only:
         opts = opts + [(c.id, f"{c.name} (corpse)") for c in st.corpses
                        if not (kind == "control" and c.is_boss)]
     if kind == "consume_corpse":

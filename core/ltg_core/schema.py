@@ -1548,14 +1548,25 @@ class Card(BaseModel):
                 # Charge is the enemy windup verb (D8-2.4); the player analogue is
                 # the ultimate gauge. Rejected in a loadout like `draw` on an enemy.
                 raise ValueError("charge is enemy-only and cannot appear on a card")
-            # Corpse axis (§D9-1.3): only corpse-legal verbs may aim at a corpse.
+            # Corpse axis (§D9-1.3): only corpse-legal verbs may aim at a corpse
+            # — with ONE exception (§D19-6): a `deal_damage` carrying a splash
+            # scope may anchor on a body. The corpse is the blast point, never a
+            # victim: the damage lands on everything living in its row (blast:
+            # plus adjacent rows). This is what lets Corpse Explosion share one
+            # corpse pick between its consume and its damage.
             desc = self.resolved_target(effect)
             state = getattr(desc, "state", None)
             if (state is not None and state != TargetState.living
                     and effect.kind not in CORPSE_LEGAL_EFFECTS):
-                raise ValueError(
-                    f"{effect.kind} requires a living target — only "
-                    f"{sorted(CORPSE_LEGAL_EFFECTS)} may target a corpse")
+                if (effect.kind == "deal_damage"
+                        and getattr(desc, "scope", None) is not None):
+                    pass  # §D19-6 corpse-anchored blast
+                else:
+                    raise ValueError(
+                        f"{effect.kind} requires a living target — only "
+                        f"{sorted(CORPSE_LEGAL_EFFECTS)} may target a corpse "
+                        "(exception: deal_damage WITH a splash scope anchors its "
+                        "blast on the body — §D19-6)")
             if effect.kind == "control":
                 # Control steals enemies (§D9-1.4) — its target side is always enemy.
                 if desc is not None and desc.side != Side.enemy:
