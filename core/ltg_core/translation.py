@@ -303,9 +303,15 @@ def _rows_phrase(rows) -> str:
 
 
 def _scope_suffix(desc) -> str:
-    """The splash rider on a chosen target (§D9-3.2)."""
+    """The splash rider on a chosen target (§D9-3.2). On a CORPSE pick the
+    suffix reads as ground (§D19-6): the body is the blast point, not a victim."""
     scope = getattr(desc, "scope", None)
     scope = getattr(scope, "value", scope)
+    state = getattr(getattr(desc, "state", None), "value", getattr(desc, "state", None))
+    if state == "corpse" and scope in ("row", "blast"):
+        return (" — the blast covers every enemy on its row"
+                if scope == "row"
+                else " — the blast covers every enemy on its row and the adjacent rows")
     if scope == "row":
         return " and its whole row"
     if scope == "blast":
@@ -1079,7 +1085,9 @@ _CLAUSE = {
                         f"at each Upkeep{_affliction_suffix(e)} (broken by damage)"),
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
-    "consume_corpse": lambda e: "are consumed",
+    # The chained-subject clause: the SUBJECT of a corpse-anchored chain is the
+    # blast's victims, but the consume spends the BODY — say so (§D19-6).
+    "consume_corpse": lambda e: "the corpse is consumed",
     "bounce": lambda e: "are returned to hand",
     "stun": lambda e: f"are stunned for {e.intents} intent(s)",
     "grant_keyword": lambda e: f"gain {_keyword_phrase(e.keywords, e.params)}",

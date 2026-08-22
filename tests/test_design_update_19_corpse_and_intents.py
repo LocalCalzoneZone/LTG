@@ -8,6 +8,10 @@ onto the stack long after they had stopped making sense (§D19-4).
 
 from __future__ import annotations
 
+import copy
+
+import pytest
+
 from ltg_combat.engine import (
     _cost_last,
     _intent_spoiled,
@@ -425,3 +429,117 @@ def test_a_corpse_exclusive_pick_offers_corpses_only():
     # Without the flag, exile offers the living AND the corpses.
     both = _pick_options(st, "enemy", True, "exile", state=None)
     assert {"living_one", "fallen"} <= {tid for tid, _ in both}
+
+
+# --------------------------------------------------------------------------- #
+# §D19-6 — the corpse-anchored blast (Corpse Explosion)
+# --------------------------------------------------------------------------- #
+CORPSE_EXPLOSION = {
+    "id": "corpse_explosion", "name": "Corpse Explosion",
+    "source_name": "Corpse Explosion", "rarity": "uncommon", "level": 2,
+    "type": "Sorcery", "timing": "sorcery", "cost": {"generic": 0, "colors": {}},
+    "targets": {"T1": {"mode": "chosen", "side": "enemy", "targeted": True,
+                       "state": "corpse", "scope": "row"}},
+    "effects": [
+        {"kind": "deal_damage", "amount": 4, "target": "$T1"},
+        {"kind": "consume_corpse", "target": "$T1"},
+    ],
+    "validated": True,
+}
+
+
+def test_scoped_damage_may_anchor_on_a_corpse_unscoped_may_not():
+    from ltg_core.schema import Card
+    Card.model_validate(CORPSE_EXPLOSION)                     # legal
+    bare = copy.deepcopy(CORPSE_EXPLOSION)
+    del bare["targets"]["T1"]["scope"]
+    with pytest.raises(ValueError, match="splash scope"):
+        Card.model_validate(bare)
+
+
+def test_corpse_explosion_reads_as_ground():
+    from ltg_core.schema import Card
+    from ltg_core.translation import render_effects
+    c = Card.model_validate(CORPSE_EXPLOSION)
+    text = render_effects(c.effects, c.targets)
+    assert "the blast covers every enemy on its row" in text
+    assert "the corpse is consumed" in text
+
+
+def test_corpse_explosion_end_to_end():
+    """One shared corpse pick serves both verbs: the cast offers CORPSES only,
+    the damage lands on the living in the corpse's row (other rows untouched),
+    the body itself takes nothing, and the consume resolves last."""
+    from ltg_combat.engine import apply_action, legal_actions
+
+    def _en(eid, row, hp=10):
+        return {"id": eid, "name": eid, "hp": hp, "level": 1, "row": row,
+                "intent": {"name": "Hit", "amount": 1, "action_type": "attack",
+                           "intent_type": "attack", "targeting": "lowest_hp_party",
+                           "mode": "melee"}}
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": 30, "power": 2, "hand_size": 1,
+                   "identity": ["B"], "row": "front", "attack_mode": "melee",
+                   "library": [copy.deepcopy(CORPSE_EXPLOSION), _filler("pad")]}],
+        "enemies": [_en("front_a", "front"), _en("front_b", "front"),
+                    _en("rear_c", "rear")]})
+    _lay_a_corpse(st, cid="husk", row="front")
+    for _ in range(200):
+        acts = legal_actions(st)
+        casts = [a for a in acts if a.kind == "cast" and a.card_id == "corpse_explosion"]
+        if casts:
+            assert all(a.target_id == "husk" for a in casts)  # corpse-only picks
+            st = apply_action(st, casts[0])[0]
+            break
+        a = next((a for a in acts if a.kind == "pass"), None) or \
+            next((a for a in acts if a.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+    for _ in range(30):
+        if not st.stack:
+            break
+        a = next((a for a in legal_actions(st) if a.kind == "pass"), None)
+        if a is None:
+            break
+        st = apply_action(st, a)[0]
+    assert st.enemy("front_a").hp == 6 and st.enemy("front_b").hp == 6
+    assert st.enemy("rear_c").hp == 10                       # a different row
+    assert st.corpse("husk") is None                          # spent, last
+    assert any(l.type == "splash" and l.data.get("corpse_anchor") for l in st.log)
+
+
+def test_a_blast_scope_covers_adjacent_rows_and_an_empty_row_fizzles():
+    from ltg_combat.engine import apply_action, legal_actions
+
+    card = copy.deepcopy(CORPSE_EXPLOSION)
+    card["targets"]["T1"]["scope"] = "blast"
+
+    def _en(eid, row, hp=10):
+        return {"id": eid, "name": eid, "hp": hp, "level": 1, "row": row,
+                "intent": {"name": "Hit", "amount": 1, "action_type": "attack",
+                           "intent_type": "attack", "targeting": "lowest_hp_party",
+                           "mode": "melee"}}
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": 30, "power": 2, "hand_size": 1,
+                   "identity": ["B"], "row": "front", "attack_mode": "melee",
+                   "library": [card, _filler("pad")]}],
+        "enemies": [_en("mid_a", "mid"), _en("rear_b", "rear")]})
+    _lay_a_corpse(st, cid="husk", row="front")   # empty row: blast reaches mid only
+    for _ in range(200):
+        acts = legal_actions(st)
+        casts = [a for a in acts if a.kind == "cast" and a.card_id == "corpse_explosion"]
+        if casts:
+            st = apply_action(st, casts[0])[0]
+            break
+        a = next((a for a in acts if a.kind == "pass"), None) or \
+            next((a for a in acts if a.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+    for _ in range(30):
+        if not st.stack:
+            break
+        a = next((a for a in legal_actions(st) if a.kind == "pass"), None)
+        if a is None:
+            break
+        st = apply_action(st, a)[0]
+    assert st.enemy("mid_a").hp == 6              # adjacent row covered
+    assert st.enemy("rear_b").hp == 10            # two rows out — untouched
+    assert st.corpse("husk") is None

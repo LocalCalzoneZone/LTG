@@ -1124,8 +1124,11 @@ function targetControlHtml(i, current, card, field = "target") {
   // Checked, the pick offers CORPSES ONLY — it cannot name a living enemy, and
   // a body gone by resolution simply fizzles.
   const kind = (editorItems[i] || {}).kind;
-  const corpse = d.mode === "chosen" && CORPSE_KINDS.includes(kind) ?
-    `<label class="inline mini" title="Corpse only (§D9-1.3): the pick offers corpses on the battlefield, never the living — and fizzles if the body is gone by resolution"><input type="checkbox" class="tgt-corpse" ${f} ${d.state === "corpse" ? "checked" : ""}/> corpse only</label>` : "";
+  const corpseable = CORPSE_KINDS.includes(kind) || kind === "deal_damage";
+  const corpse = d.mode === "chosen" && corpseable ?
+    `<label class="inline mini" title="${kind === "deal_damage"
+        ? "Corpse-anchored blast (§D19-6): the pick offers corpses only — the body is the blast point (it takes nothing), and the damage covers everything living in its splash. Requires a splash scope; checking this sets one."
+        : "Corpse only (§D9-1.3): the pick offers corpses on the battlefield, never the living — and fizzles if the body is gone by resolution"}"><input type="checkbox" class="tgt-corpse" ${f} ${d.state === "corpse" ? "checked" : ""}/> corpse only</label>` : "";
   // Splash scope (§D9-3.2): the pick's row, or its row plus adjacent rows.
   const scopeSel = d.mode === "chosen" ? scopeSelectHtml("tgt-scope", f, d.scope) : "";
   // Row filter (§D9-3.2) for a whole-side effect: everyone, or one row of them.
@@ -1691,6 +1694,7 @@ function openDetail(idx) {
           <select class="slot-side" data-slot="${s}">${SIDES.map((t) => `<option value="${t}" ${d.side === t ? "selected" : ""}>${SIDE_LABEL[t] || t}</option>`).join("")}</select>
           <label class="inline mini"><input type="checkbox" class="slot-exclude" data-slot="${s}" ${d.exclude_self ? "checked" : ""}/> another</label>
           <label class="inline mini"><input type="checkbox" class="slot-targeted" data-slot="${s}" ${d.targeted ? "checked" : ""}/> targets</label>
+          <label class="inline mini" title="Corpse only (§D9-1.3 / §D19-6): the pick offers corpses on the battlefield, never the living. On a deal_damage using this slot, add a splash scope — the body becomes the blast point and the damage covers its row."><input type="checkbox" class="slot-corpse" data-slot="${s}" ${d.state === "corpse" ? "checked" : ""}/> corpse only</label>
           ${scopeSelectHtml("slot-scope", `data-slot="${s}"`, d.scope)}
           <button class="slot-remove danger" data-slot="${s}" title="Remove slot">×</button>
         </div>`; }).join("")}
@@ -1851,7 +1855,12 @@ function wireDetail(idx) {
   document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], side: sel.value }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], exclude_self: cb.checked }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], targeted: cb.checked }); commitEffects(idx, true); }; });
-  document.querySelectorAll(".tgt-corpse").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], state: cb.checked ? "corpse" : undefined }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-corpse").forEach((cb) => { cb.onchange = () => {
+    const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target";
+    const next = { ...e[f], state: cb.checked ? "corpse" : undefined };
+    // §D19-6: a corpse-anchored deal_damage needs its splash scope — seed one.
+    if (cb.checked && e.kind === "deal_damage" && !next.scope) next.scope = "row";
+    e[f] = normTarget(next); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-scope").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], scope: sel.value || null }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-rows").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], rows: sel.value ? [sel.value] : null }); commitEffects(idx, true); }; });
 
@@ -1985,6 +1994,9 @@ function wireDetail(idx) {
   });
   document.querySelectorAll(".slot-exclude").forEach((cb) => {
     cb.onchange = () => { card.targets[cb.dataset.slot] = normTarget({ ...card.targets[cb.dataset.slot], exclude_self: cb.checked }); recheckCard(idx, true); };
+  });
+  document.querySelectorAll(".slot-corpse").forEach((cb) => {
+    cb.onchange = () => { card.targets[cb.dataset.slot] = normTarget({ ...card.targets[cb.dataset.slot], state: cb.checked ? "corpse" : undefined }); recheckCard(idx, true); };
   });
   document.querySelectorAll(".slot-targeted").forEach((cb) => {
     cb.onchange = () => { card.targets[cb.dataset.slot] = normTarget({ ...card.targets[cb.dataset.slot], targeted: cb.checked }); recheckCard(idx, true); };
