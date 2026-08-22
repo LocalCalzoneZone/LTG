@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "tallow_ledger",
+  "name": "Tallow Ledger",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 15,
+  "flavor": "Everything owed, in a hand nobody else reads.",
+  "art_desc": "A palm-sized wax-leaf ledger in a greasy leather cover, a stylus through the strap.",
+  "art_url": "/art/items/tallow_ledger/item-49df8d79.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 1,
+      "stat": "cards"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

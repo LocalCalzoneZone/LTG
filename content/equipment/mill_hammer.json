@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "mill_hammer",
+  "name": "Mill Hammer",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 20,
+  "flavor": "Made for driving pins. Repurposed.",
+  "art_desc": "A short heavy hammer with a square iron head and a shaft bound in copper wire.",
+  "art_url": "/art/items/mill_hammer/item-872b4599.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "stat",
+      "amount": 2,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

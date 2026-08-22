@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "reedcutters_bill",
+  "name": "Reedcutter's Bill",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 20,
+  "flavor": "A farm tool that learned a second trade.",
+  "art_desc": "A hooked bill blade lashed to a two-yard pole, the hook filed to a point.",
+  "art_url": "/art/items/reedcutters_bill/item-a9e7edc5.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "reach"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

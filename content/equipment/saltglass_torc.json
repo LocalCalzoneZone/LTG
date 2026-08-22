@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "saltglass_torc",
+  "name": "Saltglass Torc",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 15,
+  "flavor": "Cold on the neck, and steadying.",
+  "art_desc": "An open neck-ring of twisted iron capped with two lumps of cloudy sea glass.",
+  "art_url": "/art/items/saltglass_torc/item-0740b912.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 6,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

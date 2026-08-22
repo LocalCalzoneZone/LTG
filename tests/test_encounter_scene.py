@@ -14,27 +14,68 @@ from ltg_game_server import content, llm
 _SCENE = "A drowned library at low tide: shelves furred with kelp, drifting pages."
 
 
+# One ROLE per body. Generation enforces the §D14 kit floor (two components
+# each) AND the anti-sameness gate (no two enemies sharing a kit, four distinct
+# archetypes, more than one row and reach), so the fixture pool has to be a real
+# pool — four copies of one statline is exactly what those checks reject.
+_ROLES = {
+    "wader": ("front", "melee", [
+        {"id": "jab", "archetype": "Burst", "timing": "proactive",
+         "priority": 30, "cooldown": 2, "target_rule": "valuation",
+         "telegraph": "Jab — deal 3",
+         "verbs": [{"kind": "deal_damage", "amount": 3,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+        {"id": "riposte", "archetype": "Punish", "timing": "reactive",
+         "trigger": "on_hit", "cooldown": 2, "priority": 25,
+         "target_rule": "trigger_source", "telegraph": "Riposte — deal 2",
+         "verbs": [{"kind": "deal_damage", "amount": 2,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+    ]),
+    "archivist": ("rear", "ranged", [
+        {"id": "hush", "archetype": "Debilitate", "timing": "proactive",
+         "priority": 30, "cooldown": 3, "target_rule": "highest_threat",
+         "telegraph": "Hush — stun a hero",
+         "verbs": [{"kind": "stun",
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+        {"id": "page_cut", "archetype": "Burst", "timing": "proactive",
+         "priority": 40, "cooldown": 2, "target_rule": "valuation",
+         "telegraph": "Page-Cut — deal 2",
+         "verbs": [{"kind": "deal_damage", "amount": 2,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+    ]),
+    "pale_eel": ("mid", "ranged", [
+        {"id": "coil", "archetype": "Escalate", "timing": "proactive",
+         "priority": 40, "cooldown": 2, "target_rule": "self",
+         "telegraph": "Coil — +1/+1",
+         "verbs": [{"kind": "counters", "power": 1, "toughness": 1,
+                    "target": {"mode": "self"}}]},
+        {"id": "lash", "archetype": "Burst", "timing": "proactive",
+         "priority": 30, "cooldown": 2, "target_rule": "channeling_player",
+         "telegraph": "Lash — deal 3",
+         "verbs": [{"kind": "deal_damage", "amount": 3,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+    ]),
+    "tomekeeper": ("rear", "ranged", [
+        {"id": "mend", "archetype": "Fortify", "timing": "proactive",
+         "priority": 20, "cooldown": 2, "target_rule": "lowest_hp_ally",
+         "telegraph": "Mend — heal an ally 4",
+         "verbs": [{"kind": "heal", "amount": 4,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+        {"id": "ink_spit", "archetype": "Burst", "timing": "proactive",
+         "priority": 35, "cooldown": 2, "target_rule": "valuation",
+         "telegraph": "Ink-Spit — deal 2",
+         "verbs": [{"kind": "deal_damage", "amount": 2,
+                    "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+    ]),
+}
+
+
 def _enemy(eid, desc="A drowned scholar in rotted robes, lantern-eyed."):
-    # Two components per enemy: generation now enforces the §D14 kit floor
-    # (every enemy needs at least two components).
+    row, mode, comps = _ROLES[eid]
     return {"id": eid, "name": eid.title(), "hp": 8, "power": 2, "level": 2,
-            "row": "front", "attack_mode": "melee",
+            "row": row, "attack_mode": mode,
             "flavor": "hits things", "description": desc,
-            "components": [
-                {"id": "jab", "archetype": "Burst", "timing": "proactive",
-                 "priority": 30, "cooldown": 2, "target_rule": "valuation",
-                 "telegraph": "Jab — deal 3",
-                 "verbs": [{"kind": "deal_damage", "amount": 3,
-                            "target": {"mode": "chosen", "side": "ally",
-                                       "targeted": True}}]},
-                {"id": "riposte", "archetype": "Punish", "timing": "reactive",
-                 "trigger": "on_hit", "cooldown": 2, "priority": 25,
-                 "target_rule": "trigger_source",
-                 "telegraph": "Riposte — deal 2",
-                 "verbs": [{"kind": "deal_damage", "amount": 2,
-                            "target": {"mode": "chosen", "side": "ally",
-                                       "targeted": True}}]},
-            ]}
+            "components": [dict(c) for c in comps]}
 
 
 def _encounter(name="Scene Test Zzz", scene=_SCENE, desc=True):

@@ -1,0 +1,27 @@
+{
+  "kind": "item",
+  "id": "reliquary_bead",
+  "name": "Reliquary Bead",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 25,
+  "flavor": "Someone's knucklebone. Someone's saint.",
+  "art_desc": "A single large bead of bone banded in silver, hung on a plain thong.",
+  "art_url": "/art/items/reliquary_bead/item-8d7da18f.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 4,
+      "stat": "hp"
+    },
+    {
+      "kind": "stat",
+      "amount": 1,
+      "stat": "mana"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

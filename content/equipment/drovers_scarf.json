@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "drovers_scarf",
+  "name": "Drover's Scarf",
+  "slot": "accessory",
+  "rarity": "common",
+  "level_min": 2,
+  "points_price": 10,
+  "flavor": "Wool keeps the weather off the argument.",
+  "art_desc": "A thick undyed wool scarf, road-stained, wrapped twice and pinned with a nail.",
+  "art_url": "/art/items/drovers_scarf/item-adbf7f4d.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 4,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

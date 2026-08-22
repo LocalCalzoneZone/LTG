@@ -1,0 +1,250 @@
+{
+  "name": "The Sluice-Grates of Moss-Crag",
+  "scene": "A stepped terrace of red clay sluice-troughs filled with orange wastewater, surrounded by creaking wooden wash-screens, rusted iron grates, and smoking acid vats.",
+  "scene_image": "/art/the_excavation_of_moss_crag__phase2/scene-f21313d0.png",
+  "enemies": [
+    {
+      "id": "rust_biter",
+      "name": "Rust-Biter Scrap Hound",
+      "flavor": "A mangy beast with copper-capped teeth that leave festering, infected wounds.",
+      "description": "A lean, muscular war-hound clad in riveted scrap plates, its jaws reinforced with serrated iron braces that drip oily green saliva.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "infect"
+      ],
+      "components": [
+        {
+          "id": "vicious_snap",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Vicious Snap \u2014 savage bite for 3 damage and infects",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "lockjaw_clamp",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "once_per_encounter": true,
+          "target_rule": "valuation",
+          "telegraph": "Lockjaw Clamp \u2014 taunts a hero to keep them in range",
+          "verbs": [
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase2/rust_biter-39fb6cbe.png"
+    },
+    {
+      "id": "sluice_hauler",
+      "name": "Sluice Hauler",
+      "flavor": "Drags heroes into the front mud lanes with a heavy timber gaff.",
+      "description": "A burly goblin brute wearing thick rubberized waders and an iron apron, carrying a long pole-mounted hook caked in drying mire.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "gaff_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Gaff Hook \u2014 drags a backline hero to the front row",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "mud_flourish",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Mud Flourish \u2014 hurls grit at the attacker, applying -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase2/sluice_hauler-240dee2f.png"
+    },
+    {
+      "id": "sludge_stoker",
+      "name": "Sludge Stoker",
+      "flavor": "Vents boiling chemical runoff across your party each turn until shattered.",
+      "description": "A hunched alchemical overseer wearing tinted glass goggles and a leather respirator, operating a bellows strapped to a copper boiler.",
+      "hp": 5,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "acid_sluice_vent",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Acid Sluice Vent \u2014 channels caustic steam: deals 2 damage each Upkeep to chosen hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "grease_screen",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Grease Screen \u2014 coats a hero in slick oil, applying -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase2/sludge_stoker-7a26db87.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "rust_biter",
+      "sludge_stoker"
+    ],
+    "2": [
+      "rust_biter",
+      "sluice_hauler",
+      "sluice_hauler",
+      "sludge_stoker"
+    ],
+    "3": [
+      "rust_biter",
+      "rust_biter",
+      "sluice_hauler",
+      "sluice_hauler",
+      "sludge_stoker",
+      "sludge_stoker"
+    ],
+    "4": [
+      "rust_biter",
+      "rust_biter",
+      "sluice_hauler",
+      "sluice_hauler",
+      "sluice_hauler",
+      "sludge_stoker",
+      "sludge_stoker",
+      "sludge_stoker"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "sludge_stoker",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "Slag Vats Rupture \u2014 boiling acid washes across the terrace",
+      "verbs": [
+        {
+          "kind": "deal_damage",
+          "amount": 2,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "nonlethal": false
+        },
+        {
+          "kind": "counters",
+          "power": 1,
+          "toughness": 1,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        }
+      ]
+    },
+    "resolved": false
+  }
+}

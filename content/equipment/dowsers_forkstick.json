@@ -1,0 +1,55 @@
+{
+  "kind": "item",
+  "id": "dowsers_forkstick",
+  "name": "Dowser's Forkstick",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 15,
+  "flavor": "It pulls. It has never said toward what.",
+  "art_desc": "A forked hazel switch, bark stripped at the grips, the tine ends stained green.",
+  "art_url": "/art/items/dowsers_forkstick/item-c7e4aecc.png",
+  "statics": [
+    {
+      "kind": "ability",
+      "amount": 0,
+      "card": {
+        "id": "find_the_vein",
+        "name": "Find the Vein",
+        "source_name": "Find the Vein",
+        "ignore_source": false,
+        "rarity": "common",
+        "level": 1,
+        "type": "Ability",
+        "cost": {
+          "generic": 2,
+          "colors": {},
+          "x": false
+        },
+        "timing": "sorcery",
+        "original_text": "",
+        "translated_text": "Draw a card.",
+        "flavor_text": "",
+        "effects": [
+          {
+            "kind": "draw",
+            "amount": 1,
+            "target": {
+              "mode": "self",
+              "exclude_self": false,
+              "targeted": false
+            }
+          }
+        ],
+        "targets": {},
+        "needs_translation": false,
+        "text_override": false,
+        "validated": true,
+        "image": ""
+      }
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "tide_iron",
+  "name": "Tide Iron",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 6,
+  "points_price": 40,
+  "flavor": "It comes in whether you are ready or not.",
+  "art_desc": "A great single-edged blade of grey iron, pitted with salt, the grip wound in sealskin.",
+  "art_url": "/art/items/tide_iron/item-57030dcc.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 2
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "trample"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

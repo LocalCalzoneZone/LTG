@@ -25,7 +25,7 @@ import random
 from math import ceil
 from typing import Any, Dict, List, Optional, Tuple
 
-from ltg_core.schema import Character, LEVEL_UP_POINTS, level_for_points
+from ltg_core.schema import Character, PHASE_GRANTS, level_for_points
 
 from ..engine import apply_action, legal_actions
 from ..scenario import compose_spec, scale_encounter, state_from_dict
@@ -39,12 +39,18 @@ ACTION_CAP = 20000    # backstop for in-turn loops (same anomaly treatment)
 GAUGE_CARRY = 0.5
 HP_FLOOR_PCT = 25
 
-# The balance-register Power bump (T-64), replicated from the game server's
-# content layer (ltg_combat must not depend on it). Keep in sync with
-# ltg_game_server.content.ENEMY_POWER_BONUS / BOSS_POWER_BONUS; --raw-power
-# disables it, which is exactly the retroactive T-64 before/after diff.
+# The balance register (T-64 Power, §D18-2 abilities + enrage), replicated from
+# the game server's content layer (ltg_combat must not depend on it). Keep in
+# sync with ltg_game_server.content.ENEMY_POWER_BONUS / BOSS_POWER_BONUS /
+# ENEMY_ABILITY_BONUS / BOSS_ABILITY_BONUS / ROW_ABILITY_BONUS / enrage_scale;
+# --raw-power disables the whole register, which is exactly the retroactive
+# before/after diff.
 ENEMY_POWER_BONUS = 2
 BOSS_POWER_BONUS = 4
+ENEMY_ABILITY_BONUS = 2
+BOSS_ABILITY_BONUS = 4
+ROW_ABILITY_BONUS = 2
+_HOSTILE_DAMAGE_VERBS = ("deal_damage", "lose_life")
 
 # Difficulty at RUN time: content is treated as authored at "standard", so
 # "standard" is the identity and the other difficulties apply the generation
@@ -86,13 +92,35 @@ def _scale_difficulty(scenario: Dict[str, Any], difficulty: str) -> None:
             t["hp"] = bump(t["hp"])
 
 
-def _bump_enemy_power(scenario: Dict[str, Any]) -> None:
-    """T-64 in place: +2 Power every enemy, +4 a boss — chassis Power and
-    attack-type intent template amounts (melee + ranged fallback)."""
+def _hostile_target(verb: Dict[str, Any]) -> bool:
+    """Enemy authoring frame: side "ally" is the party."""
+    t = verb.get("target")
+    return isinstance(t, dict) and t.get("side") in ("ally", "any")
+
+
+def _row_shaped(verb: Dict[str, Any]) -> bool:
+    t = verb.get("target")
+    return isinstance(t, dict) and bool(t.get("rows") or t.get("scope") in ("row", "blast"))
+
+
+def enrage_scale(party_size: int) -> "tuple[float, float]":
+    """§D18-2 (lethality, padding) — see ltg_game_server.content.enrage_scale."""
+    n = max(1, int(party_size))
+    return float(n), 1.0 + (n - 1) / 2.0
+
+
+def _bump_enemy_power(scenario: Dict[str, Any], party_size: int = 1) -> None:
+    """The balance register in place: +2 Power every enemy, +4 a boss (chassis
+    Power and attack-type intent template amounts), the same bump on hostile
+    component damage (+ROW_ABILITY_BONUS on a dodgeable row/blast shape), and a
+    boss's Enrage scaled by party size (§D18-2)."""
+    lethal, pad = enrage_scale(party_size)
     for e in scenario.get("enemies", []):
         if not isinstance(e, dict):
             continue
-        bump = BOSS_POWER_BONUS if e.get("is_boss") else ENEMY_POWER_BONUS
+        boss = bool(e.get("is_boss"))
+        bump = BOSS_POWER_BONUS if boss else ENEMY_POWER_BONUS
+        ability = BOSS_ABILITY_BONUS if boss else ENEMY_ABILITY_BONUS
         base = e.get("power", e.get("intent", {}).get("amount", 0))
         try:
             e["power"] = int(base) + bump
@@ -103,6 +131,35 @@ def _bump_enemy_power(scenario: Dict[str, Any]) -> None:
             if (isinstance(tmpl, dict) and isinstance(tmpl.get("amount"), int)
                     and tmpl.get("intent_type", "attack") == "attack"):
                 tmpl["amount"] += bump
+        for comp in e.get("components") or []:
+            if not isinstance(comp, dict):
+                continue
+            if comp.get("archetype") == "Enrage":
+                for verb in comp.get("verbs") or []:
+                    if not isinstance(verb, dict):
+                        continue
+                    kind = verb.get("kind")
+                    if kind in ("counters", "pump"):
+                        for field, factor in (("power", lethal), ("toughness", pad),
+                                              ("hp", pad)):
+                            if isinstance(verb.get(field), int):
+                                verb[field] = ceil(verb[field] * factor)
+                    elif kind in ("deal_damage", "lose_life", "heal"):
+                        if isinstance(verb.get("amount"), int):
+                            verb["amount"] = ceil(verb["amount"] * pad)
+                    elif kind == "create_token" and isinstance(verb.get("count"), int):
+                        verb["count"] += max(0, int(party_size) - 1)
+                continue
+            row_comp = bool(comp.get("target_row"))
+            for verb in comp.get("verbs") or []:
+                if (not isinstance(verb, dict)
+                        or verb.get("kind") not in _HOSTILE_DAMAGE_VERBS
+                        or not isinstance(verb.get("amount"), int)):
+                    continue
+                if not (_hostile_target(verb) or row_comp):
+                    continue
+                extra = ROW_ABILITY_BONUS if (row_comp or _row_shaped(verb)) else 0
+                verb["amount"] += ability + extra
 
 
 def prepare_scenario(content: Dict[str, Any], party_size: int,
@@ -115,7 +172,7 @@ def prepare_scenario(content: Dict[str, Any], party_size: int,
     _scale_difficulty(scenario, difficulty)
     scenario = scale_encounter(scenario, party_size)
     if power_bump:
-        _bump_enemy_power(scenario)
+        _bump_enemy_power(scenario, party_size)
     return scenario
 
 
@@ -499,10 +556,12 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
             live_id = live_ids[slot] if slot < len(live_ids) else None
             old = dict(lo.get("character", {}))
             # Level is derived from cumulative earned points (Update 17 T-78);
+            # the phase just won pays its grant (+10 / +20 / +30, §D17-2.3), so
             # a lone adventure still walks 1 → 2 → 3.
-            earned = int(old.get("earned_points", 0)) + LEVEL_UP_POINTS
+            grant = PHASE_GRANTS[i] if i < len(PHASE_GRANTS) else PHASE_GRANTS[-1]
+            earned = int(old.get("earned_points", 0)) + grant
             new_level = level_for_points(earned)
-            available = banked.get(live_id, 0) + LEVEL_UP_POINTS
+            available = banked.get(live_id, 0) + grant
             candidate = {**old, "level": new_level, "earned_points": earned}
             new_char, spent = policy.spend_level_up(candidate, available)
             try:

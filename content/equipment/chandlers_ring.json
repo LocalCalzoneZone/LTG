@@ -1,0 +1,55 @@
+{
+  "kind": "item",
+  "id": "chandlers_ring",
+  "name": "Chandler's Ring",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 10,
+  "flavor": "Enough light to see the next step.",
+  "art_desc": "A plain wax-yellow ring of pressed tallow and brass, warm to the touch.",
+  "art_url": "/art/items/chandlers_ring/item-ec3fa7dc.png",
+  "statics": [
+    {
+      "kind": "ability",
+      "amount": 0,
+      "card": {
+        "id": "steady_light",
+        "name": "Steady Light",
+        "source_name": "Steady Light",
+        "ignore_source": false,
+        "rarity": "common",
+        "level": 1,
+        "type": "Ability",
+        "cost": {
+          "generic": 0,
+          "colors": {},
+          "x": false
+        },
+        "timing": "instant",
+        "original_text": "",
+        "translated_text": "Scry 1.",
+        "flavor_text": "",
+        "effects": [
+          {
+            "kind": "scry",
+            "amount": 1,
+            "target": {
+              "mode": "self",
+              "exclude_self": false,
+              "targeted": false
+            }
+          }
+        ],
+        "targets": {},
+        "needs_translation": false,
+        "text_override": false,
+        "validated": true,
+        "image": ""
+      }
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

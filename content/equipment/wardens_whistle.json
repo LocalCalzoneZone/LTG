@@ -1,0 +1,58 @@
+{
+  "kind": "item",
+  "id": "wardens_whistle",
+  "name": "Warden's Whistle",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 20,
+  "flavor": "Two short blasts: hold where you are.",
+  "art_desc": "A bone whistle on a braided cord, the mouthpiece polished dark.",
+  "art_url": "/art/items/wardens_whistle/item-acb0c9be.png",
+  "statics": [
+    {
+      "kind": "ability",
+      "amount": 0,
+      "card": {
+        "id": "rally_the_line",
+        "name": "Rally the Line",
+        "source_name": "Rally the Line",
+        "ignore_source": false,
+        "rarity": "common",
+        "level": 1,
+        "type": "Ability",
+        "cost": {
+          "generic": 1,
+          "colors": {},
+          "x": false
+        },
+        "timing": "instant",
+        "original_text": "",
+        "translated_text": "An ally gets +1/+1 until end of turn.",
+        "flavor_text": "",
+        "effects": [
+          {
+            "kind": "pump",
+            "power": 1,
+            "toughness": 1,
+            "target": {
+              "mode": "chosen",
+              "side": "ally",
+              "exclude_self": false,
+              "targeted": false
+            },
+            "duration": "this_turn"
+          }
+        ],
+        "targets": {},
+        "needs_translation": false,
+        "text_override": false,
+        "validated": true,
+        "image": ""
+      }
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

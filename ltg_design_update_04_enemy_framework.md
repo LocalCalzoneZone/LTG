@@ -124,7 +124,7 @@ Component effects scale with the enemy's Level L. Standard magnitudes (a generat
 | lifelink | 3 | 3 `[T-31]` |
 | deathtouch | 3 | 4 `[T-32]` |
 | protection | 4 | 3 `[T-33]` |
-| hexproof | 4 | 4 `[T-34]` |
+| hexproof | 5 | 6 `[T-34]` (raised from 4/4 — Update 18 playtest, §D19-3) |
 | indestructible | 6 | 6 `[T-35]` |
 
 **Never on enemies:** first strike, vigilance, haste (player action-economy only). Keyword meanings per Update 01 §R-1/§R-7 and GDD §7.
@@ -214,7 +214,7 @@ Colors B/R. Chassis: Husk, Skirmisher, Caster-frame, Bruiser. Keywords: flying, 
 **The two blends that motivated this framework** (both legal, both priced honestly):
 
 - **Ironhide Warleader — "tanky fighter that heals when hurt" (L5, 30):** Bruiser +6 HP +1 Pwr → 10 HP / 3 Pwr melee front (19) · trample (2) · **Fortify-self** (3, cd 2, **prio 10**, condition `self_hp < 50%`): heal **7** · **Punish reactive** (5, cd 2, prio 25): `on_hit` by melee → deal 2 to the attacker. Total 29/30. Healthy → it swings; bloodied → the heal rule's condition flips true and outranks the attack. The condition **is** the arbitration.
-- **Mistveil Hexer — "evasive magic rogue" (L4, 25):** Skirmisher +3 HP → 5 HP / 2 Pwr (13) · hexproof (4) · **Debilitate** (4 ×1.5 cd-1 = 6, prio 30): stun or wound −1/−1, target = valuation · Evasive (2, prio 20): reposition when melee-threatened. Total 25/25. Hard to pin (hexproof + repositioning), chips your action economy every turn.
+- **Mistveil Hexer — "evasive magic rogue" (L5, 30):** Skirmisher +3 HP → 5 HP / 2 Pwr (13) · hexproof (6, min level 5 — reprised §D19-3) · **Debilitate** (4 ×1.5 cd-1 = 6, prio 30): stun or wound −1/−1, target = valuation · Counter (3 +2 reactive = 5, prio 15): counter one spell · Evasive (2, prio 20): reposition when melee-threatened. Total 32/30 — trimmed to fit by dropping the Debilitate to cooldown 2 (4). Hard to pin (hexproof + repositioning), chips your action economy every turn.
 
 ---
 

@@ -93,7 +93,6 @@ class Session:
         # The last scenario transition ("next_act" / "scenario_complete" /
         # "everquest" / "town" / "dead") — informational, for the app + tests.
         self.pending_transition: Optional[str] = None
-        self._rewards_done = False
         self._fleeing = False
         self.state = state  # authoritative (un-settled) engine state (None in town)
         # Presentation pacing (engine settle stops): ONLY the game server's
@@ -339,15 +338,26 @@ class Session:
         sc = self.scenario
         if sc is None or self.adventure is None or self.state is None:
             return
-        if self.adventure.complete and sc.rewards is None and not getattr(self, "_rewards_done", False):
-            # §D17-4.5: the Rewards modal comes BEFORE the return to town; the
-            # victory stays suppressed until every drop is placed and accepted.
-            sc.open_rewards(seed=random.randrange(2**31))
-            return
-        if self.adventure.complete and sc.rewards is not None:
-            return  # waiting on the rewards modal
         if self.adventure.complete:
-            self._rewards_done = False
+            # The act's WRAP-UP, in order (§D17-4.5 / §D17-2.3): the Rewards
+            # modal, then the act-end level-up screen queued behind it, then the
+            # ride to town. The finale's victory stays suppressed throughout.
+            if sc.act_wrapup is None:
+                sc.act_wrapup = "rewards"
+                sc.open_rewards(seed=random.randrange(2**31))
+                return
+            if sc.act_wrapup == "rewards":
+                if sc.rewards is not None:
+                    return                      # waiting on the modal
+                if self.adventure.open_final_gate():
+                    sc.act_wrapup = "levelup"
+                    return                      # waiting on the level-up screen
+                sc.act_wrapup = "done"
+            if sc.act_wrapup == "levelup":
+                if not self.adventure.all_confirmed():
+                    return
+                sc.act_wrapup = "done"
+        if self.adventure.complete:
             transition = sc.on_adventure_complete(self.state)
             self.pending_transition = transition
             if transition == "next_act":
@@ -642,7 +652,6 @@ class Session:
                 sc.loadouts = saved
         else:
             sc.accept_rewards()
-        self._rewards_done = True
         self.save_point("rewards", None)
         self._scenario_transitions()
 
@@ -749,6 +758,12 @@ class Session:
         if self.seats.get(character_id) != client_id:
             raise ValueError("you do not control that character")
         self.adventure.confirm_level_up(character_id, build)
+        if self.adventure.is_final_gate:
+            # The act-end screen (§D17-2.3): no phase follows it — once every
+            # seat has confirmed, the act wraps up and the party rides to town.
+            if self.adventure.all_confirmed():
+                self._scenario_transitions()
+            return
         if self.adventure.all_confirmed():
             seed = random.randrange(2**31)
             # The phase-boundary auto-save (§D17-3.2) is taken BEFORE the next

@@ -379,7 +379,9 @@ def test_session_suppresses_result_and_gates_confirm_by_seat():
     lu = adv["level_up"]
     assert lu["next_level"] == 2
     rows = {r["id"]: r for r in lu["characters"]}
-    assert "build" in rows["soren"] and rows["soren"]["available"] == 30
+    # Phase I pays +10 (T-57): the pool is what is spendable at the screen.
+    assert "build" in rows["soren"] and rows["soren"]["available"] == 10
+    assert rows["soren"]["earned_points"] == 10 and lu["kind"] == "levelup"
     assert "build" not in rows["ys"]  # another seat: confirmed/waiting light only
 
     # Seat gating: A cannot confirm for a character it does not control.
@@ -409,3 +411,43 @@ def test_plain_encounter_sessions_are_unchanged():
     assert session.public_result() == "victory"
     with pytest.raises(ValueError, match="not an adventure"):
         session.confirm_level_up("A", "soren", {})
+
+
+def test_a_held_skill_channel_never_joins_the_deck():
+    """Playtest bug: a character holding a CHANNELED Skill at the phase boundary
+    had its card folded into the carried deck — the Skill was then dealt into the
+    next phase's hand as a real card, one more copy per boundary. Sheet content
+    (Skill / Ultimate) is not deck, and never carries."""
+    from ltg_combat.state import Channel
+
+    skill = {"id": "skill_resonate", "name": "Resonate", "source_name": "Skill",
+             "type": "Skill", "rarity": "common", "level": 1,
+             "cost": {"generic": 0, "colors": {}, "x": False},
+             "timing": "channeled", "original_text": "",
+             "translated_text": "While channeled: nothing in particular.",
+             "effects": [], "needs_translation": False}
+    loadouts = copy.deepcopy(content.loadouts_for(["loadout_soren", "loadout_ys"]))
+    loadouts[0]["character"]["skill"] = skill
+
+    aid = content.save_adventure(_adventure())["id"]
+    run = AdventureRun(aid)
+    state, _portraits, _art, _eid = run.start(
+        ["loadout_soren", "loadout_ys"], seed=11, loadouts=loadouts)
+    soren = state.party[0]
+    assert soren.skill is not None and soren.skill.id == "skill_resonate"
+    deck_size = len(soren.hand) + len(soren.library) + len(soren.graveyard)
+
+    # Win the phase while the Skill's channel is still held.
+    soren.channels = [Channel(card=soren.skill, holder_id=soren.id)]
+    state.result = "victory"
+    run.on_state_change(state)
+    assert "Resonate" not in [c.name for c in run.carry[soren.id]["cards"]]
+
+    run.confirm_level_up(soren.id, {})
+    run.confirm_level_up(state.party[1].id, {})
+    new_state, _p, _a, _eid2 = run.advance(seed=12)
+    s2 = new_state.character(soren.id)
+    assert "Resonate" not in [c.name for c in s2.hand + s2.library + s2.graveyard]
+    assert len(s2.hand) + len(s2.library) == deck_size
+    # It is still on the sheet, and its once-per-encounter use has reset.
+    assert s2.skill is not None and s2.skill.name == "Resonate" and not s2.skill_used

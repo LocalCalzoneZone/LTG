@@ -23,12 +23,13 @@ const SMALL_BTN =
  * narrative splash also opens Phase I (its narration is the adventure's opening).
  *
  * WHERE these render: the component is mounted INSIDE the bottom action-bar
- * wrapper, and the two post-combat screens (phase victory, level-up) cover only
- * that strip — `absolute inset-0`, exactly like the game-over splash. The board
- * you just won on and the log stay readable and inspectable underneath. Only the
- * narrative splash, which opens the NEXT phase over its own scene art, goes
- * full-screen (`fixed`, below the 42px ribbon so Copy Link / seats / Options
- * stay reachable — e.g. inviting an ally before Phase I begins).
+ * wrapper. The phase-victory splash covers only that strip — `absolute inset-0`,
+ * exactly like the game-over splash — so the board you just won on and the log
+ * stay readable and inspectable underneath. The level-up screen and the
+ * narrative splash both go full-screen (`fixed`, below the 42px ribbon so Copy
+ * Link / seats / Options stay reachable — e.g. inviting an ally before Phase I
+ * begins): the level-up as a centred modal over a dimmed board, the same
+ * treatment the Spoils uses, and the narration over the next phase's scene art.
  */
 export function AdventureFlow() {
   const snapshot = useGame((s) => s.snapshot);
@@ -50,15 +51,22 @@ export function AdventureFlow() {
   if (snapshot.result != null) return null;
 
   if (adventure.level_up) {
-    if (!victorySeen[key]) {
+    // The act-end screen (§D17-2.3) arrives AFTER the spoils — the finale's
+    // victory treatment and the Rewards modal have already played, so it opens
+    // straight onto the build.
+    if (!victorySeen[key] && !adventure.level_up.final) {
       if (!boundaryReady) return null; // the killing blow plays out first
       return (
         <PhaseVictorySplash
           phase={adventure.phase}
           phaseName={adventure.phase_name}
+          label={adventure.level_up.kind === "interlude" ? "Press On" : "Level Up"}
           onContinue={() => setVictorySeen((m) => ({ ...m, [key]: true }))}
         />
       );
+    }
+    if (adventure.level_up.kind === "interlude") {
+      return <InterludeScreen adventure={adventure} />;
     }
     return <LevelUpScreen adventure={adventure} />;
   }
@@ -82,10 +90,11 @@ export function AdventureFlow() {
 }
 
 /** "Phase I — clear": the phase-labelled victory treatment (§D10-6.3 step 1). */
-function PhaseVictorySplash({ phase, phaseName, onContinue }: {
+function PhaseVictorySplash({ phase, phaseName, onContinue, label = "Level Up" }: {
   phase: number;
   phaseName: string;
   onContinue: () => void;
+  label?: string;
 }) {
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 overflow-y-auto bg-ink-0/95 px-6 py-3 text-center">
@@ -104,7 +113,7 @@ function PhaseVictorySplash({ phase, phaseName, onContinue }: {
         onClick={onContinue}
         className="chamfer-x caps-label mt-2 bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
       >
-        Level Up
+        {label}
       </button>
     </div>
   );
@@ -212,6 +221,67 @@ function draftCost(d: Draft, base: BuildView, prices: BuildPrices): number {
   );
 }
 
+/** The Phase Clear INTERLUDE (§D17-2.3): the phase paid its points into the
+ * pool, but this boundary buys nothing — the party checks its gear and presses
+ * on. Points are spent at the act's end, behind the spoils. */
+function InterludeScreen({ adventure }: { adventure: AdventureBlock }) {
+  const you = useGame((s) => s.you);
+  const confirmLevelUp = useGame((s) => s.confirmLevelUp);
+  const setSheetFor = useGame((s) => s.setSheetFor);
+  const lu = adventure.level_up!;
+
+  const mine = lu.characters.filter((r) => you.includes(r.id) && r.build);
+  const waiting = mine.filter((r) => !r.confirmed);
+  const banked = mine.find((r) => r.available != null)?.available ?? null;
+
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-ink-0/95 px-6 py-4 text-center">
+      <div className="caps-label text-[12px] tracking-[0.3em] text-brass">
+        +{lu.phase_grant} Points Banked
+      </div>
+      <div className="max-w-md text-sm font-light text-mist">
+        {banked != null ? `${banked} points are waiting` : "Your points are waiting"} —
+        they are spent at the level-up screen when the act is done. Gear and belt
+        can be changed here.
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {lu.characters.map((r) => (
+          <span
+            key={r.id}
+            className={`caps-label border px-2 py-0.5 text-[9px] tracking-[0.14em] ${
+              r.confirmed ? "border-vigor/60 text-vigor" : "border-line text-mist"
+            }`}
+          >
+            {r.name} · {r.confirmed ? "ready" : "waiting"}
+          </span>
+        ))}
+      </div>
+      {waiting.length ? (
+        <div className="mt-1 flex items-center gap-3">
+          <button
+            onClick={() => setSheetFor(waiting[0].id)}
+            className="chamfer-x caps-label border border-line bg-ink-2 px-5 py-2.5 text-[11px] tracking-[0.25em] text-parch transition hover:border-brass/60"
+          >
+            Character Sheet
+          </button>
+          <button
+            onClick={() => waiting.forEach((r) => confirmLevelUp(r.id, {}))}
+            className="chamfer-x caps-label bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
+          >
+            Press On
+          </button>
+        </div>
+      ) : (
+        <div className="max-w-md text-sm font-light text-mist">
+          {mine.length
+            ? "Waiting for the other players — the next phase begins when every character is ready."
+            : "You control no characters. Claim a seat in the top ribbon."}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
   const you = useGame((s) => s.you);
   const confirmLevelUp = useGame((s) => s.confirmLevelUp);
@@ -221,21 +291,20 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
   const mine = lu.characters.filter((r) => you.includes(r.id) && r.build);
   const active = mine.find((r) => !r.confirmed) ?? null;
 
-  // Sits in the bottom strip, anchored to its floor, so the board you just
-  // cleared stays visible above. The layout is built for a short strip — seat
-  // lights ride the header row instead of a footer of their own, and only the
-  // stat rows scroll — but a points-buy screen has a floor below which it stops
-  // being usable, so `h-full` + `min-h` lets it grow UPWARD over the board on a
-  // strip the player has dragged very short. (Dragging the strip taller gives
-  // it the room; it never covers more than it needs.)
+  // A full modal over the board (playtest: squeezed into the bottom strip, a
+  // points-buy screen never had the room). Same treatment as the Spoils —
+  // dimmed backdrop below the 42px ribbon, a fixed-size panel centred in it —
+  // so the two post-combat decisions read as one pair. Seat lights ride the
+  // header row; only the stat rows scroll.
   return (
-    <div className="absolute inset-x-0 bottom-0 z-30 flex h-full min-h-[min(340px,60vh)] flex-col bg-ink-0/95">
+    <div className="fixed inset-x-0 bottom-0 top-[42px] z-30 flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
+    <div className="panel-ticks flex h-[min(84vh,620px)] w-[min(94vw,980px)] flex-col border border-line2 bg-ink-2 shadow-2xl">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5">
         <h2 className="caps-label text-[12px] tracking-[0.25em] text-brass">
-          Level Up — Level {lu.next_level}
+          {lu.final ? "The Act Is Done" : "Level Up"} — Level {lu.next_level}
         </h2>
         <span className="caps-label text-[9px] tracking-[0.2em] text-mist">
-          +{lu.points_per_level} points · bankable · irreversible
+          {active?.available ?? 0} points to spend · bankable · irreversible
           {active?.points_to_next_level != null && active.earned_points != null && (
             <> · {active.earned_points} earned · {active.points_to_next_level} to level {(active.next_level ?? lu.next_level) + 1}</>
           )}
@@ -275,6 +344,7 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
@@ -379,8 +449,7 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         {/* Locked · new · banked — always visible (§D10-3.3) */}
         <div className="mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 border border-line bg-black/25 px-3 py-1.5">
           <Figure label="Locked" value={row.locked ?? 0} title="The entering build's spend — nothing can be sold back" />
-          <Figure label="New" value={pointsPerLevel} accent title="This level-up's grant" />
-          <Figure label="Banked" value={row.banked ?? 0} title="Unspent points carried from earlier" />
+          <Figure label="To spend" value={available} accent title="Every point won so far and not yet spent (+10 / +20 / +30 a phase)" />
           <span className="mx-1 h-6 w-px bg-line" />
           <Figure
             label="Remaining"

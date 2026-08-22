@@ -34,11 +34,15 @@ from typing import List, Optional, Tuple
 
 from ltg_core.schema import (
     ACTION_MODIFIERS,
+    CORPSE_LEGAL_EFFECTS,
     Card,
     DealDamage,
     Duration,
     EventTrigger,
     Ref,
+    Row,
+    Side,
+    TargetDescriptor,
     TargetMode,
     Timing,
     slot_name,
@@ -770,7 +774,13 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
             _log(st, "stunned", f"{e.name} is stunned and skips its intent ({e.stunned} left).",
                  enemy=e.id, intents=e.stunned)
             return
-    _pick_enemy_intent(st, e)
+    # §D18-3: the sword competes with the kit. `swing` is what a basic attack
+    # would deal this turn; a pure damage rule that cannot beat it is skipped,
+    # and after ATTACK_CADENCE quiet rounds the swing is taken outright.
+    swing = _basic_swing(st, e)
+    force = swing is not None and e.rounds_since_swing >= ATTACK_CADENCE
+    _pick_enemy_intent(st, e, swing, force)
+    _note_swing(e)
     if not double or e.round_intent_status != "declared":
         return
     # Slot 2: spend slot 1's component cooldown NOW so it can't be picked twice,
@@ -778,7 +788,10 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     if e.intent is not None and e.intent.source_component is not None:
         _start_cooldown(st, e, e.intent.source_component)
     first = (e.intent, e.round_intent, e.round_intent_status, e.round_intent_reveal)
-    _pick_enemy_intent(st, e)
+    # Slot 2 never forces the swing — slot 1 already satisfied the cadence, and
+    # two identical sword swings a round is the drum-beat §F-9 warns about.
+    _pick_enemy_intent(st, e, swing, False)
+    _note_swing(e)
     e.intent2 = e.intent
     e.round_intent2 = e.round_intent
     e.round_intent2_status = e.round_intent_status
@@ -789,10 +802,35 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
         _start_cooldown(st, e, e.intent2.source_component)
 
 
-def _pick_enemy_intent(st: GameState, e: EnemyState) -> None:
+def _is_basic_swing(intent: Optional[Intent]) -> bool:
+    """Did this intent come from the terminal Attack rule rather than a component?"""
+    return (intent is not None and intent.kind == "action"
+            and intent.source_component is None and intent.attack_power is not None)
+
+
+def _note_swing(e: EnemyState) -> None:
+    """§D18-3 bookkeeping: a declared basic attack resets the cadence clock; any
+    other declaration advances it. Called once per filed slot."""
+    if _is_basic_swing(e.intent):
+        e.rounds_since_swing = 0
+    else:
+        e.rounds_since_swing += 1
+
+
+def _pick_enemy_intent(st: GameState, e: EnemyState, swing: Optional[int] = None,
+                       force_swing: bool = False) -> None:
     """One run of the proactive pass: file the top eligible component's intent
-    (or the default Attack) into `e.intent` / the slot-1 round fields."""
+    (or the default Attack) into `e.intent` / the slot-1 round fields.
+
+    §D18-3: `force_swing` skips the component list outright (the cadence is due),
+    and `swing` lets each rule be measured against the basic attack — a pure
+    damage rule that cannot beat the sword is passed over so the sword lands."""
+    if force_swing:
+        _declare_default_attack(st, e)
+        return
     for comp in _proactive_rules(e):
+        if _outclassed_by_the_sword(comp, swing):
+            continue
         intent = _try_declare_component(st, e, comp)
         if intent is not None:
             e.intent = intent
@@ -969,6 +1007,18 @@ def _component_eligible(st: GameState, e: EnemyState, comp: Component) -> bool:
     return True
 
 
+def _corpse_for(st: GameState, e: EnemyState):
+    """Necromancy (§D9-1.6) / corpse fuel (§D19-1): the nearest own-side corpse —
+    no corpse means the rule doesn't fire and the priority list falls through, so
+    a Necromancer never wastes a turn. Boss corpses are control-inert; stirring
+    corpses are already coming back on their own."""
+    cands = [c for c in st.corpses if not c.is_boss and c.stirring <= 0]
+    if not cands:
+        return None
+    return sorted(cands, key=lambda c: (abs(_row_rank(c.row) - _row_rank(e.row)),
+                                        _row_rank(c.row), c.level, c.name))[0]
+
+
 def _component_target(st: GameState, e: EnemyState, comp: Component):
     """Resolve a component's `target_rule` to a concrete combatant (§F-3 / §F-7.2), or
     None when it wants a target it can't find (so the rule is skipped, first-match-wins).
@@ -992,23 +1042,13 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
         return _lowest_hp([o for o in st.living_enemies()
                            if o.id != e.id and o.effective_hp < o.max_hp])
     if rule == "corpse":
-        # Necromancy (§D9-1.6): the nearest own-side corpse — no corpse in reach
-        # means the rule doesn't fire and the priority list falls through, so a
-        # Necromancer never wastes a turn. Boss corpses are control-inert;
-        # stirring corpses are already coming back on their own.
-        cands = [c for c in st.corpses if not c.is_boss and c.stirring <= 0]
-        if not cands:
-            return None
-        return sorted(cands, key=lambda c: (abs(_row_rank(c.row) - _row_rank(e.row)),
-                                            _row_rank(c.row), c.level, c.name))[0]
+        return _corpse_for(st, e)
     if rule == "channeling_player":
         return _lowest_hp([c for c in st.living_party() if c.channels])
     if rule == "highest_threat":
         # The assassin's read: the hardest-hitting reachable hero (ties: casters
         # and ranged before melee, then the most wounded).
-        cands = [c for c in _reachable_targets(e, st.living_party())
-                 if not _has_kw(c, "hexproof")]
-        cands = _filter_control_targets(comp, cands)
+        cands = _pickable(st, e, comp)
         if not cands:
             return None
         return sorted(cands, key=lambda c: (-c.current_power, _role_rank(c),
@@ -1017,9 +1057,7 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
         # §D12-2.2: the hero with the highest primed-threat score (§D12-2.1),
         # falling back to plain valuation when nobody is primed — a rule using
         # it never whiffs into an empty target.
-        cands = [c for c in _reachable_targets(e, st.living_party())
-                 if not _has_kw(c, "hexproof")]
-        cands = _filter_control_targets(comp, cands)
+        cands = _pickable(st, e, comp)
         primed = [c for c in cands if _primed_score(c) > 0]
         if primed:
             return sorted(primed, key=lambda c: (-_primed_score(c), _role_rank(c),
@@ -1092,6 +1130,26 @@ def _filter_control_targets(comp: Component, cands: List) -> List:
     return cands
 
 
+def _hexproof_matters(comp: Component) -> bool:
+    """§D18-4: does Hexproof actually shelter a hero from this component?
+
+    Only a TARGETED verb is warded (GDD §6/§7 — an untargeted-chosen effect beats
+    Hexproof, and a basic attack ignores it outright). The candidate filters used
+    to drop hexproof heroes for EVERY rule, so an untargeted area piece, a
+    corpse-raise, or a lockdown authored untargeted would skip its whole rule
+    against a hexproof party and the enemy stood there doing nothing."""
+    return any(_is_targeted(v) for v in comp.verbs)
+
+
+def _pickable(st: GameState, e: EnemyState, comp: Component) -> List:
+    """The reachable heroes this component may aim at, Hexproof honoured only
+    where it applies (§D18-4)."""
+    cands = list(_reachable_targets(e, st.living_party()))
+    if _hexproof_matters(comp):
+        cands = [c for c in cands if not _has_kw(c, "hexproof")]
+    return _filter_control_targets(comp, cands)
+
+
 def _valuation_target(st: GameState, e: EnemyState, comp: Component):
     """The target-valuation brain (§F-7.2). Candidates are the reachable, non-hexproof
     players; then ranked, first-match-wins:
@@ -1103,10 +1161,7 @@ def _valuation_target(st: GameState, e: EnemyState, comp: Component):
 
     This is what makes an archer snipe the exposed channeler and a brute finish the
     wounded frontliner with no per-enemy scripting."""
-    dmg = _component_damage(comp)
-    cands = [c for c in _reachable_targets(e, st.living_party()) if not _has_kw(c, "hexproof")]
-    cands = _filter_control_targets(comp, cands)
-    return _rank_valuation(cands, dmg)
+    return _rank_valuation(_pickable(st, e, comp), _component_damage(comp))
 
 
 def _rank_valuation(cands: List, dmg: int):
@@ -1132,6 +1187,167 @@ def _rank_valuation(cands: List, dmg: int):
                                              c.effective_hp, _row_rank(c.row),
                                              c.name))[0]
     return sorted(cands, key=lambda c: (_role_rank(c), c.effective_hp, _row_rank(c.row), c.name))[0]
+
+
+# --------------------------------------------------------------------------- #
+# Design Update 18 — enemy pressure (playtest). Three rules live here:
+#   §D18-1 a taunt always comes with a blow,
+#   §D18-3 the sword competes with the kit (cadence + outclass),
+#   §D18-4 a row shape aims at GROUND, not a name.
+# --------------------------------------------------------------------------- #
+
+# §D18-3: the most consecutive rounds an enemy may go without a basic attack
+# before the sword is forced. Playtest: the §F-7.1 pass takes the top READY
+# component every single turn, so a kit with any short-cooldown rule NEVER
+# swings — and the balance register's +2/+4 Power (which lifts only the swing)
+# was being thrown away by enemies that never used it.
+ATTACK_CADENCE = 2
+
+# Damage-ish verbs — what makes an intent land as a real blow rather than a
+# gesture. Read by the taunt rule and by the outclass test.
+_DAMAGE_KINDS = frozenset({"deal_damage", "lose_life", "drain"})
+
+
+def _taunt_with_teeth(e: EnemyState, verbs):
+    """§D18-1: an enemy taunt never fires on its own.
+
+    Playtest: a taunt-only intent reads as a SKIPPED turn — the sword is pointed
+    somewhere, no number moves, and a whole enemy activation evaporates. A verb
+    list that grabs a hero (`taunt`) without hitting one now gains a blow first:
+    `deal_damage` for the enemy's CURRENT Power, aimed at the same body the
+    taunt drags. Current (not base) Power, so the balance register and any
+    stacked counters are all in the swing.
+
+    Generated content is held to the same rule at authoring time
+    (`llm._design_problems`); this covers everything already shipped."""
+    kinds = [getattr(v, "kind", None) for v in verbs]
+    if "taunt" not in kinds or any(k in _DAMAGE_KINDS for k in kinds):
+        return list(verbs)
+    grab = next(v for v in verbs if getattr(v, "kind", None) == "taunt")
+    bite = DealDamage(amount=max(1, e.current_power), target=grab.target)
+    return [bite] + list(verbs)
+
+
+def _basic_swing(st: GameState, e: EnemyState) -> Optional[int]:
+    """What this enemy's basic attack would deal THIS turn, or None when it has
+    no swing available (pacified, or nothing in reach). Read by §D18-3."""
+    if _prevented_action(e, "attack"):
+        return None
+    tmpl = e.intent_template
+    if tmpl.get("target_row") is not None:
+        return max(0, int(tmpl.get("amount", e.power)) + e.power_bonus)
+    target, _mode, amount, _name = _choose_enemy_attack(st, e)
+    return amount if target is not None else None
+
+
+def _outclassed_by_the_sword(comp: Component, swing: Optional[int]) -> bool:
+    """§D18-3: is this component strictly worse than just swinging?
+
+    True only for a PURE single-target damage rule that deals no more than the
+    basic attack — the "combat ability that bypasses Power" the playtest kept
+    seeing: a high-Power (or pumped) enemy spending its turn on an authored
+    `deal 3` while its own sword hits for 5. Anything with a rider (a stun, a
+    wound, a heal, a summon), anything row/blast-shaped, and anything aimed at
+    itself or an ally is a different KIND of turn and is never suppressed."""
+    if swing is None or not comp.verbs:
+        return False
+    for v in comp.verbs:
+        if getattr(v, "kind", None) != "deal_damage":
+            return False
+        desc = getattr(v, "target", None)
+        mode = getattr(getattr(desc, "mode", None), "value", getattr(desc, "mode", None))
+        side = getattr(getattr(desc, "side", None), "value", getattr(desc, "side", None))
+        if mode != "chosen" or side not in ("ally", "any"):
+            return False           # AoE / self / ally-support: not a swing substitute
+        if getattr(desc, "rows", None) or getattr(desc, "scope", None):
+            return False           # a row/blast shape is its own threat (§D18-4)
+    return _component_damage(comp) <= swing
+
+
+def _rows_footprint(row: str, blast: bool) -> List[str]:
+    """The ground a row shape covers: the row itself, plus its neighbours for a
+    blast (§D9-3.2)."""
+    if not blast:
+        return [row]
+    rank = _ROW_RANK.get(row, 0)
+    return [r for r, i in _ROW_RANK.items() if abs(i - rank) <= 1]
+
+
+def _row_shape_footprint(st: GameState, e: EnemyState, comp: Component):
+    """§D18-4: the GROUND a §D9-3.2 row/blast component covers, or None when the
+    component is not a row shape.
+
+    Playtest bug: a row assault authored as "a chosen hero AND their whole row"
+    is a TARGETED effect, so Hexproof on the pick fizzled the entire area — and
+    the telegraph could name no row, so the party was told an assault was coming
+    at "a row" with nothing lit on the board and no reason to move. Ground
+    effects hit the ground: the pick is used only to CHOOSE where the blow
+    lands, then discarded, and the footprint resolves by occupancy.
+
+    Returns (rows, primary_row) or None.
+
+    Only a component whose verbs are ALL either hero-side or self-aimed converts:
+    a rule that also needs a real pick of its own — a corpse to exile, an ally to
+    shield — still runs down the ordinary path, because discarding its target
+    would silently drop half the ability."""
+    if any(not (_hostile_verb_shape(v) or _self_aimed(v)) for v in comp.verbs):
+        return None
+    hostile = next((v for v in comp.verbs if _hostile_verb_shape(v)), None)
+    if hostile is None:
+        return None
+    desc = getattr(hostile, "target", None)
+    rows = getattr(desc, "rows", None)
+    if rows:
+        names = [getattr(r, "value", r) for r in rows]
+        return names, names[0]
+    scope = getattr(getattr(desc, "scope", None), "value", getattr(desc, "scope", None))
+    if scope not in ("row", "blast"):
+        return None
+    # Choose the ground with the ordinary valuation brain, but blind to Hexproof:
+    # a hero who cannot be TARGETED still stands somewhere, and the ground under
+    # them is a legal aim.
+    cands = _reachable_targets(e, st.living_party())
+    pick = _rank_valuation(cands, _component_damage(comp))
+    if pick is None:
+        return None
+    return _rows_footprint(pick.row, scope == "blast"), pick.row
+
+
+def _hostile_verb_shape(v) -> bool:
+    """Does this verb point at the hero side? (Enemy authoring frame: side
+    'ally' is the party.) A corpse-state pick is never a hero shape."""
+    desc = getattr(v, "target", None)
+    side = getattr(getattr(desc, "side", None), "value", getattr(desc, "side", None))
+    state = getattr(getattr(desc, "state", None), "value", getattr(desc, "state", None))
+    return side in ("ally", "any") and state != "corpse"
+
+
+def _self_aimed(v) -> bool:
+    """A rider on the enemy itself ("...and gains +1/+1") — carried through a row
+    conversion untouched."""
+    desc = getattr(v, "target", None)
+    if desc is None and not hasattr(v, "target"):
+        return True                      # verbless / structural
+    return getattr(desc, "mode", None) == TargetMode.self_
+
+
+def _rows_scope_verbs(verbs, rows: List[str]):
+    """`_row_scope_verbs` over a multi-row footprint (a blast covers three)."""
+    scope = TargetDescriptor(mode=TargetMode.all, side=Side.ally,
+                             rows=[Row(r) for r in rows])
+    out = []
+    for v in verbs:
+        desc = getattr(v, "target", None)
+        if desc is None and not hasattr(v, "target"):
+            if getattr(v, "kind", None) == "conditional":
+                v = v.model_copy(update={"effects": _rows_scope_verbs(v.effects, rows)})
+            out.append(v)
+            continue
+        if getattr(desc, "mode", None) == TargetMode.self_ or not _hostile_verb_shape(v):
+            out.append(v)                     # a self rider / own-side verb is left alone
+        else:
+            out.append(v.model_copy(update={"target": scope}))
+    return out
 
 
 def _row_scope_verbs(verbs, row: str):
@@ -1187,6 +1403,30 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
                       combat_ability=_is_combat_ability(kind, effects))
     if _swarm_at_cap(st, e, comp):
         return None  # already at the per-creator token cap — skip (attack instead, §F-4)
+    # §D18-4: a §D9-3.2 row/blast shape becomes a POSITIONAL intent, exactly like
+    # an authored `target_row` — ground, not a name. It stops fizzling to
+    # Hexproof, the telegraph names the row it is coming for, and the board
+    # lights that row so walking out of it is a real decision.
+    footprint = None if comp.channel else _row_shape_footprint(st, e, comp)
+    if footprint is not None:
+        rows, primary = footprint
+        name = comp.telegraph or comp.archetype or "Ability"
+        kind = comp.action_type if comp.action_type in ("attack", "spell") else "ability"
+        effects = _rows_scope_verbs(_taunt_with_teeth(e, comp.verbs), rows)
+        return Intent(name=name, action_type=kind, effects=effects,
+                      target_id=None, target_row=primary,
+                      source_component=comp.id,
+                      combat_ability=_is_combat_ability(kind, effects))
+    # §D19-1: a rule that eats or raises a body binds THE BODY here, separately
+    # from whatever its payload aims at. No corpse on the field means no feast —
+    # the rule is skipped and the priority pass moves on, so a Corpse-Feast never
+    # burns a turn chewing air.
+    corpse_id = None
+    if _wants_a_corpse(comp.verbs):
+        body = _corpse_for(st, e)
+        if body is None:
+            return None
+        corpse_id = body.id
     target = _component_target(st, e, comp)
     if comp.target_rule != "self" and target is None:
         return None  # wanted a target it can't reach — skip to the next rule
@@ -1194,13 +1434,14 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
     # A "spell"-classed component stacks as a spell (GDD taxonomy): thematic —
     # enemies have no cards — but mechanically real: spell counters answer it.
     kind = "spell" if comp.action_type == "spell" else "ability"
-    return Intent(name=name, action_type=kind, effects=list(comp.verbs),
+    verbs = _taunt_with_teeth(e, comp.verbs)  # §D18-1: a taunt always bites
+    return Intent(name=name, action_type=kind, effects=verbs,
                   target_id=(target.id if target is not None else None),
-                  source_component=comp.id,
+                  corpse_id=corpse_id, source_component=comp.id,
                   # A channelled component deals nothing as its intent resolves —
                   # it starts a held channel — so it is never a Combat Ability.
                   combat_ability=(not comp.channel
-                                  and _is_combat_ability(kind, comp.verbs)))
+                                  and _is_combat_ability(kind, verbs)))
 
 
 # --------------------------------------------------------------------------- #
@@ -1434,6 +1675,98 @@ def _set_intent_status(enemy: EnemyState, intent: Optional[Intent],
         enemy.round_intent_status = status
 
 
+def _intent_spoiled(st: GameState, enemy: EnemyState,
+                    intent: Intent) -> Optional[str]:
+    """§D19-4: why this declared intent can no longer be put on the stack, or
+    None when it is still good.
+
+    MTG puts an ability with no legal target nowhere — it is never announced. The
+    engine used to announce it anyway and let it die at resolution, so the party
+    watched a Fortify heal a corpse and a curse crawl onto a Hexproof hero just to
+    evaporate. Both are checked here, at declaration-into-stack, which is the only
+    honest moment: everything after the telegraph has already happened."""
+    if intent.corpse_id is not None and st.corpse(intent.corpse_id) is None:
+        return "the body it would spend is gone"
+    if intent.target_id is None:
+        # Nothing was ever aimed. Fine for an untargeted payload (an AoE, a
+        # self-buff, a summon); a targeted one has lost its aim.
+        return ("its target is gone" if any(_is_targeted(e) for e in intent.effects)
+                else None)
+    target = st.combatant(intent.target_id) or st.corpse(intent.target_id)
+    if target is None:
+        return "its target is gone"
+    if isinstance(target, Corpse) and not _wants_a_corpse(intent.effects):
+        # "Buff the wounded ally" whose ally has since died: the id now names a
+        # BODY. Only control/exile-class verbs have business with one.
+        return f"{target.name} is dead"
+    if not _legal_target(target):
+        return "its target is gone"
+    # Hexproof, checked BEFORE the announcement (GDD §6/§7): a targeted hostile
+    # spell or ability cannot be aimed at a warded hero at all. Attacks are
+    # exempt — hexproof wards spells and abilities, not the sword (Update 06).
+    if (intent.action_type != "attack" and not isinstance(target, (Corpse, EnemyState))
+            and _has_kw(target, "hexproof")
+            and any(_is_targeted(e) and _hostile_verb_shape(e) for e in intent.effects)):
+        return f"{target.name} has Hexproof"
+    return None
+
+
+def _wants_a_corpse(effects) -> bool:
+    """Does any verb here have business with a body (§D9-1.3)?"""
+    return any(getattr(e, "kind", None) in CORPSE_LEGAL_EFFECTS for e in effects)
+
+
+def _swing_instead(st: GameState, enemy: EnemyState, intent: Intent,
+                   reason: str) -> None:
+    """§D19-4: the telegraphed action is spoiled — strike with the basic attack
+    rather than spend the activation on nothing. The telegraph itself is marked
+    fizzled (it genuinely did not happen); the swing is a real stack action with
+    its own reaction window, so the party still gets to answer it."""
+    _log(st, "intent_spoiled",
+         f"{enemy.name}'s {intent.name} comes to nothing — {reason}. It attacks instead.",
+         enemy=enemy.id, label=intent.name, reason=reason)
+    # Build the sword WITHOUT disturbing the queue (_execute_intent has already
+    # promoted slot 2 into `enemy.intent`).
+    saved = (enemy.intent, enemy.round_intent,
+             enemy.round_intent_status, enemy.round_intent_reveal)
+    enemy.intent = None
+    _declare_default_attack(st, enemy)
+    swing = enemy.intent
+    (enemy.intent, enemy.round_intent,
+     enemy.round_intent_status, enemy.round_intent_reveal) = saved
+    _set_intent_status(enemy, intent, "fizzled")
+    if swing is None:
+        return                      # pacified, or nothing in reach: the turn is lost
+    if swing.kind == "move":        # nothing in reach — it closes the distance
+        enemy.row = swing.move_to
+        _log(st, "enemy_move", f"{enemy.name} moves to {swing.move_to}.",
+             enemy=enemy.id, destination=swing.move_to)
+        _recheck_intents(st)
+        return
+    enemy.rounds_since_swing = 0    # §D18-3: this counts as the sword landing
+    if swing.target_row is not None:
+        pushed = _push(st, StackItem(
+            kind=swing.action_type, source_id=enemy.id, source_side="enemy",
+            label=swing.name, effects=swing.effects, target_id=None,
+            target_row=swing.target_row, attack_mode=enemy.attack_mode,
+            attack_power=swing.attack_power))
+    else:
+        if swing.target_id is None:
+            return
+        pushed = _push(st, StackItem(
+            kind=swing.action_type, source_id=enemy.id, source_side="enemy",
+            label=swing.name, effects=swing.effects, target_id=swing.target_id,
+            attack_mode=enemy.attack_mode, attack_power=swing.attack_power))
+    st.priority = None              # a real action: the party gets its window
+    st.passes = 0
+    _log(st, "intent_execute", f"{enemy.name} executes {swing.name}.",
+         enemy=enemy.id, label=swing.name)
+    if swing.action_type == "attack":
+        _fire_event(st, "attack", enemy)
+    else:
+        _announce_combat_ability(st, pushed)
+
+
 def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     """Move a declared intent onto the stack as an action (GDD §5.2). A component
     intent starts that component's cooldown as it executes (§F-3.1).
@@ -1470,7 +1803,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
             kind=intent.action_type, source_id=enemy.id,
             source_side="enemy", label=intent.name,
             effects=intent.effects, target_id=None,
-            target_row=intent.target_row,
+            target_row=intent.target_row, corpse_id=intent.corpse_id,
             attack_mode=enemy.attack_mode,
             attack_power=intent.attack_power,
             component_id=intent.source_component))
@@ -1486,20 +1819,16 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         else:
             _announce_combat_ability(st, pushed)
         return
-    if intent.target_id is None:
-        _set_intent_status(enemy, intent, "fizzled")
+    # §D19-4: an intent is re-validated as it ENTERS the stack, not left to die at
+    # resolution. A telegraph that no longer makes sense — the ally it would heal
+    # is a corpse, the hero it would curse has Hexproof, the body it would eat is
+    # gone — never reaches the stack at all, and the enemy takes the sword instead
+    # of burning its whole activation on a fizzle.
+    spoiled = _intent_spoiled(st, enemy, intent)
+    if spoiled is not None:
+        _swing_instead(st, enemy, intent, spoiled)
         return
-    # Re-check target legality as the intent ENTERS the stack: a target that left play
-    # or was incapacitated since this was telegraphed makes the swing fizzle now rather
-    # than reach the stack (it is also re-checked at resolution, R-12). Hexproof does
-    # NOT fizzle an attack — it wards spells/abilities, not the sword (Update 06).
-    # A necromancy intent aims at a CORPSE (§D9-1.6) — legal while it still lies there.
     target = st.combatant(intent.target_id) or st.corpse(intent.target_id)
-    if target is None or not _legal_target(target):
-        _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no legal target.",
-             enemy=enemy.id, label=intent.name)
-        _set_intent_status(enemy, intent, "fizzled")
-        return
     # §L-3.1(3): a redirectable melee swing whose target is unreachable with no
     # legal interposer left (an all-flying line, say) has nothing to land on.
     # Every occupancy change re-ran the re-check, so this is the true final state.
@@ -1520,6 +1849,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         kind=intent.action_type, source_id=enemy.id,
         source_side="enemy", label=intent.name,
         effects=intent.effects, target_id=intent.target_id,
+        corpse_id=intent.corpse_id,
         attack_mode=enemy.attack_mode, attack_power=intent.attack_power,
         starts_channel=bool(src_comp is not None and src_comp.channel),
         component_id=intent.source_component))
@@ -1959,8 +2289,9 @@ def _fire_reaction(st: GameState, e: EnemyState, comp: Component, ctx: dict) -> 
     # "triggered"/"ability" counter answers it while "spell" doesn't — unless
     # the component is spell-classed (an arcane riposte counters as a spell).
     kind = "spell" if comp.action_type == "spell" else "triggered"
+    verbs = _taunt_with_teeth(e, comp.verbs)  # §D18-1: a taunt always bites
     pushed = _push(st, StackItem(kind=kind, source_id=e.id, source_side="enemy",
-                                 label=label, effects=list(comp.verbs), target_id=tid))
+                                 label=label, effects=verbs, target_id=tid))
     st.priority = None   # reopen the window; party order re-seeded by _advance
     st.passes = 0
     _log(st, "enemy_react", f"{e.name} reacts with {label}.",
@@ -2558,6 +2889,17 @@ def _damage_first(item: StackItem, effects):
     return hits + [e for e in effects if not _damage_verbs([e])]
 
 
+def _cost_last(effects):
+    """§D19-1: `consume_corpse` is a COST paid on the way out, so it resolves after
+    everything else however it was authored. "Devour a fallen kin and blast the
+    front row" is one action: the blast happens, then the body is spent. A stable
+    partition — authored order survives inside each group."""
+    fuel = [e for e in effects if getattr(e, "kind", None) == "consume_corpse"]
+    if not fuel or len(fuel) == len(effects):
+        return effects
+    return [e for e in effects if getattr(e, "kind", None) != "consume_corpse"] + fuel
+
+
 def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> None:
     """Resolve a stack item's top-level effects in order. When a top-level
     move_card needs the player to pick which cards move (more legal candidates than
@@ -2570,7 +2912,7 @@ def _resolve_effect_list(st: GameState, item: StackItem, effects, ctx: dict) -> 
     channel_start firing), where the player must get their pick — a break-trigger
     scry pauses exactly like a sorcery's. Upkeep/event ticks resolve effects
     directly via `_resolve_effect` and stay non-interactive."""
-    effects = _damage_first(item, effects)
+    effects = _cost_last(_damage_first(item, effects))
     for i, effect in enumerate(effects):
         kind = getattr(effect, "kind", None)
         # A TRIGGERED modal firing in this list (channel_start) has had no cast-time
@@ -3340,7 +3682,7 @@ def _lookup_target(st: GameState, tid, effect, ctx=None):
             ctx["intent_slot"] = 2
         tid = tid[:-3]
     obj = st.combatant(tid)
-    if obj is None and getattr(effect, "kind", None) in ("control", "exile"):
+    if obj is None and getattr(effect, "kind", None) in CORPSE_LEGAL_EFFECTS:
         obj = st.corpse(tid)
     return obj
 
@@ -3350,6 +3692,17 @@ def _resolution_targets(st: GameState, item: StackItem, effect, ctx=None) -> Lis
     creature in the side; otherwise the effect's chosen target (its own per-site
     target for independent multi-target cards, else the item's primary target)."""
     desc = getattr(effect, "target", None)
+    # §D19-1: a CORPSE-state descriptor binds to the action's corpse, never to
+    # whatever living body the action's primary target happens to name. Enemy
+    # components routinely aim their payload at a hero (`target_rule: valuation`)
+    # while a corpse verb rides along; without this the "burn a fallen ally"
+    # rider bound to the HERO and exiled them outright.
+    if (not isinstance(desc, str) and desc is not None
+            and getattr(getattr(desc, "state", None), "value",
+                        getattr(desc, "state", None)) == "corpse"
+            and getattr(desc, "mode", None) != TargetMode.all):
+        tid = item.corpse_id or _site_target(item, ctx, effect, desc)
+        return _mitigation_reroute(st, item, effect, [st.corpse(tid) if tid else None])
     if isinstance(desc, str) or desc is None:
         out = [_lookup_target(st, _site_target(item, ctx, effect, desc), effect, ctx)]
     else:
@@ -3976,6 +4329,21 @@ def _keyword_dict_like(kw) -> dict:
     if isinstance(kw, dict):
         return dict(kw)
     return {k: "encounter" for k in (kw or [])}
+
+
+def _r_consume_corpse(st, item, effect, target, ctx):
+    """§D19-1: spend a corpse as fuel. The body leaves the battlefield — no death
+    trigger (nothing died) and a `rises` corpse loses its return — and `_last`
+    ordering has already guaranteed the payload resolved first."""
+    if not isinstance(target, Corpse):
+        _log(st, "fizzle", f"{item.label} finds no corpse to consume.",
+             kind="consume_corpse")
+        return
+    st.corpses.remove(target)
+    _log(st, "corpse_consumed",
+         f"{target.name}'s corpse is consumed" +
+         (" — it will not rise." if target.stirring > 0 else "."),
+         target=target.id, corpse=True, label=item.label)
 
 
 def _r_exile(st, item, effect, target, ctx):
@@ -4759,6 +5127,7 @@ RESOLVERS = {
     "charge": _r_charge,
     "destroy": _r_destroy,
     "exile": _r_exile,
+    "consume_corpse": _r_consume_corpse,
     "bounce": _r_bounce,
     "fight": _r_fight,
     "counter": _r_counter,
@@ -6209,7 +6578,7 @@ def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
     needed. An explicit `state: "corpse"` narrows the pick to corpses only
     (enemy necromancy, Raise Dead)."""
     state = getattr(state, "value", state) or "living"
-    corpse_only = state == "corpse" and kind in ("control", "exile")
+    corpse_only = state == "corpse" and kind in CORPSE_LEGAL_EFFECTS
     opts = [] if corpse_only else _side_options(st, side)
     if targeted:
         opts = [(tid, tl) for tid, tl in opts if not _hexproof_hostile(st, tid)]
@@ -6232,9 +6601,12 @@ def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
             if e is not None and e.intent2 is not None:
                 extra.append((f"{tid}::2", f"{tl} — second intent"))
         opts = opts + extra
-    if kind in ("control", "exile"):
+    if kind in CORPSE_LEGAL_EFFECTS:
         opts = opts + [(c.id, f"{c.name} (corpse)") for c in st.corpses
                        if not (kind == "control" and c.is_boss)]
+    if kind == "consume_corpse":
+        # §D19-1: fuel is a COST, so only bodies are on offer — never the living.
+        opts = [(tid, tl) for tid, tl in opts if st.corpse(tid) is not None]
     return opts
 
 

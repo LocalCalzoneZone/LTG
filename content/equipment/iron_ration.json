@@ -1,0 +1,32 @@
+{
+  "kind": "item",
+  "id": "iron_ration",
+  "name": "Iron Ration",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 15,
+  "flavor": "Hard bread, hard cheese, harder soldier.",
+  "art_desc": "A wrapped brick of dark bread and rind, tied with twine.",
+  "art_url": "/art/items/iron_ration/item-13163655.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "counters",
+      "power": 1,
+      "toughness": 1,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "encounter"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "sorcery"
+  },
+  "affixes": []
+}

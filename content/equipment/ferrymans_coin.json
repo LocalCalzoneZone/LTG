@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "ferrymans_coin",
+  "name": "Ferryman's Coin",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 15,
+  "flavor": "Paid, and passed over.",
+  "art_desc": "A dull copper coin worn thin, a river's name still legible on one face.",
+  "art_url": "/art/items/ferrymans_coin/item-4f7409dd.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "protection",
+      "parameter": "all_damage",
+      "combat_kind": "all",
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

@@ -1,0 +1,238 @@
+{
+  "name": "The Great Smelting Incline",
+  "scene": "A massive tiered ramp of riveted iron plates sloping into the depths, lined with open blast furnaces that cast blinding orange glare across overhead crane chains and glowing brass gutters.",
+  "scene_image": "/art/the_sunken_vault_of_brass__phase2/scene-394f8d58.png",
+  "enemies": [
+    {
+      "id": "brass_gong_chanter",
+      "name": "Foundry Gong-Chanter",
+      "flavor": "Rings a held cadence that empowers all allies while countering player spells.",
+      "description": "A tall, hooded overseer beating an ancient bronze disc with a bone mallet, silver sigils glowing along their iron-studded sleeves.",
+      "hp": 6,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "foundry_cadence",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 15,
+          "cooldown": 3,
+          "action_type": "spell",
+          "telegraph": "Foundry Cadence \u2014 pumps all allies +1/+1 while maintained",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "soothing_salve",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Cooling Salve \u2014 restores 6 HP to the most wounded ally",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "brass_resonance",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "priority": 20,
+          "cooldown": 3,
+          "action_type": "spell",
+          "telegraph": "Resonant Clang \u2014 counters the triggering spell",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase2/brass_gong_chanter-7fb8fb4f.png"
+    },
+    {
+      "id": "furnace_hooker",
+      "name": "Furnace Hook-Hauler",
+      "flavor": "Drags heroes directly into the melee front with long ore tongs.",
+      "description": "A burly foundry laborer clad in heavy leather aprons, wielding an elongated two-handed grappling crook meant for snagging slag ingots.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "chain_haul",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Slag Hook \u2014 drags a hero to the front row",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "furnace_blowback",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Furnace Backdraft \u2014 retaliates for 3 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase2/furnace_hooker-9b04af74.png"
+    },
+    {
+      "id": "foundry_crusher",
+      "name": "Foundry Crusher",
+      "flavor": "Slams entire rows with broad sweeps and surges when heavily battered.",
+      "description": "A muscle-bound brute wielding a counterweighted iron ingot on a reinforced shaft, moving with heavy, rhythmic strides.",
+      "hp": 8,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "piston_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Ingot Sweep \u2014 strikes the entire front row for 4 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "emergency_overdrive",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "priority": 15,
+          "once_per_encounter": true,
+          "target_rule": "self",
+          "telegraph": "Boiler Overdrive \u2014 gains +2/+1 permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase2/foundry_crusher-af2b0391.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "brass_gong_chanter",
+      "furnace_hooker",
+      "foundry_crusher"
+    ],
+    "2": [
+      "brass_gong_chanter",
+      "brass_gong_chanter",
+      "furnace_hooker",
+      "furnace_hooker",
+      "foundry_crusher",
+      "foundry_crusher"
+    ],
+    "3": [
+      "brass_gong_chanter",
+      "brass_gong_chanter",
+      "brass_gong_chanter",
+      "furnace_hooker",
+      "furnace_hooker",
+      "furnace_hooker",
+      "foundry_crusher",
+      "foundry_crusher",
+      "foundry_crusher"
+    ],
+    "4": [
+      "brass_gong_chanter",
+      "brass_gong_chanter",
+      "brass_gong_chanter",
+      "brass_gong_chanter",
+      "furnace_hooker",
+      "furnace_hooker",
+      "furnace_hooker",
+      "furnace_hooker",
+      "foundry_crusher",
+      "foundry_crusher",
+      "foundry_crusher",
+      "foundry_crusher"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "chartwrights_case",
+  "name": "Chartwright's Case",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 5,
+  "points_price": 30,
+  "flavor": "Every road drawn twice, in case one lies.",
+  "art_desc": "A cylindrical leather map case slung on a strap, rolled charts bristling from its mouth.",
+  "art_url": "/art/items/chartwrights_case/item-7b98692a.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 2,
+      "stat": "cards"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

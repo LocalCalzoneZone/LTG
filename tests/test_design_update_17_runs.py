@@ -103,7 +103,7 @@ def test_boundary_save_reloads_the_identical_next_phase(runs):
     assert _party_state_sig(state2) == _party_state_sig(live_state)
     assert adv2.loadouts[1]["character"]["hp"] == 17
     assert adv2.earned == adv.earned and adv2.banked == adv.banked
-    assert adv2.loadouts[0]["character"]["earned_points"] == 30
+    assert adv2.loadouts[0]["character"]["earned_points"] == 10   # Phase I pays +10
     assert adv2.loadouts[0]["character"]["level"] == 2
 
 

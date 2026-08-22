@@ -1,0 +1,26 @@
+{
+  "kind": "item",
+  "id": "whalers_lance",
+  "name": "Whaler's Lance",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 30,
+  "flavor": "Thrown once, and thrown well.",
+  "art_desc": "A long slender throwing lance with a leaf-shaped head and a weighted butt.",
+  "art_url": "/art/items/whalers_lance/item-4b50ee2f.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 2
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

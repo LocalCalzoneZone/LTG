@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "tanners_cleaver",
+  "name": "Tanner's Cleaver",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 30,
+  "flavor": "It takes a little back with every cut.",
+  "art_desc": "A broad rectangular cleaver, the iron dark with old tannin, the edge mirror-bright.",
+  "art_url": "/art/items/tanners_cleaver/item-f8c5cdac.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "lifelink"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

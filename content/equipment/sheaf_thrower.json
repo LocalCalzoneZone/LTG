@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "sheaf_thrower",
+  "name": "Sheaf Thrower",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 6,
+  "points_price": 40,
+  "flavor": "One shot, and the row behind it too.",
+  "art_desc": "An oversized bow firing barbed sheaf arrows, its limbs reinforced with iron strips.",
+  "art_url": "/art/items/sheaf_thrower/item-9c9de026.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 2
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "trample"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

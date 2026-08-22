@@ -1,0 +1,26 @@
+{
+  "kind": "item",
+  "id": "harpoon_and_line",
+  "name": "Harpoon and Line",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 15,
+  "flavor": "What it catches, it keeps.",
+  "art_desc": "A barbed iron harpoon trailing a coil of wet hemp line.",
+  "art_url": "/art/items/harpoon_and_line/item-198844a6.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

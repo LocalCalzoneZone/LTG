@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "greenwood_poultice",
+  "name": "Greenwood Poultice",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 2,
+  "points_price": 10,
+  "flavor": "It knits while you fight.",
+  "art_desc": "A pad of mashed green herbs bound in a scrap of sailcloth.",
+  "art_url": "/art/items/greenwood_poultice/item-1dc1a8cc.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "regen",
+      "amount": 2,
+      "turns": 3,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

@@ -1,0 +1,33 @@
+{
+  "kind": "item",
+  "id": "duelists_chalk",
+  "name": "Duelist's Chalk",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 10,
+  "flavor": "Draw the line, then be first across it.",
+  "art_desc": "A stub of blue chalk in a shaped wooden holder, ground flat on one side.",
+  "art_url": "/art/items/duelists_chalk/item-597ef58a.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "grant_keyword",
+      "keywords": [
+        "first_strike"
+      ],
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

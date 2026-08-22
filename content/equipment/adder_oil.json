@@ -1,0 +1,30 @@
+{
+  "kind": "item",
+  "id": "adder_oil",
+  "name": "Adder Oil",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 12,
+  "flavor": "It works after you have walked away.",
+  "art_desc": "A slim black vial with a snake's jaw wired to the stopper.",
+  "art_url": "/art/items/adder_oil/item-c592baaa.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "poison",
+      "amount": 2,
+      "target": {
+        "mode": "chosen",
+        "side": "enemy",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

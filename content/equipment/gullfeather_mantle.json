@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "gullfeather_mantle",
+  "name": "Gullfeather Mantle",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 5,
+  "points_price": 25,
+  "flavor": "The wind takes an interest in you.",
+  "art_desc": "A short cape of overlapping grey-white feathers, clasped with a hooked beak of brass.",
+  "art_url": "/art/items/gullfeather_mantle/item-e4506ab1.png",
+  "statics": [
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "flying"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

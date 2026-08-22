@@ -503,6 +503,29 @@ class Exile(EffectBase):
     duration: Optional[Literal["while_channeled"]] = None
 
 
+class ConsumeCorpse(EffectBase):
+    """Spend a corpse as FUEL (§D19-1) — the corpse-explosion / raise-dead cost.
+
+    Two things separate it from an `exile` that happens to name a body:
+
+    1. **It resolves LAST**, whatever order it is authored in. "Devour a fallen
+       kin and blast the front row" is one action whose payload happens and
+       *then* eats the body — an `exile` written first removed the corpse before
+       the payload could read it, and one written last read as an afterthought
+       the author had to remember. The engine now guarantees the order.
+    2. **It is a cost, so it gates the action.** An ability carrying it is not
+       offered (and an enemy component carrying it is not declared) when no legal
+       corpse is on the battlefield — a Corpse Feast never fires with nothing to
+       eat.
+
+    Like every corpse verb it consumes the BODY only: no death trigger fires
+    (nothing died), and a `rises` corpse loses its return (§D9-1.5).
+    """
+
+    kind: Literal["consume_corpse"] = "consume_corpse"
+    target: TargetOrSlot
+
+
 class Bounce(EffectBase):
     kind: Literal["bounce"] = "bounce"
     target: TargetOrSlot
@@ -1068,6 +1091,7 @@ LEAF_EFFECT_CLASSES = [
     Charge,
     Destroy,
     Exile,
+    ConsumeCorpse,
     Bounce,
     Fight,
     Counter,
@@ -1264,8 +1288,11 @@ Effect = Annotated[
 
 
 # The verbs that may resolve on a corpse (§D9-1.3): `control` raises it,
-# `exile` burns the body. Everything else is a living-creature verb.
-CORPSE_LEGAL_EFFECTS = frozenset({"control", "exile"})
+# `exile` burns the body, `consume_corpse` spends it as fuel (§D19-1).
+# Everything else is a living-creature verb.
+CORPSE_LEGAL_EFFECTS = frozenset({"control", "exile", "consume_corpse"})
+# …of those, the ones that REMOVE the body from the battlefield.
+CORPSE_CONSUMING_EFFECTS = frozenset({"exile", "consume_corpse"})
 
 # The four main-ability slots a stance may rewire (§D9-2.1).
 STANCE_SLOTS = ("attack", "defend", "mitigate", "move")
@@ -1580,18 +1607,27 @@ class Card(BaseModel):
 # mechanism is canonical.
 # --------------------------------------------------------------------------- #
 CREATION_BUDGET = 70                                    # T5-01
-# Leveling (Update 10 §D10-3, Update 17 §D17-2.1): +30 bankable points per phase
-# level-up (T-57). Character LEVEL is derived from the cumulative points earned
-# against LEVEL_THRESHOLDS (T-78); the level-up screen still appears after every
-# phase (30 fresh points) but the level number may not tick. The Deckbuilder
-# remains creation-only (always level 1, zero earned).
-LEVEL_UP_POINTS = 30                                    # T-57
+# Leveling (Update 10 §D10-3, Update 17 §D17-2.1 as amended by §D17-2.3):
+# points are EARNED BY WINNING PHASES — +10 / +20 / +30 for Phases I / II / III
+# (T-57), 60 per adventure as before, and they land in the character's bankable
+# pool the moment the phase is won. WHERE THEY ARE SPENT is a separate schedule
+# (the level-up screen, §D17-2.3): inside a scenario it opens after Act I's
+# Phase I and then only at act ends, behind the spoils. Character LEVEL is
+# derived from the cumulative points earned against LEVEL_THRESHOLDS (T-78), so
+# a screen may not tick the level at all. The Deckbuilder remains creation-only
+# (always level 1, zero earned).
+PHASE_GRANTS = (10, 20, 30)                             # T-57 (per phase won)
+ADVENTURE_POINTS = sum(PHASE_GRANTS)                    # T-57: 60 per adventure
+# A "level-up's worth" of points — the unit the gear-effective-level divisor
+# (T-81) and the gold rate (T-85) are quoted in. NOT the size of a grant.
+LEVEL_UP_POINTS = 30
 MAX_LEVEL = 20
 # T-78: cumulative earned points needed to REACH each level (index = level;
-# levels 0 and 1 need nothing). ≈L3 after adventure 1 (60), L5 after 2 (120),
-# L6 early in adventure 4 (210), L7 after 5 (300); each level past 10 costs a
-# full adventure or more.
-LEVEL_THRESHOLDS = [0, 0, 30, 60, 105, 150, 210, 300, 390, 480, 570,
+# levels 0 and 1 need nothing). L2 lands on the very first phase win (10, so the
+# opening level-up screen ticks a level), then ≈L3 after adventure 1 (60), L5
+# after 3 (180), L7 after 5 (300); each level past 10 costs two adventures or
+# more.
+LEVEL_THRESHOLDS = [0, 0, 10, 60, 105, 150, 210, 300, 390, 480, 570,
                     690, 810, 930, 1050, 1200, 1350, 1500, 1650, 1830, 2010]
 assert len(LEVEL_THRESHOLDS) == MAX_LEVEL + 1
 
@@ -1614,6 +1650,17 @@ def points_to_next_level(earned_points: int) -> Optional[int]:
     if level >= MAX_LEVEL:
         return None
     return LEVEL_THRESHOLDS[level + 1] - max(0, int(earned_points))
+
+
+def level_band(earned_points: int) -> "tuple[int, Optional[int]]":
+    """The cumulative-points band the character is standing in: ``(floor,
+    ceiling)`` where floor is what this level cost to reach and ceiling what the
+    next one costs (None at MAX_LEVEL). Shipped to the sheet so the level
+    progress bar renders without the client knowing the threshold table."""
+    level = level_for_points(earned_points)
+    floor = LEVEL_THRESHOLDS[min(max(level, 1), MAX_LEVEL)]
+    ceiling = None if level >= MAX_LEVEL else LEVEL_THRESHOLDS[level + 1]
+    return floor, ceiling
 
 
 BASELINE_HP = 8                                         # §P-1 free base

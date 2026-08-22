@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "firepot",
+  "name": "Firepot",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 12,
+  "flavor": "Throw it, and mind the wind.",
+  "art_desc": "A fist-sized clay pot with a pitch-soaked rag stuffed in its neck.",
+  "art_url": "/art/items/firepot/item-c90905e1.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "deal_damage",
+      "amount": 3,
+      "target": {
+        "mode": "chosen",
+        "side": "enemy",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "nonlethal": false
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

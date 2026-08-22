@@ -826,7 +826,12 @@ def test_bouncing_a_source_removes_its_stacked_swing():
 def test_enemy_targeted_ability_still_fizzles_on_hexproof():
     # Update 06 splits hexproof: the sword lands, the hex does not. An enemy's
     # targeted ABILITY (a component intent, not the basic attack) declared at the
-    # hero still fizzles at resolution once the hero turns hexproof.
+    # hero is stopped once the hero turns hexproof.
+    #
+    # §D19-4: it is stopped BEFORE the announcement now, not at resolution — an
+    # ability with no legal target never reaches the stack — and the enemy takes
+    # its basic attack instead of losing the whole activation. This orc has
+    # Power 0, so the substituted swing still leaves the hero untouched.
     enemies = [{
         "id": "orc", "name": "Orc", "hp": 10, "level": 3, "power": 0,
         "attack_mode": "melee",
@@ -841,9 +846,12 @@ def test_enemy_targeted_ability_still_fizzles_on_hexproof():
     state = make_state([_grant_self("hexproof")], hero_hp=20, enemies=enemies)
     assert settle(state).enemy("orc").intent.name == "Venom Spit — deal 4"
     after, _ = do(state, kind="cast", card_id="grant_hexproof")   # hero turns hexproof
-    after = _resolve_enemy_step(after)                            # the spit resolves
-    assert hero(after).hp == 20                                   # warded: the ability fizzled
-    assert any(e.type == "fizzle" for e in after.log)
+    after = _resolve_enemy_step(after)                            # the enemy step runs
+    assert hero(after).hp == 20                                   # warded: the ability never landed
+    spoiled = [e for e in after.log if e.type == "intent_spoiled"]
+    assert spoiled and "Hexproof" in spoiled[0].data.get("reason", "")
+    # The telegraph is struck, and the orc swung rather than idling.
+    assert settle(after).enemy("orc").round_intent_status == "fizzled"
 
 
 def _enemy_row(eid, hp, row):

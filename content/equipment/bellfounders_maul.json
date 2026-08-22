@@ -1,0 +1,26 @@
+{
+  "kind": "item",
+  "id": "bellfounders_maul",
+  "name": "Bellfounder's Maul",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 30,
+  "flavor": "It has rung one bell. It rang for a while.",
+  "art_desc": "A two-handed maul with a bronze-banded head, the face dented from casting work.",
+  "art_url": "/art/items/bellfounders_maul/item-f3f61f56.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 2
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

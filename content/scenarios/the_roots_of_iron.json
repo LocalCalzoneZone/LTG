@@ -1,0 +1,489 @@
+{
+  "kind": "scenario",
+  "title": "The Roots of Iron",
+  "town_id": "nalindor",
+  "town_name": "Nalindor",
+  "arc": {
+    "title": "The Roots of Iron",
+    "villain": "Foreman Mograk, scrap-tyrant of the Red-Cinder Goblins",
+    "stakes": "If Mograk is not stopped, his sulfur-belching iron colossus will saw through the colossal ironwood trunks supporting Nalindor, crashing the entire canopy city into the mire below. The primordial forest will be reduced to smoking stumps and strip-mined quarries for goblin foundries.",
+    "acts": [
+      {
+        "title": "The Singing Pickaxes",
+        "hook": "Captain Sylva reports that heavily armed goblin prospectors have set up crude wooden derricks along the eastern forest edge, ambushing elven patrols with notched crossbows and scrap-shrapnel bombs. The party must clear the pick-axe lines in Moss-Crag Trench, either by dropping onto the upper scaffolding using canopy rope-harnesses or creeping through the waterlogged mud sluices to take the ore-smelters by surprise. Driving off the diggers reveals what they struck: not iron ore, but the colossal brass hatch of a buried ancient war-vault.",
+        "questgiver_location": "the_high_watch_hollow",
+        "questgiver_npc": "captain_sylva",
+        "handoff": "taenis_sunstrider",
+        "adventure_theme": "Moss-Crag Trench, an open-pit goblin excavation filled with timber cranes, sluice trenches, and iron cages.",
+        "tone_notes": "Soot, churned red clay, ringing iron hammers, and golden autumn sunlight filtering through dusty pine needles."
+      },
+      {
+        "title": "The Brass Vault",
+        "hook": "Black sulfur-sludge is bubbling up into the sacred rootbed of the Whispering Glade, poisoning the silver sapling after the goblins blasted open the sunken vault doors. Elder Althea pleads for the party to descend into the subterranean iron corridors to quench the toxic vents, while Lady Vespera warns that Mograk's engineers have already begun dismantling a sleeping clockwork forge-beast for its fire-cores. The party can navigate the flooded steam conduits with warding silk or fight down the main smelting ramp where goblin sappers haul glowing boilers.",
+        "questgiver_location": "the_whispering_glade",
+        "questgiver_npc": "elder_althea",
+        "handoff": "lady_vespera",
+        "adventure_theme": "The Sunken Vault of Brass, a forgotten subterranean foundry of hissed steam, glowing pistons, and bronze catwalks.",
+        "tone_notes": "Echoing clatter of iron gears, emerald moss creeping over tarnished bronze, and glowing orange furnace vents."
+      },
+      {
+        "title": "The Iron Borer's Charge",
+        "hook": "Foreman Mograk has fused the vault's ancient furnace into a lumbering, tread-mounted siege drill—the Root-Render—and is rolling it straight toward the heart-tree of Nalindor to bring the canopy crashing down. Captain Sylva mobilizes the wardens for a final desperate stand at the Blackroot Trench, while Orin Copperbraid provides two attack routes: plant explosive pine-tar kegs under the machine's steel tracks, or swoop down from canopy gliders to storm the smoking command deck and face Mograk himself in the boiler cabin.",
+        "questgiver_location": "the_high_watch_hollow",
+        "questgiver_npc": "captain_sylva",
+        "handoff": "orin_copperbraid",
+        "adventure_theme": "The Blackroot Trench & the Root-Render, a smoking war-camp surrounding a gargantuan iron-treaded logging engine.",
+        "tone_notes": "Blinding furnace sparks, splintering ironwood logs, billowing white ash, and heroic brass-and-blade battle in the forest mist."
+      }
+    ],
+    "loot_lexicon": {
+      "theme": "iron",
+      "second": "green",
+      "materials": [
+        "Anvil-Steel",
+        "Chainwork",
+        "Slagsteel",
+        "Pig-Lead",
+        "Black Iron",
+        "Rivet-Brass",
+        "Thornsilver",
+        "Rootbone"
+      ],
+      "epithets": [
+        "Rust-Marked",
+        "Pitted",
+        "Hammer-Set",
+        "Anvil-True",
+        "Rivet-Bound",
+        "Cold-Forged",
+        "Thorn-Set",
+        "Green-Bound"
+      ],
+      "suffixes": [
+        "the Ninth Forge",
+        "Bell-Metal",
+        "the Blackworks",
+        "the Deep Seam",
+        "the Turning Year",
+        "the Old Grove"
+      ],
+      "details": [
+        "hammer marks still standing proud on it",
+        "rust bloomed and scrubbed back a dozen times",
+        "banded twice in riveted strap",
+        "smelling of cut sap"
+      ],
+      "flavor": [
+        "It has been rehafted three times.",
+        "It rings when you set it down.",
+        "Somebody good made this, and nobody remembers them.",
+        "Honest weight, honestly balanced.",
+        "It has been growing quietly the whole time.",
+        "Left in the ground a season, it would take root."
+      ],
+      "forms": {
+        "melee": [
+          "greatblade",
+          "poleaxe",
+          "longknife",
+          "warpick",
+          "spear",
+          "sabre"
+        ],
+        "ranged": [
+          "javelins",
+          "hookshot",
+          "longbow",
+          "harpoon",
+          "boarsling"
+        ],
+        "accessory": [
+          "circlet",
+          "torc",
+          "girdle",
+          "brooch",
+          "charm",
+          "seal"
+        ],
+        "consumable": [
+          "philtre",
+          "water",
+          "tincture",
+          "incense",
+          "draught",
+          "resin",
+          "powder",
+          "cordial"
+        ]
+      }
+    }
+  },
+  "act1": {
+    "adventure_id": "the_excavation_of_moss_crag",
+    "quest_id": "scaffold_descent",
+    "materialization": {
+      "quests": [
+        {
+          "id": "scaffold_descent",
+          "title": "Drop from the Canopy",
+          "text": "Captain Sylva wants the Red-Cinder goblins driven out of Moss-Crag Trench before their shrapnel bombs kill more wardens. Take warden rope-harnesses and drop directly onto the upper timber derricks to sweep the goblin crossbow snipers from high ground.",
+          "adventure_theme": "Moss-Crag Trench: dropping from swinging canopy cables onto timber cranes, sorting platforms, and elevated cage-walks above the red clay pit."
+        },
+        {
+          "id": "mud_sluice_assault",
+          "title": "Through the Mud Sluices",
+          "text": "Creep along the waterlogged drainage channels beneath Moss-Crag Trench to take the goblin ore-smelters by surprise. Cutting through the muck lets you destroy their shrapnel bomb stockpiles before the diggers can sound the warning gong.",
+          "adventure_theme": "Moss-Crag Trench: wading through muddy runoff sluices, iron grates, and smoking slag-heaps at the trench floor."
+        }
+      ],
+      "quest": {
+        "title": "Drop from the Canopy",
+        "text": "Captain Sylva wants the Red-Cinder goblins driven out of Moss-Crag Trench before their shrapnel bombs kill more wardens. Take warden rope-harnesses and drop directly onto the upper timber derricks to sweep the goblin crossbow snipers from high ground."
+      },
+      "arrival": "You step off the creaking cargo hoist onto the cedar walkways of Nalindor, three hundred feet above the mist-shrouded forest floor. Lanterns woven of living green moss and star-lilies glow along the massive ironwood trunks, casting warm emerald light across bustling rope bridges, timber workshops, and the polished yew bows of watchful wardens.",
+      "dialogues": {
+        "captain_sylva": {
+          "root": "root_node",
+          "nodes": {
+            "root_node": {
+              "speaker": "npc",
+              "text": "Halt and state your business. If you carry open torches, douse them immediately. If you carry steel and a steady nerve, however, the wardens have immediate use for you.",
+              "choices": [
+                {
+                  "label": "We saw the smoke on the eastern ridge. What is happening?",
+                  "next": "explain_trouble",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Who are you to demand our business?",
+                  "next": "introduce_self",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We barely escaped the trench with our lives, Captain. We need to regroup.",
+                  "next": "defeated_branch",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "introduce_self": {
+              "speaker": "npc",
+              "text": "I am Captain Sylva, commander of the canopy wardens. My archers keep five hundred souls alive across these six ironwoods, and right now a horde of pick-axe-wielding vermin is digging under our rootbeds.",
+              "choices": [
+                {
+                  "label": "Tell us what you are up against.",
+                  "next": "explain_trouble",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "explain_trouble": {
+              "speaker": "npc",
+              "text": "Foreman Mograk and his Red-Cinder goblins have thrown up wooden cranes and blast-furnaces at Moss-Crag Trench. They are digging with iron picks and lobbing scrap-shrapnel bombs at our scout patrols. If we do not clear the trench, their fires will reach the eastern rootline.",
+              "choices": [
+                {
+                  "label": "How do you want to hit them?",
+                  "next": "plan_choice",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Can Taenis at the forge supply us first?",
+                  "next": "mention_taenis",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "mention_taenis": {
+              "speaker": "npc",
+              "text": "Master Taenis keeps the Sunstrider Forge on the middle bridge. He owes me twelve heart-yew staves, so tell him Sylva sent you if you need your blade tempered before you strike.",
+              "choices": [
+                {
+                  "label": "Understood. What are our options at the trench?",
+                  "next": "plan_choice",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "direct_to",
+                      "npc": "taenis_sunstrider",
+                      "location": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "plan_choice": {
+              "speaker": "npc",
+              "text": "My wardens have rigged canopy drop-lines above their timber derricks, or you can wade the drainage sluices below to smash their slag-smelters before they prime their shrapnel bombs. Choose your path and clear the pit.",
+              "choices": [
+                {
+                  "label": "We will take the drop-lines and hit the derricks from above.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "scaffold_descent"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We will wade the sluices and choke their smelters from below.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "mud_sluice_assault"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Give us a moment to prepare our gear first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "defeated_branch": {
+              "speaker": "npc",
+              "text": "Red-Cinder shrapnel bites deep. Bind your wounds with Orodan's moss-salve, sharpen your steel, and let us try this again. Mograk's pickaxes are still ringing against the bedrock.",
+              "choices": [
+                {
+                  "label": "Rope-harnesses ready. We will drop onto the derricks from above.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "scaffold_descent"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We will take the mud sluices and smash the blast-furnaces.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "mud_sluice_assault"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We need another moment in town before we go back.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "taenis_sunstrider": {
+          "root": "root_node",
+          "nodes": {
+            "root_node": {
+              "speaker": "npc",
+              "text": "Mind the sparks. If you are here for shoddy human pot-metal, keep walking. If you want folded star-iron that can cleave through a goblin miner's iron helm, show me your purse.",
+              "choices": [
+                {
+                  "label": "Captain Sylva said you might have gear ready for the trench assault.",
+                  "next": "sylva_mention",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Let me see what weapons you have on the racks.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Just admiring the forge-work. Good day.",
+                  "next": "farewell",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "sylva_mention": {
+              "speaker": "npc",
+              "text": "Sylva knows good work when she sees it. Those Red-Cinder runts have been digging up red clay and burning sulfur an hour from my bellows. Bring me back any stolen star-iron ingots you find out there, and I will shape them into proper armor.",
+              "choices": [
+                {
+                  "label": "Show us your weapons.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "We will keep our eyes open for your metal.",
+                  "next": "farewell",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "farewell": {
+              "speaker": "narration",
+              "text": "Taenis nods curtly and turns back to his glowing hearth, his hammer ringing true against a curved yew broadhead.",
+              "choices": []
+            }
+          }
+        },
+        "faelen_greenmantle": {
+          "root": "root_node",
+          "nodes": {
+            "root_node": {
+              "speaker": "npc",
+              "text": "Welcome to the Roosting Bough, travelers! Come shake the damp moss from your cloaks. We have warm acorn bread fresh from the clay oven and spiced blossom wine in the cellar.",
+              "choices": [
+                {
+                  "label": "We need a warm hearth and a safe place to rest.",
+                  "next": "rest_node",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Have you heard anything about the goblins at Moss-Crag Trench?",
+                  "next": "trench_rumor",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Just passing through for now, Faelen.",
+                  "next": "farewell",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "rest_node": {
+              "speaker": "npc",
+              "text": "A soft featherbed nestled right in the cedar heartwood will put the strength back in your arms. Sleep soundly; my warding bells will keep the tree-spiders away.",
+              "choices": [
+                {
+                  "label": "Take a room and rest.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "trench_rumor": {
+              "speaker": "npc",
+              "text": "The wood-cutters say the pickaxes have been ringing night and day down there. Goblins do not usually dig through solid ironbark roots just for gravel; whatever Mograk is hunting for, it has him desperate.",
+              "choices": [
+                {
+                  "label": "We will look into it. Let us rent a room first.",
+                  "next": "rest_node",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Thank you for the warning.",
+                  "next": "farewell",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "farewell": {
+              "speaker": "narration",
+              "text": "Faelen offers a warm smile and polishes a carved maple goblet, humming an old river-song as the hearth fire crackles pleasantly.",
+              "choices": []
+            }
+          }
+        }
+      },
+      "flavor": {
+        "orin_copperbraid": "Watch where you step on the cross-timbers! These elves think string and sap can hold twenty stone of ironwood, but I am the one driving the real iron pins.",
+        "lady_vespera": "Walk softly, travelers. The ancient trees feel every heavy hammer-blow struck at their roots, and their patience wears thin like old parchment.",
+        "master_orodan": "Don't touch the blue fungus in the drying trays unless you want your fingers numb for a week! What aches need mending?",
+        "elder_althea": "May the Great Mother Oak keep your footing true upon the high boughs. The forest is weeping bitter sulfur from the east.",
+        "kaelen": "Did you see Master Taenis's star-iron broadswords? I helped stoke the fire for three days straight without burning a single sleeve!"
+      },
+      "topics": {
+        "orin_copperbraid": [
+          {
+            "ask": "Have you examined the timber cranes the goblins are using at the trench?",
+            "reply": "Crude pine logs lashed with greasy pig-gut! A single well-placed crowbar or fire-pot on the winch pawl will send their entire derrick crashing into the red mud."
+          }
+        ],
+        "lady_vespera": [
+          {
+            "ask": "Do you sense any strange power coming from the excavation?",
+            "reply": "Beneath the smell of goblin sulfur, there is an ancient hum—like a bronze clock wound five hundred years ago that has suddenly begun to tick again."
+          }
+        ],
+        "master_orodan": [
+          {
+            "ask": "Can you treat shrapnel wounds from goblin scrap-bombs?",
+            "reply": "Take two jars of blackthorn salve. It pulls rusty iron splinters straight out of the flesh before mortification takes hold. Stings like wasp venom, but you will keep your limbs."
+          }
+        ],
+        "elder_althea": [
+          {
+            "ask": "What does the Whispering Glade make of Mograk's digging?",
+            "reply": "The silver sapling's leaves tremble even when the wind is still. Something buried deep beneath Moss-Crag is stirring, and its sleep was meant to last forever."
+          }
+        ],
+        "kaelen": [
+          {
+            "ask": "Have you seen the goblin raiders yourself?",
+            "reply": "From the south watch-rope! They carry crude iron shields covered in spiked scrap-metal and throw smoking pots that burst with red fire. Captain Sylva chased three of them off with single arrows!"
+          }
+        ]
+      },
+      "reask": {
+        "captain_sylva": "Well? Have you chosen your angle of attack for Moss-Crag Trench, or do we let Mograk's goblins saw through our rootline unchallenged?"
+      },
+      "stock": {}
+    }
+  },
+  "difficulty": "standard"
+}

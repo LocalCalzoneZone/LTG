@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "wardens_poleaxe",
+  "name": "Warden's Poleaxe",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 5,
+  "points_price": 35,
+  "flavor": "Standing watch is most of the work.",
+  "art_desc": "A long poleaxe with an axe head, a rear spike, and a steel-shod butt.",
+  "art_url": "/art/items/wardens_poleaxe/item-6fb84114.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "vigilance"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

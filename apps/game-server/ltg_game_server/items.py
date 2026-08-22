@@ -35,9 +35,9 @@ USER_ITEMS_DIR = content.LOADOUTS_DIR / "equipment"
 ITEM_HIDDEN_FILE = content.LOADOUTS_DIR / "items_hidden.json"
 
 RARITY_ORDER = ("common", "uncommon", "rare", "mythic")
-# T-83: Phase III boss drops.
-DROP_GEAR_PER_PARTY = 1        # (party size + 1) gear
-DROP_CONSUMABLES_PER_MEMBER = 2  # (party size × 2) consumables
+# Phase III boss drops are NOT rolled off this catalogue — they are forged from
+# the scenario's own lexicon (``loot.forge_drops``, T-83 / §D17-4.5). What lives
+# here is the balance floor and the shelf merchants stock from.
 
 
 # --------------------------------------------------------------------------- #
@@ -238,8 +238,14 @@ AFFIXES: List[Dict[str, Any]] = [
     {"id": "watchful", "name": "Watchful", "slots": ("accessory",), "rarity_min": "rare",
      "level_min": 4, "points": 20, "static": {"kind": "keyword", "keyword": "vigilance"}},
     # Creation-banned keywords — rare finds and boss drops, never in stock.
-    {"id": "warded", "name": "Warded", "slots": ("accessory",), "rarity_min": "rare",
-     "level_min": 4, "points": 25, "banned": True,
+    # Warded (hexproof) is the most expensive rider in the table, above even
+    # indestructible (§D19-3): indestructible turns off removal, but the party is
+    # whittled down by DAMAGE anyway, whereas hexproof turns off the whole
+    # targeted enemy suite — every curse, stun, silence, sap, drain and snipe —
+    # for the rest of the encounter, leaving only basic attacks and area shapes.
+    # Playtest: worn on one hero it deleted most of an encounter's kit.
+    {"id": "warded", "name": "Warded", "slots": ("accessory",), "rarity_min": "mythic",
+     "level_min": 6, "points": 40, "banned": True,
      "static": {"kind": "keyword", "keyword": "hexproof"}},
     {"id": "venomed", "name": "Venomed", "slots": ("weapon",), "rarity_min": "rare",
      "level_min": 5, "points": 25, "banned": True,
@@ -283,10 +289,13 @@ def _catalogue_templates(slot: str) -> List[Item]:
 def roll_item(rng: random.Random, slot: str, tier: int, boss: bool = False,
               max_rarity: str = "mythic") -> Optional[Item]:
     """Roll one procedural item: a catalogue template of ``slot`` at or below
-    ``tier`` (level_min), plus 0–2 affixes chosen in code. Boss rolls skew
-    higher rarity and may take banned-keyword affixes; stock rolls cap at
-    ``max_rarity`` (uncommon) and never take banned affixes."""
-    templates = [t for t in _catalogue_templates(slot) if t.level_min <= max(1, tier)]
+    ``tier`` (level_min), plus 0–2 affixes chosen in code. This is the MERCHANT
+    path — stock rolls cap at ``max_rarity`` (uncommon), in the template they
+    draw as well as the affixes they take, and never take banned affixes. (A
+    boss's spoils are not rolled here at all: they are forged from the
+    scenario's lexicon — see ``loot.forge_drops``.)"""
+    templates = [t for t in _catalogue_templates(slot)
+                 if t.level_min <= max(1, tier) and _rarity_at_least(max_rarity, t.rarity)]
     if not templates:
         return None
     base = rng.choice(templates).model_copy(deep=True)
@@ -347,22 +356,6 @@ def roll_item(rng: random.Random, slot: str, tier: int, boss: bool = False,
         "flavor": base.flavor if not chosen else rng.choice(FLAVOR_BY_SLOT[slot]),
     })
     return item
-
-
-def roll_drops(party_size: int, tier: int, seed: Optional[int] = None) -> List[Item]:
-    """T-83: (party + 1) gear and (party × 2) consumables at the boss tier."""
-    rng = random.Random(seed)
-    out: List[Item] = []
-    for i in range(party_size + DROP_GEAR_PER_PARTY):
-        slot = "weapon" if i % 2 == 0 else "accessory"
-        it = roll_item(rng, slot, tier, boss=True)
-        if it:
-            out.append(it)
-    for _ in range(party_size * DROP_CONSUMABLES_PER_MEMBER):
-        it = roll_item(rng, "consumable", tier, boss=False)
-        if it:
-            out.append(it)
-    return out
 
 
 def roll_stock(function: str, tier: int, seed: Optional[int] = None) -> List[Item]:

@@ -1,0 +1,32 @@
+{
+  "kind": "item",
+  "id": "whetstone_oil",
+  "name": "Whetstone Oil",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 2,
+  "points_price": 8,
+  "flavor": "A minute's work, bought back tenfold.",
+  "art_desc": "A small oil vial and a pocket whetstone tied together with waxed cord.",
+  "art_url": "/art/items/whetstone_oil/item-41c1eb3d.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "pump",
+      "power": 2,
+      "toughness": 0,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

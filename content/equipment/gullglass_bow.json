@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "gullglass_bow",
+  "name": "Gullglass Bow",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 5,
+  "points_price": 35,
+  "flavor": "It never seems to need putting down.",
+  "art_desc": "A recurve bow of pale horn and glassy lacquer, strung with braided gut.",
+  "art_url": "/art/items/gullglass_bow/item-92f91585.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "vigilance"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}
