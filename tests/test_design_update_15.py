@@ -250,7 +250,9 @@ def test_positional_intent_telegraph_names_the_row():
     assert intent_category(e.round_intent) == "row assault"
     entry = veiled_intent(st, e)
     assert entry["target_row"] == "front"
-    assert "front of your party" in entry["line"]
+    assert entry["target_rows"] == ["front"]
+    # §D18-4: the telegraph names the ground it is coming for.
+    assert "your front row" in entry["line"]
 
 
 def test_bad_target_row_is_rejected_by_the_loader():

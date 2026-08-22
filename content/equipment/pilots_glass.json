@@ -1,0 +1,29 @@
+{
+  "kind": "item",
+  "id": "pilots_glass",
+  "name": "Pilot's Glass",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 5,
+  "flavor": "See the shoal before the hull does.",
+  "art_desc": "A short brass spyglass, scratched, one lens ringed with verdigris.",
+  "art_url": "/art/items/pilots_glass/item-01c5303e.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "scry",
+      "amount": 2,
+      "target": {
+        "mode": "self",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

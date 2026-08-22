@@ -173,6 +173,9 @@ async def _create_scenario_game(body: CreateGameBody) -> Dict[str, Any]:
             "adventure_id": pregen_adventure,
             "quest_id": (sdef.get("act1") or {}).get("quest_id", ""),
         }
+    # A pre-generated Act I is already materialized here: its spoils are frozen,
+    # so start painting them while the party is still reading the arrival text.
+    _queue_spoils_art(session)
     return {"session_id": session.id, "run_id": meta["run_id"]}
 
 
@@ -216,6 +219,7 @@ def _scenario_async(session, kind: str) -> None:
 async def _materialize_task(session) -> None:
     await asyncio.to_thread(session.materialize_act)
     await _broadcast(session)
+    _queue_spoils_art(session)     # the act's spoils are frozen now — start painting
 
 
 def _new_arc_sync(session) -> None:
@@ -236,6 +240,7 @@ async def _new_arc_task(session) -> None:
             session.scenario.materialize_error = f"new arc: {exc}"
             session.scenario.materializing = False
     await _broadcast(session)
+    _queue_spoils_art(session)
 
 
 async def _confirm_timer(session) -> None:
@@ -255,6 +260,30 @@ def _after_town_change(session) -> None:
     pacer so the opening auto-passes drain visibly."""
     if session.state is not None:
         session.start_pacer(_broadcast)
+    _queue_spoils_art(session)
+
+
+def _queue_spoils_art(session) -> None:
+    """Paint the act's spoils AHEAD of the boss (§D17-4.5). The act freezes its
+    drops on arrival in town, so this queue — the same sequential art queue the
+    town and the adventure use — has the whole town visit and the whole ride
+    out to work in. Idempotent: only drops still without a picture are queued,
+    and one already on disk is adopted rather than repainted."""
+    sc = getattr(session, "scenario", None)
+    if sc is None or not sc.spoils():
+        return
+    key = f"spoils:{session.run_id or id(session)}:{sc.scenario_number}:{sc.act_index}"
+
+    async def _refresh(_key: str) -> None:
+        await _broadcast(session)
+
+    items_ = art.spoil_art_items(sc.spoils(), sc.set_spoil_art)
+    if not items_:
+        return
+    try:
+        art.QUEUE.start_items(key, items_, _refresh)
+    except RuntimeError:
+        pass  # no running loop (tests / sync callers)
 
 
 @app.post("/api/characters")
@@ -317,7 +346,9 @@ def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
                                  adventure=adventure, run_id=run_id, run_manager=RUNS)
         return {"session_id": session.id, "run_id": run_id}
     if scenario.mode == "adventure" and adventure is not None:
-        scenario.adventure = adventure
+        # Stamps this act's level-up schedule onto the restored run, and
+        # re-opens the act-end screen if the save sat inside it (§D17-2.3).
+        scenario.adopt_adventure(adventure)
         session = MANAGER.create(state, name=meta["name"], portraits=portraits,
                                  encounter_id=encounter_id, art=game_art,
                                  adventure=adventure, run_id=run_id, run_manager=RUNS,
@@ -336,6 +367,13 @@ def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
                 and scenario.adventure_detail is None:
             _scenario_async(session, "adventure_job")
     session.async_hook = _scenario_async
+    # A save taken inside an act's WRAP-UP (§D17-2.3) — the spoils modal or the
+    # act-end level-up screen — resumes where it stopped instead of stalling in
+    # a won adventure with nothing driving it.
+    if scenario.act_wrapup and session.adventure is not None and session.adventure.complete:
+        session._scenario_transitions()
+    # Resume the spoils art: anything already on disk is adopted, the rest queued.
+    _queue_spoils_art(session)
     return {"session_id": session.id, "run_id": run_id}
 
 
@@ -869,6 +907,9 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     await _send(ws, {"type": "seats", **session.seats_payload(client_id)})
     await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
     await _send(ws, _prompt_msg(session))
+    # A client is here and there is a loop: pick up any spoils art still unpainted
+    # (a loaded save queues from its sync endpoint, where there is no loop).
+    _queue_spoils_art(session)
 
     try:
         while True:

@@ -996,6 +996,9 @@ RENDERERS = {
     "charge": lambda e: f"Gather {e.amount} charge.",
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
     "exile": lambda e: f"Exile {_tgt(e.target)}.",
+    # §D19-1: the cost reads as a cost — and it always happens last, so the
+    # sentence puts it last too ("… then consume the corpse").
+    "consume_corpse": lambda e: f"Consume {_tgt(e.target)}.",
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",
     "fight": lambda e: f"{_tgt(e.target).capitalize()} fights {_tgt(e.other)}.",
     "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
@@ -1068,6 +1071,7 @@ _CLAUSE = {
                         f"at each Upkeep{_affliction_suffix(e)} (broken by damage)"),
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
+    "consume_corpse": lambda e: "are consumed",
     "bounce": lambda e: "are returned to hand",
     "stun": lambda e: f"are stunned for {e.intents} intent(s)",
     "grant_keyword": lambda e: f"gain {_keyword_phrase(e.keywords, e.params)}",
@@ -1215,6 +1219,8 @@ def _channeled_body(e, targets) -> str:
         return f"{subj} {verb} stunned"
     if k == "exile":
         return f"exile {_subject(e.target, targets, True)}"
+    if k == "consume_corpse":
+        return f"consume {_subject(e.target, targets, True)}"
     if k == "fight":
         return (f"{_subject(e.target, targets, True)} fights "
                 f"{_subject(getattr(e, 'other', None), targets, True)}")

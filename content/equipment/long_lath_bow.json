@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "long_lath_bow",
+  "name": "Long-Lath Bow",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 30,
+  "flavor": "Loosed before the shout finishes.",
+  "art_desc": "A tall bow of layered yew laths, bound at the belly with sinew.",
+  "art_url": "/art/items/long_lath_bow/item-6d2d1745.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "first_strike"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

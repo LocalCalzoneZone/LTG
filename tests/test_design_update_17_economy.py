@@ -12,12 +12,13 @@ import pytest
 from ltg_core.schema import BELT_SIZE, INVENTORY_GEAR, Item
 from ltg_combat.engine import apply_action, legal_actions
 from ltg_combat.scenario import compose_spec, state_from_dict
-from ltg_game_server import content, items, scenario_content as sc
+from ltg_game_server import content, items, loot, scenario_content as sc
 from ltg_game_server.runs import RunManager
 from ltg_game_server.session import SessionManager
 
 from tests.test_design_update_10 import _adventure, _isolate  # noqa: F401
-from tests.test_design_update_17_scenario import (_accept_quest, _drive, _fake_materializer,
+from tests.test_design_update_17_scenario import (_accept_quest, _confirm_act_end_level_up,
+                                                   _drive, _fake_materializer,
                                                    _win_adventure)
 from tests.test_design_update_17_towns import arc_raw, town_raw
 from ltg_game_server.scenario import ScenarioRun
@@ -38,7 +39,17 @@ def test_base_catalogue_ships_t82():
     by_slot = {}
     for m in metas:
         by_slot.setdefault(m["slot"], []).append(m)
+    # T-82's floor, and then the expanded shelf vendors draw stock from: at
+    # least three times the shipped 16, spread across the three slots.
     assert len(by_slot["weapon"]) >= 6 and len(by_slot["accessory"]) >= 4 and len(by_slot["consumable"]) >= 6
+    assert len(metas) >= 48
+    assert all(len(v) >= 15 for v in by_slot.values())
+    # Every catalogue entry is a legal, priced, describable template.
+    for m in metas:
+        it = items.get_item(m["id"])
+        assert it is not None and it.template is None
+        assert it.art_desc and it.flavor and items.describe(it)
+        assert it.points_price >= 0 and it.level_min >= 1
     keen = items.get_item("keen_falchion")
     assert keen.points_price == 15 and items.summarize(keen) == "melee weapon · +1 Power"
     flask = items.get_item("pilgrims_flask")
@@ -79,10 +90,55 @@ def test_rolls_stay_on_vocabulary_and_budget():
     stock = items.roll_stock("weaponsmith", tier=6, seed=1)
     assert stock and all(x.rarity in ("common", "uncommon") for x in stock)
     assert all(not any(a in ("warded", "venomed", "unbroken", "blighted") for a in x.affixes) for x in stock)
-    drops = items.roll_drops(2, tier=1, seed=7)
+    # A merchant draws COMMON/UNCOMMON templates too — never a rare one relabelled.
+    assert all(items.get_item(x.template).rarity in ("common", "uncommon") for x in stock)
+    assert items.roll_stock("inn", 3) == []
+
+
+def test_act_rewards_are_forged_from_the_scenarios_lexicon_not_the_shelf():
+    """§D17-4.5: a boss's spoils are pieced together from the verbiage drawn
+    when the scenario was made — never picked off the catalogue."""
+    town = {"name": "Millhaven", "region_flavor": "a salt harbour town of nets and tide"}
+    arc = {"title": "The Black Sail", "villain": "a drowned captain",
+           "stakes": "the fishing fleet", "acts": []}
+    lex = loot.build_lexicon(town, arc)
+    assert lex["theme"] == "salt" and lex["forms"]["melee"] and lex["materials"]
+    # Deterministic: the same arc always draws the same words.
+    assert loot.build_lexicon(town, arc) == lex
+
+    catalogue = {m["id"] for m in items.list_items()}
+    names = {m["name"] for m in items.list_items()}
+    drops = loot.forge_drops(2, tier=4, lexicon=lex, seed=7)
     assert len([d for d in drops if d.slot != "consumable"]) == 3      # party + 1
     assert len([d for d in drops if d.slot == "consumable"]) == 4      # party × 2
-    assert items.roll_stock("inn", 3) == []
+    for d in drops:
+        assert d.template is None and d.id not in catalogue and d.name not in names
+        assert d.id.startswith("forged_")
+        assert d.flavor and d.art_desc and items.describe(d)
+        assert d.points_price > 0
+        if d.slot == "consumable":
+            assert d.effects and d.as_card("x_").cost.generic == 0
+        else:
+            assert d.statics
+        # On-vocabulary: every affix it took is a table affix (a consumable's
+        # is its recipe id), and gear affixes are priced ones.
+        for a in d.affixes:
+            assert (any(x["id"] == a for x in loot.AFFIXES)
+                    or any(r["id"] == a for r in loot.CONSUMABLE_RECIPES))
+    # The same seed forges the same spoils (a reload is not a different world).
+    assert [d.name for d in loot.forge_drops(2, tier=4, lexicon=lex, seed=7)] == [d.name for d in drops]
+    # A different scenario speaks differently.
+    other = loot.build_lexicon({"name": "Ashkiln", "region_flavor": "a kiln town of cinder and smoke"},
+                               {"title": "The Long Burning", "villain": "a fire-priest",
+                                "stakes": "the kilns", "acts": []})
+    assert other["theme"] == "ash"
+    assert {d.name for d in loot.forge_drops(2, tier=4, lexicon=other, seed=7)} != {d.name for d in drops}
+    # Banned-creation keywords arrive HERE and never in stock (§D17-4.1).
+    banned = set()
+    for s in range(40):
+        for d in loot.forge_drops(2, tier=6, lexicon=lex, seed=s):
+            banned |= {st.keyword for st in d.statics if st.kind == "keyword"}
+    assert banned & {"hexproof", "deathtouch", "indestructible", "infect"}
 
 
 def test_gear_helpers_capacity_equip_swap():
@@ -229,8 +285,16 @@ def test_rewards_gate_after_phase_three(runs):
             target = "discard"
         session.economy_verb("c1", "reward_assign", {"index": i, "target": target})
     session.economy_verb("c1", "reward_accept", {})   # one client → runs at once
+    # The spoils are placed, and the act-end level-up screen is what is queued
+    # behind them (§D17-2.3): still in the adventure, victory still suppressed.
+    assert scen.rewards is None and scen.act_wrapup == "levelup"
+    assert scen.mode == "adventure" and session.public_result() is None
+    assert session.adventure is not None and session.adventure.is_final_gate
+    lu = session.snapshot_for("c1")["adventure"]["level_up"]
+    assert lu["kind"] == "levelup" and lu["final"] is True
+    assert _confirm_act_end_level_up(session)
     # Items landed, the finale transitioned, and the party is in town for Act II.
-    assert scen.rewards is None and scen.mode == "town" and scen.act_index == 1
+    assert scen.act_wrapup is None and scen.mode == "town" and scen.act_index == 1
     lo = scen.loadouts[0]
     assert items.all_items(lo)
     kinds = [s["kind"] for s in runs.run_detail(run_id)["saves"]]
@@ -257,3 +321,52 @@ def test_effective_level_reads_worn_points(runs):
     items.add_item(lo2, items.get_item("siege_bow").model_dump(mode="json"))
     items.equip(lo2, "siege_bow", "primary")
     assert scen.effective_level() == 2
+
+
+def test_spoils_are_frozen_on_arrival_and_their_art_can_be_painted_early(runs, tmp_path, monkeypatch):
+    """§D17-4.5: the act forges its spoils when the party ARRIVES in town — not
+    when the boss falls — so the art queue has the whole act to paint them."""
+    from ltg_game_server import art
+
+    session, scen, run_id = _start(runs)
+    frozen = scen.act["spoils"]
+    assert len(frozen) == 3 + 4                      # (party + 1) gear, (party × 2) consumables
+    assert all(r["id"].startswith("forged_") for r in frozen)
+    # Boss tier: a step above the tier the act's merchants sell at.
+    assert scen.spoils_tier() == scen.act_tier() + 1
+
+    # The spoils art queue paints run art into the loadouts space — never into
+    # the tracked catalogue — and writes the URL back onto the frozen act.
+    monkeypatch.setattr(art, "SPOILS_ROOT", tmp_path / "art")
+    painted = []
+
+    def _fake_paint(prompt, aspect, folder, slot, root=None):
+        painted.append(folder)
+        d = (root or art.ART_DIR) / folder
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "item-abcd.png").write_bytes(b"x")
+        return f"/art/{folder}/item-abcd.png"
+
+    monkeypatch.setattr(art, "paint", _fake_paint)
+    queued = art.spoil_art_items(scen.spoils(), scen.set_spoil_art)
+    assert len(queued) == len(frozen)
+    for q in queued:
+        q["paint"]()
+    assert all(r["art_url"] for r in scen.act["spoils"])
+    assert all(f.startswith("spoils/forged_") for f in painted)
+    assert (tmp_path / "art" / "spoils").is_dir()      # run art, not the tracked catalogue
+
+    # A requeue adopts what is on disk instead of repainting it.
+    for r in scen.act["spoils"]:
+        r.pop("art_url")
+    assert art.spoil_art_items(scen.spoils(), scen.set_spoil_art) == []
+    assert all(r["art_url"] for r in scen.act["spoils"])
+
+    # The Rewards modal shows exactly those spoils, art and all.
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    _win_adventure(session)
+    rv = session.snapshot_for("c1")["rewards"]
+    assert [i["id"] for i in rv["items"]] == [r["id"] for r in frozen]
+    assert all(i["art_url"] for i in rv["items"])

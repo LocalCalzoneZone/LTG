@@ -35,7 +35,88 @@
         "adventure_theme": "Cormorant Cove and the beached galley Grinstone — deck, hold and stern-castle of Ozgar Mawgrim's tithe-crew, with the wind-horn at its heart",
         "tone_notes": "Sea-mist and rising gale, tin-bright water going slate, torn black canvas snapping — heroic boarding action, triumph and salt spray at the end."
       }
-    ]
+    ],
+    "loot_lexicon": {
+      "theme": "iron",
+      "second": "salt",
+      "materials": [
+        "Anvil-Steel",
+        "Rivet-Brass",
+        "Slagsteel",
+        "Black Iron",
+        "Pig-Lead",
+        "Chainwork",
+        "Tide-Iron",
+        "Whalebone"
+      ],
+      "epithets": [
+        "Anvil-True",
+        "Cold-Forged",
+        "Hammer-Set",
+        "Pitted",
+        "Rust-Marked",
+        "Rivet-Bound",
+        "Tide-Worn",
+        "Barnacled"
+      ],
+      "suffixes": [
+        "Bell-Metal",
+        "the Deep Seam",
+        "the Ninth Forge",
+        "the Cold Anvil",
+        "the Drowned Choir",
+        "Hollow Water"
+      ],
+      "details": [
+        "rust bloomed and scrubbed back a dozen times",
+        "banded twice in riveted strap",
+        "hammer marks still standing proud on it",
+        "crusted white along every seam"
+      ],
+      "flavor": [
+        "Honest weight, honestly balanced.",
+        "It has been rehafted three times.",
+        "It rings when you set it down.",
+        "Somebody good made this, and nobody remembers them.",
+        "The salt has been eating it for years and has not finished.",
+        "It came up in a net. Nobody claimed it."
+      ],
+      "forms": {
+        "melee": [
+          "sabre",
+          "cleaver",
+          "maul",
+          "warpick",
+          "longknife",
+          "poleaxe"
+        ],
+        "ranged": [
+          "crossbow",
+          "arbalest",
+          "recurve",
+          "hookshot",
+          "boarsling"
+        ],
+        "accessory": [
+          "bracer",
+          "amulet",
+          "charm",
+          "torc",
+          "seal",
+          "chain"
+        ],
+        "consumable": [
+          "oil",
+          "philtre",
+          "powder",
+          "salve",
+          "flask",
+          "tonic",
+          "resin",
+          "incense"
+        ]
+      }
+    }
   },
   "act1": {
     "adventure_id": "whitesail_mill_nine",

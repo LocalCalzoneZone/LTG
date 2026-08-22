@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "tar_torch",
+  "name": "Tar Torch",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 2,
+  "points_price": 8,
+  "flavor": "Light it early. Regret it never.",
+  "art_desc": "A pine billet bound with tarred rag, burnt short at one end.",
+  "art_url": "/art/items/tar_torch/item-5040b96f.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "deal_damage",
+      "amount": 2,
+      "target": {
+        "mode": "chosen",
+        "side": "enemy",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "nonlethal": false
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

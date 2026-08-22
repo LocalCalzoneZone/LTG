@@ -300,21 +300,25 @@ def _request_comfyui(base_url: str, workflow_text: str, prompt: str,
 # --------------------------------------------------------------------------- #
 # File persistence
 # --------------------------------------------------------------------------- #
-def _clear_slot_files(encounter_id: str, slot: str) -> None:
-    d = ART_DIR / encounter_id
+def _clear_slot_files(encounter_id: str, slot: str, root: Optional[Path] = None) -> None:
+    d = (root or ART_DIR) / encounter_id
     if d.is_dir():
         for p in d.glob(f"{slot}-*.*"):
             p.unlink(missing_ok=True)
 
 
-def _write_image(encounter_id: str, slot: str, raw: bytes, ext: str) -> str:
+def _write_image(encounter_id: str, slot: str, raw: bytes, ext: str,
+                 root: Optional[Path] = None) -> str:
     """Persist the image, replacing the slot's previous file. Returns the URL.
 
     The filename carries a random token so a regenerated image gets a NEW URL —
-    browsers cache aggressively and would otherwise keep showing the old art."""
-    d = ART_DIR / encounter_id
+    browsers cache aggressively and would otherwise keep showing the old art.
+    ``root`` writes outside the tracked content dir — RUN-scoped art (a forged
+    drop's picture) belongs in the gitignored loadouts space, served under the
+    same /art URLs."""
+    d = (root or ART_DIR) / encounter_id
     d.mkdir(parents=True, exist_ok=True)
-    _clear_slot_files(encounter_id, slot)
+    _clear_slot_files(encounter_id, slot, root)
     fname = f"{slot}-{secrets.token_hex(4)}.{ext}"
     (d / fname).write_bytes(raw)
     return f"{ART_URL_PREFIX}/{encounter_id}/{fname}"
@@ -373,7 +377,8 @@ def generate(encounter_id: str, kind: str, enemy_id: Optional[str] = None,
     return {"url": url}
 
 
-def paint(prompt: str, aspect: str, folder: str, slot: str) -> str:
+def paint(prompt: str, aspect: str, folder: str, slot: str,
+          root: Optional[Path] = None) -> str:
     """Generate ONE image from a finished prompt with the configured backend
     and persist it under ``content/art/<folder>/<slot>-<token>.<ext>``;
     returns the URL. The generic path behind town / location / NPC / item art
@@ -392,7 +397,7 @@ def paint(prompt: str, aspect: str, folder: str, slot: str) -> str:
         if not settings["api_key"]:
             raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
         raw, ext = _request_image(settings["api_key"], prompt, aspect)
-    return _write_image(folder, slot, raw, ext)
+    return _write_image(folder, slot, raw, ext, root)
 
 
 _TOWN_TASK = (
@@ -551,6 +556,64 @@ def generate_item_art(item_id: str, text: str = "") -> Dict[str, Any]:
     url = paint(prompt, "3:2", f"items/{item_id}", "item")
     _items.set_item_art(item_id, url)
     return {"url": url}
+
+
+# --------------------------------------------------------------------------- #
+# Spoils art (§D17-4.5): the act's forged drops
+# --------------------------------------------------------------------------- #
+# A forged drop exists only inside a run, so its picture is RUN data: it lands
+# in the gitignored loadouts art space (served under the same /art URLs), never
+# in the tracked catalogue. The act freezes its spoils on arrival in town, so
+# this queue paints them while the party shops and rides out — by the time the
+# boss falls, the Rewards modal has pictures instead of sigils.
+SPOILS_ROOT = LEGACY_ART_DIR
+SPOILS_FOLDER = "spoils"
+
+
+def spoil_art_url(item_id: str) -> str:
+    """The already-painted picture for this forged drop, or "" — so a requeue
+    (a reload, a second act) never repaints what is on disk."""
+    d = SPOILS_ROOT / SPOILS_FOLDER / item_id
+    if d.is_dir():
+        for p in sorted(d.glob("item-*.*")):
+            return f"{ART_URL_PREFIX}/{SPOILS_FOLDER}/{item_id}/{p.name}"
+    return ""
+
+
+def generate_spoil_art(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Paint one forged drop from the words it was forged with. Takes the item
+    DICT (it is not in the catalogue registry); returns ``{"url"}``."""
+    iid = str(item.get("id") or "")
+    if not iid:
+        raise ValueError("a spoil needs an id")
+    existing = spoil_art_url(iid)
+    if existing:
+        return {"url": existing}
+    subject = f'{item.get("name", "")}. {item.get("art_desc") or item.get("flavor") or ""}'
+    url = paint(f"{_style()}\n\n{_ITEM_TASK}{subject}", "3:2",
+                f"{SPOILS_FOLDER}/{iid}", "item", root=SPOILS_ROOT)
+    return {"url": url}
+
+
+def spoil_art_items(spoils: List[Dict[str, Any]],
+                    on_painted: Callable[[str, str], None]) -> List[Dict[str, Any]]:
+    """Queue items for every drop still without a picture. ``on_painted(item_id,
+    url)`` writes the URL back onto the run's copy of the drop."""
+    out: List[Dict[str, Any]] = []
+    for raw in spoils:
+        iid = str(raw.get("id") or "")
+        if not iid or raw.get("art_url"):
+            continue
+        known = spoil_art_url(iid)
+        if known:
+            on_painted(iid, known)     # painted by an earlier act / before a reload
+            continue
+
+        def _paint(raw=raw, iid=iid) -> None:
+            on_painted(iid, generate_spoil_art(raw)["url"])
+        out.append({"label": f'spoils — {raw.get("name", iid)}', "paint": _paint,
+                    "refresh_key": "spoils"})
+    return out
 
 
 def item_art_items() -> List[Dict[str, Any]]:

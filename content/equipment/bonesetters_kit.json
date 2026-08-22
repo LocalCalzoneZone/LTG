@@ -1,0 +1,56 @@
+{
+  "kind": "item",
+  "id": "bonesetters_kit",
+  "name": "Bonesetter's Kit",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 15,
+  "flavor": "It hurts, then it stops hurting.",
+  "art_desc": "A rolled canvas kit of splints, waxed thread, and a curved needle.",
+  "art_url": "/art/items/bonesetters_kit/item-19f40933.png",
+  "statics": [
+    {
+      "kind": "ability",
+      "amount": 0,
+      "card": {
+        "id": "set_the_bone",
+        "name": "Set the Bone",
+        "source_name": "Set the Bone",
+        "ignore_source": false,
+        "rarity": "common",
+        "level": 1,
+        "type": "Ability",
+        "cost": {
+          "generic": 2,
+          "colors": {},
+          "x": false
+        },
+        "timing": "sorcery",
+        "original_text": "",
+        "translated_text": "Restore 4 HP to an ally.",
+        "flavor_text": "",
+        "effects": [
+          {
+            "kind": "heal",
+            "amount": 4,
+            "target": {
+              "mode": "chosen",
+              "side": "ally",
+              "exclude_self": false,
+              "targeted": false
+            }
+          }
+        ],
+        "targets": {},
+        "needs_translation": false,
+        "text_override": false,
+        "validated": true,
+        "image": ""
+      }
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

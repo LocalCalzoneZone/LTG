@@ -1,0 +1,33 @@
+{
+  "kind": "item",
+  "id": "gullfeather_charm",
+  "name": "Gullfeather Charm",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 10,
+  "flavor": "Borrowed from a bird that did not need it.",
+  "art_desc": "Three grey wing-feathers bound at the quill with red thread.",
+  "art_url": "/art/items/gullfeather_charm/item-1ffb8e22.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "grant_keyword",
+      "keywords": [
+        "flying"
+      ],
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

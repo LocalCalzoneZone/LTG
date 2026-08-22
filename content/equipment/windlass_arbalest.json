@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "windlass_arbalest",
+  "name": "Windlass Arbalest",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 5,
+  "points_price": 35,
+  "flavor": "Slow to load. Nobody argues after.",
+  "art_desc": "A heavy steel crossbow with a crank windlass hanging from its stock.",
+  "art_url": "/art/items/windlass_arbalest/item-13c316e8.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 2
+    },
+    {
+      "kind": "stat",
+      "amount": 2,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

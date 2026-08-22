@@ -418,6 +418,10 @@ class Intent:
     # A POSITIONAL intent (§L-5): aimed at a row, not a combatant. `target_id` is
     # None; occupancy is read at resolution, so vacating the row dodges it.
     target_row: Optional[str] = None
+    # §D19-1: the corpse this action spends, bound at declaration and independent
+    # of `target_id` — an enemy that aims a corpse-fuelled blast at a HERO still
+    # needs to know which body it is burning.
+    corpse_id: Optional[str] = None
     source_component: Optional[str] = None  # component that declared it (cooldown bookkeeping)
     # The basic attack's BASE Power (pre-bonus), for a default-attack intent. The
     # damage it actually deals is `max(0, attack_power + enemy.power_bonus)`, computed
@@ -550,6 +554,11 @@ class EnemyState:
     ranged_template: Dict[str, Any] = field(default_factory=dict)
     stunned: int = 0           # intents to skip (stun); decremented as they would declare
     taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
+    # §D18-3 attack cadence: consecutive declared intents that were NOT the basic
+    # attack. The §F-7.1 pass takes the top ready component every turn, so a kit
+    # with any short-cooldown rule would otherwise never swing — and the balance
+    # register's Power bump (which lifts only the swing) would be dead weight.
+    rounds_since_swing: int = 0
     # Held channels (§8 enemy side): started by channel-components, broken by a
     # ≥25%-max-HP hit, death, bounce, or suspension. See EnemyChannel.
     channels: List[EnemyChannel] = field(default_factory=list)
@@ -660,6 +669,9 @@ class StackItem:
     # in this row when it RESOLVES (target_id stays None). Read by Mitigate
     # legality (a struck character may answer) and the whiff log.
     target_row: Optional[str] = None
+    # §D19-1: the corpse this action spends, independent of `target_id` — every
+    # corpse-state verb on the item binds here rather than to the living target.
+    corpse_id: Optional[str] = None
     # Base (pre-bonus) Power of a basic attack. The damage it deals is recomputed at
     # RESOLUTION as max(0, attack_power + source.power_bonus) — so a wound/anthem landing
     # while the swing sits on the stack changes what lands (R-7). None for spells/abilities.

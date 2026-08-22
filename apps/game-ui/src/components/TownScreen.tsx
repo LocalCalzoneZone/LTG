@@ -497,10 +497,7 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
               <span>Level {row.level}{row.effective_level && row.effective_level !== row.level ? ` (eff. ${row.effective_level})` : ""}</span>
               <span>{row.gold} gold</span>
             </div>
-            <div className="mt-1 text-[10px] font-light text-mist">
-              {row.earned_points} points earned{row.points_to_next_level != null ? ` · ${row.points_to_next_level} to next level` : " · max level"}
-              {row.banked ? ` · ${row.banked} banked` : ""}
-            </div>
+            <LevelProgress row={row} />
             {b.description && <p className="mt-2 text-xs font-light italic leading-relaxed text-mist">{b.description}</p>}
           </div>
         </div>
@@ -528,6 +525,41 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
           </div>
           <GearSheet row={row} editable={editable} inTown={inTown} party={rows} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The level progress bar (§D17-2.3): how far this character's cumulative
+ * points have carried them through the current level's band (T-78). Points are
+ * won every phase (+10 / +20 / +30), so the bar creeps forward inside an
+ * adventure even when the level number does not tick. */
+function LevelProgress({ row }: { row: PartySheetRow }) {
+  const earned = row.earned_points ?? 0;
+  const floor = row.level_floor ?? 0;
+  const ceiling = row.level_ceiling ?? null;
+  const span = ceiling != null ? Math.max(1, ceiling - floor) : 1;
+  const pct = ceiling != null
+    ? Math.min(100, Math.max(0, ((earned - floor) / span) * 100))
+    : 100;
+  return (
+    <div className="mt-2">
+      <div className="h-[5px] w-full border border-line bg-black/50">
+        <div
+          className="h-full bg-gradient-to-r from-brass to-brass-hi transition-[width] duration-500"
+          style={{ width: `${pct}%` }}
+          title={`${earned} of ${ceiling ?? earned} points`}
+        />
+      </div>
+      <div className="mt-1 flex items-baseline justify-between gap-2 text-[9px] font-light text-mist">
+        <span>
+          {earned} points earned{row.banked ? ` · ${row.banked} unspent` : ""}
+        </span>
+        <span>
+          {ceiling != null
+            ? `${row.points_to_next_level} to level ${row.level + 1}`
+            : "max level"}
+        </span>
       </div>
     </div>
   );

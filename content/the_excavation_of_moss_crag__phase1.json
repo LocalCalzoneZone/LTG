@@ -1,0 +1,190 @@
+{
+  "name": "The Timber Derricks of Moss-Crag",
+  "scene": "A network of swaying timber derricks and crane platforms lashed to colossal pine trunks above a deep red clay chasm, with autumn mist drifting past coiled hemp cables and scrap-iron pulleys.",
+  "scene_image": "/art/the_excavation_of_moss_crag__phase1/scene-8f70001a.png",
+  "enemies": [
+    {
+      "id": "derrick_skulker",
+      "name": "Derrick Skulker",
+      "flavor": "Swings across crane ropes and hurls shrapnel before leaping back.",
+      "description": "A wiry goblin clad in patched leather and climbing spikes, brandishing a hooked timber-axe and a bandolier of iron nails.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "rope_swing",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Rope-Swing \u2014 reposition along the scaffolding"
+        },
+        {
+          "id": "shrapnel_toss",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "once_per_encounter": true,
+          "target_rule": "valuation",
+          "telegraph": "Shrapnel Toss \u2014 fling scrap iron for 2 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase1/derrick_skulker-eb66b7fd.png"
+    },
+    {
+      "id": "crane_sapper",
+      "name": "Crane Sapper",
+      "flavor": "Clutches timber beams on lethal hits, refusing to fall without a double-tap.",
+      "description": "A soot-caked goblin wearing an oversized steel miner's pot helm, carrying a notched pickaxe and an emergency brace of pine wedges.",
+      "hp": 4,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "pick_thrust",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Pick Thrust \u2014 drive iron for 3 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "desperate_brace",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "priority": 10,
+          "once_per_encounter": true,
+          "target_rule": "self",
+          "telegraph": "Desperate Brace \u2014 catches a beam to negate the killing blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase1/crane_sapper-9a4358da.png"
+    },
+    {
+      "id": "cadence_whistler",
+      "name": "Cadence Whistler",
+      "flavor": "Channels a shrill mining whistle that spurs the digging crew to violent frenzy.",
+      "description": "A gaunt goblin perched atop a counterweight winch, puffing into a three-barreled brass whistle strung around its neck.",
+      "hp": 4,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "digging_rhythm",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Digging Rhythm \u2014 channels an anthem: fellow goblins gain +1/+0 while whistle blows",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "panic_roll",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Panic Roll \u2014 duck behind the winch"
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase1/cadence_whistler-f85b283d.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "crane_sapper",
+      "derrick_skulker"
+    ],
+    "2": [
+      "crane_sapper",
+      "crane_sapper",
+      "cadence_whistler",
+      "derrick_skulker"
+    ],
+    "3": [
+      "crane_sapper",
+      "crane_sapper",
+      "cadence_whistler",
+      "cadence_whistler",
+      "derrick_skulker",
+      "derrick_skulker"
+    ],
+    "4": [
+      "crane_sapper",
+      "crane_sapper",
+      "crane_sapper",
+      "cadence_whistler",
+      "cadence_whistler",
+      "derrick_skulker",
+      "derrick_skulker",
+      "derrick_skulker"
+    ]
+  }
+}

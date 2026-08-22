@@ -73,7 +73,7 @@ class AdventureJobRunner:
                 [], sc.options.get("difficulty", "standard"), note="",
                 loadouts=sc.loadouts, levels=sc.levels(),
                 base_level=sc.effective_level(), context=sc.adventure_context(),
-                run_only=True)
+                phase_levels=sc.phase_budget_levels(), run_only=True)
             detail = content.adventure_detail(meta["id"])
             if detail is None:
                 raise ValueError("the generated adventure did not persist")

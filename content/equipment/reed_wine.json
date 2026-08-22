@@ -1,0 +1,31 @@
+{
+  "kind": "item",
+  "id": "reed_wine",
+  "name": "Reed Wine",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 2,
+  "points_price": 8,
+  "flavor": "Sweet, thin, and it does not stop working.",
+  "art_desc": "A green glass bottle of pale wine, corked with a plug of rolled reed.",
+  "art_url": "/art/items/reed_wine/item-5bebbbd0.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "regen",
+      "amount": 1,
+      "turns": 4,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

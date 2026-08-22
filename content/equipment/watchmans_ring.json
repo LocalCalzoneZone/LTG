@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "watchmans_ring",
+  "name": "Watchman's Ring",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 20,
+  "flavor": "Worn by people who do not sit down.",
+  "art_desc": "A heavy iron signet ring with a lidless eye cut into its face.",
+  "art_url": "/art/items/watchmans_ring/item-aba19822.png",
+  "statics": [
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "vigilance"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

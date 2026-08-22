@@ -188,6 +188,9 @@ export interface IntentView {
   // §L-5 positional intent: the party row this action will strike, named at
   // declaration (the board marks it). Null for targeted/untargeted intents.
   target_row?: Row | null;
+  // §D18-4: the FULL footprint — one row for a row shape, three for a blast.
+  // The board lights every row in it, not just the primary.
+  target_rows?: Row[] | null;
   // 1, or 2 for an enraged boss's second declared intent (§D9-4 boss fury).
   slot: number;
 }
@@ -312,6 +315,9 @@ export interface StackRow {
   // The complete mechanical read of a NON-card action (an enemy ability's
   // flavour name means nothing alone) — shown on hover; "" when card is set.
   mechanics?: string;
+  // §D18-4: the party rows this action covers (empty for a targeted action) —
+  // the board keeps them lit while the blow sits here.
+  target_rows?: Row[] | null;
   top: boolean;
   uid: number;
 }
@@ -393,15 +399,24 @@ export interface LevelUpRow {
   build?: BuildView;
   locked?: number; // the entering build's spend
   banked?: number; // carried remainder
-  available?: number; // banked + the 30 grant (0 extra once confirmed)
-  earned_points?: number; // cumulative grants incl. this boundary's (T-78)
+  available?: number; // the spendable pool (phases already paid into it)
+  earned_points?: number; // cumulative points won so far (T-78)
   next_level?: number; // the level those points derive to
   points_to_next_level?: number | null; // null at max level
+  level_floor?: number; // points this level cost to reach (progress bar)
+  level_ceiling?: number | null; // points the next one costs; null at max level
 }
 
 export interface LevelUpBlock {
+  // "levelup" — the build screen, points spendable; "interlude" — Phase Clear,
+  // press on, nothing to buy (§D17-2.3).
+  kind: "levelup" | "interlude";
+  // The act-end screen, queued behind the spoils: confirming it ends the act
+  // rather than composing another phase.
+  final: boolean;
   next_level: number;
   points_per_level: number;
+  phase_grant: number; // what the phase just won paid (+10 / +20 / +30)
   prices: BuildPrices;
   characters: LevelUpRow[];
 }
@@ -721,6 +736,10 @@ export interface PartySheetRow {
   level: number;
   earned_points: number;
   points_to_next_level: number | null;
+  // The band the level progress bar fills: what this level cost to reach and
+  // what the next one costs (null at max level).
+  level_floor?: number;
+  level_ceiling?: number | null;
   banked: number;
   gold: number;
   hp: number | null;

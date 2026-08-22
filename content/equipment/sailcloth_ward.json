@@ -1,0 +1,33 @@
+{
+  "kind": "item",
+  "id": "sailcloth_ward",
+  "name": "Sailcloth Ward",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 12,
+  "flavor": "Canvas, salt, and one stubborn prayer.",
+  "art_desc": "A square of stiff sailcloth stitched with a spiral of black thread.",
+  "art_url": "/art/items/sailcloth_ward/item-f5f65b28.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "prevent",
+      "parameter": "spell_damage",
+      "combat_kind": "all",
+      "uses": "next",
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

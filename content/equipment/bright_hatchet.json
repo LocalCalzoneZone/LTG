@@ -1,0 +1,26 @@
+{
+  "kind": "item",
+  "id": "bright_hatchet",
+  "name": "Bright Hatchet",
+  "slot": "weapon",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 15,
+  "flavor": "Kept bright because it is kept close.",
+  "art_desc": "A one-handed hatchet with a polished head and a leather wrist thong.",
+  "art_url": "/art/items/bright_hatchet/item-5270f186.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "power_bonus",
+      "amount": 1
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

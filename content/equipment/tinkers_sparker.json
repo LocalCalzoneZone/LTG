@@ -1,0 +1,57 @@
+{
+  "kind": "item",
+  "id": "tinkers_sparker",
+  "name": "Tinker's Sparker",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 15,
+  "flavor": "One spark, held ready in a tin box.",
+  "art_desc": "A flint-and-steel striker in a small tin case, scorch marks around the hinge.",
+  "art_url": "/art/items/tinkers_sparker/item-c500c20c.png",
+  "statics": [
+    {
+      "kind": "ability",
+      "amount": 0,
+      "card": {
+        "id": "tinkers_spark",
+        "name": "Tinker's Spark",
+        "source_name": "Tinker's Spark",
+        "ignore_source": false,
+        "rarity": "common",
+        "level": 1,
+        "type": "Ability",
+        "cost": {
+          "generic": 1,
+          "colors": {},
+          "x": false
+        },
+        "timing": "instant",
+        "original_text": "",
+        "translated_text": "Deal 2 damage to an enemy.",
+        "flavor_text": "",
+        "effects": [
+          {
+            "kind": "deal_damage",
+            "amount": 2,
+            "target": {
+              "mode": "chosen",
+              "side": "enemy",
+              "exclude_self": false,
+              "targeted": false
+            },
+            "nonlethal": false
+          }
+        ],
+        "targets": {},
+        "needs_translation": false,
+        "text_override": false,
+        "validated": true,
+        "image": ""
+      }
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

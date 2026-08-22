@@ -1,0 +1,297 @@
+{
+  "name": "The Vault-Pit Excavation",
+  "scene": "The bedrock floor of the deep quarry pit: massive sheets of carved, pre-sundering brass emerge from sheared clay walls beneath iron scaffolding, bathed in the white hiss of steam engines and torchlight.",
+  "scene_image": "/art/the_excavation_of_moss_crag__phase3/scene-d3a059af.png",
+  "enemies": [
+    {
+      "id": "chief_sapper_blagg",
+      "name": "Chief Sapper Blagg",
+      "flavor": "A maniacal engineer who sweeps whole rows with crane jaws and overcharges when bloodied.",
+      "description": "A squat goblin warlord encased in a pneumatically-assisted harness of brass pistons and boilers, brandishing a roaring mechanical claw that drags along the stone.",
+      "hp": 22,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "crane_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Crane Sweep \u2014 swings the excavation claw across the front row for 4 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "shrapnel_burst",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 35,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Shrapnel Mortar \u2014 fires a canister at the mid row for 4 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "mid"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "superheated_cleave",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Superheated Cleave \u2014 strikes the front row for 5 damage with white-hot pistons",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "boiler_overcharge",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "BOILER OVERCHARGE \u2014 pistons vent fire, granting +2/+2 permanently and blasting all heroes for 3",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "scrap_shield",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Scrap Deflector \u2014 raises an iron plate to negate the next hit",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "combat_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase3/chief_sapper_blagg-cc202653.png"
+    },
+    {
+      "id": "boiler_tender",
+      "name": "Boiler Tender",
+      "flavor": "Channels steam to empower fellow excavators and vents pressure when threatened.",
+      "description": "A soot-blinded goblin mechanic wearing heavy iron gauntlets, frantically shoveling red sulfur coals into a portable brass furnace.",
+      "hp": 5,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "keywords": [],
+      "components": [
+        {
+          "id": "steam_surge",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Steam Surge \u2014 channels pressure into ally weapons: all allies gain +1/+1 while held",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "pressure_release",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Pressure Release \u2014 scorches a hero for 3 fire damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase3/boiler_tender-ebd0e345.png"
+    },
+    {
+      "id": "trench_jack",
+      "name": "Trench Jack",
+      "flavor": "A pickaxe brute who slams ground targets and knits wounds behind earthworks.",
+      "description": "A muscle-bound goblin brandishing a twin-headed iron pickaxe, shoulders wrapped in rusted chain links.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "keywords": [],
+      "components": [
+        {
+          "id": "ground_breaker",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Ground Breaker \u2014 slams the front row for 2 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "trench_grit",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Trench Grit \u2014 recovers under cover, gaining regen",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_excavation_of_moss_crag__phase3/trench_jack-da512cc8.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "chief_sapper_blagg",
+      "boiler_tender"
+    ],
+    "2": [
+      "chief_sapper_blagg",
+      "boiler_tender",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack"
+    ],
+    "3": [
+      "chief_sapper_blagg",
+      "boiler_tender",
+      "boiler_tender",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack"
+    ],
+    "4": [
+      "chief_sapper_blagg",
+      "boiler_tender",
+      "boiler_tender",
+      "boiler_tender",
+      "boiler_tender",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack",
+      "trench_jack"
+    ]
+  }
+}

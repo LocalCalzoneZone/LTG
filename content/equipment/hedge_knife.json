@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "hedge_knife",
+  "name": "Hedge Knife",
+  "slot": "weapon",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 0,
+  "flavor": "Every third house owns one. Two of them are honest.",
+  "art_desc": "A short single-edged knife with a horn handle, the blade thinned by years of sharpening.",
+  "art_url": "/art/items/hedge_knife/item-5e7a348e.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

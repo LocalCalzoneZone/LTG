@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "harvest_knot",
+  "name": "Harvest Knot",
+  "slot": "accessory",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 5,
+  "flavor": "Straw, and a year's worth of hoping.",
+  "art_desc": "A small braided figure of wheat straw bound with red thread, pinned at the shoulder.",
+  "art_url": "/art/items/harvest_knot/item-6b55b0f8.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 2,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

@@ -28,14 +28,17 @@ import copy
 import random
 from typing import Any, Callable, Dict, List, Optional
 
-from ltg_core.schema import LEVEL_UP_POINTS, level_for_points, points_to_next_level
+from ltg_core.schema import (LEVEL_UP_POINTS, level_band, level_for_points,
+                             points_to_next_level)
 
-from . import content, items, llm, scenario_content as sc
+from . import content, items, llm, loot, scenario_content as sc
 from .adventure import AdventureRun, HP_FLOOR_PCT
 from .dialogue import MAX_CHOICES, Conversation
 
-# T-85: gold earned per phase level-up, per character (= points).
-GOLD_PER_LEVEL_UP = 30
+# T-85: gold is earned at the POINTS rate, per character — a phase that pays
+# +20 points pays 20 gold, so an act is worth 60 of each (§D17-2.3).
+GOLD_PER_POINT = 1
+GOLD_PER_LEVEL_UP = LEVEL_UP_POINTS * GOLD_PER_POINT
 STANDING_FLAGS = ("defeated_once", "quest_accepted", "act_1_complete",
                   "act_2_complete", "act_3_complete")
 # A party that said "let us get back to you" is asked again the next time they
@@ -56,6 +59,11 @@ class ScenarioRun:
         self.town: Dict[str, Any] = copy.deepcopy(town)
         self.town.pop("id", None)
         self.arc: Dict[str, Any] = copy.deepcopy(arc)
+        # The scenario's loot vocabulary (§D17-4.5): drawn when the scenario is
+        # made and frozen onto the arc, so what the bosses drop sounds like THIS
+        # scenario and reads the same after a reload. An arc that arrives
+        # without one (hand-written, or pre-dating the forge) draws one now.
+        loot.lexicon_of(self.arc, self.town)
         self.scenario_id = scenario_id           # the pre-generated scenario, if any
         opts = {"difficulty": "standard", "hardcore": False, "everquest": False}
         opts.update({k: v for k, v in (options or {}).items() if k in opts})
@@ -99,6 +107,11 @@ class ScenarioRun:
         # The Rewards modal after Phase III (§D17-4.5): rolled drops awaiting
         # assignment; None outside that moment.
         self.rewards: Optional[Dict[str, Any]] = None
+        # How far the act's WRAP-UP has got (§D17-2.3), persisted so a reload
+        # inside it resumes rather than replaying: None (not in it) →
+        # "rewards" (the spoils modal) → "levelup" (the act-end level-up screen,
+        # queued behind the spoils) → None again once the party rides to town.
+        self.act_wrapup: Optional[str] = None
         # The JOURNAL: what the party has learned, in order — the act's intro
         # (the arrival paragraph), the lines townsfolk have told them, the
         # quest they agreed to. Nothing the party hasn't heard appears here.
@@ -133,6 +146,12 @@ class ScenarioRun:
         """The act's item tier: the party's effective level (drops), the
         merchant stock caps below it (§D17-4.3)."""
         return max(1, self.effective_level())
+
+    def spoils_tier(self) -> int:
+        """The boss tier — one above the tier the act's shops sell at, and read
+        on ARRIVAL, since the spoils are forged then (the party is a level or so
+        stronger by the time they reach Phase III, which is what the +1 buys)."""
+        return self.act_tier() + 1
 
     def party_state(self) -> Dict[str, Any]:
         members = []
@@ -197,6 +216,17 @@ class ScenarioRun:
                 if rolled:
                     stock[loc["id"]] = [it.model_dump(mode="json", exclude_none=True) for it in rolled]
             self.act["stock"] = stock
+        # The act's SPOILS (§D17-4.5): forged here, on arrival — the same moment
+        # the stock is rolled — and frozen onto the act, so the art queue has the
+        # whole town visit and the whole ride out to paint them. What the boss
+        # drops is settled before the party ever leaves town; only the reveal
+        # waits. (Frozen, so a reload shows the same spoils and reuses the art.)
+        if not self.act.get("spoils"):
+            self.act["spoils"] = [it.model_dump(mode="json", exclude_none=True)
+                                  for it in loot.forge_drops(
+                                      len(self.character_ids), self.spoils_tier(),
+                                      loot.lexicon_of(self.arc, self.town),
+                                      seed=random.randrange(2**31))]
         first = (self.quest_options or [{"id": "", "title": m.get("quest", {}).get("title", ""),
                                          "text": m.get("quest", {}).get("text", ""),
                                          "adventure_theme": ""}])[0]
@@ -498,6 +528,46 @@ class ScenarioRun:
         return (self.adventure_unlocked and self.adventure_detail is not None
                 and self.adventure_job.get("state") in ("ready", "generated", "art_queued"))
 
+    # -- the level-up schedule (§D17-2.3) ----------------------------------- #
+    def is_last_act(self) -> bool:
+        return self.act_index >= len(self.arc["acts"]) - 1
+
+    def gate_policy(self) -> Dict[str, Any]:
+        """Where this act's level-up SCREENS open. Points are earned every phase
+        (+10 / +20 / +30, T-57); the screens are scheduled:
+
+        - the run's opening act: one after Phase I — the first phase win ticks
+          level 2 — plus the act-end screen behind the spoils;
+        - every act after that: the act-end screen only, so Phases I and II
+          close on a Phase Clear interlude and the party spends 60 points in
+          one sitting;
+        - the closing act of a STANDARD scenario: no act-end screen at all —
+          the run ends on that boss, and the points have nowhere to go.
+          Everquest always gets one, because the next arc is coming.
+        """
+        opening_act = self.scenario_number == 1 and self.act_index == 0
+        final_screen = bool(self.options.get("everquest")) or not self.is_last_act()
+        return {"screen_phases": {0} if opening_act else set(),
+                "final_screen": final_screen}
+
+    def phase_budget_levels(self) -> List[float]:
+        """The level each phase of THIS act is budgeted at (§D17-2.3): the
+        opening act ramps after Phase I (its level-up screen is there); every
+        act after it is fought at one level throughout, since the party spends
+        its points at the act's END."""
+        return llm.phase_budget_levels(self.effective_level(),
+                                       self.gate_policy()["screen_phases"])
+
+    def adopt_adventure(self, run: AdventureRun) -> None:
+        """Attach a (fresh or restored) AdventureRun and stamp this act's
+        level-up schedule onto it."""
+        policy = self.gate_policy()
+        run.screen_phases = set(policy["screen_phases"])
+        run.final_screen = bool(policy["final_screen"])
+        self.adventure = run
+        if self.act_wrapup == "levelup" and run.complete:
+            run.open_final_gate()   # a reload inside the act-end screen
+
     def start_adventure(self, seed: Optional[int] = None) -> "tuple":
         """Compose Phase I from the run's party copies (levels/points/HP carried).
         Returns the AdventureRun's start tuple; the session swaps modes."""
@@ -518,7 +588,8 @@ class ScenarioRun:
             hp = self.hp.get(cid)
             if hp is not None:
                 c.hp = min(c.max_hp, max(1, int(hp)))
-        self.adventure = run
+        self.adopt_adventure(run)
+        self.act_wrapup = None
         self.mode = "adventure"
         self.location_id = None
         self.conversation = None
@@ -529,6 +600,10 @@ class ScenarioRun:
         """Pull the leveled builds, pools, gold, and HP back out of a finished
         (or lost) adventure into the run's party."""
         party_states = {c.id: c for c in (getattr(state, "party", []) or [])}
+        # HP bought at the act-end level-up heals what it adds (§D10-2), exactly
+        # as it would have across a phase boundary — there is no next phase to
+        # apply it in, so it lands on the HP the party carries into town.
+        heals = {lid: int(e.get("heal", 0)) for lid, e in (run.level_up or {}).items()}
         for cid, live, lo in zip(self.character_ids, run.live_ids, run.loadouts):
             slot = self.slot_of(cid)
             self.loadouts[slot] = copy.deepcopy(lo)
@@ -541,12 +616,17 @@ class ScenarioRun:
             old_earned = self.earned.get(cid, 0)
             self.earned[cid] = int(run.earned.get(live, old_earned))
             self.banked[cid] = int(run.banked.get(live, self.banked.get(cid, 0)))
-            # T-85: gold at the points rate — every level-up grant is also gold.
-            grants = max(0, self.earned[cid] - old_earned) // LEVEL_UP_POINTS
-            self.gold[cid] = self.gold.get(cid, 0) + grants * GOLD_PER_LEVEL_UP
-        for cid, c in zip(self.character_ids, getattr(state, "party", []) or []):
-            floor = -(-c.max_hp * HP_FLOOR_PCT // 100)
-            self.hp[cid] = min(c.max_hp, max(int(c.hp), floor))
+            # T-85: gold at the points rate — every point won is a gold piece.
+            self.gold[cid] = (self.gold.get(cid, 0)
+                              + max(0, self.earned[cid] - old_earned) * GOLD_PER_POINT)
+            # The max HP the character now holds (the level-up may have raised it).
+            try:
+                max_hp = int(self.loadouts[slot]["character"]["hp"])
+            except (KeyError, TypeError, ValueError):
+                max_hp = int(getattr(cst, "max_hp", 0) or 0)
+            live_hp = int(getattr(cst, "hp", max_hp)) + heals.get(live, 0)
+            floor = -(-max_hp * HP_FLOOR_PCT // 100)
+            self.hp[cid] = min(max_hp, max(live_hp, floor)) if max_hp else None
         self._sync_levels_into_loadouts()
 
     def on_adventure_complete(self, state: Any) -> str:
@@ -571,6 +651,7 @@ class ScenarioRun:
             f'"{self.quest.get("title", "")}" — {(self.adventure_detail or {}).get("name", "the adventure")} '
             "was cleared.")
         self.adventure = None
+        self.act_wrapup = None
         if n < len(self.arc["acts"]):
             self.act_index = n
             return "next_act"
@@ -584,6 +665,7 @@ class ScenarioRun:
         self.previous_arcs.append({"title": self.arc["title"], "villain": self.arc["villain"],
                                    "outcome": "defeated"})
         self.arc = copy.deepcopy(arc)
+        loot.lexicon_of(self.arc, self.town)   # a new arc draws new loot verbiage
         self.scenario_number += 1
         self.act_index = 0
         for f in ("act_1_complete", "act_2_complete", "act_3_complete"):
@@ -599,6 +681,7 @@ class ScenarioRun:
         if run is not None:
             self._harvest(run, state)
         self.adventure = None
+        self.act_wrapup = None
         self.defeat_pending = False
         if self.options.get("hardcore"):
             self.dead = True
@@ -611,12 +694,37 @@ class ScenarioRun:
 
     # -- rewards (§D17-4.5) ------------------------------------------------- #
     def open_rewards(self, seed: Optional[int] = None) -> None:
-        drops = items.roll_drops(len(self.character_ids), self.act_tier(), seed=seed)
+        """Open the Rewards modal on the spoils this act froze when the party
+        arrived in town — forged from the scenario's lexicon, never picked off
+        the merchants' shelf (§D17-4.5), and painted ahead of time by the
+        spoils art queue. An act with none frozen (a save from before the act
+        carried them) forges its own here."""
+        frozen = (self.act or {}).get("spoils")
+        if frozen:
+            drops = copy.deepcopy(frozen)
+        else:
+            drops = [it.model_dump(mode="json", exclude_none=True)
+                     for it in loot.forge_drops(len(self.character_ids), self.spoils_tier(),
+                                                loot.lexicon_of(self.arc, self.town), seed=seed)]
         self.rewards = {
-            "items": [it.model_dump(mode="json", exclude_none=True) for it in drops],
+            "items": drops,
             "assign": {},           # index (str) -> character id | "discard"
             "accepted": False,
         }
+
+    # -- spoils art (painted ahead of the boss, §D17-4.5) -------------------- #
+    def spoils(self) -> List[Dict[str, Any]]:
+        return list((self.act or {}).get("spoils") or [])
+
+    def set_spoil_art(self, item_id: str, url: str) -> None:
+        """A drop's picture landed: onto the frozen act (so the next save keeps
+        it) and onto an open Rewards modal (so the card fills in live)."""
+        for row in self.spoils():
+            if row.get("id") == item_id:
+                row["art_url"] = url
+        for row in (self.rewards or {}).get("items", []):
+            if row.get("id") == item_id:
+                row["art_url"] = url
 
     def assign_reward(self, index: int, target: Optional[str]) -> None:
         if self.rewards is None:
@@ -792,6 +900,10 @@ class ScenarioRun:
                 "id": cid, "name": ch.get("name", cid), "portrait": ch.get("portrait", ""),
                 "level": lvl, "earned_points": earned,
                 "points_to_next_level": points_to_next_level(earned),
+                # The band the progress bar fills (T-78): what this level cost
+                # to reach, and what the next one costs (None at max level).
+                "level_floor": level_band(earned)[0],
+                "level_ceiling": level_band(earned)[1],
                 "banked": self.banked.get(cid, 0), "gold": self.gold.get(cid, 0),
                 "hp": self.hp.get(cid), "max_hp": ch.get("hp"),
                 "build": {"hp": ch.get("hp"), "starting_mana": list(ch.get("starting_mana", [])),
@@ -928,6 +1040,7 @@ class ScenarioRun:
             "dead": self.dead,
             "act_present": self.act is not None,
             "rewards": copy.deepcopy(self.rewards),
+            "act_wrapup": self.act_wrapup,
             "journal": copy.deepcopy(self.journal),
         }
 
@@ -955,6 +1068,7 @@ class ScenarioRun:
         self.act_summaries = list(block.get("act_summaries") or [])
         self.dead = bool(block.get("dead"))
         self.rewards = copy.deepcopy(block.get("rewards")) or None
+        self.act_wrapup = block.get("act_wrapup")
         self.journal = copy.deepcopy(block.get("journal") or [])
         self.conversation = None
         self.splash = None
@@ -1000,6 +1114,9 @@ def pregenerate_scenario(town_id: str, difficulty: str = "standard",
     if town is None:
         raise ValueError(f"unknown town: {town_id}")
     arc = llm.generate_arc(town, _generic_party(), difficulty, note=note)
+    # Draw the scenario's loot verbiage HERE — when the scenario is made — so
+    # the spoils of every act are already spoken in its voice (§D17-4.5).
+    arc["loot_lexicon"] = loot.build_lexicon(town, arc)
     party_state = {"members": [{"name": "the party", "level": 1}], "flags": {}, "gold": {}}
     act1 = llm.generate_act(town, arc, 0, party_state)
     probe = ScenarioRun(town, arc, ["hero_1", "hero_2"],

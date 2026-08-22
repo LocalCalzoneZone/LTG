@@ -35,7 +35,88 @@
         "adventure_theme": "The Cairn of Forty Sails, a wind-vault buried beneath the headland, where Maelgorn the Windless waits at his brass weathervane engine",
         "tone_notes": "Torchlight on ancient carved sails, air roaring in stone throats, then the great bright wind breaking free over the cliff at dawn."
       }
-    ]
+    ],
+    "loot_lexicon": {
+      "theme": "salt",
+      "second": "storm",
+      "materials": [
+        "Tide-Iron",
+        "Saltglass",
+        "Sailcloth",
+        "Driftwood",
+        "Coral",
+        "Whalebone",
+        "Skyiron",
+        "Gale-Horn"
+      ],
+      "epithets": [
+        "Salt-Bitten",
+        "Drowned",
+        "Storm-Struck",
+        "Barnacled",
+        "Tide-Worn",
+        "Deepwater",
+        "Gale-Torn",
+        "Levin-Struck"
+      ],
+      "suffixes": [
+        "Salt and Iron",
+        "the Last Sail",
+        "the Drowned Choir",
+        "the Long Tide",
+        "Nine Thunders",
+        "the Turning Sky"
+      ],
+      "details": [
+        "crusted white along every seam",
+        "green with old weed",
+        "still smelling of brine",
+        "fern-shaped burn scars branching across it"
+      ],
+      "flavor": [
+        "Cold, and it stays cold.",
+        "The salt has been eating it for years and has not finished.",
+        "Somebody went under holding this.",
+        "It came up in a net. Nobody claimed it.",
+        "Lightning found it once and remembers where.",
+        "It gets restless before weather."
+      ],
+      "forms": {
+        "melee": [
+          "longknife",
+          "warpick",
+          "flail",
+          "cleaver",
+          "boarding_axe",
+          "sabre"
+        ],
+        "ranged": [
+          "recurve",
+          "arbalest",
+          "boarsling",
+          "crossbow",
+          "sling"
+        ],
+        "accessory": [
+          "amulet",
+          "chain",
+          "girdle",
+          "torc",
+          "circlet",
+          "seal"
+        ],
+        "consumable": [
+          "incense",
+          "draught",
+          "poultice",
+          "firepot",
+          "ash",
+          "salve",
+          "water",
+          "philtre"
+        ]
+      }
+    }
   },
   "act1": {
     "adventure_id": "the_stillness_at_barrowdown_outmill",

@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Excavation of Moss-Crag",
+  "flavor": "Drop from the elderwood canopy into a goblin strip-mine to uncover what ancient terror the miners struck.",
+  "phases": [
+    {
+      "narration": "Strapped into Captain Sylva's woven warden-harnesses, you drop through the smoky canopy leaves directly onto the swaying pine scaffolding of Moss-Crag Trench. Below, notched goblin crossbows pivot upward as lookouts screech over the clang of pickaxes.",
+      "encounter_id": "the_excavation_of_moss_crag__phase1"
+    },
+    {
+      "narration": "Descending into the fog of the lower tier, you wade through churning mud flumes where ore-washers dump caustic slag. A feral scrap-hound with rusted teeth snarls from a chained boom, guarding the toxic sludge-boilers.",
+      "encounter_id": "the_excavation_of_moss_crag__phase2"
+    },
+    {
+      "narration": "You break into the floor of the trench. The goblin prospectors were not mining mundane ore: their massive steam cranes have scraped bare the colossal brass bulkhead of an ancient buried war-vault. Chief Sapper Blagg stands atop the steam crane's boom, turning its crushing iron claw toward you.",
+      "encounter_id": "the_excavation_of_moss_crag__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

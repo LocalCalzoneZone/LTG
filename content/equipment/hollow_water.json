@@ -1,0 +1,41 @@
+{
+  "kind": "item",
+  "id": "hollow_water",
+  "name": "Hollow Water",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 5,
+  "points_price": 20,
+  "flavor": "Drawn where the spring runs backward.",
+  "art_desc": "A leather costrel beaded with condensation, the water inside perfectly still.",
+  "art_url": "/art/items/hollow_water/item-47ed06f4.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "heal",
+      "amount": 6,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    },
+    {
+      "kind": "regen",
+      "amount": 1,
+      "turns": 3,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "sorcery"
+  },
+  "affixes": []
+}

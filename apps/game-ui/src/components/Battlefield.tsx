@@ -254,13 +254,23 @@ export function Battlefield() {
     fx.filter((e) => e.kind === "enemyact").map((e) => e.entityId),
   );
 
-  // Positional intents (§L-5): a declared row assault marks its ground on the
-  // board itself, not only as a line in the intents window.
-  const threatenedRows = new Set(
-    (snapshot.intents ?? [])
-      .filter((i) => i.status === "declared" && i.target_row)
-      .map((i) => i.target_row as string),
-  );
+  // Positional intents (§L-5 / §D18-4): a row assault marks its ground on the
+  // board itself, not only as a line in the intents window. The mark holds from
+  // DECLARATION until the blow has actually resolved — "declared" is the
+  // telegraph and "executed" is the swing sitting on the stack, and the row is
+  // dangerous through both. (Playtest: dropping the mark the moment the intent
+  // reached the stack made the highlight look like it flickered at random.)
+  // Every row in the footprint lights, so a blast reads as the three rows it is.
+  const rowsOf = (i: { target_rows?: Row[] | null; target_row?: Row | null }) =>
+    i.target_rows?.length
+      ? (i.target_rows as string[])
+      : i.target_row
+        ? [i.target_row as string]
+        : [];
+  const threatenedRows = new Set([
+    ...(snapshot.intents ?? []).filter((i) => i.status === "declared").flatMap(rowsOf),
+    ...(snapshot.stack ?? []).flatMap(rowsOf),
+  ]);
 
   // A live melee strike gives the whole field a 2px directional kick toward
   // the blow — the small cousin of the big screen shake. Enemy blows win.

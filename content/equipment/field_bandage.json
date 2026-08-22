@@ -1,0 +1,30 @@
+{
+  "kind": "item",
+  "id": "field_bandage",
+  "name": "Field Bandage",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 5,
+  "flavor": "Wrap it, tie it, keep walking.",
+  "art_desc": "A tight roll of boiled linen with a bone pin stuck through it.",
+  "art_url": "/art/items/field_bandage/item-cb89eb31.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "heal",
+      "amount": 2,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

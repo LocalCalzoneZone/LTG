@@ -1,0 +1,388 @@
+{
+  "name": "The Submerged Boiler Engine",
+  "scene": "A flooded subterranean chamber illuminated by glowing green vitriol pools and bright orange fire-doors, where colossal bronze gears turn sluggishly through black water and steam vents hiss violently from the ceiling.",
+  "scene_image": "/art/the_sunken_vault_of_brass__phase3/scene-837a419c.png",
+  "enemies": [
+    {
+      "id": "goliath_forge_engine",
+      "name": "Goliath Forge-Engine",
+      "flavor": "A scrap-plated colossus that consumes fallen corpses and erupts into a scalding storm.",
+      "description": "A twelve-foot-tall construct of hammered boiler plate and brass pipes, powered by a glowing core of molten ore that pulses visibly behind an iron grate.",
+      "hp": 34,
+      "power": 3,
+      "level": 6,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample",
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "consume_corpse_fuel",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Corpse-Fuel Blast \u2014 burns a fallen ally to scorch all heroes for 4",
+          "verbs": [
+            {
+              "kind": "exile",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sulfur_jet",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Sulfur Jet \u2014 fires a concentrated blast of toxic steam for 7 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "core_meltdown",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "self",
+          "action_type": "spell",
+          "telegraph": "Core Meltdown \u2014 unleashes a party-wide explosion for 5 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "boiler_rupture",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "BOILER RUPTURE \u2014 gains +2/+2 counters, blasts all heroes for 4, and throws the front rank back",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "back",
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "arcane_vent_shield",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "priority": 15,
+          "cooldown": 3,
+          "action_type": "spell",
+          "telegraph": "Pressure Vent \u2014 counters the incoming spell with venting steam",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase3/goliath_forge_engine-4fb2f98b.png"
+    },
+    {
+      "id": "scrap_necrotech",
+      "name": "Scrap-Necrotech",
+      "flavor": "Raises fallen scrap-husks from their corpses and drains party vitality.",
+      "description": "A hunched goblin savant surrounded by crackling copper rods and magnetic grapples that spark with sickly green lightning.",
+      "hp": 8,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "galvanic_reanimation",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Galvanic Reanimation \u2014 raises a fallen ally's corpse at half HP",
+          "verbs": [
+            {
+              "kind": "control",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "toxic_effluvium",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 35,
+          "cooldown": 3,
+          "action_type": "spell",
+          "telegraph": "Toxic Effluvium \u2014 ongoing cloud inflicts 2 damage each Upkeep",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "galvanic_syphon",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Galvanic Syphon \u2014 deals 4 damage and heals 4 HP",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 4,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase3/scrap_necrotech-155015de.png"
+    },
+    {
+      "id": "corroded_iron_golem",
+      "name": "Corroded Iron Golem",
+      "flavor": "Revives from its own broken chassis and cripples hero techniques.",
+      "description": "A heavy quadrupedal automaton of pitted iron, its limbs grinding loudly as green oxidization flakes from its joints.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "rises": 2,
+      "components": [
+        {
+          "id": "grinding_slam",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Grinding Slam \u2014 deals 5 damage to a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "tendon_lock",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Tendon Clamp \u2014 locks the target's Skill for the encounter",
+          "verbs": [
+            {
+              "kind": "modify_action",
+              "action": "skill",
+              "modifier": "lock_skill",
+              "duration": "encounter",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase3/corroded_iron_golem-d2206546.png"
+    },
+    {
+      "id": "sulfur_boiler_drone",
+      "name": "Sulfur Boiler-Drone",
+      "flavor": "Shambles back to life after destruction; sprays toxic venom.",
+      "description": "A low-slung, wheeled brass canister fitted with scuttling iron claws and a smoking chimney spout.",
+      "hp": 5,
+      "power": 1,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "rises": 2,
+      "components": [
+        {
+          "id": "noxious_spray",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Noxious Fumes \u2014 poisons a hero",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "vapor_screen",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Vapor Screen \u2014 gains a damage-absorbing barrier",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase3/sulfur_boiler_drone-b5cb4222.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "goliath_forge_engine",
+      "sulfur_boiler_drone"
+    ],
+    "2": [
+      "goliath_forge_engine",
+      "scrap_necrotech",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone"
+    ],
+    "3": [
+      "goliath_forge_engine",
+      "scrap_necrotech",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone"
+    ],
+    "4": [
+      "goliath_forge_engine",
+      "scrap_necrotech",
+      "scrap_necrotech",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "corroded_iron_golem",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone",
+      "sulfur_boiler_drone"
+    ]
+  }
+}

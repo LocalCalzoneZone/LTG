@@ -1,0 +1,29 @@
+{
+  "kind": "item",
+  "id": "hearth_smoke",
+  "name": "Hearth Smoke",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 10,
+  "flavor": "You remember something you had forgotten.",
+  "art_desc": "A pinch of dried hearth herbs in a twist of waxed paper.",
+  "art_url": "/art/items/hearth_smoke/item-77044e25.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "draw",
+      "amount": 1,
+      "target": {
+        "mode": "self",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

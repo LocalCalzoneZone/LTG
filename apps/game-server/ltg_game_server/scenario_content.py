@@ -380,7 +380,13 @@ def validate_arc(raw: Dict[str, Any], town: Dict[str, Any]) -> Dict[str, Any]:
             "tone_notes": str(act.get("tone_notes") or "").strip(),
         })
         del qloc  # the location is derived from the NPC (single source of truth)
-    return {"title": title, "villain": villain, "stakes": stakes, "acts": acts}
+    out = {"title": title, "villain": villain, "stakes": stakes, "acts": acts}
+    # The loot lexicon (§D17-4.5) is drawn in code when the scenario is made and
+    # rides the arc from there on — validation carries it through untouched.
+    lex = raw.get("loot_lexicon")
+    if isinstance(lex, dict) and lex.get("forms"):
+        out["loot_lexicon"] = copy.deepcopy(lex)
+    return out
 
 
 # --------------------------------------------------------------------------- #

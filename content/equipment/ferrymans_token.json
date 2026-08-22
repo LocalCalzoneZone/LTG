@@ -1,0 +1,27 @@
+{
+  "kind": "item",
+  "id": "ferrymans_token",
+  "name": "Ferryman's Token",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 4,
+  "points_price": 25,
+  "flavor": "Paid in advance, both ways.",
+  "art_desc": "A pierced bronze coin, worn faceless, hanging from a wire hook.",
+  "art_url": "/art/items/ferrymans_token/item-9f535975.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 4,
+      "stat": "hp"
+    },
+    {
+      "kind": "stat",
+      "amount": 1,
+      "stat": "cards"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

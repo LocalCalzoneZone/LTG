@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "pitch_lamp_pendant",
+  "name": "Pitch-Lamp Pendant",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 2,
+  "points_price": 15,
+  "flavor": "A small light, and it never quite goes out.",
+  "art_desc": "A thumb-sized brass lamp on a chain, a bead of pitch burning blue in its bowl.",
+  "art_url": "/art/items/pitch_lamp_pendant/item-98bf1717.png",
+  "statics": [
+    {
+      "kind": "stat",
+      "amount": 1,
+      "stat": "mana"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

@@ -48,17 +48,17 @@ The combat engine is untouched by all of this except gear's stat-block compositi
 
 ### D17-2.1 Earning — level derived from cumulative points
 
-The earning rate stays **+30 points per phase level-up** (T-57, unchanged). What changes: **character level is derived from cumulative earned points** against an escalating threshold table, instead of +1 per level-up.
+The earning rate is **60 points per adventure** (T-57), paid **+10 / +20 / +30 as Phases I / II / III are won** — see §D17-2.3, which re-times *where those points are spent*. What changes from Update 10: **character level is derived from cumulative earned points** against an escalating threshold table, instead of +1 per level-up.
 
 Cumulative points to reach level *L* (T-78, playtest starting values, shaped to the agreed milestones — ≈level 3 after adventure 1, 5 after 2, 6 after 3, 7 after 5, thinning toward 20):
 
 | L | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| pts | 30 | 60 | 105 | 150 | 210 | 300 | 390 | 480 | 570 | 690 | 810 | 930 | 1050 | 1200 | 1350 | 1500 | 1650 | 1830 | 2010 |
+| pts | 10 | 60 | 105 | 150 | 210 | 300 | 390 | 480 | 570 | 690 | 810 | 930 | 1050 | 1200 | 1350 | 1500 | 1650 | 1830 | 2010 |
 
-(Each adventure earns 60: two level-ups. Adventure 1 → 60 → L3; adventure 2 → 120 → L5; adventure 3 → 180 → L5 (L6 at 210, early in adventure 4); adventure 5 → 300 → L7. Beyond L10 each level costs a full adventure or more.)
+(L2 costs **10** so the very first phase a party ever wins ticks a level — the opening level-up screen is a real one. After that each adventure earns 60: adventure 1 → 60 → L3; 2 → 120 → L4; 3 → 180 → L5; 5 → 300 → L7. Beyond L10 each level costs two adventures or more.)
 
-Consequences: the **level-up screen still appears after every phase** (30 fresh points, banking as built), but the level number on it may not tick; **enemy budgets read the derived level** (adventure phases budget at level, level+1, level+2 as today's "level N per phase" pattern, now anchored on the derived level at adventure start); the **Power cap** (T-60, `2 × level`) reads the derived level. `Character.level` is written to the run's copy of the character, never the profile.
+Consequences: the level number **may not tick on a given screen**, and past L10 usually will not; **enemy budgets read the derived level** (anchored on the party's effective level at adventure start, ramped per §D17-2.3); the **Power cap** (T-60, `2 × level`) reads the derived level. `Character.level` is written to the run's copy of the character, never the profile.
 
 ### D17-2.2 Spending — the escalating price curve
 
@@ -77,6 +77,38 @@ Prices for the *n*th purchase (T-79):
 **Mandatory validation before this ships:** the harness's spend audit already shows the flat table penalizing support kits (balanced 33% vs greedy-power 67%). The curve is a playtest starting value; **run the autoplay tester's spend audit and the four spend plans across levels 1–9 under the frozen `greedy-1.4.0` stick and adjust T-79 until no single spend plan dominates by more than the T-74 band.** This is Phase 0 work (§D17-9) and gates persistent leveling.
 
 ---
+
+### D17-2.3 The level-up schedule — earned every phase, spent on a cadence
+
+Points are **won by fighting**; the **level-up screen is a separate schedule**. A phase pays the moment it is beaten — **+10 / +20 / +30** for Phases I / II / III — straight into the character's bankable pool, so the derived level (and the sheet's progress bar, §D17-5.2) moves inside an adventure. What the schedule decides is **when the party stops to spend**.
+
+Inside a scenario:
+
+| Boundary | Opening act (Scenario 1, Act I) | Every later act |
+|---|---|---|
+| after Phase I | **level-up screen** (10 points — and L2) | Phase Clear interlude |
+| after Phase II | Phase Clear interlude | Phase Clear interlude |
+| after Phase III | **level-up screen, queued behind the spoils** | **level-up screen, queued behind the spoils** |
+
+A **Phase Clear interlude** is the victory splash and a *Press On* button: no points-buy, but the character sheet is open, so gear and belt can still be changed between phases (§D17-4.4). Spending anything at an interlude is refused server-side.
+
+The **act-end screen** is the last beat of the act's wrap-up: **Phase III falls → Rewards modal → spoils accepted → level-up → the ride back to town.** The finale's victory is suppressed throughout, and the wrap-up's position is saved, so a reload inside it resumes where it stopped rather than re-rolling the spoils. Because the whole act's 60 points arrive in one sitting, the screen is worth stopping for, and its purchases are made **with the act's spoils already in hand**.
+
+**The closing act.** In a **Standard** scenario Act III has no act-end screen — the run ends on that boss and the points have nowhere to go (they are still earned and recorded). **Everquest** always gets one, because the next arc is coming; from then on every act ends with a screen, forever.
+
+**A lone adventure** (Update 10, outside a scenario) is unchanged in shape: a screen at every non-final boundary, now worth 10 then 20 points.
+
+**Gold (T-85)** rides the points exactly: **one gold per point**, so a phase pays 10 / 20 / 30 gold and an act pays 60 — and, under this schedule, every coin lands **before** the party's next town visit instead of during the act after it.
+
+**Enemy budgets.** Phases are budgeted for the party that will actually fight them: the opening act ramps after its Phase I screen (L, L+1, L+1⅓), and every later act is fought at one level throughout (L, L+⅓, L+⅔) — the escalation toward the boss lives in the encounters, not in growth the heroes have not had.
+
+Where a scenario stands, act by act (cumulative points = 60 × acts completed):
+
+| after act | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 12 | 14 | 16 | 18 | 20 | 23 | 25 | 28 | 31 | 34 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| level | 3 | 4 | 5 | 6 | 7 | 7 | 8 | 9 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | **20** |
+
+A Standard run finishes Act III having earned **180 points and 180 gold** — level 5 on paper, but the closing act's 60 of each arrive with no screen and no town left to use them, so the run really plays as **level 4 with 120 gold spent**. Everquest, where the next arc always follows, spends everything it earns and reaches level 20 after 34 acts — a little over eleven scenarios.
 
 ## D17-3. Runs, saves, and the content store
 
@@ -148,9 +180,11 @@ Gear `effects` use the **existing effect vocabulary** for granted abilities plus
 
 ### D17-4.3 The base catalogue and the procedural vocabulary
 
-**Options → Equipment** manages a **hand-curated base catalogue** — the balance floor, probeable by the autoplay tester like cards. Ship v1 with (T-82): 6 weapons (melee/ranged × plain / +1 Power / +1 Power + a soft keyword such as reach or trample), 4 accessories (+4 HP, +1 mana, +1 card, a granted minor ability), and 6 consumables (heal 5 sorcery · heal 3 instant · prevent next combat damage instant · +2/+2 pump instant · cure poison instant · strip intent sorcery). All `points_price`d, all with flavor and art_desc.
+**Options → Equipment** manages a **hand-curated base catalogue** — the balance floor, probeable by the autoplay tester like cards, and **the shelf merchants stock from**. The T-82 floor (6 weapons, 4 accessories, 6 consumables) is now the bottom of a **shop-sized catalogue**: 26 weapons, 24 accessories, 26 consumables, spread over `level_min` 1–6 so a merchant's shelf grows with the party. Everything added is **common or uncommon** — the rarity band stock rolls in — and a stock roll now draws only templates inside that band, so a rare template is never relabelled down. All `points_price`d, all with flavor and art_desc (new entries ship without art; Equipment → **Generate all missing** paints them).
 
-**Procedural gear** = **template × affix**: templates are catalogue entries; affix tables carry mechanical riders (a keyword, a stat, a small granted ability) each with a points cost and a level_min. Generation picks mechanics from tables **in code**; the LLM only **names, flavors, and describes** the result. Nothing generated is ever off-vocabulary or off-budget. Boss drops roll higher rarity and may roll banned-keyword affixes; merchant stock rolls common/uncommon only and **caps below the drop tier for the act's level**.
+**Merchant stock** = **template × affix**: templates are catalogue entries; affix tables carry mechanical riders (a keyword, a stat, a small granted ability) each with a points cost and a level_min. Generation picks mechanics from tables **in code**. Nothing generated is ever off-vocabulary or off-budget. Merchant stock rolls common/uncommon only and **caps below the drop tier for the act's level**.
+
+**Boss drops are not rolled off the catalogue at all** — they are **forged** from the scenario's own words (§D17-4.5).
 
 Equipment tab: full catalogue list; **New** item editor (the card effect editor with the item statics); per-item **Generate art**; **Generate all missing** (the sequential art queue, reused).
 
@@ -168,9 +202,11 @@ A carried consumable is a **card in hand from turn 1** of every encounter, above
 
 When an adventure's Phase III boss falls, **before** the level-up screen: the **Rewards modal**.
 
-- Drops: **(party size + 1) gear** and **(party size × 2) consumables** (T-83), rolled from the procedural tables at the adventure's tier (boss tier — always ≥ merchant tier), each rendered as a card.
+- Drops: **(party size + 1) gear** and **(party size × 2) consumables** (T-83), **forged** at the adventure's tier (boss tier — always ≥ merchant tier), each rendered as a card. **Forged, not shelf-picked:** an act's spoils are never one of the catalogue entries the vendors sell. Each is pieced together from a **loot lexicon** — forms, materials, epithets, "of the …" phrases, flavour lines and art details — **drawn in code when the scenario is made** from theme word-banks matched against the town and the arc, and **frozen onto the arc** (`arc["loot_lexicon"]`) so it survives saves and reloads and every scenario's spoils sound like that scenario. Everquest's next arc draws a fresh lexicon. The **mechanics** still come from code tables — an attack mode and a Power step by tier, an accessory's stat rider, plus 1–2 priced affixes off the same table stock uses — so only the words are new; the budget is not.
 - Each item has a **dropdown: a character, or Discard**. Assigning to a character whose inventory/belt would overflow is disallowed by the dropdown (shows "full") — the party swaps or discards to make room. When all are assigned, any player clicks **Accept** → the all-players confirmation, **30s auto-yes** (T-84) → items land → auto-save → level-up screen.
-- **Nothing is generated by an LLM here** — flavor names come from the affix tables' name fragments; art for drops is generated lazily by the queue after the fact (placeholder sigil until then).
+- **When the spoils are made:** at **act materialization** — the moment the party arrives in town, the same moment the merchant stock is rolled — and **frozen onto the act** (`act["spoils"]`, so a reload shows the same drops). They are forged at the **boss tier** (`act_tier + 1`: a step above what the act's shops sell at, since the party is a level or so stronger by Phase III). Nothing is broadcast until the Rewards modal opens — the act knows its loot; the party doesn't.
+- **Nothing is generated by an LLM here** — names, flavour and art_desc come from the scenario's lexicon.
+- **Art runs ahead of the boss:** because the spoils exist from arrival, the same sequential art queue the town and the adventure use paints them during the town visit and the ride out, so the Rewards modal opens with pictures rather than sigils. A drop's art is RUN data — it lands in the gitignored `loadouts/art/spoils/<item_id>/` (served under the same `/art` URLs), never in the tracked catalogue. The queue is idempotent: a picture already on disk is adopted, not repainted, so reloads and restarts cost nothing.
 
 ---
 
@@ -201,11 +237,11 @@ The town reuses the combat screen's shell: backdrop + card slots + inspect modal
 - **Visiting:** splash (location scene + a line of narrative) → location screen: location scene; the slots show its **NPCs**. Click an NPC → inspect (persona) → **Talk to X** or, for merchants, **See their wares** (§D17-5.5). **Leave Location** returns to the map.
 - **Movement is party-wide:** Visit / Leave / Start Adventure open the **all-players confirmation** (every *player*, not character; **30s auto-yes**, initiator may cancel — T-84). Browsing inspects and shopping are per-player and asynchronous.
 - **Start Adventure** is enabled only when the act's `adventure_ready` flag is set (§D17-6.3) — otherwise it shows the generation state ("Preparing the road… 4/9").
-- **Character sheet:** click a character's name (anywhere — town, combat, level-up) → the sheet modal: stats and build history (locked / new / banked), deck list, Skill/Ultimate, **gear slots + belt + inventory** rendered as cards, gold, level and points-to-next. **Edit affordances (equip/swap/discard/trade) only in town and on the between-phase screens; read-only in combat.**
+- **Character sheet:** click a character's name (anywhere — town, combat, level-up) → the sheet modal: stats and build history (locked / new / banked), deck list, Skill/Ultimate, **gear slots + belt + inventory** rendered as cards, gold, level and a **level progress bar** — the band of cumulative points between this level and the next (§D17-2.3), with points earned, points unspent, and points to the next level read off it. **Edit affordances (equip/swap/discard/trade) only in town and on the between-phase screens; read-only in combat.**
 
 ### D17-5.3 Gold — per character, XP-shaped
 
-Every character earns **gold at the same rate as points: +30 per phase level-up** (T-85), into their **own** wallet; how it is split and spent is per character. Additional gold from selling (50% of `points_price`, T-86) and from quest hooks (`give_gold`). Prices are `points_price` in gold (merchant premium: ×1.25 on stock, T-86). No free restock anywhere — potions are priced, and the party gets no pass for lacking a healer. Trading items and gold between characters is **town-only**, via the character sheet, and needs both players' clicks (a two-party confirm, not the whole table).
+Every character earns **gold at the same rate as points: one gold per point** — 10 / 20 / 30 as the phases fall, 60 an act (T-85, §D17-2.3) — into their **own** wallet; how it is split and spent is per character. Additional gold from selling (50% of `points_price`, T-86) and from quest hooks (`give_gold`). Prices are `points_price` in gold (merchant premium: ×1.25 on stock, T-86). No free restock anywhere — potions are priced, and the party gets no pass for lacking a healer. Trading items and gold between characters is **town-only**, via the character sheet, and needs both players' clicks (a two-party confirm, not the whole table).
 
 ### D17-5.4 Dialogue — authored at generation, walked at runtime
 
@@ -264,7 +300,7 @@ The single trigger for everything the adventure needs. On accept: (1) auto-save;
 - **New Game modal** gains a fourth column: **Scenarios** (pre-generated scenarios and Town + New). Choosing it reveals the run options (difficulty · Normal/Hardcore · Standard/Everquest). Start creates a **run** and its first auto-save.
 - **Load Game** (top ribbon): runs → saves list → load. Delete on saves; delete on a whole run (double-confirm).
 - **Options → Towns** / **Options → Scenarios** / **Options → Equipment**: lists, Generate/New, per-item art + Generate all missing, hide/delete, inspect (a scenario opens its arc; its Act I adventure opens in the existing adventure editor).
-- **Between-phase flow** (unchanged from Update 10 apart from the rename and the rewards insert): victory splash → *(Phase III only)* **Rewards modal** → level-up (now with the character sheet's gear tab available for swaps) → narrative splash → next phase. **After Phase III:** rewards → level-up → **return-to-town splash** → the town map (next act begins; town portion generates under the splash).
+- **Between-phase flow** (Update 10's, plus the rewards insert and the §D17-2.3 schedule): victory splash → **level-up** *or* **Phase Clear interlude**, whichever the schedule says (the character sheet's gear tab is available for swaps either way) → narrative splash → next phase. **After Phase III:** **Rewards modal** → *(if the act ends on a screen)* **level-up** → **return-to-town splash** → the town map (next act begins; town portion generates under the splash).
 
 ---
 
@@ -316,7 +352,7 @@ The single trigger for everything the adventure needs. On accept: (1) auto-save;
 | T-82 | 6 weapons · 4 accessories · 6 consumables | v1 base catalogue size |
 | T-83 | (party + 1) gear · (party × 2) consumables | Phase III boss drops |
 | T-84 | 30 s → yes | all-players confirmation timeout |
-| T-85 | +30 gold per phase level-up, per character | gold earning rate (= points) |
+| T-85 | 1 gold per point earned — 10/20/30 a phase, 60 an act, per character | gold earning rate (= points) |
 | T-86 | buy ×1.25 · sell ×0.5 of points_price | merchant pricing |
 
 ---

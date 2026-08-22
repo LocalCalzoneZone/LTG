@@ -139,7 +139,8 @@ def test_price_curve_and_level_thresholds():
     assert creation_points(12, 2, 2, 1, None) == 8 + 15 + 15 + 10
     # Level derives from cumulative earned points.
     assert level_for_points(0) == 1
-    assert level_for_points(29) == 1
+    assert level_for_points(9) == 1
+    assert level_for_points(10) == 2    # T-57: the first phase win (+10) ticks L2
     assert level_for_points(30) == 2
     assert level_for_points(60) == 3
     assert level_for_points(120) == 4   # T-78 table: L5 needs 150 (the doc prose says 120 — the register wins)
@@ -149,10 +150,15 @@ def test_price_curve_and_level_thresholds():
     assert level_for_points(300) == 7
     assert level_for_points(2010) == 20
     assert level_for_points(99999) == 20
-    assert points_to_next_level(0) == 30
+    assert points_to_next_level(0) == 10
     assert points_to_next_level(180) == 30
     assert points_to_next_level(2010) is None
     assert LEVEL_THRESHOLDS[10] == 570
+    # The band the sheet's progress bar fills (T-78).
+    from ltg_core.schema import level_band
+    assert level_band(0) == (0, 10)
+    assert level_band(120) == (105, 150)
+    assert level_band(2010) == (2010, None)
 
 
 def test_legacy_archetype_loads_and_stats_derive():

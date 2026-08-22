@@ -186,9 +186,11 @@ def _veiled_entry(state: GameState, enemy, intent, status: str, reveal: str,
     category = intent_category(intent) if intent is not None else "none"
     target_id = intent.target_id if intent is not None else None
     target_name = _name_of(state, target_id)
-    target_row = getattr(intent, "target_row", None) if intent is not None else None
+    rows = intent_rows(intent)
+    target_row = (getattr(intent, "target_row", None) if intent is not None else None) \
+        or (rows[0] if rows else None)
     line = _veiled_line(enemy, category, target_id, target_name, status, slot,
-                        target_row=target_row)
+                        target_row=target_row, rows=rows)
     return {
         "enemy_id": enemy.id,
         "creature_id": enemy.id,          # legacy key the client already reads
@@ -202,7 +204,10 @@ def _veiled_entry(state: GameState, enemy, intent, status: str, reveal: str,
         "slot": slot,                     # 1, or 2 for a boss-fury second intent (§D9-4)
         # A positional intent's row (§L-5): aimed at ground, not a name — the
         # client renders the row highlight from this (target_id stays None).
-        "target_row": getattr(intent, "target_row", None) if intent is not None else None,
+        "target_row": target_row,
+        # The full footprint (§D18-4): one row for a row shape, three for a
+        # blast — every row the client should light, not just the primary.
+        "target_rows": rows,
     }
 
 
@@ -234,8 +239,47 @@ def veiled_intents(state: GameState, enemy) -> List[Dict[str, Any]]:
     return out
 
 
+def intent_rows(intent) -> List[str]:
+    """The GROUND a positional / row-shaped intent covers (§D18-4).
+
+    Works on an Intent (the telegraph) and on a StackItem (the same blow once it
+    is on the stack) alike — both carry `target_row` and the verbs.
+
+    `target_row` when the engine declared one (every enemy row shape does now),
+    otherwise read straight back off the verbs — so a hand-authored or legacy
+    `rows` footprint still names its row instead of the old anonymous "a row of
+    your party", which told the party to move without telling them where from."""
+    if intent is None:
+        return []
+    rows: List[str] = []
+    for eff in getattr(intent, "effects", []) or []:
+        desc = getattr(eff, "target", None)
+        side = getattr(getattr(desc, "side", None), "value", getattr(desc, "side", None))
+        if side not in ("ally", "any"):
+            continue                      # a self/own-side rider marks no ground
+        for r in (getattr(desc, "rows", None) or []):
+            name = getattr(r, "value", r)
+            if name not in rows:
+                rows.append(name)
+    primary = getattr(intent, "target_row", None)
+    if primary and primary not in rows:
+        rows.insert(0, primary)
+    elif primary:
+        rows.remove(primary)
+        rows.insert(0, primary)
+    return rows
+
+
+def _rows_phrase(rows: List[str]) -> str:
+    """"your front row" / "your front and mid rows" — the blast footprint reads
+    as the several rows it actually covers."""
+    if len(rows) == 1:
+        return f"your {rows[0]} row"
+    return "your " + ", ".join(rows[:-1]) + f" and {rows[-1]} rows"
+
+
 def _veiled_line(enemy, category: str, target_id, target_name,
-                 status: str, slot: int = 1, target_row=None) -> str:
+                 status: str, slot: int = 1, target_row=None, rows=None) -> str:
     """The generic template line (§D8-1.2). Presentation only."""
     name = enemy.name
     if status == "stunned":
@@ -246,16 +290,18 @@ def _veiled_line(enemy, category: str, target_id, target_name,
     if category == "threat":
         return f"{name} threatens {tname}."
     if category == "spellcraft":
-        if target_row is not None:  # a positional spell names its ground (§L-5)
-            return f"{name} begins casting a spell at the {target_row} of your party."
+        if rows:  # a positional spell names its ground (§L-5 / §D18-4)
+            return f"{name} begins casting a spell at {_rows_phrase(rows)}."
+        if target_id == enemy.id:   # a self-buff read as "…casting a spell at itself"
+            return f"{name} begins working a spell on itself."
         if target_id is not None:
             return f"{name} begins casting a spell at {tname}."
         return f"{name} begins casting a spell."
     if category == "party assault":
         return f"{name} prepares an assault on your whole party."
     if category == "row assault":
-        if target_row is not None:  # §L-5: the telegraph IS the floor circle
-            return f"{name} prepares an assault on the {target_row} of your party."
+        if rows:  # §L-5 / §D18-4: the telegraph IS the floor circle — name the ground
+            return f"{name} prepares an assault on {_rows_phrase(rows)}."
         return f"{name} prepares an assault on a row of your party."
     if category == "interference":
         if target_id is None:
@@ -702,6 +748,9 @@ def _stack_list(state: GameState) -> List[Dict[str, Any]]:
             # so the UI can show it on hover; None for attacks & enemy components.
             "card": card_dict(item.card) if item.card is not None else None,
             "mechanics": _stack_mechanics(state, item),
+            # §D18-4: the ground this action covers, so the board keeps the row
+            # lit from the telegraph all the way through the swing on the stack.
+            "target_rows": intent_rows(item),
             "top": i == 0,
             "raw": to_jsonable(item),
         })

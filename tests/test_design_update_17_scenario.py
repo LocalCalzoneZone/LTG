@@ -84,19 +84,30 @@ def _drive(session, kind):
 
 
 def _win_adventure(session):
-    """Drive the running adventure to completion through the level-up gates."""
-    scen = session.scenario
+    """Drive the running adventure to completion through its boundary gates —
+    level-up screens and Phase Clear interludes alike (§D17-2.3)."""
     adv = session.adventure
-    for _ in range(2):
+    for _ in range(len(adv.phases)):
         session.state.result = "victory"
         adv.on_state_change(session.state)
         session._run_hooks()
+        if adv.complete:
+            break
         for live in list(adv.live_ids):
             session.seats[live] = "c1"
             session.confirm_level_up("c1", live, {})
-    session.state.result = "victory"
-    adv.on_state_change(session.state)
-    session._run_hooks()
+
+
+def _confirm_act_end_level_up(session, client="c1"):
+    """The act-end level-up screen queued behind the spoils (§D17-2.3): every
+    seat presses confirm (spending nothing) and the party rides to town."""
+    adv = session.adventure
+    if adv is None or not adv.is_final_gate:
+        return False
+    for live in list(adv.live_ids):
+        session.seats[live] = client
+        session.confirm_level_up(client, live, {})
+    return True
 
 
 def _take_rewards(session, client="c1"):
@@ -107,6 +118,7 @@ def _take_rewards(session, client="c1"):
     for i in range(len(scen.rewards["items"])):
         session.economy_verb(client, "reward_assign", {"index": i, "target": "discard"})
     session.economy_verb(client, "reward_accept", {})
+    _confirm_act_end_level_up(session, client)
 
 
 def _walk_to_questgiver(session, client="c1"):
@@ -455,3 +467,162 @@ def test_pregenerated_act_one_is_dropped_when_the_party_takes_the_other_road(run
     # A fresh adventure was written, for the road the party actually took.
     assert len(generated) == 1
     assert "reed-shore at night" in generated[0]["arc_context"]["act"]["adventure_theme"]
+
+
+# --------------------------------------------------------------------------- #
+# The level-up schedule (§D17-2.3)
+# --------------------------------------------------------------------------- #
+def _play_act(session, take_rewards=True):
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    _win_adventure(session)
+    if take_rewards:
+        _take_rewards(session)
+
+
+def test_points_are_earned_every_phase_but_spent_on_a_schedule(runs):
+    """Opening act: +10 / +20 / +30 as the phases fall, a level-up screen after
+    Phase I, a Phase Clear interlude after Phase II, and the act-end screen
+    queued behind the spoils (§D17-2.3)."""
+    session, scen, _run_id = _start(runs)
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    adv = session.adventure
+    soren = adv.live_ids[0]
+    assert adv.screen_phases == {0} and adv.final_screen is True
+
+    # Phase I won: +10 in the pool, level 2 reached, and a SPEND screen.
+    session.state.result = "victory"
+    adv.on_state_change(session.state)
+    session._run_hooks()
+    assert adv.earned[soren] == 10 and adv.banked[soren] == 10
+    assert adv.gate_kind == "levelup" and adv.next_level() == 2
+    assert session.public_result() is None
+    for live in list(adv.live_ids):
+        session.seats[live] = "c1"
+        session.confirm_level_up("c1", live, {})
+    assert adv.phase_index == 1
+
+    # Phase II won: +20 banks, but the boundary is an INTERLUDE — nothing to buy.
+    session.state.result = "victory"
+    adv.on_state_change(session.state)
+    session._run_hooks()
+    assert adv.earned[soren] == 30 and adv.banked[soren] == 30
+    assert adv.gate_kind == "interlude"
+    with pytest.raises(ValueError, match="interlude"):
+        adv.confirm_level_up(soren, {"hp": int(adv.loadouts[0]["character"]["hp"]) + 2})
+    for live in list(adv.live_ids):
+        session.seats[live] = "c1"
+        session.confirm_level_up("c1", live, {})
+    assert adv.phase_index == 2
+
+    # Phase III won: +30, and the spoils come FIRST — the level-up is queued.
+    session.state.result = "victory"
+    adv.on_state_change(session.state)
+    session._run_hooks()
+    assert adv.earned[soren] == 60 and adv.complete
+    assert scen.act_wrapup == "rewards" and scen.rewards is not None
+    assert adv.level_up is None                      # not yet: the spoils are open
+    _take_rewards(session)
+    # 60 points and 60 gold for the act, and the party is in town for Act II.
+    assert scen.mode == "town" and scen.act_index == 1
+    assert scen.earned["loadout_soren"] == 60 and scen.gold["loadout_soren"] == 60
+    assert scen.levels() == [3, 3]
+
+
+def test_later_acts_spend_only_at_the_act_end_screen(runs):
+    session, scen, _run_id = _start(runs)
+    _play_act(session)                                # Act I
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    adv = session.adventure
+    assert adv.screen_phases == set() and adv.final_screen is True
+    kinds = []
+    for _ in range(2):
+        session.state.result = "victory"
+        adv.on_state_change(session.state)
+        session._run_hooks()
+        kinds.append(adv.gate_kind)
+        for live in list(adv.live_ids):
+            session.seats[live] = "c1"
+            session.confirm_level_up("c1", live, {})
+    assert kinds == ["interlude", "interlude"]        # no mid-adventure shopping
+    session.state.result = "victory"
+    adv.on_state_change(session.state)
+    session._run_hooks()
+    soren = adv.live_ids[0]
+    # A whole act's 60 points arrive in one screen — on top of Act I's,
+    # which this party (a test that buys nothing) also banked.
+    assert adv.banked[soren] == 120 and adv.earned[soren] == 120
+    _take_rewards(session)
+    assert scen.earned["loadout_soren"] == 120 and scen.gold["loadout_soren"] == 120
+    assert scen.levels() == [4, 4]                    # T-78: 120 → level 4
+
+
+def test_the_closing_act_has_an_end_screen_only_in_everquest(runs):
+    for everquest, expected in ((False, False), (True, True)):
+        session, scen, _run_id = _start(runs, options={"everquest": everquest})
+        for _ in range(2):
+            _play_act(session)
+        assert scen.act_index == 2 and scen.is_last_act()
+        assert scen.gate_policy()["final_screen"] is expected
+        _accept_quest(session)
+        session.town_verb("c1", "leave", {})
+        session.town_verb("c1", "start_adventure", {})
+        _win_adventure(session)
+        assert scen.rewards is not None
+        _take_rewards(session)
+        # Points are earned either way; only Everquest gets to spend them.
+        assert scen.earned["loadout_soren"] == 180
+        if everquest:
+            assert scen.scenario_number == 2 and scen.act_index == 0
+            assert scen.banked["loadout_soren"] <= 180
+        else:
+            assert scen.mode == "complete"
+
+
+def test_the_sheet_carries_the_level_progress_band(runs):
+    session, scen, _run_id = _start(runs)
+    row = scen.party_block()[0]
+    assert row["earned_points"] == 0 and row["level_floor"] == 0
+    assert row["level_ceiling"] == 10 and row["points_to_next_level"] == 10
+    _play_act(session)
+    row = scen.party_block()[0]
+    assert row["level"] == 3 and row["earned_points"] == 60
+    assert (row["level_floor"], row["level_ceiling"]) == (60, 105)
+    assert row["points_to_next_level"] == 45
+
+
+def test_a_reload_inside_the_act_wrapup_resumes_it(runs):
+    """A save taken between the spoils and the act-end level-up screen comes
+    back to that screen — not to a won adventure with nothing driving it, and
+    not to a second roll of the spoils (§D17-2.3)."""
+    session, scen, run_id = _start(runs)
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    _win_adventure(session)
+    for i in range(len(scen.rewards["items"])):
+        session.economy_verb("c1", "reward_assign", {"index": i, "target": "discard"})
+    session.economy_verb("c1", "reward_accept", {})     # the "rewards" save is here
+    assert scen.act_wrapup == "levelup" and session.adventure.is_final_gate
+
+    row = [s for s in runs.run_detail(run_id)["saves"] if s["kind"] == "rewards"][-1]
+    scen2 = runs.load_scenario_save(run_id, row["save_id"])
+    _meta, adv2, state2, portraits, art, eid = runs.load_save(run_id, row["save_id"])
+    assert scen2.act_wrapup == "rewards" and scen2.rewards is None   # spoils placed
+    scen2.adopt_adventure(adv2)                                      # what app.py does
+    session2 = SessionManager().create(state2, name="reload", portraits=portraits,
+                                       encounter_id=eid, art=art, adventure=adv2,
+                                       run_id=run_id, run_manager=runs, scenario=scen2)
+    session2._scenario_transitions()
+    assert adv2.is_final_gate and scen2.act_wrapup == "levelup"
+    assert adv2.earned[adv2.live_ids[0]] == 60 and scen2.rewards is None
+    assert session2.public_result() is None
+    for live in list(adv2.live_ids):
+        session2.seats[live] = "c1"
+        session2.confirm_level_up("c1", live, {})
+    assert scen2.mode == "town" and scen2.act_index == 1

@@ -1,0 +1,27 @@
+{
+  "kind": "item",
+  "id": "drovers_goad",
+  "name": "Drover's Goad",
+  "slot": "weapon",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 5,
+  "flavor": "It moved oxen. It will move you.",
+  "art_desc": "A long ash pole tipped with a blunt iron prod and a small hooked spur.",
+  "art_url": "/art/items/drovers_goad/item-d3802069.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "reach"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

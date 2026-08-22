@@ -1,0 +1,30 @@
+{
+  "kind": "item",
+  "id": "mullein_tea",
+  "name": "Mullein Tea",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 14,
+  "flavor": "Foul, and worth every mouthful.",
+  "art_desc": "A stoppered clay flask of cloudy yellow-green tea, still faintly warm.",
+  "art_url": "/art/items/mullein_tea/item-cc80bdc5.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "heal",
+      "amount": 8,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      }
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "sorcery"
+  },
+  "affixes": []
+}

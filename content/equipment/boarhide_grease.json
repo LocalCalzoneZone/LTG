@@ -1,0 +1,33 @@
+{
+  "kind": "item",
+  "id": "boarhide_grease",
+  "name": "Boarhide Grease",
+  "slot": "consumable",
+  "rarity": "common",
+  "level_min": 2,
+  "points_price": 8,
+  "flavor": "Nothing holds on to you for long.",
+  "art_desc": "A squat pot of yellow grease, the rim black with thumbprints.",
+  "art_url": "/art/items/boarhide_grease/item-9ed89a40.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "grant_keyword",
+      "keywords": [
+        "trample"
+      ],
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "instant"
+  },
+  "affixes": []
+}

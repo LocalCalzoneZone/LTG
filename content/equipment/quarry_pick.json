@@ -1,0 +1,27 @@
+{
+  "kind": "item",
+  "id": "quarry_pick",
+  "name": "Quarry Pick",
+  "slot": "weapon",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 5,
+  "flavor": "Heavy enough to lean on between swings.",
+  "art_desc": "A stubby iron pick with a chipped point and a grip wrapped in tarred cord.",
+  "art_url": "/art/items/quarry_pick/item-aa32c678.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "melee",
+      "amount": 0
+    },
+    {
+      "kind": "stat",
+      "amount": 2,
+      "stat": "hp"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

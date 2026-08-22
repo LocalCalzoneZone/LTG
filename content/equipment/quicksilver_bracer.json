@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "quicksilver_bracer",
+  "name": "Quicksilver Bracer",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 15,
+  "flavor": "The arm moves before the plan does.",
+  "art_desc": "A narrow bracer of hammered silver-grey plate, buckled tight over a linen wrap.",
+  "art_url": "/art/items/quicksilver_bracer/item-51fb36a2.png",
+  "statics": [
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "first_strike"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Sunken Vault of Brass",
+  "flavor": "Fight through toxic smelting ramps and scrap barricades to quench the sulfur furnace choking the great roots.",
+  "phases": [
+    {
+      "narration": "You breach the cracked bronze gates beneath the Whispering Glade, following the black sulfur-sludge to its subterranean source. Ahead, the haulage corridors echo with the shriek of goblin whistles as sapper crews tip overturned ore-carts into crude ramparts.",
+      "encounter_id": "the_sunken_vault_of_brass__phase1"
+    },
+    {
+      "narration": "You push past the broken barricades and emerge onto the vast smelting incline. Overhead, rusty gantries groan under massive swinging ladles of molten brass, while foundry overseers clang brass gongs to whip the labor lines into a frenzy.",
+      "encounter_id": "the_sunken_vault_of_brass__phase2"
+    },
+    {
+      "narration": "At the base of the incline, you stand before the heart of the brass complex: a half-flooded reservoir where colossal ancient gears churn through thick sulfur-bile. Bolted to the center of the hall, an enormous scrap-clad forge engine roars to life, fed by necrotech scavengers who re-weld the fallen into walking plating.",
+      "encounter_id": "the_sunken_vault_of_brass__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

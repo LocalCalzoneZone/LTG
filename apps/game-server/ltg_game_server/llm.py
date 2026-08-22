@@ -35,6 +35,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELS: List[Dict[str, str]] = [
     {"id": "z-ai/glm-5.3", "label": "GLM 5.3 (z-ai)"},
     {"id": "google/gemini-3.7-flash", "label": "Gemini 3.7 Flash (Google)"},
+    {"id": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5 (Anthropic)"},
     {"id": "anthropic/claude-opus-5", "label": "Claude Opus 5 (Anthropic)"},
 ]
 # Retired slugs → their successors, so a saved settings file keeps working.
@@ -201,6 +202,7 @@ archetype (typical effect) — base cost:
 - Evasive (repositioning; pairs with flying/hexproof) — 2
 - Burst (extra damage above the basic attack) — 4
 - Debilitate (wound / stun / taunt / prevent / POISON) — 4
+  (a TAUNT is never a component's whole payload — see the taunt rule below)
 - Resource attack (forced discard / SILENCE / mana SAP — see their own section;
   at most one per encounter) — 4, and 5 for a sap (it compounds every turn)
 - Escalate (recurring self-pump / +1/+1 counters / CHARGE gathering) — 4
@@ -229,6 +231,32 @@ once_per_encounter = ×0.5 · reactive timing = +2 flat after multipliers.
   Pumping OTHERS (an anthem, a warband buff, a heal on an ally) is a real turn
   and exempt, as is gathering CHARGE — but a charge gather always needs its
   on_charge_full detonation on the same enemy, or the windup pays off nothing.
+
+## TAUNT NEVER FIRES ALONE (HARD REQUIREMENT)
+A taunt on its own is a skipped turn: the enemy points a hero's sword somewhere
+and no number moves. An enemy component whose verbs include `taunt` MUST also
+carry a `deal_damage` verb aimed at the same hero — the grab and the blow are one
+action ("Blood Challenge — deal 5 to the attacker and drag their blade onto me").
+Stun is different and may stand alone: losing a whole turn IS the payload.
+(The engine backstops this for older content by adding a hit for the enemy's
+Power, but author it properly: your number and your telegraph are better.)
+
+## Row and blast shapes: aim at GROUND, not at a name (HARD REQUIREMENT)
+A row assault is the game's movement pressure — it is telegraphed a full turn
+ahead, the board lights the row, and the party's answer is to WALK OUT of it. So
+write it positionally: put `"target_row": "front" | "mid" | "rear"` on the
+COMPONENT and give its damage verb the matching footprint
+`{"mode": "all", "side": "ally", "rows": ["front"]}`.
+
+Do NOT write a row assault as "a chosen hero AND their row" (`"scope": "row"` on
+a targeted pick). That form is a TARGETED effect: Hexproof on the pick used to
+fizzle the whole area, and the telegraph could name no row, so the party was told
+an assault was coming without being told where from — no reason to move, no
+tension. (The engine now converts such shapes to ground automatically; authoring
+them positionally is still correct and reads better.)
+
+Because a row shape is dodgeable, it may hit HARDER than a single-target ability
+of the same level — that is the trade the player is being offered.
 
 ## Typed counters: poison, regen, and charge (Design Update 08)
 - POISON `{"kind": "poison", "amount": 1, "target": {chosen hero}}` — the victim
@@ -303,11 +331,27 @@ poor character.
 Price all three as Debilitate (4); Drain Ult at 5 if the amount is 20+.
 
 ## Verb magnitudes scale with the enemy's Level L
-deal_damage (Burst/Punish) = L+1 · Drain (damage & heal each) = ceil(L/2)+1 ·
-heal (Fortify) = L+2 · pump/wound = ±ceil(L/3) · Escalate counters = +1/+1 ·
+L is THIS ENEMY's own level — not the party's, not the sum of the party's. Party
+size is answered by the encounter budget (more and higher-level bodies) and, for
+a boss Enrage, by the engine (see the boss section).
+
+deal_damage (Burst/Punish) = L+2 · Drain (damage & heal each) = ceil(L/2)+2 ·
+heal (Fortify) = L+2 · pump/wound = ±(ceil(L/3)+1) · Escalate counters = +2/+2 ·
 sap = 1 (2 only at L5+) · forced discard / silence = no magnitude (binary) ·
-lose_life (unpreventable) = ceil(L/2) · stun / taunt = no magnitude (binary) ·
+lose_life (unpreventable) = ceil(L/2)+1 · stun = no magnitude (binary) ·
 create_token = a Husk at level ceil(L/2), max 2 alive per creator.
+
+NEVER write a damage number BELOW the enemy's own Power. A "special" that hits
+for less than the creature's basic swing reads as a downgrade at the table, and
+the engine now skips it outright: a pure single-target damage component that
+cannot beat the basic attack is passed over so the sword lands instead. A
+component earns its slot by hitting HARDER than the swing, by hitting SEVERAL
+bodies (a row), or by doing something the sword cannot (control, a summon, a
+heal, a rider).
+
+The engine ALSO forces a basic attack after two consecutive non-attack intents,
+so a kit of short-cooldown abilities no longer crowds the sword out entirely.
+Design for the mix: an enemy shows its kit, then swings.
 
 ## Targeting, conditions, triggers (the full vocabulary — use all of it)
 target_rule: "valuation" (the smart default — snipes the killable/casting hero;
@@ -360,8 +404,9 @@ ever; the engine rejects anything else).
 
 ## Corpses & the undead shelf (Design Update 09 §D9-1)
 When a non-token enemy dies it leaves a CORPSE on its row (tokens never do).
-Corpses are objects, not creatures — only `control` (raise) and `exile` (burn)
-touch them. This unlocks a whole faction archetype, the BODY ECONOMY:
+Corpses are objects, not creatures — only `control` (raise), `exile` (burn) and
+`consume_corpse` (spend as fuel) touch them. This unlocks a whole faction
+archetype, the BODY ECONOMY:
 - NECROMANCY (archetype above, base 5): proactive, `"target_rule": "corpse"`
   (the engine finds the nearest own-side corpse; no corpse → the rule skips and
   the priority list falls through, so a Necromancer never wastes a turn), verb
@@ -375,12 +420,20 @@ touch them. This unlocks a whole faction archetype, the BODY ECONOMY:
   when it dies its corpse visibly STIRS and it revives after 2 Upkeeps at half
   max HP, once per encounter. The enemy is NOT defeated while stirring; the
   party answers by exiling or raising the corpse first. The shambling tide.
-- CORPSE-BURST (Burst variant): consume an own-side corpse for a blast — pair
-  `"target_rule": "corpse"` with an exile of the corpse plus row damage, e.g.
-  `[{"kind": "exile", "target": {"mode": "chosen", "side": "enemy",
-  "targeted": true, "state": "corpse"}}, {"kind": "deal_damage", "amount": <X>,
-  "target": {"mode": "all", "side": "ally", "rows": ["front"]}}]` — the faction
-  that eats its own dead.
+- CORPSE-BURST (Burst variant): spend an own-side corpse for a blast. Use the
+  dedicated fuel verb — `consume_corpse` — never a hand-rolled `exile`:
+  `[{"kind": "deal_damage", "amount": <X>, "target": {"mode": "all",
+  "side": "ally", "rows": ["front"]}}, {"kind": "consume_corpse",
+  "target": {"mode": "chosen", "side": "enemy", "targeted": true,
+  "state": "corpse"}}]` — the faction that eats its own dead.
+  `consume_corpse` is a COST, and the engine treats it as one: it always resolves
+  LAST whatever order you write it in (the blast happens, THEN the body is
+  spent), and the component is not declared at all while no corpse is on the
+  battlefield — so the rule never burns a turn chewing air. Write the payload
+  first anyway; it reads better.
+  A corpse verb binds THE BODY on its own, so the component's `target_rule` is
+  free to aim the PAYLOAD wherever it belongs (`valuation` for a targeted blast,
+  or leave it while a `mode: all` payload needs no pick at all).
 Faction guidance: cheap corpse-leaving Husks up front, ONE Necromancer feeding
 on the fallen (kill-priority incarnate), a riser or two. Exile and control are
 the party's trump cards against it — that tension is the design.
@@ -495,7 +548,7 @@ so write them freely — but write them as what they are.
 
 ## Keywords (min level / cost)
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
-deathtouch (3/4) · protection (4/3) · hexproof (4/4) · indestructible (6/6).
+deathtouch (3/4) · protection (4/3) · hexproof (5/6) · indestructible (6/6).
 Infect: any damage the creature deals that CONNECTS also poisons the victim
 (one unbounded poison effect per connecting hit, first counter at the next
 Upkeep). An infected biter turns every landed hit into a healer assignment —
@@ -641,7 +694,12 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
   boss and resets its ability cooldowns, so the post-enrage kit opens at full
   aggression. Write the Enrage itself as a MULTI-VERB eruption — stack 2–3 verbs:
   permanent +X/+X counters AND an AoE hit AND/OR a token wave / a big self-heal /
-  a granted keyword (e.g. trample). One small pump is a wasted climax.
+  a granted keyword (e.g. trample). One small pump is a wasted climax: write the
+  pump at +3/+3 or more and the AoE at the boss's full Burst magnitude. Author it
+  for a SOLO hero — the engine scales the eruption up by the party size it
+  actually erupts against (the Power half of a pump by the full party size, the
+  AoE / heal / token wave at half rate), because a four-hero party brings four
+  times the damage and four times the actions to the same climax.
 - may phase-gate other components with `"phase": "pre_enrage"` or `"post_enrage"`
   so the fight transforms when it turns: e.g. a single-target breath before, a
   party-wide firestorm after. Give the post-enrage kit a clearly scarier shape —
@@ -713,7 +771,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
           "cooldown": <int>,            // turns between uses, e.g. 2
           "once_per_encounter": true,   // optional; a single dramatic use
           "priority": <int>,            // lower = evaluated first
-          "target_rule": "valuation" | "self" | "trigger_source" | "lowest_hp_ally" | "channeling_player" | "primed_hero",
+          "target_rule": "valuation" | "highest_threat" | "primed_hero" | "channeling_player" | "trigger_source" | "self" | "lowest_hp_ally" | "wounded_ally",  // WHO this component picks; VARY it across the pool
           "action_type": "spell",       // MAGIC components only (counterable by spell counters); omit for physical
           "channel": true,              // ongoing held effect (see channel rules); omit for one-shots
           "phase": "pre_enrage" | "post_enrage",   // boss components only; optional
@@ -726,13 +784,14 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "deal_damage", "amount": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true, "scope": "blast"}},  // BLAST: the pick + its row + adjacent rows
             {"kind": "move", "direction": "to_front", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // the Hooker's drag; "back" for a Line-breaker
             {"kind": "control", "target": {"mode": "chosen", "side": "enemy", "targeted": true, "state": "corpse"}},    // NECROMANCY ONLY: raise an own-side corpse (target_rule "corpse")
+            {"kind": "consume_corpse", "target": {"mode": "chosen", "side": "enemy", "targeted": true, "state": "corpse"}},  // spend a corpse as fuel — always resolves LAST
             {"kind": "lose_life",   "amount": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // unpreventable
             {"kind": "heal",        "amount": <int>, "target": {"mode": "self"}},          // or chosen ally (see target_rule)
             {"kind": "wound", "power": <int>, "toughness": <int>, "target": {"mode": "chosen", "side": "ally", "targeted": true}},
             {"kind": "pump",  "power": <int>, "toughness": <int>, "target": {"mode": "self"}},     // this-turn buff
             {"kind": "counters", "power": <int>, "toughness": <int>, "target": {"mode": "self"}},  // PERMANENT (Escalate)
             {"kind": "stun",  "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero loses a turn
-            {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me
+            {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me (pair it with damage)
             // The three RESOURCE ATTACKS (see their section above). At most ONE per encounter.
             {"kind": "move_card", "count": 1, "source": "hand", "destination": "graveyard", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // FORCED DISCARD — must target a hero
             {"kind": "prevent", "parameter": "cast", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // SILENCE — no card casts (attack/Skill/items still work)
@@ -790,7 +849,8 @@ own actions in the hero's favour, so it would be a gift to the party).
 the resource-attack section below; every other shape of it does nothing on the
 enemy side. `control` is enemy-legal ONLY on corpses (the
 Necromancy shape above — never on a living hero), and `exile` is enemy-legal ONLY
-on an own-side corpse (the Corpse-burst shape). Never grant enemies first_strike /
+on an own-side corpse; `consume_corpse` is the Corpse-burst fuel verb.
+Never grant enemies first_strike /
 vigilance / haste / defender — `defender` is a HERO-only keyword (the engine
 ignores it on an enemy), so putting it on one buys nothing.
 
@@ -800,7 +860,8 @@ EXAMPLE A — a B/R vampire coven (pool of 3 designs, scaled 1–4 by layouts):
 {"name":"Crimson Coven — Drain & Reactions","scene":"A desecrated hillside chapel at midnight: pews toppled, red votive candles guttering in pools of wax, and a shattered rose window casting broken moonlight across a blood-slick altar.","enemies":[
  {"id":"grave_thrall","name":"Grave Thrall","flavor":"A wall that shambles forward and drags heroes into its reach.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":3,"row":"front","attack_mode":"melee",
   "components":[
-   {"id":"corpse_grip","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Corpse-Grip — taunt a hero into the wall","verbs":[
+   {"id":"corpse_grip","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Corpse-Grip — deal 5 and drag a hero into the wall","verbs":[
+     {"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},
      {"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]},
    {"id":"grave_chill","archetype":"Debilitate","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Grave-Chill — wound the attacker -1/-1","verbs":[
      {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
@@ -844,7 +905,7 @@ EXAMPLE B — a ritual CHANNEL, a counterspell sentinel, a bloodied moment, smar
      {"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]},
    {"id":"brood_fury","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","once_per_encounter":true,"priority":15,"target_rule":"self","telegraph":"Brood-Fury — +1/+1, permanently","verbs":[
      {"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},
- {"id":"mistveil_hexer","name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":4,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
+ {"id":"mistveil_hexer","name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":5,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
   "components":[
    {"id":"hush","archetype":"Counter","timing":"reactive","trigger":"on_spell_cast","cooldown":3,"priority":15,"action_type":"spell","target_rule":"trigger_source","telegraph":"Hushing Mist — counter the spell","verbs":[
      {"kind":"counter","filter":"spell"}]},
@@ -862,7 +923,7 @@ EXAMPLE C — a BOSS encounter: phase gates, enrage, a healer, an escalate clock
 action-economy control (total weight: boss 6×2=12 + 3 + 3 + 3 = 21). Note the
 Emberling's escalate clock: the pump is cooldown 2, so every off-turn it SWINGS
 with everything it has stacked — never a cooldown-1 self-pump (punching-bag rule):
-{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — taunt the attacker","verbs":[{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
+{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
  "1":["ashen_tyrant","cinderpriest"],
  "2":["ashen_tyrant","cinderpriest","emberling","ashfang_zealot"],
  "3":["ashen_tyrant","cinderpriest","emberling","emberling","ashfang_zealot","ashfang_zealot"],
@@ -1395,6 +1456,191 @@ def _design_problems(encounter: Dict[str, Any]) -> List[str]:
     return problems
 
 
+def _corpse_problems(encounter: Dict[str, Any]) -> List[str]:
+    """§D19-1: a corpse-burst spends its body with `consume_corpse`, never a
+    hand-rolled `exile`. A raw exile on a corpse still WORKS (shipped content
+    uses it), but it resolves in authored order, so an author who writes it
+    first removes the body before the payload reads it — the shape the playtest
+    called inconsistent."""
+    problems: List[str] = []
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        for c in (e.get("components") or []):
+            if not isinstance(c, dict):
+                continue
+            verbs = [v for v in (c.get("verbs") or []) if isinstance(v, dict)]
+            burns = [v for v in verbs if v.get("kind") == "exile"
+                     and (v.get("target") or {}).get("state") == "corpse"]
+            if burns and len(verbs) > 1:
+                problems.append(
+                    f"{name}: component '{c.get('id') or c.get('archetype')}' exiles a "
+                    "corpse alongside another verb — use "
+                    '{"kind": "consume_corpse", ...} for corpse fuel instead. It is '
+                    "a cost: the engine resolves it LAST (payload first, body spent "
+                    "after) and skips the rule entirely when no corpse is on the field")
+    return problems
+
+
+def _taunt_problems(encounter: Dict[str, Any]) -> List[str]:
+    """§D18-1: a taunt never fires alone. A component that grabs a hero's sword
+    without also hitting them spends a whole enemy activation on a gesture —
+    at the table it reads as a skipped intent."""
+    problems: List[str] = []
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        for c in (e.get("components") or []):
+            if not isinstance(c, dict):
+                continue
+            kinds = {str(v.get("kind") or "") for v in (c.get("verbs") or [])
+                     if isinstance(v, dict)}
+            if "taunt" in kinds and not (kinds & {"deal_damage", "lose_life", "drain"}):
+                problems.append(
+                    f"{name}: component '{c.get('id') or c.get('archetype')}' taunts "
+                    "but deals no damage — a taunt is never a whole turn. Add a "
+                    "deal_damage verb aimed at the same hero (the grab and the blow "
+                    "are one action), or use stun instead")
+    return problems
+
+
+# --------------------------------------------------------------------------- #
+# The anti-sameness gate
+# --------------------------------------------------------------------------- #
+# The instructions already forbid a pool of re-skins — "NO TWO ENEMIES IN THE
+# POOL MAY SHARE THE SAME KIT", "Vary the damage SHAPES … and the target_rules",
+# "every enemy's turn is 'basic attack, ability on cooldown' reads as one enemy
+# fought four times". But prose a strong model honours a cheaper one drops, and
+# nothing else here catches the miss: four identical bodies all sniping the same
+# hero is perfectly legal JSON that clears every engine gate. So those rules are
+# restated as checks, and the repair loop hands the failure back in the model's
+# own vocabulary. Playtest (2026-08): a fast model wrote towns well and failed
+# scenarios exactly here — one statline cloned, every component "valuation".
+#
+# Scope is ONE encounter's pool. Repeating a body via "layouts", and carrying a
+# faction across an adventure's three phases, are both deliberate (§D10-5) and
+# are left alone.
+
+# The target_rules that pick a HERO — the enemy's read on "who do I hit?".
+_HERO_TARGET_RULES = {"valuation", "highest_threat", "primed_hero",
+                      "channeling_player", "trigger_source"}
+# Verb kinds aimed at the enemy's OWN side; a component built only from these is
+# support (a mend, a ward, a pump), not an aggressor, whatever its rule says.
+_SUPPORT_VERB_KINDS = {"heal", "counters", "protection", "charge", "amplify",
+                       "double_next", "control", "exile"}
+
+
+def _kit_signature(comp: Dict[str, Any]) -> tuple:
+    """What a component IS, with its name and its numbers stripped: archetype,
+    when it fires, and the shape of each verb. Amounts are excluded on purpose —
+    "deal 5" and "deal 7" off the same archetype and trigger is one design in two
+    costumes, which is precisely what this gate is looking for."""
+    verbs = tuple(sorted(
+        (str(v.get("kind") or ""),
+         str((v.get("target") or {}).get("mode") or "self"),
+         str((v.get("target") or {}).get("side") or ""))
+        for v in (comp.get("verbs") or []) if isinstance(v, dict)))
+    return (str(comp.get("archetype") or "").lower(),
+            str(comp.get("timing") or "proactive"),
+            str(comp.get("trigger") or ""),
+            verbs)
+
+
+def _sameness_problems(encounter: Dict[str, Any]) -> List[str]:
+    """Reject a pool that fights as one enemy: duplicate kits, every aggressor
+    reading the same target_rule, one archetype worn by most of the pool, or a
+    single silhouette. Returns repair-friendly problem strings (empty = clean)."""
+    problems: List[str] = []
+    enemies = [e for e in encounter.get("enemies", []) if isinstance(e, dict)]
+    if len(enemies) < 2:
+        return problems
+
+    def label(e: Dict[str, Any]) -> str:
+        return str(e.get("name") or e.get("id") or "?")
+
+    # 1. Several names, one enemy. The kit IS the design: identical kits mean the
+    #    party learns one puzzle and then solves it again.
+    by_kit: Dict[Any, List[str]] = {}
+    for e in enemies:
+        comps = [c for c in (e.get("components") or []) if isinstance(c, dict)]
+        if comps:
+            by_kit.setdefault(frozenset(_kit_signature(c) for c in comps),
+                              []).append(label(e))
+    for twins in by_kit.values():
+        if len(twins) > 1:
+            problems.append(
+                f"{' and '.join(twins)} share the SAME kit (same archetypes, same "
+                "timings, same verb shapes) — that is one enemy under several "
+                f"names. Rebuild every one but {twins[0]} around a different "
+                "threat: another archetype pair, another trigger, or a job nobody "
+                "in the pool does yet (control, a shield, a summon, a debuff "
+                "clock). If you want more BODIES of one design, repeat its id in "
+                '"layouts" instead — the engine clones it there')
+
+    # 2. The whole warband swinging at one hero. A pool that is all "valuation"
+    #    picks the same target every turn, so the fight has one decision in it.
+    rules: List[str] = []
+    for e in enemies:
+        for c in (e.get("components") or []):
+            if not isinstance(c, dict):
+                continue
+            aggressive = any(
+                str(v.get("kind") or "") not in _SUPPORT_VERB_KINDS
+                and str((v.get("target") or {}).get("mode") or "") == "chosen"
+                for v in (c.get("verbs") or []) if isinstance(v, dict))
+            rule = str(c.get("target_rule") or "valuation")
+            if aggressive and rule in _HERO_TARGET_RULES:
+                rules.append(rule)
+    if len(rules) >= 3 and len(set(rules)) == 1:
+        problems.append(
+            f"all {len(rules)} hero-aimed components in this pool use "
+            f'target_rule "{rules[0]}" — every enemy reads the board the same way '
+            "and picks the SAME hero every turn, so the party has one decision to "
+            "make and no reason to reposition. Give at least two of them another "
+            'read: "highest_threat" (the assassin goes for the biggest swing), '
+            '"channeling_player" (punish the channeller), "primed_hero" (answer '
+            'the combo), or "trigger_source" on a reactive')
+
+    # 3. Too few ideas in the pool — the instructions' "use at least FOUR
+    #    distinct component archetypes (or one per enemy when the pool is
+    #    smaller than four)". Measured against the shipped encounters this is
+    #    the archetype rule that discriminates: counting how many enemies WEAR a
+    #    given archetype rejects most of the authored content (a Debilitate
+    #    second component is near-universal and healthy), while counting how
+    #    many DISTINCT ones the pool fields flags only the genuinely thin fights.
+    archetypes = {str(c.get("archetype") or "").lower()
+                  for e in enemies for c in (e.get("components") or [])
+                  if isinstance(c, dict) and c.get("archetype")}
+    want = min(4, len(enemies))
+    if len(archetypes) < want:
+        problems.append(
+            f"the pool fields only {len(archetypes)} distinct component "
+            f"archetype(s) ({', '.join(sorted(archetypes)) or 'none'}) across "
+            f"{len(enemies)} enemies — it needs at least {want}. Give somebody a "
+            "job nobody has yet: a Fortify medic, an Evasive skirmisher, a Swarm "
+            "that spawns bodies, a Punish that answers being hit, an Escalate "
+            "that grows — and at least one enemy whose threat is not damage")
+
+    # 4. One silhouette. Rows and reach are what make bodies read as different
+    #    threats before a single ability has fired.
+    if len(enemies) >= 3:
+        rows = {str(e.get("row") or "").lower() for e in enemies} - {""}
+        modes = {str(e.get("attack_mode") or "").lower() for e in enemies} - {""}
+        if len(rows) < 2:
+            problems.append(
+                f'every enemy stands in the "{sorted(rows or {"front"})[0]}" row — '
+                "spread the pool across front / mid / rear so reach, the melee "
+                "wall and the backline all matter")
+        if len(modes) < 2:
+            problems.append(
+                f'every enemy has attack_mode "{sorted(modes or {"melee"})[0]}" — '
+                "give the pool both melee and ranged bodies so where the heroes "
+                "stand is a real decision")
+    return problems
+
+
 def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
           max_tokens: Optional[int] = None,
           timeout: float = 120.0) -> str:
@@ -1489,6 +1735,9 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
                 problems.append('enemies missing a "description" (physical '
                                 'appearance): ' + ", ".join(undescribed))
             problems.extend(_design_problems(encounter))  # §D14: kit floor
+            problems.extend(_taunt_problems(encounter))   # §D18-1: taunt bites
+            problems.extend(_corpse_problems(encounter))  # §D19-1: corpse fuel
+            problems.extend(_sameness_problems(encounter))  # anti-monotony
             if problems:
                 raise ValueError("; ".join(problems))
             if not persist:
@@ -1621,31 +1870,62 @@ Each phase is a COMPLETE encounter exactly per the contract above (name, scene,
 enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
 
 
+def phase_budget_levels(base_level: int,
+                        screen_phases: Optional[Any] = None) -> List[float]:
+    """The party level each phase is budgeted for (T-62), anchored on
+    ``base_level`` — the party's effective level at adventure start.
+
+    ``screen_phases`` is the set of phase indices after which the party actually
+    SPENDS a level-up (their build improves); None means every boundary, the
+    Update 10 default that gives the classic L / L+1 / L+2 ramp. Update 17
+    §D17-2.3 re-times the screens, so inside a scenario most boundaries buy
+    nothing — those phases ramp by a FRACTION of a level instead: the fights
+    still escalate toward the boss without budgeting for growth the heroes have
+    not had."""
+    base = max(1, int(base_level))
+    n = max(1, content.PHASE_COUNT)
+    out: List[float] = []
+    level = float(base)
+    for i in range(n):
+        out.append(level)
+        level += 1.0 if (screen_phases is None or i in screen_phases) else 1.0 / n
+    return out
+
+
 def _adventure_request_block(party: Dict[str, Any], difficulty: str,
                              note: str, base_level: int = 1,
-                             context: Optional[Dict[str, Any]] = None) -> str:
+                             context: Optional[Dict[str, Any]] = None,
+                             phase_levels: Optional[List[float]] = None) -> str:
     """Per-request parameters: the party, the single difficulty, and each phase's
-    per-party-size budget lines computed at party level L / L+1 / L+2 (T-62),
-    anchored on ``base_level`` — the party's effective level at adventure start
-    (Update 17 §D17-2.1 / §D17-4.2; 1 outside a run). ``context`` (§D17-6.3) is
-    the scenario's arc / town / quest block, passed verbatim."""
+    per-party-size budget lines computed at the levels in ``phase_levels``
+    (default L / L+1 / L+2, T-62), anchored on ``base_level`` — the party's
+    effective level at adventure start (Update 17 §D17-2.1 / §D17-4.2; 1 outside
+    a run). ``context`` (§D17-6.3) is the scenario's arc / town / quest block,
+    passed verbatim."""
     roster = "; ".join(
         f'{m["name"]} (level {m["level"]}'
         + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
         for m in party["members"]
     )
     base_level = max(1, int(base_level))
+    if not phase_levels:
+        phase_levels = phase_budget_levels(base_level)
+    ramps = len({round(l) for l in phase_levels}) > 1
     lines = [
         "# THIS ADVENTURE'S PARAMETERS",
         f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
         f"- Difficulty: {difficulty} (applies to all three phases).",
-        f"- The party enters at level {base_level}. Between phases every character "
-        "levels up, so phase N is budgeted for a party of level "
-        f"{base_level} + N − 1:",
+        (f"- The party enters at level {base_level}. They level up between "
+         "phases, so each phase is budgeted a little above the last:") if ramps else
+        (f"- The party enters at level {base_level} and fights all three phases "
+         "at that level (they level up at the END of the adventure, not between "
+         "phases) — the escalation toward the boss is in the encounters, not in "
+         "the party's growth:"),
     ]
     for phase in range(1, content.PHASE_COUNT + 1):
-        lvl = base_level + phase - 1
-        lines.append(f'- PHASE {phase} (party level {lvl}) — required layouts "1"–"4":')
+        lvl = phase_levels[min(phase - 1, len(phase_levels) - 1)]
+        shown = int(round(lvl))
+        lines.append(f'- PHASE {phase} (party level {shown}) — required layouts "1"–"4":')
         for size in range(1, 5):
             budget = _budget(size, float(lvl), difficulty)
             lines.append(
@@ -1712,6 +1992,7 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                        levels: Optional[List[int]] = None,
                        base_level: int = 1,
                        context: Optional[Dict[str, Any]] = None,
+                       phase_levels: Optional[List[float]] = None,
                        run_only: bool = False) -> Dict[str, Any]:
     """Generate, validate, persist an adventure and return its meta.
 
@@ -1736,7 +2017,8 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": settings["instructions"] + ADVENTURE_EXTENSION},
         {"role": "user", "content": _adventure_request_block(
-            party, difficulty, note, base_level=base_level, context=context)},
+            party, difficulty, note, base_level=base_level, context=context,
+            phase_levels=phase_levels)},
     ]
 
     last_err = ""
@@ -1768,6 +2050,9 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                         problems.append('enemies missing a "description": '
                                         + ", ".join(undescribed))
                     problems.extend(_design_problems(enc))  # §D14: kit floor
+                    problems.extend(_taunt_problems(enc))   # §D18-1: taunt bites
+                    problems.extend(_corpse_problems(enc))  # §D19-1: corpse fuel
+                    problems.extend(_sameness_problems(enc))  # anti-monotony
                     if not str(phase.get("narration") or "").strip():
                         problems.append('missing its "narration" (one short '
                                         "second-person paragraph)")

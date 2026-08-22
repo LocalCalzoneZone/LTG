@@ -1,0 +1,32 @@
+{
+  "kind": "item",
+  "id": "ox_blood_draught",
+  "name": "Ox-Blood Draught",
+  "slot": "consumable",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 12,
+  "flavor": "Drink it and stop asking questions.",
+  "art_desc": "A horn cup sealed with wax, the contents dark and slow.",
+  "art_url": "/art/items/ox_blood_draught/item-f4daf567.png",
+  "statics": [],
+  "effects": [
+    {
+      "kind": "pump",
+      "power": 3,
+      "toughness": 3,
+      "target": {
+        "mode": "chosen",
+        "side": "ally",
+        "exclude_self": false,
+        "targeted": false
+      },
+      "duration": "this_turn"
+    }
+  ],
+  "targets": {},
+  "consumable": {
+    "timing": "sorcery"
+  },
+  "affixes": []
+}

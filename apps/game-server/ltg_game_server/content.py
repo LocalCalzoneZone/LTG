@@ -16,6 +16,7 @@ import json
 import re
 import secrets
 import shutil
+from math import ceil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -156,22 +157,102 @@ def apply_boss_difficulty(scen: Dict[str, Any], difficulty: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Balance register: the global enemy Power bump. Every enemy fields +2 Power
-# over its authored chassis (+4 for a boss) — applied at build time in
-# `build_state_from_loadouts`, the one choke point every real game passes
+# Balance register (Update 18): the global enemy pressure bump. Applied at build
+# time in `build_state_from_loadouts`, the one choke point every real game passes
 # through (standalone encounters and adventure phases alike), so authored
 # content, bundled examples, and LLM-generated encounters are all lifted
 # uniformly. Authored JSON keeps its original numbers.
+#
+# Every enemy fields +2 Power over its authored chassis (+4 for a boss) — and,
+# from §D18-2, the SAME bump lands on its hostile ability damage. Playtest: the
+# Power bump lifted only the basic swing, while component magnitudes stayed on
+# the authored L+1 curve, so a bumped enemy's "special" hit for less than its own
+# sword and every ability read as a downgrade.
 # --------------------------------------------------------------------------- #
 ENEMY_POWER_BONUS = 2
 BOSS_POWER_BONUS = 4
+# Hostile component damage rides the same register as Power (§D18-2).
+ENEMY_ABILITY_BONUS = 2
+BOSS_ABILITY_BONUS = 4
+# A row/blast shape is DODGEABLE — it is telegraphed at a named row and the party
+# had a whole turn to walk out of it — so it lands harder than an unavoidable
+# single-target hit. This is on TOP of the ability bonus.
+ROW_ABILITY_BONUS = 2
+
+# Verbs the register lifts on the party's side of the board.
+_HOSTILE_DAMAGE_VERBS = ("deal_damage", "lose_life")
 
 
-def _bump_enemy_power(scenario: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply the balance-register Power bump to a (scaled) encounter's enemies:
-    the chassis `power` and any attack-type intent template amounts (melee and
-    ranged fallback), so both framework and legacy enemies swing harder.
-    Component ability amounts are untouched — the bump is to Power, not spells."""
+def _hostile_target(verb: Dict[str, Any]) -> bool:
+    """Does this verb point at the hero side? (Enemy authoring frame: side
+    "ally" is the party.)"""
+    t = verb.get("target")
+    return isinstance(t, dict) and t.get("side") in ("ally", "any")
+
+
+def _row_shaped(verb: Dict[str, Any]) -> bool:
+    """A §D9-3.2 row/blast footprint — dodgeable ground, so it hits harder."""
+    t = verb.get("target")
+    return isinstance(t, dict) and bool(t.get("rows") or t.get("scope") in ("row", "blast"))
+
+
+def enrage_scale(party_size: int) -> "tuple[float, float]":
+    """§D18-2: how a boss's ENRAGE scales with the party it erupts against —
+    (lethality, padding).
+
+    The authored magnitudes are per-enemy-level (L), and party size never
+    entered them: the encounter budget answers a bigger party with MORE BODIES,
+    not with a scarier boss. So the climax of a four-hero fight was the same
+    "+2/+2 and a small burn" a solo hero saw, against four times the incoming
+    damage and four times the actions.
+
+    Lethality (the Power half of a pump, the AoE, the token wave) scales with the
+    full party size — the fury must threaten a board that big. Padding (the
+    toughness half) scales at half rate: an enrage should hit much harder, not
+    merely last much longer."""
+    n = max(1, int(party_size))
+    return float(n), 1.0 + (n - 1) / 2.0
+
+
+def _scale_enrage(enemy: Dict[str, Any], party_size: int) -> None:
+    """Scale a boss's Enrage component in place (§D18-2). Non-bosses have none."""
+    lethal, pad = enrage_scale(party_size)
+    if lethal == 1.0 and pad == 1.0:
+        return
+    for comp in enemy.get("components") or []:
+        if not isinstance(comp, dict) or comp.get("archetype") != "Enrage":
+            continue
+        for verb in comp.get("verbs") or []:
+            if not isinstance(verb, dict):
+                continue
+            kind = verb.get("kind")
+            if kind in ("counters", "pump"):
+                if isinstance(verb.get("power"), int):
+                    verb["power"] = ceil(verb["power"] * lethal)
+                if isinstance(verb.get("toughness"), int):
+                    verb["toughness"] = ceil(verb["toughness"] * pad)
+                if isinstance(verb.get("hp"), int):
+                    verb["hp"] = ceil(verb["hp"] * pad)
+            elif kind in ("deal_damage", "lose_life", "heal"):
+                if isinstance(verb.get("amount"), int):
+                    verb["amount"] = ceil(verb["amount"] * pad)
+            elif kind == "create_token":
+                if isinstance(verb.get("count"), int):
+                    verb["count"] = verb["count"] + max(0, int(party_size) - 1)
+
+
+def _bump_enemy_power(scenario: Dict[str, Any],
+                      party_size: int = 1) -> Dict[str, Any]:
+    """Apply the balance register to a (scaled) encounter's enemies (§D18-2):
+
+    - the chassis `power` and any attack-type intent template amounts (melee and
+      ranged fallback), so both framework and legacy enemies swing harder;
+    - hostile component damage by the same bump, plus ROW_ABILITY_BONUS on a
+      dodgeable row/blast shape;
+    - a boss's Enrage by the party size it erupts against.
+
+    Heals, self-pumps and support magnitudes are left alone outside an Enrage —
+    the register is about the pressure the party feels, not enemy bookkeeping."""
     out = dict(scenario)
     enemies: List[Dict[str, Any]] = []
     for e in scenario.get("enemies", []):
@@ -179,7 +260,9 @@ def _bump_enemy_power(scenario: Dict[str, Any]) -> Dict[str, Any]:
             enemies.append(e)
             continue
         e = copy.deepcopy(e)
-        bump = BOSS_POWER_BONUS if e.get("is_boss") else ENEMY_POWER_BONUS
+        boss = bool(e.get("is_boss"))
+        bump = BOSS_POWER_BONUS if boss else ENEMY_POWER_BONUS
+        ability = BOSS_ABILITY_BONUS if boss else ENEMY_ABILITY_BONUS
         base_power = e.get("power", e.get("intent", {}).get("amount", 0))
         try:
             e["power"] = int(base_power) + bump
@@ -190,6 +273,20 @@ def _bump_enemy_power(scenario: Dict[str, Any]) -> Dict[str, Any]:
             if (isinstance(tmpl, dict) and isinstance(tmpl.get("amount"), int)
                     and tmpl.get("intent_type", "attack") == "attack"):
                 tmpl["amount"] += bump
+        for comp in e.get("components") or []:
+            if not isinstance(comp, dict) or comp.get("archetype") == "Enrage":
+                continue  # the Enrage is scaled by party size instead, below
+            row_bonus = ROW_ABILITY_BONUS if comp.get("target_row") else 0
+            for verb in comp.get("verbs") or []:
+                if (not isinstance(verb, dict)
+                        or verb.get("kind") not in _HOSTILE_DAMAGE_VERBS
+                        or not isinstance(verb.get("amount"), int)):
+                    continue
+                if not (_hostile_target(verb) or comp.get("target_row")):
+                    continue
+                extra = ROW_ABILITY_BONUS if (row_bonus or _row_shaped(verb)) else 0
+                verb["amount"] += ability + extra
+        _scale_enrage(e, party_size)
         enemies.append(e)
     out["enemies"] = enemies
     return out
@@ -1169,7 +1266,7 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
     # designed for THIS party's size (clamped to the nearest defined layout).
     scenario = scale_encounter(scenario, len(loadouts))
     # Balance register: +2 Power to every enemy fielded, +4 to a boss.
-    scenario = _bump_enemy_power(scenario)
+    scenario = _bump_enemy_power(scenario, len(loadouts))
     # Boss tempo by difficulty (Standard/Hard: two intents a round). The adventure
     # layer stamps this from the RUN's difficulty before we get here; this covers
     # a plain encounter, which carries only the difficulty it was made at.

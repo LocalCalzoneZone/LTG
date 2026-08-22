@@ -1,0 +1,221 @@
+{
+  "name": "The Upper Sluice Barricades",
+  "scene": "A sloped stone conduit choked with bubbling black sludge, where moss-draped roots push through cracked masonry and overturned copper ore-carts form jagged firing parapets under the hiss of venting steam pipes.",
+  "scene_image": "/art/the_sunken_vault_of_brass__phase1/scene-d16a5c46.png",
+  "enemies": [
+    {
+      "id": "sapper_drone_rigger",
+      "name": "Sapper Drone-Rigger",
+      "flavor": "Deploys mechanical scrap pests while shrouding the line in scalding steam.",
+      "description": "A wiry goblin technician in soot-stained leather overalls, balancing a clattering iron harness that dispenses ticking brass arachnids.",
+      "hp": 4,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "components": [
+        {
+          "id": "deploy_drones",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Deploy Scrap-Drones \u2014 releases two ticking mechanical pests",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "scrap_drone",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            }
+          ]
+        },
+        {
+          "id": "vent_steam",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 30,
+          "cooldown": 3,
+          "action_type": "spell",
+          "telegraph": "Scalding Screen \u2014 an ongoing steam cloud weakens all heroes -1/-0",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase1/sapper_drone_rigger-c34a898a.png"
+    },
+    {
+      "id": "scrap_avenger",
+      "name": "Scrap-Plate Avenger",
+      "flavor": "Grows furious as its allies fall; swings a heavy pneumatic wrench.",
+      "description": "A heavily armored goblin brawler strapped into mismatched boiler plates, brandishing a massive piston-driven iron spanner.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "pack_vengeance",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "priority": 15,
+          "once_per_encounter": true,
+          "target_rule": "self",
+          "telegraph": "Scrap-Fury \u2014 gains +1/+1 permanently when a comrade falls",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "pneumatic_strike",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Pneumatic Smash \u2014 deals 4 damage to a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase1/scrap_avenger-ae5a3465.png"
+    },
+    {
+      "id": "boiler_sapper",
+      "name": "Boiler Sapper",
+      "flavor": "Hurls corroding sulfur flasks and retaliates when struck.",
+      "description": "A stooped goblin wearing heavy copper goggles and a pressurized back-tank that sloshes with glowing orange vitriol.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "components": [
+        {
+          "id": "sulfur_flask",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Sulfur Flask \u2014 inflicts a festering poison counter",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shrapnel_snap",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Back-Tank Vent \u2014 deals 3 damage to its attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sunken_vault_of_brass__phase1/boiler_sapper-1914cda2.png"
+    }
+  ],
+  "tokens": {
+    "scrap_drone": {
+      "name": "Scrap Drone",
+      "hp": 3,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_sunken_vault_of_brass__phase1/scrap_drone-2abe527e.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "boiler_sapper",
+      "sapper_drone_rigger",
+      "scrap_avenger"
+    ],
+    "2": [
+      "scrap_avenger",
+      "scrap_avenger",
+      "boiler_sapper",
+      "boiler_sapper",
+      "sapper_drone_rigger",
+      "sapper_drone_rigger"
+    ],
+    "3": [
+      "scrap_avenger",
+      "scrap_avenger",
+      "scrap_avenger",
+      "boiler_sapper",
+      "boiler_sapper",
+      "boiler_sapper",
+      "sapper_drone_rigger",
+      "sapper_drone_rigger",
+      "sapper_drone_rigger"
+    ],
+    "4": [
+      "scrap_avenger",
+      "scrap_avenger",
+      "scrap_avenger",
+      "scrap_avenger",
+      "boiler_sapper",
+      "boiler_sapper",
+      "boiler_sapper",
+      "boiler_sapper",
+      "sapper_drone_rigger",
+      "sapper_drone_rigger",
+      "sapper_drone_rigger",
+      "sapper_drone_rigger"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "sling_and_shot",
+  "name": "Sling and Shot",
+  "slot": "weapon",
+  "rarity": "common",
+  "level_min": 1,
+  "points_price": 0,
+  "flavor": "Free ammunition, if you don't mind stooping.",
+  "art_desc": "A braided leather sling with a worn pouch, coiled beside three river stones.",
+  "art_url": "/art/items/sling_and_shot/item-db2c5f52.png",
+  "statics": [
+    {
+      "kind": "attack_mode",
+      "mode": "ranged",
+      "amount": 0
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

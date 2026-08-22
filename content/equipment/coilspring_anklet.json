@@ -1,0 +1,22 @@
+{
+  "kind": "item",
+  "id": "coilspring_anklet",
+  "name": "Coilspring Anklet",
+  "slot": "accessory",
+  "rarity": "uncommon",
+  "level_min": 3,
+  "points_price": 15,
+  "flavor": "It wants to be somewhere else already.",
+  "art_desc": "A tight coil of springy steel worn at the ankle, humming faintly when it is touched.",
+  "art_url": "/art/items/coilspring_anklet/item-6042d6bb.png",
+  "statics": [
+    {
+      "kind": "keyword",
+      "amount": 0,
+      "keyword": "haste"
+    }
+  ],
+  "effects": [],
+  "targets": {},
+  "affixes": []
+}

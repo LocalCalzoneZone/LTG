@@ -676,7 +676,7 @@ timer) · `ally_count` (desperation) · `hero_count` (anti-party cleaves) · `he
 (arms a ritual-breaker only when relevant) · `self_channeling` (defend-the-ritual).
 
 **Enemy-eligible keywords** each carry a min level and cost: reach (1/1) · trample (2/2) ·
-flying (2/4) · lifelink (3/3) · deathtouch (3/4) · protection (4/3) · hexproof (4/4) ·
+flying (2/4) · lifelink (3/3) · deathtouch (3/4) · protection (4/3) · hexproof (5/6) ·
 indestructible (6/6). **Never on enemies:** first strike, vigilance, haste — the
 action-economy keywords stay player-only.
 
@@ -794,7 +794,7 @@ And the two blends that motivated the whole framework:
   +6 HP +1 Pwr · trample · **Fortify-self** at priority 10 gated on `self_hp < 50%` · a
   reactive **Punish** that hits back `on_hit`. Healthy, it swings; bloodied, the heal rule's
   condition flips true and outranks the attack. **The condition *is* the arbitration.**
-- **Mistveil Hexer** — *"an evasive magic rogue"* (L4, 25/25): Skirmisher +3 HP · hexproof ·
+- **Mistveil Hexer** — *"an evasive magic rogue"* (L5, 30): Skirmisher +3 HP · hexproof ·
   a cooldown-1 **Debilitate** · **Evasive** repositioning. Hard to pin, chips your action
   economy every turn.
 

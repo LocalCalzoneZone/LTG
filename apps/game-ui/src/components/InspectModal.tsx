@@ -153,8 +153,18 @@ function creatureLines(c: CreatureView): Line[] {
       note: "what detonates is hidden until it fires",
     });
   }
-  if (c.intent && c.intent.line && c.intent.status === "declared") {
-    out.push({ key: "intent", tone: "text-blood", main: `Intent — ${c.intent.line}` });
+  // Every declared intent, not just the first: an enraged boss (or one on
+  // Standard/Hard) queues TWO a round (§D9-4), and the inspect panel used to
+  // read the legacy singular field and show only slot 1. Fall back to that
+  // field for a snapshot that predates the list.
+  const declared = (c.intents?.length ? c.intents : c.intent ? [c.intent] : [])
+    .filter((i) => i.line && i.status === "declared");
+  for (const i of declared) {
+    out.push({
+      key: `intent-${i.slot ?? 1}`,
+      tone: "text-blood",
+      main: `Intent${declared.length > 1 ? ` ${i.slot ?? 1}` : ""} — ${i.line}`,
+    });
   }
   if (c.rises != null) {
     out.push({
