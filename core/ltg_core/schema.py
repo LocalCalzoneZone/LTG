@@ -328,6 +328,13 @@ REF_VALUES = {
     "caster_hp": "your current HP (the caster's, at resolution)",
     "target_power": "the target's Power",
     "target_hp": "the target's current HP",
+    # BASE stats (§D19-5): the printed numbers — Power before bonuses/counters,
+    # max HP before wounds — for effects keyed to what a creature IS rather than
+    # its battle-worn state.
+    "caster_base_power": "your base Power (printed, no bonuses)",
+    "caster_base_hp": "your maximum HP (base toughness)",
+    "target_base_power": "the target's base Power (printed, no bonuses)",
+    "target_base_hp": "the target's maximum HP (base toughness)",
     # The number of living enemy creatures on the battlefield, read at
     # RESOLUTION (a kill earlier in the same card changes what later effects see).
     "enemy_count": "the number of enemies on the battlefield",

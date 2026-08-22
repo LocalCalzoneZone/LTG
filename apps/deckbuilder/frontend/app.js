@@ -954,6 +954,8 @@ let SIDES = ["ally", "enemy", "any"];
 // Resolvable value references (name → display label) for the reference dropdown.
 let REFS = { "mana_capacity": "your mana capacity",
              "destroyed_target.level": "the destroyed target's level" };
+// Verbs whose chosen target may be CORPSE-exclusive (§D9-1.3 / §D19-5).
+let CORPSE_KINDS = ["control", "exile", "consume_corpse"];
 const MODE_LABEL = { self: "You", chosen: "Choose one", all: "All" };
 const SIDE_LABEL = { ally: "Ally", enemy: "Enemy", any: "Either" };
 
@@ -964,6 +966,7 @@ async function loadSpecs() {
     MODES = r.modes;
     SIDES = r.sides;
     if (r.refs) REFS = r.refs;
+    if (r.corpse_kinds) CORPSE_KINDS = r.corpse_kinds;
   } catch (e) { /* editor falls back to whatever the card already holds */ }
 }
 
@@ -1117,6 +1120,12 @@ function targetControlHtml(i, current, card, field = "target") {
     `<label class="inline mini"><input type="checkbox" class="tgt-exclude" ${f} ${d.exclude_self ? "checked" : ""}/> another</label>`;
   const targeted = d.mode === "chosen" ?
     `<label class="inline mini" title="Uses the targeting mechanic — hexproof/shroud apply"><input type="checkbox" class="tgt-targeted" ${f} ${d.targeted ? "checked" : ""}/> targets</label>` : "";
+  // Corpse-exclusive (§D9-1.3 / §D19-5): only corpse-legal verbs may author it.
+  // Checked, the pick offers CORPSES ONLY — it cannot name a living enemy, and
+  // a body gone by resolution simply fizzles.
+  const kind = (editorItems[i] || {}).kind;
+  const corpse = d.mode === "chosen" && CORPSE_KINDS.includes(kind) ?
+    `<label class="inline mini" title="Corpse only (§D9-1.3): the pick offers corpses on the battlefield, never the living — and fizzles if the body is gone by resolution"><input type="checkbox" class="tgt-corpse" ${f} ${d.state === "corpse" ? "checked" : ""}/> corpse only</label>` : "";
   // Splash scope (§D9-3.2): the pick's row, or its row plus adjacent rows.
   const scopeSel = d.mode === "chosen" ? scopeSelectHtml("tgt-scope", f, d.scope) : "";
   // Row filter (§D9-3.2) for a whole-side effect: everyone, or one row of them.
@@ -1124,7 +1133,7 @@ function targetControlHtml(i, current, card, field = "target") {
     `<select class="tgt-rows" ${f} title="Row filter (§D9-3.2): hit only the named row of that side">
        <option value="" ${!(d.rows && d.rows.length) ? "selected" : ""}>every row</option>
        ${ROWS.map((r) => `<option value="${r}" ${(d.rows || [])[0] === r && (d.rows || []).length === 1 ? "selected" : ""}>${r} row only</option>`).join("")}</select>` : "";
-  return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}${scopeSel}${rowSel}</span>`;
+  return `<span class="tgt-builder">${link}${modeSel}${sideSel}${exclude}${targeted}${corpse}${scopeSel}${rowSel}</span>`;
 }
 
 // The splash-scope select (§D9-3.2), shared by inline targets and slot rows.
@@ -1842,6 +1851,7 @@ function wireDetail(idx) {
   document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], side: sel.value }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], exclude_self: cb.checked }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-targeted").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], targeted: cb.checked }); commitEffects(idx, true); }; });
+  document.querySelectorAll(".tgt-corpse").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], state: cb.checked ? "corpse" : undefined }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-scope").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], scope: sel.value || null }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-rows").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], rows: sel.value ? [sel.value] : null }); commitEffects(idx, true); }; });
 

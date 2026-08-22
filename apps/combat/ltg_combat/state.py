@@ -554,6 +554,10 @@ class EnemyState:
     ranged_template: Dict[str, Any] = field(default_factory=dict)
     stunned: int = 0           # intents to skip (stun); decremented as they would declare
     taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
+    # §D19-5: strips that landed while this enemy had NO declared intent (an
+    # upkeep-tick strip resolves in the intents window, before declaration).
+    # Each smothers one intent AS IT IS DECLARED instead of fizzling silently.
+    strip_pending: int = 0
     # §D18-3 attack cadence: consecutive declared intents that were NOT the basic
     # attack. The §F-7.1 pass takes the top ready component every turn, so a kit
     # with any short-cooldown rule would otherwise never swing — and the balance

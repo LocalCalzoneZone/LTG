@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import re
 import json
 import random
 from math import ceil
@@ -92,6 +93,31 @@ def _scale_difficulty(scenario: Dict[str, Any], difficulty: str) -> None:
             t["hp"] = bump(t["hp"])
 
 
+def _retell_numbers(comp, swaps, pt_swaps=()):
+    """Mirror of ltg_game_server.content._retell_numbers (§D18-2): the telegraph
+    tells the lifted numbers, so the Tester's transcripts read like live play."""
+    text = str(comp.get("telegraph") or "")
+    if not text:
+        return
+    for (op, ot), (np_, nt) in pt_swaps:
+        text = re.sub(rf"\+{op}/\+{ot}\b", f"+{np_}/+{nt}", text)
+    untouched = {v["amount"] for v in comp.get("verbs") or []
+                 if isinstance(v, dict) and isinstance(v.get("amount"), int)
+                 and v.get("kind") not in _HOSTILE_DAMAGE_VERBS}
+    for old, new in swaps:
+        if old == new:
+            continue
+        if old in untouched:
+            # Ambiguous within this component (the same number sits on a heal /
+            # stun the register left alone) — swap only where the prose marks it
+            # as the damage: "deal(s) 4", "4 damage", "for 4".
+            text = re.sub(rf"((?:\bdeals?|\bfor)\s+){old}\b", rf"\g<1>{new}", text)
+            text = re.sub(rf"\b{old}(\s+damage\b)", rf"{new}\g<1>", text)
+            continue
+        text = re.sub(rf"\b{old}\b", str(new), text)
+    comp["telegraph"] = text
+
+
 def _hostile_target(verb: Dict[str, Any]) -> bool:
     """Enemy authoring frame: side "ally" is the party."""
     t = verb.get("target")
@@ -135,22 +161,29 @@ def _bump_enemy_power(scenario: Dict[str, Any], party_size: int = 1) -> None:
             if not isinstance(comp, dict):
                 continue
             if comp.get("archetype") == "Enrage":
+                swaps, pt_swaps = [], []
                 for verb in comp.get("verbs") or []:
                     if not isinstance(verb, dict):
                         continue
                     kind = verb.get("kind")
                     if kind in ("counters", "pump"):
+                        op, ot = verb.get("power"), verb.get("toughness")
                         for field, factor in (("power", lethal), ("toughness", pad),
                                               ("hp", pad)):
                             if isinstance(verb.get(field), int):
                                 verb[field] = ceil(verb[field] * factor)
+                        if isinstance(op, int) and isinstance(ot, int):
+                            pt_swaps.append(((op, ot), (verb["power"], verb["toughness"])))
                     elif kind in ("deal_damage", "lose_life", "heal"):
                         if isinstance(verb.get("amount"), int):
+                            swaps.append((verb["amount"], ceil(verb["amount"] * pad)))
                             verb["amount"] = ceil(verb["amount"] * pad)
                     elif kind == "create_token" and isinstance(verb.get("count"), int):
                         verb["count"] += max(0, int(party_size) - 1)
+                _retell_numbers(comp, swaps, pt_swaps)
                 continue
             row_comp = bool(comp.get("target_row"))
+            swaps = []
             for verb in comp.get("verbs") or []:
                 if (not isinstance(verb, dict)
                         or verb.get("kind") not in _HOSTILE_DAMAGE_VERBS
@@ -159,7 +192,9 @@ def _bump_enemy_power(scenario: Dict[str, Any], party_size: int = 1) -> None:
                 if not (_hostile_target(verb) or row_comp):
                     continue
                 extra = ROW_ABILITY_BONUS if (row_comp or _row_shaped(verb)) else 0
+                swaps.append((verb["amount"], verb["amount"] + ability + extra))
                 verb["amount"] += ability + extra
+            _retell_numbers(comp, swaps)
 
 
 def prepare_scenario(content: Dict[str, Any], party_size: int,

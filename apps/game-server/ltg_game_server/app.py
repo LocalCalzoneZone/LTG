@@ -175,7 +175,9 @@ async def _create_scenario_game(body: CreateGameBody) -> Dict[str, Any]:
         }
     # A pre-generated Act I is already materialized here: its spoils are frozen,
     # so start painting them while the party is still reading the arrival text.
+    # The arc's cast and places (§D20-2) paint on the same queue.
     _queue_spoils_art(session)
+    _queue_cast_art(session)
     return {"session_id": session.id, "run_id": meta["run_id"]}
 
 
@@ -220,6 +222,7 @@ async def _materialize_task(session) -> None:
     await asyncio.to_thread(session.materialize_act)
     await _broadcast(session)
     _queue_spoils_art(session)     # the act's spoils are frozen now — start painting
+    _queue_cast_art(session)       # …and the arc's cast/places (§D20-2)
 
 
 def _new_arc_sync(session) -> None:
@@ -241,6 +244,7 @@ async def _new_arc_task(session) -> None:
             session.scenario.materializing = False
     await _broadcast(session)
     _queue_spoils_art(session)
+    _queue_cast_art(session)       # a fresh arc brings a fresh cast (§D20-2)
 
 
 async def _confirm_timer(session) -> None:
@@ -278,6 +282,29 @@ def _queue_spoils_art(session) -> None:
         await _broadcast(session)
 
     items_ = art.spoil_art_items(sc.spoils(), sc.set_spoil_art)
+    if not items_:
+        return
+    try:
+        art.QUEUE.start_items(key, items_, _refresh)
+    except RuntimeError:
+        pass  # no running loop (tests / sync callers)
+
+
+def _queue_cast_art(session) -> None:
+    """Paint the arc's cast portraits and place backdrops (§D20-2) on the same
+    sequential queue the spoils use. Content-addressed: the first run of a
+    scenario paints them, later runs (and reloads) adopt from disk. Idempotent —
+    only entries still without a picture are queued."""
+    sc = getattr(session, "scenario", None)
+    if sc is None or not (sc.arc.get("cast") or sc.arc.get("places")):
+        return
+    key = f"cast:{session.run_id or id(session)}:{sc.scenario_number}"
+
+    async def _refresh(_key: str) -> None:
+        await _broadcast(session)
+
+    items_ = art.scenario_cast_art_items(sc.arc, sc.town.get("scene", ""),
+                                         sc.set_cast_art)
     if not items_:
         return
     try:
@@ -910,6 +937,7 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     # A client is here and there is a loop: pick up any spoils art still unpainted
     # (a loaded save queues from its sync endpoint, where there is no loop).
     _queue_spoils_art(session)
+    _queue_cast_art(session)
 
     try:
         while True:
@@ -1071,6 +1099,18 @@ _PLACEHOLDER = """<!doctype html><html><head><meta charset="utf-8">
 
 
 if FRONTEND_DIST.exists():
+    # index.html is the one file whose name never changes across a build, so
+    # unlike /assets/index-<hash>.js it can't be made cache-safe by its URL —
+    # it must be explicitly revalidated every load, or a browser that cached it
+    # before an Update (git merge --ff-only rewrites dist/ in place) keeps
+    # requesting asset hashes that no longer exist on disk. Registered ahead of
+    # the StaticFiles mount below so it wins over that mount's own html=True
+    # index-serving for "/".
+    @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
+    def _index() -> FileResponse:
+        return FileResponse(FRONTEND_DIST / "index.html", headers={"Cache-Control": "no-store"})
+
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="client")
 else:
     @app.get("/", response_class=HTMLResponse)

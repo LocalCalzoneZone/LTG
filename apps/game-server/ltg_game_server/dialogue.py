@@ -35,6 +35,13 @@ from typing import Any, Dict, List, Optional, Set
 HOOKS = ("set_flag", "grant_quest", "defer_quest", "advance_quest",
          "unlock_adventure", "give_gold", "give_item", "rest", "open_shop",
          "direct_to")
+# Flags the RUNTIME sets on its own — legal in `requires` without any set_flag
+# hook establishing them (§D20-1). Everything else gating a choice must be
+# reachable: some hook in the act (or an earlier act — the caller passes what is
+# already true) has to be able to set it, or the choice is a door with no key.
+STANDING_FLAGS = frozenset({"defeated_once", "quest_accepted",
+                            "act_1_complete", "act_2_complete", "act_3_complete"})
+STANDING_PREFIXES = ("item_",)   # give_item writes item_<id>
 # Hooks whose choice is party-wide: they open the all-players confirmation
 # (§D17-5.4). Flavour choices don't.
 PARTY_WIDE_HOOKS = frozenset({"grant_quest", "unlock_adventure", "rest"})
@@ -225,3 +232,50 @@ class Conversation:
             "choices": self.visible_choices(flags),
             "over": self.over,
         }
+
+
+def flags_set_in(tree: Dict[str, Any]) -> Set[str]:
+    """Every flag a set_flag hook in this tree can establish."""
+    out: Set[str] = set()
+    for node in tree.get("nodes", {}).values():
+        for ch in node.get("choices", []):
+            for h in ch.get("effects", []):
+                if h.get("kind") == "set_flag" and h.get("value", True):
+                    out.add(h["flag"])
+    return out
+
+
+def flags_required_in(tree: Dict[str, Any]) -> Set[str]:
+    out: Set[str] = set()
+    for node in tree.get("nodes", {}).values():
+        for ch in node.get("choices", []):
+            out.update(ch.get("requires", []))
+    return out
+
+
+def check_flag_consistency(dialogues: Dict[str, Dict[str, Any]],
+                           extra_required: Set[str] = frozenset(),
+                           flags_known: Set[str] = frozenset()) -> List[str]:
+    """§D20-1: every flag gating a choice (or a gated topic —
+    ``extra_required``) must be REACHABLE — a standing runtime flag, already
+    true in the run, or settable by some set_flag hook in this act's trees.
+    A gate nothing can open is a dead choice the player never sees; when the
+    unreachable flag is the ONLY way to a quest accept, it is a broken act.
+    Returns repair-friendly problem strings (empty = clean)."""
+    settable: Set[str] = set()
+    for tree in dialogues.values():
+        settable |= flags_set_in(tree)
+    required: Set[str] = set(extra_required)
+    for tree in dialogues.values():
+        required |= flags_required_in(tree)
+    problems: List[str] = []
+    for flag in sorted(required):
+        if flag in STANDING_FLAGS or flag in settable or flag in flags_known:
+            continue
+        if any(flag.startswith(pfx) for pfx in STANDING_PREFIXES):
+            continue
+        problems.append(
+            f"the flag '{flag}' gates a choice but nothing can set it — add a "
+            f'{{"kind": "set_flag", "flag": "{flag}"}} hook on the choice where '
+            "the party LEARNS this (the NPC who explains it), or drop the gate")
+    return problems
