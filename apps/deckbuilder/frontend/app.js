@@ -1113,6 +1113,14 @@ function newItem(kind) {
   if (kind === "modal") return { kind: "modal", label: "", choose: 1, or_more: false };
   if (kind === "conditional") return { kind: "conditional", condition: { kind: "cast_mode", mode: "reaction" } };
   if (kind === "end") return { kind: "end", of: "conditional" };
+  if (kind === "set_reference") {
+    // A stored value: auto-name it R1, R2, … (the next free name on the card);
+    // later effects pick it as "$R1" in the reference dropdown.
+    const eff = defaultEffect(kind);
+    eff.name = nextStoredName();
+    eff.value = { ref: "target_base_hp" };
+    return eff;
+  }
   // A stance must change at least one slot (§D9-2.2) — seed a valid default.
   if (kind === "stance") return { kind: "stance", attack: "removed", defend: "unchanged",
                                   mitigate: "unchanged", move: "unchanged" };
@@ -1221,10 +1229,28 @@ function scopeSelectHtml(cls, attrs, scope) {
 
 // The reference names offered by the dropdown: every registry ref except
 // mana_capacity (it has its own option in the value-type select).
+// The stored-value names declared by the card's set_reference rows.
+function storedNames() {
+  return editorItems.filter((e) => e.kind === "set_reference" && e.name).map((e) => e.name);
+}
+
+function nextStoredName() {
+  const used = new Set(storedNames());
+  let n = 1;
+  while (used.has("R" + n)) n++;
+  return "R" + n;
+}
+
 function refNames(current) {
   const names = Object.keys(REFS).filter((r) => r !== "mana_capacity");
+  storedNames().forEach((n) => names.push("$" + n));  // stored values (set_reference)
   if (current && !names.includes(current)) names.push(current); // keep a legacy/unknown ref visible
   return names;
+}
+
+function refLabel(r) {
+  if (r.startsWith("$")) return `stored value ${r.slice(1)}`;
+  return REFS[r] || r;
 }
 
 function valueControlHtml(i, spec, val) {
@@ -1239,7 +1265,7 @@ function valueControlHtml(i, spec, val) {
   // A reference may be scaled — "twice your base Power" is {ref, mult: 2}.
   const multCtl = `<label class="inline mini" title="Multiplier applied to the referenced value (e.g. 2 = twice your base Power)">×<input class="val-mult" type="number" min="1" data-i="${i}" data-p="${p}" value="${mult}" style="width:48px"/></label>`;
   const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refNames(ref).map((r) =>
-    `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(REFS[r] || r)}</option>`).join("")}</select>`;
+    `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(refLabel(r))}</option>`).join("")}</select>`;
   // Stat values (pump/wound/counters power & toughness) admit no "all" — the
   // spec flags it (no_all) and the option is simply not offered.
   const allOpt = spec.no_all ? "" :
@@ -1945,7 +1971,8 @@ function wireDetail(idx) {
       // Re-render when a param gates the visibility of another (the combat
       // qualifier appears/disappears as the damage lane changes).
       const gates = (EFFECT_SPECS[editorItems[i].kind].params || []).some((x) => x.show_when && x.show_when.field === p);
-      commitEffects(idx, p === "trigger" || p === "duration" || p === "filter_level_compare" || gates);
+      commitEffects(idx, p === "trigger" || p === "duration" || p === "filter_level_compare" || gates
+                         || editorItems[i].kind === "set_reference");
     };
   });
   document.querySelectorAll(".kw-check").forEach((cb) => {

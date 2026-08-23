@@ -404,6 +404,8 @@ def _value(v) -> str:
 
 
 def _ref_phrase(v: Ref) -> str:
+    if v.ref.startswith("$"):
+        return v.ref[1:]  # a stored value — "damage equal to R1"
     if v.ref == "mana_capacity":
         return "your mana capacity"
     if v.ref == "x":
@@ -586,6 +588,27 @@ def _render_prevent(e) -> str:
     if getattr(e, "uses", "all") == "next":
         return f"Prevent the next {phrase} to {_tgt(e.target)}."
     return f"Prevent all {phrase} this turn to {_tgt(e.target)}."
+
+
+def _set_reference_clause(e) -> str:
+    """Shared-slot form: "they have their maximum HP noted as R1"."""
+    what = _value(e.value)
+    if what.startswith("its "):
+        return f"have their {what[4:]} noted as {e.name}"
+    return f"have {what} noted as {e.name}"
+
+
+def _render_set_reference(e) -> str:
+    """'Remember the maximum HP of an enemy as R1.' — a value noted for later
+    effects on the card, which read it as `R1`."""
+    what = _value(e.value)
+    desc = _resolve(e.target, _RENDER_TARGETS.get())
+    if getattr(desc, "mode", None) == TargetMode.self_:
+        return f"Remember {what} as {e.name}."
+    # "its maximum HP" of a named creature reads as "the maximum HP of …".
+    if what.startswith("its "):
+        what = "the " + what[4:]
+    return f"Remember {what} of {_tgt(e.target)} as {e.name}."
 
 
 def _render_protection(e) -> str:
@@ -1070,6 +1093,7 @@ RENDERERS = {
     "counters": _render_counters,
     "prevent": _render_prevent,
     "protection": _render_protection,
+    "set_reference": _render_set_reference,
     "amplify": _render_amplify,
     "copy_spell": lambda e: ("Copy a spell on the stack — you assign the copy's "
                              "target as it resolves."),
@@ -1130,6 +1154,7 @@ _CLAUSE = {
                         f"at each Upkeep{_affliction_suffix(e)} (broken by damage)"),
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
+    "set_reference": _set_reference_clause,
     # The chained-subject clause: the SUBJECT of a corpse-anchored chain is the
     # blast's victims, but the consume spends the BODY — say so (§D19-6).
     "consume_corpse": lambda e: "the corpse is consumed",
