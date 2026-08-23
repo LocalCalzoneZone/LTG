@@ -49,13 +49,59 @@ export function scaleOf(el: HTMLElement | null | undefined): number {
 
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
-/** Hold the pan inside the overflow the zoom actually creates (plus a little
- * slack), so the board can never be shoved off the pane and lost. */
-function clampPan(x: number, y: number, scale: number, el: HTMLElement | null) {
+/** The BOARD's own size in unscaled px — the union of the cards on the stage.
+ *
+ * This is not the stage's box: the stage is `inset-0` (so its box is exactly the
+ * pane) while the cards inside it routinely spill past it — a crowded row runs
+ * off the top and bottom even at scale 1, and `scrollHeight` does not see it
+ * because the overflow goes both ways. Measuring the cards is what makes the pan
+ * limits describe the board the player is actually looking at.
+ *
+ * Never reported smaller than the pane, so a board that comfortably fits still
+ * counts as "no overflow" and keeps the tight nudge-only slack below. */
+function measureBoard(stage: HTMLElement | null, viewport: HTMLElement | null,
+                      scale: number) {
+  const w = viewport?.clientWidth ?? 0;
+  const h = viewport?.clientHeight ?? 0;
+  const cards = stage?.querySelectorAll<HTMLElement>("[data-fid]");
+  if (!cards || !cards.length) return { w, h };
+  let top = Infinity, bottom = -Infinity, left = Infinity, right = -Infinity;
+  cards.forEach((c) => {
+    const r = c.getBoundingClientRect();
+    if (!r.width && !r.height) return;      // a card mid-mount measures empty
+    top = Math.min(top, r.top);
+    bottom = Math.max(bottom, r.bottom);
+    left = Math.min(left, r.left);
+    right = Math.max(right, r.right);
+  });
+  if (!Number.isFinite(top)) return { w, h };
+  const s = scale > 0.01 ? scale : 1;       // rects come back scaled; undo the camera
+  return { w: Math.max(w, (right - left) / s), h: Math.max(h, (bottom - top) / s) };
+}
+
+interface BoardSize {
+  w: number;
+  h: number;
+}
+
+/** Hold the pan inside what the board actually needs, so it can never be shoved
+ * off the pane and lost — but far enough that no card is stuck against the frame.
+ *
+ * Reaching the spill alone only parks the outermost card AGAINST the edge of the
+ * pane; another half-pane of travel is what lets the player pull it into the
+ * middle to read it. So a board that overflows gets `spill + half the pane` on
+ * that axis, and a board that already fits keeps the old nudge-only slack (there
+ * is nothing off-screen to go and find, and a fitting board should stay framed). */
+function clampPan(x: number, y: number, scale: number, el: HTMLElement | null,
+                  board?: BoardSize) {
   const w = el?.clientWidth ?? 0;
   const h = el?.clientHeight ?? 0;
-  const maxX = Math.max(0, (w * scale - w) / 2) + SLACK;
-  const maxY = Math.max(0, (h * scale - h) / 2) + SLACK;
+  const bw = board?.w ?? w;
+  const bh = board?.h ?? h;
+  const spillX = Math.max(0, (bw * scale - w) / 2);
+  const spillY = Math.max(0, (bh * scale - h) / 2);
+  const maxX = spillX > 0 ? spillX + w / 2 : SLACK;
+  const maxY = spillY > 0 ? spillY + h / 2 : SLACK;
   return {
     x: Math.min(maxX, Math.max(-maxX, x)),
     y: Math.min(maxY, Math.max(-maxY, y)),
@@ -81,8 +127,10 @@ function load(): Saved {
 }
 
 /** The pane's camera. `viewport` is the element the stage sits in — its box
- * bounds the pan and anchors pointer-centred zoom. */
-export function useFieldView(viewport: React.RefObject<HTMLElement | null>): FieldView {
+ * anchors pointer-centred zoom; `stage` is the transformed board inside it,
+ * measured so the pan limits follow the CARDS rather than the pane's own box. */
+export function useFieldView(viewport: React.RefObject<HTMLElement | null>,
+                             stage?: React.RefObject<HTMLElement | null>): FieldView {
   const [view, setView] = useState<Saved>(load);
   const [panning, setPanning] = useState(false);
   // The live view, so the pointer handlers never close over a stale one.
@@ -104,6 +152,7 @@ export function useFieldView(viewport: React.RefObject<HTMLElement | null>): Fie
   const zoomAbout = useCallback(
     (factor: number, clientX?: number, clientY?: number) => {
       const el = viewport.current;
+      const board = measureBoard(stage?.current ?? null, el, ref.current.scale);
       setView((v) => {
         const scale = clampZoom(v.scale * factor);
         const k = scale / v.scale;
@@ -120,10 +169,10 @@ export function useFieldView(viewport: React.RefObject<HTMLElement | null>): Fie
           x *= k;
           y *= k;
         }
-        return { scale, ...clampPan(x, y, scale, el) };
+        return { scale, ...clampPan(x, y, scale, el, board) };
       });
     },
-    [viewport],
+    [viewport, stage],
   );
 
   const zoomIn = useCallback(() => zoomAbout(STEP), [zoomAbout]);
@@ -145,6 +194,9 @@ export function useFieldView(viewport: React.RefObject<HTMLElement | null>): Fie
     (e: React.PointerEvent) => {
       if (e.button !== 0 && e.button !== 1) return;
       const el = viewport.current;
+      // Measured once per gesture: the board cannot change size mid-drag, and
+      // this keeps the pointermove handler off the layout path.
+      const board = measureBoard(stage?.current ?? null, el, ref.current.scale);
       const start = { cx: e.clientX, cy: e.clientY, x: ref.current.x, y: ref.current.y };
       let live = false;
 
@@ -156,7 +208,7 @@ export function useFieldView(viewport: React.RefObject<HTMLElement | null>): Fie
           live = true;
           setPanning(true);
         }
-        setView((v) => ({ ...v, ...clampPan(start.x + dx, start.y + dy, v.scale, el) }));
+        setView((v) => ({ ...v, ...clampPan(start.x + dx, start.y + dy, v.scale, el, board) }));
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
@@ -170,7 +222,7 @@ export function useFieldView(viewport: React.RefObject<HTMLElement | null>): Fie
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", up);
     },
-    [viewport],
+    [viewport, stage],
   );
 
   const onClickCapture = useCallback((e: React.MouseEvent) => {

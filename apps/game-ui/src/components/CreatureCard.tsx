@@ -8,6 +8,7 @@ import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
 import { IconSkull } from "./Icons";
 import { StatPop } from "./StatPop";
+import { WardAura, wardTitle } from "./WardAura";
 
 const STAT = "text-[clamp(11px,1.7vh,18px)]";
 const META = "text-[clamp(8px,1.2vh,13px)]";
@@ -115,7 +116,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       onMouseEnter={() => creature.intent && setHoverIntent({
         enemyId: creature.id, targetId: creature.intent.target_id })}
       onMouseLeave={() => setHoverIntent(null)}
-      title={`${creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}\nClick to inspect.`}
+      title={`${creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}\nClick to inspect.${wardTitle(creature.wards)}`}
       style={{
         width: size,
         ...(creature.in_execute_window && !isTarget
@@ -150,6 +151,9 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         </>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+
+      {/* Ward aura — a standing damage shield, ringed in its lane's colour. */}
+      <WardAura wards={creature.wards} />
 
       {/* art controls — appear on hover, aimed at the pool design (clones share) */}
       {encounterId && (
@@ -336,7 +340,7 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
   return (
     <div
       onClick={() => (isTarget ? pickTargetId(token.id) : !armed && setInspect(token.id))}
-      title={`${token.name} (ally)${controlTitle}\nClick to inspect.`}
+      title={`${token.name} (ally)${controlTitle}\nClick to inspect.${wardTitle(token.wards)}`}
       style={{ width: TOKEN_CARD_WIDTH }}
       className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
         isTarget ? "brackets cursor-pointer border-brass-hi" : "border-tide/40"
@@ -351,6 +355,9 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
       ) : (
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_35%,rgba(130,180,201,0.25),transparent_75%),linear-gradient(180deg,#16202a,#10141c)]" />
       )}
+
+      {/* Ward aura — a standing damage shield, ringed in its lane's colour. */}
+      <WardAura wards={token.wards} />
 
       {/* art controls — all spawns of this token definition share the image */}
       {encounterId && (

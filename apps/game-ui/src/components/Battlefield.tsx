@@ -221,7 +221,7 @@ export function Battlefield() {
   const shaking = useScreenShake();
   const viewRef = useRef<HTMLDivElement>(null);   // the pane (fixed): backdrop + chrome
   const fieldRef = useRef<HTMLDivElement>(null);  // the stage (zoomed/panned): the board
-  const view = useFieldView(viewRef);
+  const view = useFieldView(viewRef, fieldRef);
   // FLIP pass: any card whose layout position changed with this snapshot
   // glides from where it stood — movement is a slide, never a teleport.
   useFlip(fieldRef, snapshot);

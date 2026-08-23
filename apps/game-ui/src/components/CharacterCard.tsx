@@ -6,6 +6,7 @@ import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
 import { PanelAnim } from "./PanelAnim";
 import { StatPop } from "./StatPop";
+import { WardAura, wardTitle } from "./WardAura";
 
 interface Props {
   char: CharacterView;
@@ -75,7 +76,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
   return (
     <div
       onClick={onClick}
-      title={`${char.name} — click to inspect`}
+      title={`${char.name} — click to inspect${wardTitle(char.wards)}`}
       style={{
         width: CARD_WIDTH,
         ...(char.portrait
@@ -95,6 +96,10 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+
+      {/* Ward aura — a standing damage shield, ringed in its lane's colour.
+          Under the chrome (z-0) so badges and banners stay readable. */}
+      <WardAura wards={char.wards} />
 
       {/* Channeling base-glow — held magic burning at the card's base, tinted
           by the reserved colour, stronger with more held channels. */}
