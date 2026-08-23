@@ -4019,36 +4019,42 @@ def _has_kw(combatant, kw: str) -> bool:
 
 def _value(amount, ctx: dict) -> int:
     """Resolve an effect value: a constant, or a dynamic reference filled in
-    during resolution (the destroyed target's Level, or the source's mana capacity)."""
+    during resolution (the destroyed target's Level, or the source's mana
+    capacity), scaled by the reference's multiplier ("twice your base Power")."""
     if isinstance(amount, Ref):
-        if amount.ref == "destroyed_target.level":
-            return int(ctx.get("destroyed_target", {}).get("level", 0))
-        if amount.ref == "mana_capacity":
-            return int(ctx.get("capacity", 0))
-        if amount.ref == "x":
-            return int(ctx.get("x", 0) or 0)
-        if amount.ref == "casting_cost":
-            return int(ctx.get("casting_cost", 0) or 0)
-        if amount.ref == "party_size":
-            return int(ctx.get("party_size", 0) or 0)
-        if amount.ref == "enemy_count":
-            return int(ctx.get("enemy_count", 0) or 0)
-        if amount.ref in ("caster_power", "caster_hp"):
-            return _live_stat(ctx.get("caster_obj"), amount.ref.split("_", 1)[1])
-        if amount.ref in ("target_power", "target_hp"):
-            return _live_stat(ctx.get("target_obj"), amount.ref.split("_", 1)[1])
-        if amount.ref in ("caster_base_power", "caster_base_hp"):
-            return _base_stat(ctx.get("caster_obj"), amount.ref.rsplit("_", 1)[1])
-        if amount.ref in ("target_base_power", "target_base_hp"):
-            return _base_stat(ctx.get("target_obj"), amount.ref.rsplit("_", 1)[1])
-        if amount.ref == "caster_last_damage":
-            return max(0, int(getattr(ctx.get("caster_obj"), "last_damage_taken", 0) or 0))
-        if amount.ref == "target_last_damage":
-            return max(0, int(getattr(ctx.get("target_obj"), "last_damage_taken", 0) or 0))
-        raise ValueError(f"unsupported value reference '{amount.ref}'")
+        return _ref_value(amount, ctx) * max(1, int(getattr(amount, "mult", 1) or 1))
     if amount == "all":
         return 0  # guarded earlier; never reached for a real effect
     return int(amount)
+
+
+def _ref_value(amount: Ref, ctx: dict) -> int:
+    """The unscaled number a reference names right now."""
+    if amount.ref == "destroyed_target.level":
+        return int(ctx.get("destroyed_target", {}).get("level", 0))
+    if amount.ref == "mana_capacity":
+        return int(ctx.get("capacity", 0))
+    if amount.ref == "x":
+        return int(ctx.get("x", 0) or 0)
+    if amount.ref == "casting_cost":
+        return int(ctx.get("casting_cost", 0) or 0)
+    if amount.ref == "party_size":
+        return int(ctx.get("party_size", 0) or 0)
+    if amount.ref == "enemy_count":
+        return int(ctx.get("enemy_count", 0) or 0)
+    if amount.ref in ("caster_power", "caster_hp"):
+        return _live_stat(ctx.get("caster_obj"), amount.ref.split("_", 1)[1])
+    if amount.ref in ("target_power", "target_hp"):
+        return _live_stat(ctx.get("target_obj"), amount.ref.split("_", 1)[1])
+    if amount.ref in ("caster_base_power", "caster_base_hp"):
+        return _base_stat(ctx.get("caster_obj"), amount.ref.rsplit("_", 1)[1])
+    if amount.ref in ("target_base_power", "target_base_hp"):
+        return _base_stat(ctx.get("target_obj"), amount.ref.rsplit("_", 1)[1])
+    if amount.ref == "caster_last_damage":
+        return max(0, int(getattr(ctx.get("caster_obj"), "last_damage_taken", 0) or 0))
+    if amount.ref == "target_last_damage":
+        return max(0, int(getattr(ctx.get("target_obj"), "last_damage_taken", 0) or 0))
+    raise ValueError(f"unsupported value reference '{amount.ref}'")
 
 
 def _base_stat(obj, stat: str) -> int:
