@@ -37,7 +37,10 @@ def _lint_exclude_self_on_enemy(card):
         if t is not None and not isinstance(t, str):
             descs.append((None, t))
     for name, desc in descs:
-        if getattr(desc, "exclude_self", False) and desc.side == Side.enemy:
+        # A chosen "another enemy" is meaningful (it must differ from the card's
+        # other picks); only the mode:all form has nothing to exclude.
+        if (getattr(desc, "exclude_self", False) and desc.side == Side.enemy
+                and getattr(desc, "mode", None) == TargetMode.all):
             where = f"slot {name}" if name else "an effect"
             out.append(f"'exclude_self' on {where} is a no-op (enemy side never includes you).")
     return out

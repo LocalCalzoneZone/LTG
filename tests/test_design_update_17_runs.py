@@ -104,7 +104,10 @@ def test_boundary_save_reloads_the_identical_next_phase(runs):
     assert adv2.loadouts[1]["character"]["hp"] == 17
     assert adv2.earned == adv.earned and adv2.banked == adv.banked
     assert adv2.loadouts[0]["character"]["earned_points"] == 10   # Phase I pays +10
-    assert adv2.loadouts[0]["character"]["level"] == 2
+    # §D17-2.3: the level follows the SPEND — Soren bought nothing (level 1,
+    # the 10 banked); Ys bought HP, so her spending is on the copy.
+    assert adv2.loadouts[0]["character"]["level"] == 1 and adv2.banked[soren.id] == 10
+    assert adv2.spent == adv.spent and adv2.spent[ys.id] > 0
 
 
 def test_start_save_reloads_phase_one_and_forks_append(runs):

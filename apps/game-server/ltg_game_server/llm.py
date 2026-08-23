@@ -563,7 +563,7 @@ so write them freely — but write them as what they are.
 
 ## Keywords (min level / cost)
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
-deathtouch (3/4) · protection (4/3) · hexproof (5/6) · indestructible (6/6).
+deathtouch (3/4) · hexproof (5/6) · indestructible (6/6).
 Infect: any damage the creature deals that CONNECTS also poisons the victim
 (one unbounded poison effect per connecting hit, first counter at the next
 Upkeep). An infected biter turns every landed hit into a healer assignment —
@@ -1932,25 +1932,28 @@ Each phase is a COMPLETE encounter exactly per the contract above (name, scene,
 enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
 
 
-def phase_budget_levels(base_level: int,
-                        screen_phases: Optional[Any] = None) -> List[float]:
+def phase_budget_levels(base_level: int, start_earned: Optional[int] = None
+                        ) -> List[float]:
     """The party level each phase is budgeted for (T-62), anchored on
     ``base_level`` — the party's effective level at adventure start.
 
-    ``screen_phases`` is the set of phase indices after which the party actually
-    SPENDS a level-up (their build improves); None means every boundary, the
-    Update 10 default that gives the classic L / L+1 / L+2 ramp. Update 17
-    §D17-2.3 re-times the screens, so inside a scenario most boundaries buy
-    nothing — those phases ramp by a FRACTION of a level instead: the fights
-    still escalate toward the boss without budgeting for growth the heroes have
-    not had."""
+    Update 17 §D17-2.3: points are won per phase (+10 / +20 / +30) and may be
+    spent at every boundary, so each phase is budgeted for the level the
+    party's EARNED total will have reached when it opens — what they could be,
+    as a continuous level (`level_progress`), never what they chose to bank.
+    ``start_earned`` is the party's earned total entering the adventure; when
+    absent it is the least total the base level implies."""
+    from ltg_core.schema import LEVEL_THRESHOLDS, MAX_LEVEL, PHASE_GRANTS, level_progress
     base = max(1, int(base_level))
-    n = max(1, content.PHASE_COUNT)
+    earned = (int(start_earned) if start_earned is not None
+              else LEVEL_THRESHOLDS[min(base, MAX_LEVEL)])
+    # Gear and anything else folded into `base_level` above the bare points.
+    offset = base - level_progress(earned)
     out: List[float] = []
-    level = float(base)
-    for i in range(n):
-        out.append(level)
-        level += 1.0 if (screen_phases is None or i in screen_phases) else 1.0 / n
+    paid = 0
+    for i in range(content.PHASE_COUNT):
+        out.append(max(1.0, level_progress(earned + paid) + offset))
+        paid += PHASE_GRANTS[i] if i < len(PHASE_GRANTS) else PHASE_GRANTS[-1]
     return out
 
 
@@ -1972,17 +1975,13 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     base_level = max(1, int(base_level))
     if not phase_levels:
         phase_levels = phase_budget_levels(base_level)
-    ramps = len({round(l) for l in phase_levels}) > 1
     lines = [
         "# THIS ADVENTURE'S PARAMETERS",
         f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
         f"- Difficulty: {difficulty} (applies to all three phases).",
-        (f"- The party enters at level {base_level}. They level up between "
-         "phases, so each phase is budgeted a little above the last:") if ramps else
-        (f"- The party enters at level {base_level} and fights all three phases "
-         "at that level (they level up at the END of the adventure, not between "
-         "phases) — the escalation toward the boss is in the encounters, not in "
-         "the party's growth:"),
+        f"- The party enters at level {base_level}. Every phase won pays points "
+        "they may spend between phases, so each phase is budgeted for the level "
+        "they can have reached when it opens (a fraction of a level per phase):",
     ]
     for phase in range(1, content.PHASE_COUNT + 1):
         lvl = phase_levels[min(phase - 1, len(phase_levels) - 1)]

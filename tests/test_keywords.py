@@ -66,10 +66,10 @@ def test_grant_verb_agrees_with_target_number():
     assert single == "An ally gains Flying until end of turn."
 
 
-def test_protection_from_param_renders():
-    assert render([{"kind": "grant_keyword", "keywords": ["protection"], "params": {"from": "red"},
-                    "target": CHOSEN_ALLY}]) \
-        == "An ally gains Protection from red until end of turn."
+def test_protection_keyword_retired():
+    # Retired 2026-08-22: it duplicated the `protection` effect. Author the effect.
+    with pytest.raises(ValidationError):
+        card([{"kind": "grant_keyword", "keywords": ["protection"], "target": CHOSEN_ALLY}])
 
 
 # --- validation ------------------------------------------------------------- #

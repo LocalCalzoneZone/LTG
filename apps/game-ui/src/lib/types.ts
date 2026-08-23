@@ -406,21 +406,19 @@ export interface LevelUpRow {
   locked?: number; // the entering build's spend
   banked?: number; // carried remainder
   available?: number; // the spendable pool (phases already paid into it)
-  earned_points?: number; // cumulative points won so far (T-78)
-  next_level?: number; // the level those points derive to
+  earned_points?: number; // cumulative points won so far
+  spent_points?: number; // cumulative points SPENT — the level derives from this (T-78)
+  level?: number; // the level those spent points derive to
   points_to_next_level?: number | null; // null at max level
   level_floor?: number; // points this level cost to reach (progress bar)
   level_ceiling?: number | null; // points the next one costs; null at max level
 }
 
 export interface LevelUpBlock {
-  // "levelup" — the build screen, points spendable; "interlude" — Phase Clear,
-  // press on, nothing to buy (§D17-2.3).
-  kind: "levelup" | "interlude";
   // The act-end screen, queued behind the spoils: confirming it ends the act
-  // rather than composing another phase.
+  // rather than composing another phase (§D17-2.3).
   final: boolean;
-  next_level: number;
+  level: number; // the party's first character's current level
   points_per_level: number;
   phase_grant: number; // what the phase just won paid (+10 / +20 / +30)
   prices: BuildPrices;
@@ -741,9 +739,10 @@ export interface PartySheetRow {
   portrait: string;
   level: number;
   earned_points: number;
+  spent_points?: number; // the level derives from this (§D17-2.3)
   points_to_next_level: number | null;
-  // The band the level progress bar fills: what this level cost to reach and
-  // what the next one costs (null at max level).
+  // The band the level progress bar fills (around SPENT points): what this
+  // level cost to reach and what the next one costs (null at max level).
   level_floor?: number;
   level_ceiling?: number | null;
   banked: number;

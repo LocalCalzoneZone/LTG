@@ -1112,6 +1112,7 @@ const KINDS = () => Object.keys(EFFECT_SPECS).sort();
 function newItem(kind) {
   if (kind === "modal") return { kind: "modal", label: "", choose: 1, or_more: false };
   if (kind === "conditional") return { kind: "conditional", condition: { kind: "cast_mode", mode: "reaction" } };
+  if (kind === "end") return { kind: "end", of: "conditional" };
   // A stance must change at least one slot (§D9-2.2) — seed a valid default.
   if (kind === "stance") return { kind: "stance", attack: "removed", defend: "unchanged",
                                   mitigate: "unchanged", move: "unchanged" };
@@ -1332,25 +1333,35 @@ function paramHtml(i, p, val) {
 
 // --- flat editor model -----------------------------------------------------
 // The editor edits a FLAT list of rows; modal/conditional are marker rows that
-// scope the effects BELOW them. flatten/rebuild convert to/from the nested schema.
+// scope the effects BELOW them, and an `end` marker ({kind: "end", of:
+// "conditional" | "modal" | "stance_slot"}) closes that scope so the rows after
+// it belong to the enclosing block again. flatten/rebuild convert to/from the
+// nested schema; flatten emits an end marker only where a container is followed
+// by sibling effects (a trailing container needs none).
 let editorItems = [];
 
 function flattenEffects(effects) {
   const items = [];
   // A conditional flattens to its marker followed by its (leaf) effects; a plain
-  // leaf flattens to itself. Used at top level AND inside a modal mode.
-  const pushEffect = (e) => {
+  // leaf flattens to itself. Used at top level AND inside a modal mode. `last`
+  // says whether more siblings follow in the same container — if so the
+  // conditional is closed with an end marker so they don't get swallowed.
+  const pushEffect = (e, last) => {
     if (e.kind === "conditional") {
       // Keep the conditional's own trigger (channeled "when … if …") on the marker.
       const marker = { kind: "conditional", condition: clone(e.condition) };
       if (e.trigger != null) marker.trigger = clone(e.trigger);
       items.push(marker);
       (e.effects || []).forEach((inner) => items.push(clone(inner)));
+      if (!last) items.push({ kind: "end", of: "conditional" });
     } else {
       items.push(clone(e));
     }
   };
-  for (const e of effects || []) {
+  const pushAll = (list) => (list || []).forEach((x, k, arr) => pushEffect(x, k === arr.length - 1));
+  const top = effects || [];
+  top.forEach((e, ti) => {
+    const lastTop = ti === top.length - 1;
     if (e.kind === "modal") {
       // The 'choose' count (and the modal's trigger, for a triggered modal on a
       // channeled card) belongs to the whole modal; the first marker carries them
@@ -1361,8 +1372,9 @@ function flattenEffects(effects) {
                          choose: e.choose ?? 1, or_more: e.or_more ?? false };
         if (mi === 0 && e.trigger != null) marker.trigger = clone(e.trigger);
         items.push(marker);
-        (m.effects || []).forEach(pushEffect);
+        pushAll(m.effects);
       });
+      if (!lastTop) items.push({ kind: "end", of: "modal" });
     } else if (e.kind === "stance") {
       // The stance row keeps the four slot CHOICES; each replaced slot flattens
       // to a `stance_slot` marker followed by its effect rows (§D9-2.2) — the
@@ -1375,14 +1387,15 @@ function flattenEffects(effects) {
         else { row[slot] = "replace"; groups.push({ slot, name: v.name || "", effects: v.effects || [], animation: v.animation || null }); }
       }
       items.push(row);
-      groups.forEach((g) => {
+      groups.forEach((g, gi) => {
         items.push({ kind: "stance_slot", slot: g.slot, name: g.name, animation: g.animation });
-        g.effects.forEach(pushEffect);
+        pushAll(g.effects);
+        if (gi === groups.length - 1 && !lastTop) items.push({ kind: "end", of: "stance_slot" });
       });
     } else {
-      pushEffect(e);
+      pushEffect(e, lastTop);
     }
-  }
+  });
   return items;
 }
 
@@ -1404,7 +1417,10 @@ function stanceGroupSpan(stanceIdx, slot) {
     if (k === "stance_slot" && editorItems[j].slot === slot) {
       let end = j + 1;
       while (end < editorItems.length
-             && !["stance", "stance_slot", "modal"].includes(editorItems[end].kind)) end++;
+             && !["stance", "stance_slot", "modal"].includes(editorItems[end].kind)) {
+        const it = editorItems[end++];
+        if (it.kind === "end" && it.of === "stance_slot") break;  // the group's own closer
+      }
       return [j, end];
     }
   }
@@ -1416,8 +1432,9 @@ function stanceGroupSpan(stanceIdx, slot) {
 function stanceInsertAt(stanceIdx) {
   let at = stanceIdx + 1, inGroup = false;
   while (at < editorItems.length) {
-    const k = editorItems[at].kind;
+    const it = editorItems[at], k = it.kind;
     if (k === "stance_slot") { inGroup = true; at++; continue; }
+    if (inGroup && k === "end" && it.of === "stance_slot") { inGroup = false; at++; continue; }
     if (inGroup && k !== "stance" && k !== "modal") { at++; continue; }
     break;
   }
@@ -1462,6 +1479,12 @@ function rebuildEffects(items) {
       if (mode) mode.effects.push(cond);
       else if (slotRepl) slotRepl.effects.push(cond);
       else out.push(cond);
+    } else if (it.kind === "end") {
+      // Close the named block; the rows after it rejoin the enclosing one. A
+      // stray end (nothing open) is harmless.
+      if (it.of === "conditional") cond = null;
+      else if (it.of === "modal") modal = mode = cond = null;
+      else if (it.of === "stance_slot") slotRepl = cond = null;
     } else {
       const dest = cond ? cond.effects
         : (mode ? mode.effects : (slotRepl ? slotRepl.effects : out));
@@ -1560,14 +1583,26 @@ function conditionControlHtml(i, cond) {
   return `<span class="cond-builder">if ${kindSel} ${rest}</span>`;
 }
 
-function effectRowHtml(e, i, card, depth = 0) {
+const BLOCK_LABEL = { conditional: "conditional", modal: "modal", stance_slot: "replacement" };
+
+function effectRowHtml(e, i, card, depth = 0, encl = null) {
   const indent = depth >= 2 ? " scoped scoped2" : depth === 1 ? " scoped" : "";
   const kindSel = `<select class="eff-kind" data-i="${i}">${KINDS().map((k) => `<option ${k === e.kind ? "selected" : ""}>${k}</option>`).join("")}</select>`;
-  const tools = `<span class="effect-tools">
+  // Outdent: end the enclosing block right above this row, so this row and the
+  // ones below it are no longer part of it (without reordering anything).
+  const outdent = encl
+    ? `<button class="eff-outdent" data-i="${i}" data-of="${encl}" title="End the ${BLOCK_LABEL[encl]} above this row — this and the rows below are no longer part of it">⇤</button>`
+    : "";
+  const tools = `<span class="effect-tools">${outdent}
       <button class="eff-up" data-i="${i}" title="Move up">↑</button>
       <button class="eff-down" data-i="${i}" title="Move down">↓</button>
       <button class="eff-remove danger" data-i="${i}" title="Remove">×</button></span>`;
 
+  if (e.kind === "end") {
+    return `<div class="effect-row marker end${indent}">
+        <div class="effect-head"><span class="kw-label">— end of ${BLOCK_LABEL[e.of] || e.of} —</span>${tools}</div>
+        <div class="effect-params"><span class="marker-note">the rows below are outside the ${BLOCK_LABEL[e.of] || e.of}</span></div></div>`;
+  }
   if (e.kind === "modal") {
     // The "choose N" count applies to the whole modal — show it on the first
     // mode-marker of the group only.
@@ -1583,7 +1618,7 @@ function effectRowHtml(e, i, card, depth = 0) {
     return `<div class="effect-row marker">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">
-          <span class="marker-note">choose option — effects below (until the next block) are this option</span>
+          <span class="marker-note">choose option — effects below (until the next option or an end marker) are this option</span>
           <label class="inline">label <input type="text" class="modal-label" data-i="${i}" value="${escapeAttr(e.label || "")}" placeholder="(optional)"/></label>${chooseCtl}${modalTrg}
         </div></div>`;
   }
@@ -1596,7 +1631,7 @@ function effectRowHtml(e, i, card, depth = 0) {
     return `<div class="effect-row marker${indent}">
         <div class="effect-head">${kindSel}${tools}</div>
         <div class="effect-params">${trg}${conditionControlHtml(i, e.condition)}
-          <span class="marker-note">applies to the effects below</span></div></div>`;
+          <span class="marker-note">applies to the effects below (use ⇤ on a row to end the conditional above it)</span></div></div>`;
   }
   if (e.kind === "stance_slot") {
     // A replaced main ability (§D9-2.2): auto-managed by the stance row's slot
@@ -1647,12 +1682,19 @@ function effectRowHtml(e, i, card, depth = 0) {
 function renderEffectRows(card) {
   if (!editorItems.length) return "<div class='meta'>No effects yet.</div>";
   let inMode = false, inCond = false, inSlot = false;
+  const encl = () => inCond ? "conditional" : (inMode ? "modal" : (inSlot ? "stance_slot" : null));
   return editorItems.map((e, i) => {
     if (e.kind === "modal") { inMode = true; inCond = false; inSlot = false; return effectRowHtml(e, i, card, 0); }
     if (e.kind === "stance") { inMode = inCond = inSlot = false; return effectRowHtml(e, i, card, 0); }
     if (e.kind === "stance_slot") { inSlot = true; inMode = false; inCond = false; return effectRowHtml(e, i, card, 0); }
-    if (e.kind === "conditional") { const d = (inMode || inSlot) ? 1 : 0; inCond = true; return effectRowHtml(e, i, card, d); }
-    return effectRowHtml(e, i, card, ((inMode || inSlot) ? 1 : 0) + (inCond ? 1 : 0));
+    if (e.kind === "conditional") { const d = (inMode || inSlot) ? 1 : 0; const en = encl(); inCond = true; return effectRowHtml(e, i, card, d, en); }
+    if (e.kind === "end") {
+      // The closer sits at the depth of the block it closes.
+      if (e.of === "conditional") { inCond = false; return effectRowHtml(e, i, card, (inMode || inSlot) ? 1 : 0); }
+      if (e.of === "modal") { inMode = false; inCond = false; return effectRowHtml(e, i, card, 0); }
+      inSlot = false; inCond = false; return effectRowHtml(e, i, card, 0);
+    }
+    return effectRowHtml(e, i, card, ((inMode || inSlot) ? 1 : 0) + (inCond ? 1 : 0), encl());
   }).join("");
 }
 
@@ -2075,6 +2117,10 @@ function wireDetail(idx) {
   document.querySelectorAll(".eff-up").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, -1));
   document.querySelectorAll(".eff-down").forEach((b) => b.onclick = () => moveItem(idx, +b.dataset.i, 1));
   document.querySelectorAll(".eff-remove").forEach((b) => b.onclick = () => { editorItems.splice(+b.dataset.i, 1); commitEffects(idx, true); });
+  document.querySelectorAll(".eff-outdent").forEach((b) => b.onclick = () => {
+    editorItems.splice(+b.dataset.i, 0, { kind: "end", of: b.dataset.of });
+    commitEffects(idx, true);
+  });
 
   // Slots (chosen-only descriptors) — card-level
   document.querySelectorAll(".slot-side").forEach((sel) => {

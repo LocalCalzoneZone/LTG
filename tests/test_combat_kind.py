@@ -148,18 +148,6 @@ def test_melee_protection_ignores_ranged():
     assert ys.hp == 7 and len(ys.protection_tags) == 1
 
 
-def test_protection_keyword_grant_is_a_charge():
-    card = {"id": "shield", "name": "Shield", "source_name": "Shield",
-            "rarity": "common", "level": 1, "type": "Instant", "timing": "instant",
-            "cost": {"generic": 0, "colors": {}}, "validated": True,
-            "effects": [{"kind": "grant_keyword", "keywords": ["protection"],
-                         "target": {"mode": "self"}, "duration": "this_turn"}]}
-    st = _run_until_turn(_state(card))
-    ys = st.character("ys")
-    assert ys.hp == 10 and ys.protection_tags == []
-    assert "protection" not in ys.keywords
-
-
 # --- card text -----------------------------------------------------------------------
 def test_card_text_names_the_reach_and_the_charge():
     txt = render_effects([Prevent(parameter="combat_damage", combat_kind="ranged",

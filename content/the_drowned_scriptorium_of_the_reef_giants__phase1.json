@@ -1,0 +1,165 @@
+{
+  "name": "The Sunken Peristyle",
+  "scene": "Turquoise waters lap against half-submerged giant marble pillars draped in golden kelp fronds. Schools of jewel-scaled damselfish dart between cracked archways where reef-scavengers pry at ancient brass fixtures.",
+  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/scene-3ff1e438.png",
+  "enemies": [
+    {
+      "id": "barnacle_crusher",
+      "name": "Barnacle Crusher",
+      "flavor": "Regenerates shell plates until struck by a solid blow.",
+      "description": "A waist-high crustacean clad in thick calcified plates and clusters of razor-sharp acorn barnacles, clicking massive asymmetric cerulean claws.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "beast"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "shell_regen",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Mend Carapace \u2014 gains Regen (heals +0/+1 each Upkeep until hit)",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "pincer_snap",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Crushing Pincer \u2014 heavy snap for 3 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/barnacle_crusher-dc0bcb7d.png"
+    },
+    {
+      "id": "coral_mender",
+      "name": "Reef Shaman",
+      "flavor": "Channels vitality to wounded allies; break its focus or face an endless wall.",
+      "description": "A hunched goblin clad in braided sea-grass and a headdress of living staghorn coral, brandishing a staff of polished driftwood.",
+      "hp": 4,
+      "power": 1,
+      "level": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "goblin"
+      ],
+      "classes": [
+        "shaman"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "soothing_surge",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "action_type": "spell",
+          "telegraph": "Soothing Surge \u2014 heal the lowest ally 3",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "living_kelp_song",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 3,
+          "channel": true,
+          "action_type": "spell",
+          "target_rule": "self",
+          "telegraph": "Kelp Song \u2014 channel an aura granting +1 Power to all allies",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/coral_mender-105c8aae.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "barnacle_crusher",
+      "coral_mender"
+    ],
+    "2": [
+      "barnacle_crusher",
+      "barnacle_crusher",
+      "coral_mender",
+      "coral_mender"
+    ],
+    "3": [
+      "barnacle_crusher",
+      "barnacle_crusher",
+      "barnacle_crusher",
+      "coral_mender",
+      "coral_mender",
+      "coral_mender"
+    ],
+    "4": [
+      "barnacle_crusher",
+      "barnacle_crusher",
+      "barnacle_crusher",
+      "barnacle_crusher",
+      "coral_mender",
+      "coral_mender",
+      "coral_mender",
+      "coral_mender"
+    ]
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "name": "The Hall of Submerged Astrolabes",
+  "scene": "Sunbeams pierce ceiling apertures into a vast flooded gallery of verdigris-coated brass mechanisms. Gigantic armillary rings slowly grind beneath the clear brine, covered in stinging polyps and ancient moss.",
+  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase2/scene-c582962e.png",
+  "enemies": [
+    {
+      "id": "kelp_harpooner",
+      "name": "Kelp Harpooner",
+      "flavor": "Hooks casters into the melee line and forces their focus.",
+      "description": "A lean goblin raider covered in grease and mottled kelp-skin, wielding a long barbed gig-spear attached to a braided hemp line.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "goblin"
+      ],
+      "classes": [
+        "hunter"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "gut_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Barbed Harpoon \u2014 drag hero to front and deal 4 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "mocking_hiss",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Harpooner's Challenge \u2014 strike for 3 and taunt the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase2/kelp_harpooner-68abd470.png"
+    },
+    {
+      "id": "brass_clockwork_striker",
+      "name": "Brass Astrolabe Warden",
+      "flavor": "Dazes interlopers with crushing gears; channels an arc of shocking current.",
+      "description": "A four-armed automaton forged of tarnished sea-brass, its chest housing ticking gearwork and an aqua-luminescent focusing lens.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "concussive_piston",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Piston Smash \u2014 stun a hero",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "galvanic_hum",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 3,
+          "channel": true,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Galvanic Arc \u2014 channel 2 lightning damage to a hero every upkeep",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase2/brass_clockwork_striker-1d01386c.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "kelp_harpooner",
+      "brass_clockwork_striker"
+    ],
+    "2": [
+      "kelp_harpooner",
+      "kelp_harpooner",
+      "brass_clockwork_striker",
+      "brass_clockwork_striker"
+    ],
+    "3": [
+      "kelp_harpooner",
+      "kelp_harpooner",
+      "kelp_harpooner",
+      "brass_clockwork_striker",
+      "brass_clockwork_striker",
+      "brass_clockwork_striker"
+    ],
+    "4": [
+      "kelp_harpooner",
+      "kelp_harpooner",
+      "kelp_harpooner",
+      "kelp_harpooner",
+      "brass_clockwork_striker",
+      "brass_clockwork_striker",
+      "brass_clockwork_striker",
+      "brass_clockwork_striker"
+    ]
+  }
+}

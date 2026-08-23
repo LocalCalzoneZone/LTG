@@ -48,7 +48,7 @@ The combat engine is untouched by all of this except gear's stat-block compositi
 
 ### D17-2.1 Earning — level derived from cumulative points
 
-The earning rate is **60 points per adventure** (T-57), paid **+10 / +20 / +30 as Phases I / II / III are won** — see §D17-2.3, which re-times *where those points are spent*. What changes from Update 10: **character level is derived from cumulative earned points** against an escalating threshold table, instead of +1 per level-up.
+The earning rate is **60 points per adventure** (T-57), paid **+10 / +20 / +30 as Phases I / II / III are won**. What changes from Update 10: **character level is derived from the points cumulatively *spent* on the build** against an escalating threshold table, instead of +1 per level-up — see §D17-2.3 for why *spent* and not *earned*.
 
 Cumulative points to reach level *L* (T-78, playtest starting values, shaped to the agreed milestones — ≈level 3 after adventure 1, 5 after 2, 6 after 3, 7 after 5, thinning toward 20):
 
@@ -56,9 +56,9 @@ Cumulative points to reach level *L* (T-78, playtest starting values, shaped to 
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | pts | 10 | 60 | 105 | 150 | 210 | 300 | 390 | 480 | 570 | 690 | 810 | 930 | 1050 | 1200 | 1350 | 1500 | 1650 | 1830 | 2010 |
 
-(L2 costs **10** so the very first phase a party ever wins ticks a level — the opening level-up screen is a real one. After that each adventure earns 60: adventure 1 → 60 → L3; 2 → 120 → L4; 3 → 180 → L5; 5 → 300 → L7. Beyond L10 each level costs two adventures or more.)
+(L2 costs **10** — exactly what the first phase a party ever wins pays, so a hero who spends it is level 2 on the spot. After that each adventure earns 60: adventure 1 → 60 → L3; 2 → 120 → L4; 3 → 180 → L5; 5 → 300 → L7 — *for a hero who spends as they earn*. Beyond L10 each level costs two adventures or more.)
 
-Consequences: the level number **may not tick on a given screen**, and past L10 usually will not; **enemy budgets read the derived level** (anchored on the party's effective level at adventure start, ramped per §D17-2.3); the **Power cap** (T-60, `2 × level`) reads the derived level. `Character.level` is written to the run's copy of the character, never the profile.
+Consequences: the level number **may not tick on a given screen**, and past L10 usually will not; the **Power cap** (T-60, `2 × level`) reads the derived level, so buying Power is bounded by what has been committed; **enemy budgets read the points *earned*** (§D17-2.3). `Character.level` is written to the run's copy of the character, never the profile.
 
 ### D17-2.2 Spending — the escalating price curve
 
@@ -78,37 +78,33 @@ Prices for the *n*th purchase (T-79):
 
 ---
 
-### D17-2.3 The level-up schedule — earned every phase, spent on a cadence
+### D17-2.3 Earn every phase, spend when you like — level is what you have committed
 
-Points are **won by fighting**; the **level-up screen is a separate schedule**. A phase pays the moment it is beaten — **+10 / +20 / +30** for Phases I / II / III — straight into the character's bankable pool, so the derived level (and the sheet's progress bar, §D17-5.2) moves inside an adventure. What the schedule decides is **when the party stops to spend**.
+Points are **won by fighting** and **spent when the player chooses**; the two are deliberately not the same event.
 
-Inside a scenario:
+**Earning.** A phase pays the moment it is beaten — **+10 / +20 / +30** for Phases I / II / III (T-57) — straight into the character's bankable pool.
 
-| Boundary | Opening act (Scenario 1, Act I) | Every later act |
-|---|---|---|
-| after Phase I | **level-up screen** (10 points — and L2) | Phase Clear interlude |
-| after Phase II | Phase Clear interlude | Phase Clear interlude |
-| after Phase III | **level-up screen, queued behind the spoils** | **level-up screen, queued behind the spoils** |
+**Spending.** A **level-up screen is offered at every phase boundary** and, for the act's boss, **behind the spoils** (Phase III falls → Rewards modal → spoils accepted → level-up → the ride to town). Each screen can spend any part of the pool — the grant just won plus anything banked — or nothing at all: confirming an unchanged build is simply *Press On*. The character sheet's gear tab is open on every screen (§D17-4.4). The one exception is the closing boss of a **Standard** scenario, which gets no screen: the run ends there and the points have nowhere to go. **Everquest** always gets one, because the next arc is coming.
 
-A **Phase Clear interlude** is the victory splash and a *Press On* button: no points-buy, but the character sheet is open, so gear and belt can still be changed between phases (§D17-4.4). Spending anything at an interlude is refused server-side.
+**Level.** Character level derives from the points **cumulatively spent** on the build (T-78) — *committing* points is what levels you. Banked points are potential, not level. A hero who spends as they earn walks the §D17-2.1 table exactly; a hero who banks reads lower until they buy. The screen shows the level the draft will reach as it is being built, and the Power cap (T-60) is held to that level, not to the level the pool *could* reach — so +1 Power at the cap needs the rest of the spend to carry the level with it.
 
-The **act-end screen** is the last beat of the act's wrap-up: **Phase III falls → Rewards modal → spoils accepted → level-up → the ride back to town.** The finale's victory is suppressed throughout, and the wrap-up's position is saved, so a reload inside it resumes where it stopped rather than re-rolling the spoils. Because the whole act's 60 points arrive in one sitting, the screen is worth stopping for, and its purchases are made **with the act's spoils already in hand**.
+**Why spent, not earned.** Under "level = earned" the level ticks whether or not anything was bought, and any schedule for *when* the screen opens is arbitrary — the screen and the level have nothing to do with each other. Under "level = spent" the two are the same act, the player sets the pace, and no calendar of screens is needed.
 
-**The closing act.** In a **Standard** scenario Act III has no act-end screen — the run ends on that boss and the points have nowhere to go (they are still earned and recorded). **Everquest** always gets one, because the next arc is coming; from then on every act ends with a screen, forever.
+**Why banking is never the better play.** Encounter budgets (T-62) and item tiers (§D17-4.3) read the party's **potential** — the level their *earned* points reach, as a continuous number (`level_progress`: 4.6 = level 4, 60% to 5), plus the worn-gear bonus (T-81) — never the level a sandbagger shows. Each phase of an act is budgeted for the potential the party will have *when that phase opens*: earned so far, +10 after Phase I, +30 after Phase II. So a bank of unspent points faces enemies scaled for the hero those points could have bought, while the hero on the field is the smaller one. Spend promptly, or fight up.
 
-**A lone adventure** (Update 10, outside a scenario) is unchanged in shape: a screen at every non-final boundary, now worth 10 then 20 points.
+**Gold (T-85)** rides the points exactly: **one gold per point earned**, 10 / 20 / 30 a phase, 60 an act, landing before the party's next town visit.
 
-**Gold (T-85)** rides the points exactly: **one gold per point**, so a phase pays 10 / 20 / 30 gold and an act pays 60 — and, under this schedule, every coin lands **before** the party's next town visit instead of during the act after it.
+**A lone adventure** (Update 10, outside a scenario) keeps its shape — a screen at every non-final boundary — under the same rules: 10 then 20 to spend, level from the spend.
 
-**Enemy budgets.** Phases are budgeted for the party that will actually fight them: the opening act ramps after its Phase I screen (L, L+1, L+1⅓), and every later act is fought at one level throughout (L, L+⅓, L+⅔) — the escalation toward the boss lives in the encounters, not in growth the heroes have not had.
+**Saves.** The run's copy of each character carries `earned_points` and `spent_points`; a save from before this amendment is credited spending equal to its earned total (the old scheme spent as it granted), so it reloads at the level it was playing.
 
-Where a scenario stands, act by act (cumulative points = 60 × acts completed):
+Where a hero who spends everything stands, act by act (cumulative points = 60 × acts completed):
 
 | after act | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 12 | 14 | 16 | 18 | 20 | 23 | 25 | 28 | 31 | 34 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | level | 3 | 4 | 5 | 6 | 7 | 7 | 8 | 9 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | **20** |
 
-A Standard run finishes Act III having earned **180 points and 180 gold** — level 5 on paper, but the closing act's 60 of each arrive with no screen and no town left to use them, so the run really plays as **level 4 with 120 gold spent**. Everquest, where the next arc always follows, spends everything it earns and reaches level 20 after 34 acts — a little over eleven scenarios.
+A Standard run finishes Act III having earned **180 points and 180 gold**; the closing act's 60 of each arrive with no screen and no town left to use them, so the run plays as level 4 with 120 gold spent. Everquest, where the next arc always follows, can spend everything it earns and reaches level 20 after 34 acts — a little over eleven scenarios.
 
 ## D17-3. Runs, saves, and the content store
 
@@ -237,7 +233,7 @@ The town reuses the combat screen's shell: backdrop + card slots + inspect modal
 - **Visiting:** splash (location scene + a line of narrative) → location screen: location scene; the slots show its **NPCs**. Click an NPC → inspect (persona) → **Talk to X** or, for merchants, **See their wares** (§D17-5.5). **Leave Location** returns to the map.
 - **Movement is party-wide:** Visit / Leave / Start Adventure open the **all-players confirmation** (every *player*, not character; **30s auto-yes**, initiator may cancel — T-84). Browsing inspects and shopping are per-player and asynchronous.
 - **Start Adventure** is enabled only when the act's `adventure_ready` flag is set (§D17-6.3) — otherwise it shows the generation state ("Preparing the road… 4/9").
-- **Character sheet:** click a character's name (anywhere — town, combat, level-up) → the sheet modal: stats and build history (locked / new / banked), deck list, Skill/Ultimate, **gear slots + belt + inventory** rendered as cards, gold, level and a **level progress bar** — the band of cumulative points between this level and the next (§D17-2.3), with points earned, points unspent, and points to the next level read off it. **Edit affordances (equip/swap/discard/trade) only in town and on the between-phase screens; read-only in combat.**
+- **Character sheet:** click a character's name (anywhere — town, combat, level-up) → the sheet modal: stats and build history (locked / new / banked), deck list, Skill/Ultimate, **gear slots + belt + inventory** rendered as cards, gold, level and a **level progress bar** — the band of *spent* points between this level and the next (§D17-2.3), filled solid for what is committed and faintly for what is banked, with points spent, points banked, and points to the next level read off it. **Edit affordances (equip/swap/discard/trade) only in town and on the between-phase screens; read-only in combat.**
 
 ### D17-5.3 Gold — per character, XP-shaped
 
@@ -300,7 +296,7 @@ The single trigger for everything the adventure needs. On accept: (1) auto-save;
 - **New Game modal** gains a fourth column: **Scenarios** (pre-generated scenarios and Town + New). Choosing it reveals the run options (difficulty · Normal/Hardcore · Standard/Everquest). Start creates a **run** and its first auto-save.
 - **Load Game** (top ribbon): runs → saves list → load. Delete on saves; delete on a whole run (double-confirm).
 - **Options → Towns** / **Options → Scenarios** / **Options → Equipment**: lists, Generate/New, per-item art + Generate all missing, hide/delete, inspect (a scenario opens its arc; its Act I adventure opens in the existing adventure editor).
-- **Between-phase flow** (Update 10's, plus the rewards insert and the §D17-2.3 schedule): victory splash → **level-up** *or* **Phase Clear interlude**, whichever the schedule says (the character sheet's gear tab is available for swaps either way) → narrative splash → next phase. **After Phase III:** **Rewards modal** → *(if the act ends on a screen)* **level-up** → **return-to-town splash** → the town map (next act begins; town portion generates under the splash).
+- **Between-phase flow** (Update 10's, plus the rewards insert): victory splash → **level-up screen** (spend any of the pool or press on; the character sheet's gear tab is available for swaps) → narrative splash → next phase. **After Phase III:** **Rewards modal** → *(unless it is a Standard run's closing act)* **level-up** → **return-to-town splash** → the town map (next act begins; town portion generates under the splash).
 
 ---
 

@@ -14,7 +14,7 @@ const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "_").re
 const ROWS: Row[] = ["front", "mid", "rear"];
 const MODES: Array<"melee" | "ranged"> = ["melee", "ranged"];
 const KEYWORDS = ["reach", "trample", "flying", "lifelink", "deathtouch",
-                  "protection", "hexproof", "indestructible"];
+                  "hexproof", "indestructible"];
 const ARCHETYPES = ["Burst", "Drain", "Fortify", "Debilitate", "Punish",
                     "Evasive", "Escalate", "Swarm", "Enrage"];
 const TARGET_RULES = ["valuation", "self", "trigger_source", "lowest_hp_ally",

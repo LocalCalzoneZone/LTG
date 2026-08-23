@@ -1,0 +1,228 @@
+{
+  "name": "The Star-Chart Sanctum",
+  "scene": "A domed circular observatory flooded waist-deep, illuminated by celestial glyphs glowing aquamarine beneath the water. In the center, a gigantic brass celestial sphere spins steadily over a marble dais.",
+  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/scene-0d0350e9.png",
+  "enemies": [
+    {
+      "id": "scriptorium_astromancer",
+      "name": "Arch-Astromancer Thalassos",
+      "flavor": "Channels astral tides and sweeps rows with celestial brass; enrages into a storm.",
+      "description": "A floating nine-foot construct of polished bronze and luminescent pearl, four segmented arms manipulating floating brass star-orbs that hum with azure arcane light.",
+      "hp": 22,
+      "power": 3,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "wizard"
+      ],
+      "is_boss": true,
+      "keywords": [],
+      "components": [
+        {
+          "id": "celestial_alignment",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "target_row": "front",
+          "action_type": "spell",
+          "telegraph": "Star-Sweep \u2014 4 spell damage across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "astral_conduit",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "self",
+          "telegraph": "Supernova Burst \u2014 4 spell damage to ALL heroes",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "starlight_mantle",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 3,
+          "channel": true,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Starlight Siphon \u2014 channel 2 damage to a hero every upkeep, healing self for 2",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "astral_detonation",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "CELESTIAL REALIGNMENT \u2014 +2/+2 permanently, and astral flare strikes all heroes for 4",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/scriptorium_astromancer-88da3044.png"
+    },
+    {
+      "id": "carapace_warder",
+      "name": "Carapace Warder",
+      "flavor": "Layers protective shields over the Astromancer; retaliates against attackers.",
+      "description": "A monolithic coral-encrusted golem hunkered low like a massive sea-tortoise, raising massive shield-slabs of petrified nautilus shell.",
+      "hp": 8,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "elemental",
+        "construct"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "reef_aegis",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Nautilus Ward \u2014 grant all-damage protection to the Astromancer",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "coral_retaliation",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Spiny Retaliation \u2014 deal 3 damage back to attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/carapace_warder-14814d4d.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "scriptorium_astromancer",
+      "carapace_warder"
+    ],
+    "2": [
+      "scriptorium_astromancer",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder"
+    ],
+    "3": [
+      "scriptorium_astromancer",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder"
+    ],
+    "4": [
+      "scriptorium_astromancer",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder",
+      "carapace_warder"
+    ]
+  }
+}

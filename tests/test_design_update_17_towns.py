@@ -375,5 +375,9 @@ def test_adventure_context_block_and_base_level():
                                  "act_number": 3, "acts_total": 3},
                  "town_context": {"name": "Hollowmere", "region_flavor": "fen", "npcs": ["Aud"]},
                  "quest_context": {"title": "Q", "text": "Do it."}})
-    assert "PHASE 1 (party level 3)" in block and "PHASE 3 (party level 5)" in block
+    # §D17-2.3: phases budget for the level the party's EARNED points can have
+    # reached — a level-3 party (60 earned) is 70 / 90 by Phases II / III, a
+    # fraction of a level up, not a level a phase.
+    assert "PHASE 1 (party level 3)" in block and "PHASE 3 (party level 4)" in block
+    assert "PHASE 3 (party level 5)" not in block
     assert "SCENARIO CONTEXT" in block and "FINALE" in block and "Hollowmere" in block
