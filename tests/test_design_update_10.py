@@ -413,6 +413,36 @@ def test_plain_encounter_sessions_are_unchanged():
         session.confirm_level_up("A", "soren", {})
 
 
+def test_a_held_library_channel_carries_exactly_once():
+    """Playtest bug (2026-08-23): a channeled LIBRARY card held at victory was
+    doubled in the next phase's deck. The engine moves a cast card to the
+    graveyard at once (R-9) and the channel only references it — so folding
+    `ch.card` into the carry on top of the graveyard dealt a second copy."""
+    from ltg_combat.state import Channel
+
+    aid = content.save_adventure(_adventure())["id"]
+    run = AdventureRun(aid)
+    state, _portraits, _art, _eid = run.start(["loadout_soren", "loadout_ys"], seed=11)
+    soren = state.party[0]
+    deck_size = len(soren.hand) + len(soren.library) + len(soren.graveyard)
+    # Cast (the card lands in the graveyard) and hold it as a channel.
+    card = soren.hand[0]
+    soren.hand.remove(card)
+    soren.graveyard.append(card)
+    soren.channels = [Channel(card=card, holder_id=soren.id)]
+    state.result = "victory"
+    run.on_state_change(state)
+    carried = run.carry[soren.id]["cards"]
+    assert len(carried) == deck_size
+    assert [c.id for c in carried].count(card.id) == [c.id for c in soren.hand + soren.library + soren.graveyard].count(card.id)
+
+    run.confirm_level_up(soren.id, {})
+    run.confirm_level_up(state.party[1].id, {})
+    new_state, _p, _a, _eid2 = run.advance(seed=12)
+    s2 = new_state.character(soren.id)
+    assert len(s2.hand) + len(s2.library) + len(s2.graveyard) == deck_size
+
+
 def test_a_held_skill_channel_never_joins_the_deck():
     """Playtest bug: a character holding a CHANNELED Skill at the phase boundary
     had its card folded into the carried deck — the Skill was then dealt into the
@@ -451,3 +481,25 @@ def test_a_held_skill_channel_never_joins_the_deck():
     assert len(s2.hand) + len(s2.library) == deck_size
     # It is still on the sheet, and its once-per-encounter use has reset.
     assert s2.skill is not None and s2.skill.name == "Resonate" and not s2.skill_used
+
+
+def test_an_art_refresh_keeps_the_party_panel_clips():
+    """Playtest bug (2026-08-23): `Session.set_art` (the mid-game art refresh —
+    a generation landing, the art queue finishing a phase's scene) rebuilt the
+    bundle keeping only `base_of` and `char_descriptions`, so every hero's
+    panel-animation bundle vanished from the snapshot and no clip played for
+    the rest of the session."""
+    loadouts = copy.deepcopy(content.loadouts_for(["loadout_soren", "loadout_ys"]))
+    loadouts[0]["character"]["animations"] = [
+        {"id": "anim_swing", "trigger": "attack", "file": "/art/anims/swing.webm",
+         "speed": 1.0, "impact_s": 0.6, "duration_s": 2.0}]
+    state, portraits, art = content.build_state_from_loadouts(loadouts, "builtin_a", seed=7)
+    session = SessionManager().create(state, portraits=portraits, art=art)
+    session.clients["A"] = None
+    soren = state.party[0]
+    before = next(c for c in session.snapshot_for("A")["characters"] if c["id"] == soren.id)
+    assert before["anims"] and before["anims"]["animations"][0]["id"] == "anim_swing"
+    session.set_art(content.encounter_art("builtin_a"))
+    after = next(c for c in session.snapshot_for("A")["characters"] if c["id"] == soren.id)
+    assert after["anims"] == before["anims"]
+    assert after["description"] == before["description"]

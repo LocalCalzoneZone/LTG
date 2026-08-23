@@ -225,9 +225,14 @@ def test_deferring_makes_the_npc_ask_again_next_time(runs):
     defer = next(c for c in conv["choices"] if "get back to you" in c["label"])
     assert defer["party_wide"] is False                        # nobody is bound by it
     session.town_verb("c1", "choose", {"index": defer["index"]})
-    assert scen.conversation is None and not scen.flags.get("quest_accepted")
+    assert not scen.flags.get("quest_accepted")
     assert scen.flags["deferred_sister_aud"] is True
-    assert "think on it" in scen.journal[-1]["text"]
+    # The NPC answers the deferral before the conversation closes (playtest
+    # amendment): one hook-free line, then the farewell ends it.
+    assert scen.conversation is not None and scen.conversation.node["speaker"] == "npc"
+    assert "think on it" in scen.journal[-2]["text"]
+    session.town_verb("c1", "end_talk", {})
+    assert scen.conversation is None
     # Walking back up: the NPC opens by asking, with every offer still standing.
     conv = _walk_to_questgiver(session)
     assert conv["text"].startswith("Well —")

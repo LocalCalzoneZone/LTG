@@ -50,6 +50,23 @@ STANDING_FLAGS = ("defeated_once", "quest_accepted", "act_1_complete",
 DEFERRED_PREFIX = "deferred_"
 DEFAULT_REASK = "Well — have you had time to consider what I asked?"
 DEFAULT_DEFER_LABEL = "Not yet — we have business to see to first."
+# The questgiver answers (§D17-5.4, playtest amendment): an accept or a defer
+# that would otherwise END the conversation cold gets a closing line from the
+# NPC first. The act may author these per NPC ("accepted" / "declined"
+# maps); these are the fallbacks.
+DEFAULT_ACCEPT_REPLY = ("Then it is settled. Go carefully — and come back and "
+                        "tell me how it went.")
+DEFAULT_DEFER_REPLY = "As you like. You know where to find me when you have decided."
+# One quest at a time: once the party has accepted an offer this act, every
+# other accept choice in town turns into a refusal in the party's voice, and
+# the NPC answers it (the act may author "committed" per NPC). The same
+# questgiver's own re-offer reads as a reminder of the word already given.
+DEFAULT_COMMITTED_LABEL = "We are already sworn to another task — we cannot take this on."
+DEFAULT_COMMITTED_REPLY = ("Then I will not press you. See your business through; "
+                           "the trouble will keep, though I wish it would not.")
+DEFAULT_SWORN_LABEL = "We have given you our word. We are seeing to it."
+DEFAULT_SWORN_REPLY = "Then I will keep you no longer. Go — and come back whole."
+FAREWELL_LABEL = "Farewell."
 
 
 def _spent_points_of(ch: Dict[str, Any]) -> int:
@@ -340,8 +357,68 @@ class ScenarioRun:
             # "Let us get back to you" — so they do: the NPC opens by asking
             # again, with the same offers still on the table.
             tree = self._reask_tree(npc_id, tree)
+        if self.committed:
+            tree = self._committed_tree(npc_id, tree)
         self.conversation = Conversation(npc_id, tree)
         self._note_npc_line()
+
+    @property
+    def committed(self) -> bool:
+        """The party has taken a quest this act and is still on it: no other
+        offer in town may be accepted (one quest at a time — a second accept
+        used to fire a second adventure job on top of the first). A party
+        beaten and sent back to town (`defeated_once`) is free to re-choose —
+        the bloodied-return branches re-offer the quests by design."""
+        return bool(self.flags.get("quest_accepted")) and not self.flags.get("defeated_once")
+
+    def _committed_tree(self, npc_id: str, tree: Dict[str, Any]) -> Dict[str, Any]:
+        """The already-sworn rewrite: every accept choice (`grant_quest` /
+        `unlock_adventure`) becomes ONE refusal per node in the party's voice
+        that fires nothing and leads to the NPC's reply; the defer choices
+        beside it go (there is nothing left to put off). The questgiver whose
+        offer the party took hears a reminder of the word given instead."""
+        act = self.act or {}
+        nodes = copy.deepcopy(tree["nodes"])
+        taken = str(self.quest.get("id") or "")
+        reply_id = "committed_reply"
+        while reply_id in nodes:
+            reply_id = "_" + reply_id
+        sworn_id = "sworn_reply"
+        while sworn_id in nodes:
+            sworn_id = "_" + sworn_id
+        used_reply = used_sworn = False
+        for node in nodes.values():
+            accepts = [ch for ch in node["choices"]
+                       if any(h["kind"] in ("grant_quest", "unlock_adventure")
+                              for h in ch["effects"])]
+            if not accepts:
+                continue
+            same = any(h["kind"] == "grant_quest"
+                       and (self.quest_option(h.get("quest")) or {}).get("id") == taken
+                       for ch in accepts for h in ch["effects"])
+            kept = [ch for ch in node["choices"]
+                    if ch not in accepts
+                    and not any(h["kind"] == "defer_quest" for h in ch["effects"])]
+            if same:
+                used_sworn = True
+                kept.append(self._choice(DEFAULT_SWORN_LABEL, sworn_id))
+            else:
+                used_reply = True
+                kept.append(self._choice(DEFAULT_COMMITTED_LABEL, reply_id))
+            node["choices"] = kept
+        if used_reply:
+            nodes[reply_id] = {
+                "speaker": "npc",
+                "text": act.get("committed", {}).get(npc_id) or DEFAULT_COMMITTED_REPLY,
+                "choices": [self._choice(FAREWELL_LABEL)],
+            }
+        if used_sworn:
+            nodes[sworn_id] = {
+                "speaker": "npc",
+                "text": DEFAULT_SWORN_REPLY,
+                "choices": [self._choice(FAREWELL_LABEL)],
+            }
+        return {"root": tree["root"], "nodes": nodes}
 
     @staticmethod
     def _choice(label: str, nxt: Optional[str] = None,
@@ -453,10 +530,29 @@ class ScenarioRun:
             self._apply_hook(h)
             fired.append(h)
         if self.conversation.over:
-            self.conversation = None
+            # The questgiver answers: an accept / defer that would close the
+            # conversation cold gets the NPC's closing line first (authored
+            # per NPC in the act's "accepted" / "declined" maps, else the
+            # defaults). A choice whose author wrote a `next` node already
+            # carries its own reply and is left alone.
+            reply = self._closing_reply(self.conversation.npc_id,
+                                        {h["kind"] for h in fired})
+            if reply:
+                self.conversation.interject(reply, FAREWELL_LABEL)
+                self._note_npc_line()
+            else:
+                self.conversation = None
         else:
             self._note_npc_line()
         return fired
+
+    def _closing_reply(self, npc_id: str, kinds: "set[str]") -> str:
+        act = self.act or {}
+        if "grant_quest" in kinds or "unlock_adventure" in kinds:
+            return act.get("accepted", {}).get(npc_id) or DEFAULT_ACCEPT_REPLY
+        if "defer_quest" in kinds:
+            return act.get("declined", {}).get(npc_id) or DEFAULT_DEFER_REPLY
+        return ""
 
     def end_conversation(self) -> None:
         self.conversation = None

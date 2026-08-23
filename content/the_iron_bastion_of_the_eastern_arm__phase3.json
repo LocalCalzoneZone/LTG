@@ -1,0 +1,364 @@
+{
+  "name": "The Upper Battery Bastion",
+  "scene": "The open stone ramparts at the crest of the fortress, winds roaring and sea-spray flying over crenellations. Massive iron bombards sit in bronze swivels beside smoking braziers, overlooking the green waters of Azure in the distance.",
+  "scene_image": "",
+  "enemies": [
+    {
+      "id": "commodore_kallisto",
+      "name": "Iron Commodore Kallisto",
+      "flavor": "Warlord of the battery; cleaves your frontline and overloads cannons in fury when bloodied.",
+      "description": "A broad, iron-jawed corsair commodore clad in gilded scale armour, wielding a notched broadblade in one hand and a smoldering matchlock brand in the other.",
+      "hp": 34,
+      "power": 4,
+      "level": 7,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warlord",
+        "knight"
+      ],
+      "components": [
+        {
+          "id": "spike_the_deck",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Spike the Deck \u2014 cleaving sweep deals 7 to front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "corsairs_command",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Corsair's Command \u2014 mend an ally for 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "cannonade_overload",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "self",
+          "telegraph": "Cannonade Overload \u2014 bombard all heroes for 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "unbroken_spite",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "UNBROKEN SPITE \u2014 +3/+3 permanently and concussive shockwave strikes all heroes for 4",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "blade_duellist",
+      "name": "Corsair Rapier-Master",
+      "flavor": "Parries your weapon strikes and lunges at your primary damage dealers.",
+      "description": "An aristocratic reaver in a high-collared duelling doublet, flourishing an ornate steel rapier and parrying dagger.",
+      "hp": 8,
+      "power": 2,
+      "level": 5,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "rogue",
+        "warrior"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "blade_parry",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "priority": 10,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Blade Parry \u2014 parry the incoming weapon strike",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "attack"
+            }
+          ]
+        },
+        {
+          "id": "lunging_riposte",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Lunging Riposte \u2014 deal 6 to highest threat",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "fancy_footwork",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Fancy Footwork \u2014 disengage to middle rank"
+        }
+      ]
+    },
+    {
+      "id": "sea_witch_arcanist",
+      "name": "Storm-Caller Sorceress",
+      "flavor": "Binds the party in gale-force winds and wards against ranged retaliation.",
+      "description": "A ritualist in indigo robes stitched with drift-glass beads, eyes glowing pale blue as she channels howling squalls.",
+      "hp": 8,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "wizard",
+        "ritualist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "tempest_bindings",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 20,
+          "cooldown": 3,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Tempest Bindings \u2014 howling storm winds deal 2 damage each turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "wind_wall_ward",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Wind-Wall Ward \u2014 negate incoming attack or spell",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "corsair_marine",
+      "name": "Battery Marine",
+      "flavor": "Locks heroes in place with boarding pikes to protect the gunners.",
+      "description": "A seasoned corsair soldier in reinforced brigandine armour, thrusting a steel-tipped boarding pike with practiced precision.",
+      "hp": 10,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "soldier",
+        "warrior"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "boarding_pike",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Boarding Pike \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "defensive_grapple",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Defensive Grapple \u2014 deal 3 and taunt attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "commodore_kallisto",
+      "corsair_marine"
+    ],
+    "2": [
+      "commodore_kallisto",
+      "blade_duellist",
+      "sea_witch_arcanist",
+      "corsair_marine",
+      "corsair_marine"
+    ],
+    "3": [
+      "commodore_kallisto",
+      "blade_duellist",
+      "blade_duellist",
+      "sea_witch_arcanist",
+      "sea_witch_arcanist",
+      "corsair_marine",
+      "corsair_marine",
+      "corsair_marine",
+      "corsair_marine"
+    ],
+    "4": [
+      "commodore_kallisto",
+      "blade_duellist",
+      "blade_duellist",
+      "blade_duellist",
+      "sea_witch_arcanist",
+      "sea_witch_arcanist",
+      "sea_witch_arcanist",
+      "corsair_marine",
+      "corsair_marine",
+      "corsair_marine",
+      "corsair_marine",
+      "corsair_marine"
+    ]
+  }
+}

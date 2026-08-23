@@ -779,7 +779,8 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
                              flags_known: Optional[set] = None) -> Dict[str, Any]:
     """``{quests: [{id, title, text, adventure_theme?}, …], arrival: str,
     dialogues: {npc_id: tree}, flavor: {npc_id: line}, topics: {npc_id:
-    [{ask, reply}]}, reask: {npc_id: line}, stock?: {location_id: [...]}}``.
+    [{ask, reply}]}, reask: {npc_id: line}, accepted/declined/committed:
+    {npc_id: line} (optional closing lines), stock?: {location_id: [...]}}``.
 
     The gates: at least two quest OPTIONS, each with an accept choice (a
     ``grant_quest`` + ``unlock_adventure`` pair) somewhere in the act's trees; a
@@ -823,11 +824,23 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
         cleaned = clean_topics(rows, f"act topics for {found[1]['name']}")
         if cleaned:
             topics[found[1]["id"]] = cleaned
-    reask: Dict[str, str] = {}
-    for npc_id, line in (raw.get("reask") or {}).items():
-        found = _resolve_npc(town, str(npc_id))
-        if found and str(line or "").strip():
-            reask[found[1]["id"]] = str(line).strip()
+    def _npc_lines(key: str) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+        rows = raw.get(key) or {}
+        if not isinstance(rows, dict):
+            return out
+        for npc_id, line in rows.items():
+            found = _resolve_npc(town, str(npc_id))
+            if found and str(line or "").strip():
+                out[found[1]["id"]] = str(line).strip()
+        return out
+    reask = _npc_lines("reask")
+    # The questgiver's closing lines (optional, defaults in the run): what
+    # they say when the party accepts, when the party puts it off, and when
+    # the party is already sworn to another offer this act.
+    accepted = _npc_lines("accepted")
+    declined = _npc_lines("declined")
+    committed = _npc_lines("committed")
     # §D20-1: every flag gating a choice or an act topic must be reachable —
     # standing, already true in the run, or settable by a hook in these trees.
     gated_topics: set = set()
@@ -856,5 +869,8 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
         "flavor": flavor,
         "topics": topics,
         "reask": reask,
+        "accepted": accepted,
+        "declined": declined,
+        "committed": committed,
         "stock": copy.deepcopy(raw.get("stock") or {}),
     }

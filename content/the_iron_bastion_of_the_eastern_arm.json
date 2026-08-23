@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Iron Bastion of the Eastern Arm",
+  "flavor": "Storm the giant-cut sea fortress and spike the siege battery before its cannons reduce Azure to kindling.",
+  "phases": [
+    {
+      "narration": "You vault from your lagoon skiff onto the slick granite causeway of the Eastern Arm. Ahead, the giant-hewn barbican looms against the bruised twilight sky, its battlements bristling with Redwake corsairs rallying behind a roaring brass war-horn.",
+      "encounter_id": "the_iron_bastion_of_the_eastern_arm__phase1"
+    },
+    {
+      "narration": "You kick open the waterlogged oak doors into the fortress casemates. Knee-deep lagoon water sloshes through the vaulted armory where drowned powder-haulers haul munitions under the sinister incantations of a tide-witch.",
+      "encounter_id": "the_iron_bastion_of_the_eastern_arm__phase2"
+    },
+    {
+      "narration": "You fight your way onto the wind-whipped upper battery. Enormous dwarf-forged siege cannons point directly across the open water toward Azure's vulnerable lagoon markets, commanded by Commodore Kallisto himself.",
+      "encounter_id": "the_iron_bastion_of_the_eastern_arm__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

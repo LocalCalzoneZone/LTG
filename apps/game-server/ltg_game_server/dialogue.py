@@ -217,6 +217,24 @@ class Conversation:
         self.node_id = ch["next"]
         return copy.deepcopy(hooks_of(ch))
 
+    def interject(self, text: str, farewell: str = "Farewell.") -> None:
+        """Hand the NPC one more line after the tree has ended — the closing
+        reply to an accept or a defer. A synthetic leaf is added to THIS
+        walker's tree (ids never collide with authored nodes) and becomes the
+        current node, so the conversation shows it and then ends on the
+        farewell. Hook-free by construction: nothing fires twice."""
+        nid = "reply"
+        while nid in self.tree["nodes"]:
+            nid = "_" + nid
+        # The walker may be holding the act's own tree object — never write
+        # into that; the leaf lives on this conversation's copy only.
+        self.tree = {"root": self.tree["root"], "nodes": dict(self.tree["nodes"])}
+        self.tree["nodes"][nid] = {
+            "speaker": "npc", "text": str(text).strip(),
+            "choices": [{"label": farewell, "next": None, "requires": [], "effects": []}],
+        }
+        self.node_id = nid
+
     @property
     def over(self) -> bool:
         return self.node_id is None
