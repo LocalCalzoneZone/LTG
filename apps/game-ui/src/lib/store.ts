@@ -13,13 +13,6 @@ import {
 
 export type ZoneModal = { kind: "library" | "graveyard" | "channel"; charId: string } | null;
 
-// The about-to-resolve hold: how long an armed Pass All waits before firing
-// its automated pass into an open window. The client-side half of the
-// server's resolution pacing (session.py PACE_*) — in hotseat play nearly
-// every window is answered by THIS client, so without the hold the whole
-// stack collapses at click speed and the server pacer never gets a turn.
-const AUTO_PASS_HOLD_MS = 900;
-
 // The resolution hold (the beat after "what just happened"): fx kinds whose
 // arrival gates the action UI until the choreography lands, and how long
 // past the timeline tail the gate stays (the effect itself needs a moment
@@ -142,30 +135,6 @@ interface StoreState {
   // Portrait inspection: the combatant id whose full write-up is open (the
   // modal derives the live view from the snapshot each render), or null.
   inspectId: string | null;
-  // Characters auto-passing until the current stack episode resolves. Pass All
-  // is a PER-CHARACTER commitment — "this character has nothing more to add for
-  // the rest of THIS stack" — so it only ever passes for the character that
-  // armed it; the player's OTHER characters keep their reaction windows and may
-  // still respond (or arm their own Pass All). The commitment is scoped to the
-  // stack episode it was armed against, identified by the root (bottom) item's
-  // uid: it clears when the stack empties OR when a fresh episode opens (a new
-  // root). This matters during the enemy step, where the server chains each
-  // enemy's swing without ever emitting an empty-stack snapshot — without the
-  // root check, one Pass All would silently decline a First Strike swing the
-  // holder is owed against every LATER enemy in the same step.
-  passAllFor: string[];
-  // The root stack uid the current Pass All commitment is bound to (null when
-  // no commitment is live). A different root in a new snapshot ends it.
-  passAllRootUid: number | null;
-  // Idempotency guard for the Pass All auto-submit: the signature of the last
-  // game state we already auto-passed. The server re-broadcasts state for
-  // reasons that DON'T advance the game (art refresh, a reconnect, a seat
-  // change), and each such duplicate would otherwise fire a second pass for a
-  // window already passed — the stale index racing the real one into an
-  // "action index out of range" rejection (which also cancels the commitment).
-  // Keyed off the snapshot's log high-water seq, which only moves on a real
-  // state change, so a genuine next window still auto-passes.
-  _lastAutoPassKey: string | null;
   error: string | null;
   gameOver: string | null;
 
@@ -220,7 +189,6 @@ interface StoreState {
   pickTargetId: (id: string) => void; // pick a target for the current armed site
   cancelArm: () => void;
   submitIndex: (index: number, mana?: string[]) => void;
-  startPassAll: () => void; // pass now and keep passing until the stack resolves
   _arm: (c: Choice) => void;
   // Submit a finished action; `actions` are the matching candidates (several for
   // an {X} cast — one per affordable X — the cast detour then asks which).
@@ -256,9 +224,6 @@ export const useGame = create<StoreState>((set, get) => ({
   manaSelect: null,
   zoneModal: null,
   inspectId: null,
-  passAllFor: [],
-  passAllRootUid: null,
-  _lastAutoPassKey: null,
   error: null,
   gameOver: null,
   town: null,
@@ -278,7 +243,6 @@ export const useGame = create<StoreState>((set, get) => ({
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
     set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
           town: null, showQuestLog: false, sheetFor: null,
-          passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null,
           fx: [], departures: {}, lastLogSeq: null, _stackModes: {},
           holdUntil: 0, _snapQueue: [], _preroll: null });
   },
@@ -352,7 +316,7 @@ export const useGame = create<StoreState>((set, get) => ({
           break;
         }
         get().setError(msg.message);
-        set({ armed: null, chooseModeFor: null, manaSelect: null, passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null });
+        set({ armed: null, chooseModeFor: null, manaSelect: null });
         break;
     }
   },
@@ -406,62 +370,11 @@ export const useGame = create<StoreState>((set, get) => ({
     // landed — the player watches the board RESOLVE, then gets the
     // prompt. This is what paces the fully-interactive flow (manual
     // passes, resource-rich windows) that never touches the server
-    // pacer or Pass All. Holds only extend, never shrink.
+    // pacer. Holds only extend, never shrink.
     const dur = fired.some((e) => HOLD_KINDS.has(e.kind))
       ? fired.reduce((m, e) => Math.max(m, e.delayMs ?? 0), 0) + HOLD_SETTLE_MS
       : 0;
     get()._recomputeFocus();
-    // Pass All: whenever a window opens for a character that armed it, pass
-    // automatically — until the stack fully resolves, then reset. Windows
-    // for characters that did NOT arm it stay interactive.
-    const autoPassers = get().passAllFor;
-    if (autoPassers.length) {
-      // The commitment is bound to ONE stack episode, keyed by the root
-      // (bottom) item's uid. It ends when the stack empties or when a fresh
-      // episode opens under a different root — e.g. the next enemy's swing
-      // in the same enemy step, which the holder may still First Strike.
-      const rootUid = snap.stack.length ? snap.stack[0].uid : null;
-      if (rootUid === null || rootUid !== get().passAllRootUid) {
-        set({ passAllFor: [], passAllRootUid: null, _lastAutoPassKey: null }); // episode ended
-      } else {
-        const pass = snap.legal_actions.find(
-          (a) => a.kind === "pass" && autoPassers.includes(a.actor_id),
-        );
-        // Only auto-pass ONCE per real state. A re-broadcast of an
-        // already-passed window (art refresh / reconnect / seat change)
-        // carries the same log high-water seq; firing again would submit a
-        // now-stale index (→ "action index out of range"). A genuine next
-        // window advances the log, so its key differs and the pass fires.
-        const stateSeq = snap.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
-        if (pass) {
-          const key = `${rootUid}@${stateSeq}#${pass.index}`;
-          if (get()._lastAutoPassKey !== key) {
-            set({ _lastAutoPassKey: key });
-            // The about-to-resolve hold: an AUTOMATED pass waits a beat
-            // before firing, so the window it answers is actually SEEN
-            // (the stack row glows, the acting card embers) before the
-            // resolution lands — the client-side half of the server's
-            // resolution pacing. A manual click never waits. At fire
-            // time the world may have moved on (a fresh snapshot, the
-            // episode ended, someone acted): every check below bails
-            // out; a genuine next window re-schedules its own hold.
-            window.setTimeout(() => {
-              if (get()._lastAutoPassKey !== key) return;
-              const s = get().snapshot;
-              if (!s) return;
-              const seqNow = s.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
-              const still = s.legal_actions.find(
-                (a) => a.kind === "pass" && a.index === pass.index
-                  && a.actor_id === pass.actor_id);
-              if (seqNow !== stateSeq || !still) return;
-              get().submitIndex(pass.index);
-            }, AUTO_PASS_HOLD_MS);
-          }
-        }
-        // else: a non-committed character (or another client) holds
-        // priority, or a forced choice is open — wait for the player.
-      }
-    }
     return dur;
   },
 
@@ -690,28 +603,6 @@ export const useGame = create<StoreState>((set, get) => ({
   resetMana: () => {
     const ms = get().manaSelect;
     if (ms) set({ manaSelect: { ...ms, picked: [] } });
-  },
-
-  startPassAll: () => {
-    const snap = get().snapshot;
-    const pass = snap?.legal_actions.find((a) => a.kind === "pass");
-    if (!pass) return;
-    const armed = get().passAllFor;
-    if (armed.includes(pass.actor_id)) {
-      // Already committed — clicking again cancels this character's auto-pass.
-      const remaining = armed.filter((id) => id !== pass.actor_id);
-      set({ passAllFor: remaining, passAllRootUid: remaining.length ? get().passAllRootUid : null });
-      return;
-    }
-    // Bind the commitment to the episode it was armed against (the root item).
-    const rootUid = snap!.stack.length ? snap!.stack[0].uid : null;
-    // Record this window as already-passed so a re-broadcast of the SAME state
-    // (before the server processes this submit) can't fire a duplicate pass.
-    const stateSeq = snap!.log.reduce((m, e) => Math.max(m, e.seq ?? -1), -1);
-    set({ passAllFor: [...armed, pass.actor_id], passAllRootUid: rootUid,
-          _lastAutoPassKey: `${rootUid}@${stateSeq}#${pass.index}`,
-          armed: null, chooseModeFor: null });
-    get().submitIndex(pass.index);
   },
 
   openZone: (z) => set({ zoneModal: z }),

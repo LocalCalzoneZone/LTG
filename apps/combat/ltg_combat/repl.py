@@ -192,7 +192,7 @@ def _build_menu(state: GameState, actions: List[Action]) -> List[_Entry]:
     attacks = [a for a in actions if a.kind == "attack"]
     casts = [a for a in actions if a.kind == "cast"]
     others = [a for a in actions
-              if a.kind in ("defend", "mitigate", "move", "pass", "end_turn")]
+              if a.kind in ("defend", "mitigate", "move", "pass", "end_turn", "delay")]
 
     entries: List[_Entry] = []
     for a in mana:

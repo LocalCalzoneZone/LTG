@@ -956,7 +956,7 @@ def build_menu(state: GameState, actions: List[Action]) -> List[Dict[str, Any]]:
     mitigates = [(i, a) for i, a in indexed if a.kind == "mitigate"]
     casts = [(i, a) for i, a in indexed if a.kind == "cast"]
     others = [(i, a) for i, a in indexed
-              if a.kind in ("defend", "pass", "end_turn", "drop_channels",
+              if a.kind in ("defend", "pass", "end_turn", "delay", "drop_channels",
                             "use_skill", "use_ultimate")]
     stance_abilities = [(i, a) for i, a in indexed if a.kind == "stance_ability"]
 
