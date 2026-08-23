@@ -3242,15 +3242,6 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
         return
     if k == "grant_keyword":
         for kw in effect.keywords:
-            if kw == "protection":
-                # A channeled Protection keeps ONE all_damage charge standing on
-                # the target while the channel holds (re-asserted each turn as
-                # the channel re-applies; a spent charge comes back next turn).
-                if sign > 0 and not target.protection_tags:
-                    target.protection_tags.append(ProtectionTag("all_damage", "all"))
-                elif sign < 0 and target.protection_tags:
-                    target.protection_tags.pop()
-                continue
             if sign > 0:
                 target.keywords[kw] = "while_channeled"
             else:
@@ -3555,7 +3546,7 @@ def _raise_next_trigger_pick(st: GameState) -> bool:
             effect = _trigger_pick_effect(item)
             # Nothing legal to aim at: resolve untargeted — the effect fizzles
             # rather than soft-locking the game.
-            if effect is None or not _effect_target_options(st, effect, item.card):
+            if effect is None or not _effect_target_options(st, effect, item.card, item):
                 item.needs_target = False
                 continue
             st.pending_choice = PendingChoice(
@@ -5261,13 +5252,6 @@ def _tick_control(st: GameState) -> None:
 def _r_grant_keyword(st, item, effect, target, ctx):
     dur = _duration_value(effect)
     for kw in effect.keywords:
-        if kw == "protection":
-            # The keyword form of `protection`: one all_damage charge (the
-            # gloss — "negates the next spell or attack"). It is a charge, not a
-            # static, so it lives in protection_tags and is spent by the hit
-            # rather than expiring with the grant's duration.
-            target.protection_tags.append(ProtectionTag("all_damage", "all"))
-            continue
         target.keywords[kw] = dur
     _log(st, "grant_keyword", f"{target.name} gains {', '.join(effect.keywords)}.",
          target=_tid(target), keywords=list(effect.keywords), duration=dur)
@@ -6302,7 +6286,7 @@ def _legal_choice(st: GameState) -> List[Action]:
         suffix = f" — {what}" if what else ""
         return [Action("choose_target", pc.chooser_id, target_id=tid,
                        label=f"Target {tl}{suffix}")
-                for tid, tl in _effect_target_options(st, pc.effect, pc.item.card)]
+                for tid, tl in _effect_target_options(st, pc.effect, pc.item.card, pc.item)]
     if pc.kind == "scry":
         actions: List[Action] = []
         draw_pos = len(pc.top) + 1  # the next 'on top' pick becomes draw position N
@@ -6371,19 +6355,14 @@ def _stance_actions(st: GameState, actor: CharacterState, slot: str,
     out = []
     sites = _target_sites(effects, card)
     if len(sites) >= 2:
-        per_site = [_site_options(st, side, targeted, kind, state)
-                    for _key, side, targeted, kind, state in sites]
-        if not all(per_site):
-            return []  # a required site has nothing to name — not offerable
-        for combo in itertools.product(*per_site):
-            tids = tuple(tid for tid, _ in combo)
-            labels = ", ".join(tl for _, tl in combo if tl)
+        # [] when a required site has nothing to name — not offerable
+        for tids, labels in _site_combos(st, sites, actor.id):
             out.append(Action("stance_ability", actor.id, card_id=slot,
                               target_id=tids[0], targets=tids,
                               label=f"{name} (stance)"
                                     + (f" on {labels}" if labels else "")))
         return out
-    for tid, tlabel in _target_options_for(st, effects, card):
+    for tid, tlabel in _target_options_for(st, effects, card, actor.id):
         label = f"{name} (stance)" + (f" on {tlabel}" if tlabel else "")
         out.append(Action("stance_ability", actor.id, card_id=slot,
                           target_id=tid, label=label))
@@ -6663,18 +6642,13 @@ def _cast_actions_at_x(st: GameState, actor: CharacterState, card: Card,
         # uncastable — matching "you can't choose a mode you can't target".
         sites = _target_sites(effects, card)
         if len(sites) >= 2:
-            per_site = [_site_options(st, side, targeted, kind, state)
-                        for _key, side, targeted, kind, state in sites]
-            if not all(per_site):
-                continue  # a required site has no legal pick — combo uncastable
-            for combo in itertools.product(*per_site):
-                tids = tuple(tid for tid, _ in combo)
-                labels = ", ".join(tl for _, tl in combo if tl)
+            # [] when a required site has no legal pick — combo uncastable
+            for tids, labels in _site_combos(st, sites, actor.id):
                 out.append(Action("cast", actor.id, card_id=card.id, target_id=tids[0],
                                   targets=tids, mode=mode_idx, x=x,
                                   label=prefix + (f" on {labels}" if labels else "") + xlabel))
         else:
-            for tid, tlabel in _target_options_for(st, effects, card):
+            for tid, tlabel in _target_options_for(st, effects, card, actor.id):
                 label = prefix + (f" on {tlabel}" if tlabel else "") + xlabel
                 out.append(Action("cast", actor.id, card_id=card.id, target_id=tid,
                                   mode=mode_idx, x=x, label=label))
@@ -6763,6 +6737,32 @@ def _site_options(st: GameState, side, targeted: bool, kind: Optional[str],
     return _pick_options(st, side, targeted, kind, state)
 
 
+def _site_combos(st: GameState, sites, actor_id):
+    """Every legal combination of picks across a multi-site action's sites —
+    [(tids, labels)] — or [] when some site has nothing to name (the combo is
+    not offerable). An `another` site (`exclude_self`) never offers the actor
+    and is dropped from any combo where it names the same creature as one of
+    the other sites: "deal 2 to a creature and 2 to another creature" are two
+    different creatures by definition."""
+    per_site = []
+    for _key, side, targeted, kind, state, another in sites:
+        opts = _site_options(st, side, targeted, kind, state)
+        if another:
+            opts = [(tid, tl) for tid, tl in opts if tid != actor_id]
+        per_site.append(opts)
+    if not all(per_site):
+        return []
+    another_at = [i for i, s in enumerate(sites) if s[5]]
+    out = []
+    for combo in itertools.product(*per_site):
+        tids = tuple(tid for tid, _ in combo)
+        if any(tids[i] is not None and tids[i] in tids[:i] + tids[i + 1:]
+               for i in another_at):
+            continue
+        out.append((tids, ", ".join(tl for _, tl in combo if tl)))
+    return out
+
+
 def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
                   state=None):
     """[(id, label)] a single chosen pick may name, under all the pick rules:
@@ -6812,16 +6812,22 @@ def _pick_options(st: GameState, side, targeted: bool, kind: Optional[str],
     return opts
 
 
-def _effect_target_options(st: GameState, effect, card=None):
+def _effect_target_options(st: GameState, effect, card=None, item=None):
     """[(id, label)] one effect's chosen target may pick, under the usual pick
     rules. Used for the trigger-time target pick of a fired triggered ability.
-    A "$slot" target resolves its descriptor through the card's slot table."""
+    A "$slot" target resolves its descriptor through the card's slot table. An
+    `exclude_self` ("another …") pick offers neither the item's source nor any
+    creature the item's cast-time picks already name."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) and card is not None:
         desc = card.targets.get(slot_name(desc) or "")
     side = desc.side.value if getattr(desc, "side", None) is not None else "any"
-    return _pick_options(st, side, bool(getattr(desc, "targeted", False)),
+    opts = _pick_options(st, side, bool(getattr(desc, "targeted", False)),
                          effect.kind, getattr(desc, "state", None))
+    if item is not None and getattr(desc, "exclude_self", False):
+        taken = {item.source_id, item.target_id, *(item.targets or ())}
+        opts = [(tid, tl) for tid, tl in opts if tid not in taken]
+    return opts
 
 
 def _removal_legal(enemy) -> bool:
@@ -6869,12 +6875,13 @@ def _side_options(st: GameState, side):
     return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)
 
 
-def _target_options_for(st: GameState, effects, card: Card = None):
+def _target_options_for(st: GameState, effects, card: Card = None, actor_id=None):
     """[(target_id, target_label)] for the card's single primary target. A counter
     targets a matching enemy action on the stack; otherwise the first targeted
     effect's side decides the creature options; self/all/untargeted needs none.
     A `$T1` slot ref resolves its side via the card's `targets` map (the form the
-    Deckbuilder emits), so single-target slot cards enumerate targets too."""
+    Deckbuilder emits), so single-target slot cards enumerate targets too. An
+    `exclude_self` ("another …") pick never offers `actor_id`."""
     # Triggered effects pick their targets when the trigger FIRES, not at cast
     # (mirrors the _target_sites exclusion) — so they are dropped before any of
     # the stack-site scans below. Without this, a channeled ward whose triggered
@@ -6902,7 +6909,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     if red is not None:
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if _filter_matches(red.filter, s) and _stack_redirectable(st, s)]
-    side, targeted, kind, state = None, False, None, None
+    side, targeted, kind, state, another = None, False, None, None, False
     for e in _iter_leaf(live):
         desc = getattr(e, "target", None)
         if isinstance(desc, str):  # "$T1" slot ref — resolve its side from the card
@@ -6911,6 +6918,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
                 side = sd.side.value if sd.side is not None else "any"
                 targeted = bool(getattr(sd, "targeted", False))
                 kind, state = e.kind, getattr(sd, "state", None)
+                another = bool(getattr(sd, "exclude_self", False))
                 break
             continue
         # Any CHOSEN descriptor needs a pick at cast — `targeted` governs
@@ -6920,8 +6928,12 @@ def _target_options_for(st: GameState, effects, card: Card = None):
             side = desc.side.value
             targeted = bool(getattr(desc, "targeted", False))
             kind, state = e.kind, getattr(desc, "state", None)
+            another = bool(getattr(desc, "exclude_self", False))
             break
-    return _pick_options(st, side, targeted, kind, state)
+    opts = _pick_options(st, side, targeted, kind, state)
+    if another and actor_id is not None:
+        opts = [(tid, tl) for tid, tl in opts if tid != actor_id]
+    return opts
 
 
 def _target_sites(effects, card: Card):
@@ -6934,13 +6946,15 @@ def _target_sites(effects, card: Card):
     one shared site. A counter is a site whose options are enemy STACK actions
     (side "stack:<filter>"). conditional/modal/self/all contribute none, so a
     conditional's nested effects reuse the primary (first) target. Returns
-    [(key, side, targeted, kind, state)] where key is ('slot', name) or
+    [(key, side, targeted, kind, state, another)] where key is ('slot', name) or
     ('eff', id(effect)); `targeted` carries the descriptor's flag so enumeration
     can honour hexproof (a targeted pick may not offer a hexproof hostile; an
     untargeted-chosen one may — non-targeting effects beat hexproof, GDD §7),
     `kind` is the owning effect's kind so kind-specific pick rules apply
-    (revive: downed allies only; control: never a boss), and `state` is the
-    corpse axis (§D9-1.3). Used by enumeration AND
+    (revive: downed allies only; control: never a boss), `state` is the
+    corpse axis (§D9-1.3), and `another` is the descriptor's `exclude_self`
+    ("another …": the pick may name neither the caster nor a creature one of
+    the card's other sites already names). Used by enumeration AND
     resolution, so site order matches between them."""
     sites = []
     seen_slots = set()
@@ -6954,12 +6968,14 @@ def _target_sites(effects, card: Card):
             sd = card.targets.get(name) if card is not None else None
             side = sd.side.value if sd is not None and sd.side is not None else "any"
             sites.append((("slot", name), side, bool(getattr(sd, "targeted", False)),
-                          kind, getattr(sd, "state", None)))
+                          kind, getattr(sd, "state", None),
+                          bool(getattr(sd, "exclude_self", False))))
         elif desc is not None and (forced
                                    or getattr(desc, "mode", None) == TargetMode.chosen):
             sites.append((eff_key, desc.side.value,
                           bool(getattr(desc, "targeted", False)), kind,
-                          getattr(desc, "state", None)))
+                          getattr(desc, "state", None),
+                          bool(getattr(desc, "exclude_self", False))))
 
     for e in effects:
         if e.kind in ("conditional", "modal", "stance"):
@@ -6978,17 +6994,17 @@ def _target_sites(effects, card: Card):
             continue
         if e.kind == "counter":
             # The counter's target is an enemy action on the stack, not a creature.
-            sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter", None))
+            sites.append((("eff", id(e)), f"stack:{e.filter}", True, "counter", None, False))
             continue
         if e.kind == "copy_spell":
             # A copy's target is a spell on the stack, either side's ("stack_any").
-            sites.append((("eff", id(e)), "stack_any:spell", True, "copy_spell", None))
+            sites.append((("eff", id(e)), "stack_any:spell", True, "copy_spell", None, False))
             continue
         if e.kind == "redirect":
             # A redirect is TWO sites: the stack action to turn (either side's,
             # single-target only — enumeration filters by kind "redirect") and
             # the chosen creature it now lands on.
-            sites.append((("eff", id(e)), f"stack_any:{e.filter}", True, "redirect", None))
+            sites.append((("eff", id(e)), f"stack_any:{e.filter}", True, "redirect", None, False))
             # A self new_target ("to yourself" — Bodyguard) is not a pick: it
             # resolves from the caster, leaving the stack action the only site.
             nd = getattr(e, "new_target", None)

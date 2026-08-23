@@ -60,13 +60,9 @@ export function AdventureFlow() {
         <PhaseVictorySplash
           phase={adventure.phase}
           phaseName={adventure.phase_name}
-          label={adventure.level_up.kind === "interlude" ? "Press On" : "Level Up"}
           onContinue={() => setVictorySeen((m) => ({ ...m, [key]: true }))}
         />
       );
-    }
-    if (adventure.level_up.kind === "interlude") {
-      return <InterludeScreen adventure={adventure} />;
     }
     return <LevelUpScreen adventure={adventure} />;
   }
@@ -221,67 +217,6 @@ function draftCost(d: Draft, base: BuildView, prices: BuildPrices): number {
   );
 }
 
-/** The Phase Clear INTERLUDE (§D17-2.3): the phase paid its points into the
- * pool, but this boundary buys nothing — the party checks its gear and presses
- * on. Points are spent at the act's end, behind the spoils. */
-function InterludeScreen({ adventure }: { adventure: AdventureBlock }) {
-  const you = useGame((s) => s.you);
-  const confirmLevelUp = useGame((s) => s.confirmLevelUp);
-  const setSheetFor = useGame((s) => s.setSheetFor);
-  const lu = adventure.level_up!;
-
-  const mine = lu.characters.filter((r) => you.includes(r.id) && r.build);
-  const waiting = mine.filter((r) => !r.confirmed);
-  const banked = mine.find((r) => r.available != null)?.available ?? null;
-
-  return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-ink-0/95 px-6 py-4 text-center">
-      <div className="caps-label text-[12px] tracking-[0.3em] text-brass">
-        +{lu.phase_grant} Points Banked
-      </div>
-      <div className="max-w-md text-sm font-light text-mist">
-        {banked != null ? `${banked} points are waiting` : "Your points are waiting"} —
-        they are spent at the level-up screen when the act is done. Gear and belt
-        can be changed here.
-      </div>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {lu.characters.map((r) => (
-          <span
-            key={r.id}
-            className={`caps-label border px-2 py-0.5 text-[9px] tracking-[0.14em] ${
-              r.confirmed ? "border-vigor/60 text-vigor" : "border-line text-mist"
-            }`}
-          >
-            {r.name} · {r.confirmed ? "ready" : "waiting"}
-          </span>
-        ))}
-      </div>
-      {waiting.length ? (
-        <div className="mt-1 flex items-center gap-3">
-          <button
-            onClick={() => setSheetFor(waiting[0].id)}
-            className="chamfer-x caps-label border border-line bg-ink-2 px-5 py-2.5 text-[11px] tracking-[0.25em] text-parch transition hover:border-brass/60"
-          >
-            Character Sheet
-          </button>
-          <button
-            onClick={() => waiting.forEach((r) => confirmLevelUp(r.id, {}))}
-            className="chamfer-x caps-label bg-gradient-to-b from-brass-hi to-brass px-8 py-2.5 text-[11px] tracking-[0.3em] text-ink-0 transition hover:from-brass-hi hover:to-brass-hi"
-          >
-            Press On
-          </button>
-        </div>
-      ) : (
-        <div className="max-w-md text-sm font-light text-mist">
-          {mine.length
-            ? "Waiting for the other players — the next phase begins when every character is ready."
-            : "You control no characters. Claim a seat in the top ribbon."}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
   const you = useGame((s) => s.you);
   const confirmLevelUp = useGame((s) => s.confirmLevelUp);
@@ -301,13 +236,10 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
     <div className="panel-ticks flex h-[min(84vh,620px)] w-[min(94vw,980px)] flex-col border border-line2 bg-ink-2 shadow-2xl">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5">
         <h2 className="caps-label text-[12px] tracking-[0.25em] text-brass">
-          {lu.final ? "The Act Is Done" : "Level Up"} — Level {lu.next_level}
+          {lu.final ? "The Act Is Done" : "Phase Clear"} · +{lu.phase_grant} points
         </h2>
         <span className="caps-label text-[9px] tracking-[0.2em] text-mist">
-          {active?.available ?? 0} points to spend · bankable · irreversible
-          {active?.points_to_next_level != null && active.earned_points != null && (
-            <> · {active.earned_points} earned · {active.points_to_next_level} to level {(active.next_level ?? lu.next_level) + 1}</>
-          )}
+          {active?.available ?? 0} to spend · spending is what levels you · irreversible
         </span>
         <span className="h-px min-w-[1rem] flex-1 bg-line" />
         {lu.characters.map((r) => (
@@ -327,7 +259,6 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
           key={active.id}
           row={active}
           prices={lu.prices}
-          nextLevel={lu.next_level}
           pointsPerLevel={lu.points_per_level}
           onConfirm={(build) => confirmLevelUp(active.id, build)}
         />
@@ -387,10 +318,9 @@ function StatRow({ name, value, cost, canUp, canDown, onUp, onDown, hint }: {
   );
 }
 
-function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
+function BuildPanel({ row, prices, pointsPerLevel, onConfirm }: {
   row: LevelUpRow;
   prices: BuildPrices;
-  nextLevel: number;
   pointsPerLevel: number;
   onConfirm: (build: Record<string, unknown>) => void;
 }) {
@@ -401,6 +331,12 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
   const available = row.available ?? pointsPerLevel;
   const spent = useMemo(() => draftCost(draft, base, prices), [draft, base, prices]);
   const remaining = available - spent;
+  // The level follows the points SPENT (§D17-2.3): this draft's purchases
+  // move it live, and the Power cap (T-60) reads the level the draft reaches.
+  const spentBefore = row.spent_points ?? 0;
+  const nextLevel = levelForPoints(prices.level_thresholds, spentBefore + spent);
+  const ceiling = levelForPoints(prices.level_thresholds, spentBefore + available);
+  const toNext = pointsToNext(prices.level_thresholds, spentBefore + spent);
   const powerCap = prices.power_cap_per_level * nextLevel;
   // The NEXT purchase's price per stat — escalating (T-79), so it moves as you buy.
   const bought = boughtCounts(draft, prices);
@@ -437,7 +373,11 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-0/95 to-transparent p-2 pt-8">
           <div className="caps-label text-[12px] tracking-[0.2em] text-parch">{row.name}</div>
           <div className="caps-label mt-0.5 text-[9px] tracking-[0.18em] text-brass">
-            Level {base.level} → {nextLevel}
+            Level {base.level}{nextLevel !== base.level ? ` → ${nextLevel}` : ""}
+          </div>
+          <div className="mt-0.5 text-[9px] font-light text-mist">
+            {toNext != null ? `${toNext} more to level ${nextLevel + 1}` : "max level"}
+            {ceiling > nextLevel ? ` · can reach ${ceiling}` : ""}
           </div>
         </div>
       </div>
@@ -574,12 +514,31 @@ function BuildPanel({ row, prices, nextLevel, pointsPerLevel, onConfirm }: {
                 : "bg-gradient-to-b from-brass-hi to-brass text-ink-0 hover:from-brass-hi hover:to-brass-hi"
             }`}
           >
-            Confirm{remaining > 0 ? ` · bank ${remaining}` : ""}
+            {spent > 0
+              ? `Confirm${nextLevel > base.level ? ` · Level ${nextLevel}` : ""}${remaining > 0 ? ` · bank ${remaining}` : ""}`
+              : `Press On${remaining > 0 ? ` · bank ${remaining}` : ""}`}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+/** T-78: the level a cumulative SPENT total has reached, from the shipped
+ * threshold table (index = level). */
+function levelForPoints(thresholds: number[], points: number): number {
+  let level = 1;
+  for (let l = 2; l < thresholds.length; l++) {
+    if (points >= thresholds[l]) level = l;
+    else break;
+  }
+  return level;
+}
+
+function pointsToNext(thresholds: number[], points: number): number | null {
+  const level = levelForPoints(thresholds, points);
+  if (level >= thresholds.length - 1) return null;
+  return thresholds[level + 1] - points;
 }
 
 function Figure({ label, value, accent, danger, title }: {

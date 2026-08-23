@@ -336,6 +336,8 @@ label.inline input[type=number] { width: 64px; }
 .effect-row.marker { background: rgba(201, 179, 126, 0.06); border-color: rgba(201, 179, 126, 0.4); }
 .effect-row.scoped { margin-left: 20px; border-left: 2px solid var(--accent); }
 .effect-row.scoped2 { margin-left: 40px; }
+.effect-row.end { padding: 4px 10px; background: transparent; border-style: dashed; }
+.effect-row.end .effect-params { margin-top: 2px; }
 .marker-note { color: var(--muted); font-size: 11px; font-style: italic; }
 .cond-builder { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
 .add-row { display: flex; gap: 6px; flex-wrap: wrap; }

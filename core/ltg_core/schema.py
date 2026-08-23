@@ -107,7 +107,10 @@ class TargetDescriptor(BaseModel):
 
     `targeted` records whether the effect uses MTG's targeting mechanic (so the
     future engine can let hexproof/shroud interact). It is only meaningful on a
-    `chosen` target. "ally" includes you unless `exclude_self`.
+    `chosen` target. `exclude_self` is "another …": on a `mode: all` set it
+    drops the caster ("all other allies"); on a `chosen` pick it offers
+    neither the caster nor any creature the card's other target sites already
+    name (two "another" picks are two different creatures).
 
     `state` is the corpse axis (§D9-1.3); `rows` filters a `mode: all` set to
     named battlefield rows; `scope` splashes a single pick across its row /
@@ -374,10 +377,13 @@ KEYWORDS = {
     "infect": {"display": "Infect", "gloss": "its damage that connects also poisons the victim — a −0/−1 per Upkeep until cured by any healing (D8-2.5)", "grantable": True, "params": []},
     "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
     "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
-    "protection": {"display": "Protection", "gloss": "a one-shot charge that negates the next damaging spell or attack against it, whenever it comes (persists across turns until spent) — the keyword form of the `protection` effect with all_damage", "grantable": True, "params": ["from"]},
     # Enemy-only (§L-6.2) — authored on enemy JSON, never granted by player cards.
     "relentless": {"display": "Relentless", "gloss": "its intents never redirect — they pursue the declared target wherever it stands (L-6.2); enemy-only", "grantable": False, "params": []},
     # Retired — not grantable.
+    # protection: retired 2026-08-22 — it was only the `protection` EFFECT with
+    # all_damage under another name (and a static keyword did nothing). Author
+    # the effect instead.
+    "protection": {"display": "Protection", "gloss": "", "grantable": False, "params": []},
     "menace": {"display": "Menace", "gloss": "", "grantable": False, "params": []},
     "ward": {"display": "Ward", "gloss": "", "grantable": False, "params": []},
     "convoke": {"display": "Convoke", "gloss": "", "grantable": False, "params": []},
@@ -480,7 +486,6 @@ class DealDamage(EffectBase):
     kind: Literal["deal_damage"] = "deal_damage"
     amount: Value  # int, "all", or a {ref} like mana_capacity ("for each …")
     target: TargetOrSlot
-    nonlethal: bool = False
 
 
 class Heal(EffectBase):
@@ -1730,24 +1735,24 @@ class Card(BaseModel):
 CREATION_BUDGET = 70                                    # T5-01
 # Leveling (Update 10 §D10-3, Update 17 §D17-2.1 as amended by §D17-2.3):
 # points are EARNED BY WINNING PHASES — +10 / +20 / +30 for Phases I / II / III
-# (T-57), 60 per adventure as before, and they land in the character's bankable
-# pool the moment the phase is won. WHERE THEY ARE SPENT is a separate schedule
-# (the level-up screen, §D17-2.3): inside a scenario it opens after Act I's
-# Phase I and then only at act ends, behind the spoils. Character LEVEL is
-# derived from the cumulative points earned against LEVEL_THRESHOLDS (T-78), so
-# a screen may not tick the level at all. The Deckbuilder remains creation-only
-# (always level 1, zero earned).
+# (T-57), 60 per adventure, landing in the character's bankable pool the moment
+# the phase is won. SPENDING is the player's choice: a spend screen is offered
+# at every phase boundary (and after the act's boss, behind the spoils), and
+# character LEVEL is derived from the points CUMULATIVELY SPENT against
+# LEVEL_THRESHOLDS (T-78) — committing points is what levels you; banked points
+# are potential, not level. Enemy budgets and item tiers read the points EARNED
+# (what the party could be), so sitting on a bank buys nothing. The Deckbuilder
+# remains creation-only (always level 1, zero earned, zero spent).
 PHASE_GRANTS = (10, 20, 30)                             # T-57 (per phase won)
 ADVENTURE_POINTS = sum(PHASE_GRANTS)                    # T-57: 60 per adventure
 # A "level-up's worth" of points — the unit the gear-effective-level divisor
 # (T-81) and the gold rate (T-85) are quoted in. NOT the size of a grant.
 LEVEL_UP_POINTS = 30
 MAX_LEVEL = 20
-# T-78: cumulative earned points needed to REACH each level (index = level;
-# levels 0 and 1 need nothing). L2 lands on the very first phase win (10, so the
-# opening level-up screen ticks a level), then ≈L3 after adventure 1 (60), L5
-# after 3 (180), L7 after 5 (300); each level past 10 costs two adventures or
-# more.
+# T-78: cumulative SPENT points needed to REACH each level (index = level;
+# levels 0 and 1 need nothing). L2 costs 10 — the very first phase win pays
+# exactly enough to buy it — then ≈L3 after adventure 1 (60), L5 after 3 (180),
+# L7 after 5 (300); each level past 10 costs two adventures or more.
 LEVEL_THRESHOLDS = [0, 0, 10, 60, 105, 150, 210, 300, 390, 480, 570,
                     690, 810, 930, 1050, 1200, 1350, 1500, 1650, 1830, 2010]
 assert len(LEVEL_THRESHOLDS) == MAX_LEVEL + 1
@@ -1773,15 +1778,27 @@ def points_to_next_level(earned_points: int) -> Optional[int]:
     return LEVEL_THRESHOLDS[level + 1] - max(0, int(earned_points))
 
 
-def level_band(earned_points: int) -> "tuple[int, Optional[int]]":
-    """The cumulative-points band the character is standing in: ``(floor,
-    ceiling)`` where floor is what this level cost to reach and ceiling what the
-    next one costs (None at MAX_LEVEL). Shipped to the sheet so the level
-    progress bar renders without the client knowing the threshold table."""
-    level = level_for_points(earned_points)
+def level_band(points: int) -> "tuple[int, Optional[int]]":
+    """The cumulative-points band a total is standing in: ``(floor, ceiling)``
+    where floor is what this level cost to reach and ceiling what the next one
+    costs (None at MAX_LEVEL). Shipped to the sheet so the level progress bar
+    renders without the client knowing the threshold table."""
+    level = level_for_points(points)
     floor = LEVEL_THRESHOLDS[min(max(level, 1), MAX_LEVEL)]
     ceiling = None if level >= MAX_LEVEL else LEVEL_THRESHOLDS[level + 1]
     return floor, ceiling
+
+
+def level_progress(points: int) -> float:
+    """The level as a CONTINUOUS number: 4.6 means level 4, 60% of the way to
+    level 5. Encounter budgeting reads this (T-62 via §D17-2.3) so a party's
+    growth between phases scales the fights smoothly instead of in stairsteps.
+    Monotone in ``points``; equals the integer level exactly at each threshold."""
+    level = level_for_points(points)
+    floor, ceiling = level_band(points)
+    if ceiling is None:
+        return float(level)
+    return level + (max(0, int(points)) - floor) / max(1, ceiling - floor)
 
 
 BASELINE_HP = 8                                         # §P-1 free base
@@ -1841,7 +1858,7 @@ CREATION_KEYWORD_COST = {
 }
 # Hard-stop at creation (§P-3, D8-2.5): may exist on enemies / via gear later,
 # never bought — infect reaches a hero only by being granted.
-BANNED_CREATION_KEYWORDS = {"protection", "hexproof", "indestructible", "deathtouch", "infect"}
+BANNED_CREATION_KEYWORDS = {"hexproof", "indestructible", "deathtouch", "infect"}
 
 
 class Archetype(str, Enum):
@@ -1983,8 +2000,13 @@ class Character(BaseModel):
 
     # Cumulative level-up points GRANTED to this build (Update 17 §D17-2.1) —
     # the run's copy of a character carries it; a saved profile is always 0.
-    # `level` is derived from it (T-78) by the run layer; the budget reads it.
+    # Encounter budgets read it (the party's potential); the budget reads it.
     earned_points: int = 0
+    # Cumulative level-up points SPENT by this build (§D17-2.3) — the run layer
+    # derives `level` from it (T-78): committing points is what levels you.
+    # Distinct from the `points_spent` property (the build's total T-79 curve
+    # cost, creation included): this counts post-creation spending only.
+    spent_points: int = 0
     # Retired display label (the pre-Update-17 preset a build was loaded from).
     # Accepted on load so old loadouts round-trip; never set going forward.
     preset: Optional[str] = None
@@ -2095,6 +2117,32 @@ class Character(BaseModel):
         if v < 0:
             raise ValueError("earned_points must be >= 0")
         return v
+
+    @field_validator("spent_points")
+    @classmethod
+    def _spent_min(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("spent_points must be >= 0")
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_spent_points(cls, data: Any) -> Any:
+        """A run copy saved before §D17-2.3 recorded no spending — under the
+        old scheme every grant was spent (or banked) at the screen that paid it,
+        and its level was stamped from the grants. Credit such a build the
+        spending its level implies so it reloads at the level it was playing."""
+        if isinstance(data, dict) and "spent_points" not in data:
+            try:
+                level = int(data.get("level", 1) or 1)
+                earned = int(data.get("earned_points", 0) or 0)
+            except (TypeError, ValueError):
+                return data
+            if level > 1 or earned > 0:
+                data = dict(data)
+                data["spent_points"] = (earned if earned > 0
+                                        else LEVEL_THRESHOLDS[max(1, min(level, MAX_LEVEL))])
+        return data
 
     @property
     def points_budget(self) -> int:

@@ -377,11 +377,11 @@ def test_session_suppresses_result_and_gates_confirm_by_seat():
     adv = snap["adventure"]
     assert adv["phase"] == 1 and adv["phases_total"] == 3
     lu = adv["level_up"]
-    assert lu["next_level"] == 2
+    assert lu["level"] == 1                     # nothing spent yet (§D17-2.3)
     rows = {r["id"]: r for r in lu["characters"]}
     # Phase I pays +10 (T-57): the pool is what is spendable at the screen.
     assert "build" in rows["soren"] and rows["soren"]["available"] == 10
-    assert rows["soren"]["earned_points"] == 10 and lu["kind"] == "levelup"
+    assert rows["soren"]["earned_points"] == 10 and rows["soren"]["spent_points"] == 0
     assert "build" not in rows["ys"]  # another seat: confirmed/waiting light only
 
     # Seat gating: A cannot confirm for a character it does not control.

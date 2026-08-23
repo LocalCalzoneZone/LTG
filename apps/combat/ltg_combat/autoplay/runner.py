@@ -595,16 +595,23 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
             # a lone adventure still walks 1 → 2 → 3.
             grant = PHASE_GRANTS[i] if i < len(PHASE_GRANTS) else PHASE_GRANTS[-1]
             earned = int(old.get("earned_points", 0)) + grant
-            new_level = level_for_points(earned)
+            spent_before = int(old.get("spent_points", 0))
             available = banked.get(live_id, 0) + grant
-            candidate = {**old, "level": new_level, "earned_points": earned}
+            # The level follows the points SPENT (§D17-2.3); the policy buys
+            # against the highest level the pool could reach (its Power cap),
+            # and the build is then held to the level it actually bought.
+            ceiling = level_for_points(spent_before + available)
+            candidate = {**old, "level": ceiling, "earned_points": earned,
+                         "spent_points": spent_before}
             new_char, spent = policy.spend_level_up(candidate, available)
+            new_char = {**new_char, "level": level_for_points(spent_before + spent),
+                        "spent_points": spent_before + spent}
             try:
                 Character.model_validate(new_char)
             except Exception:
-                # An invalid spend keeps the entering build (level bump only);
-                # the points bank instead — the run keeps its determinism.
-                new_char, spent = candidate, 0
+                # An invalid spend keeps the entering build; the points bank
+                # instead — the run keeps its determinism.
+                new_char, spent = {**candidate, "level": level_for_points(spent_before)}, 0
                 try:
                     Character.model_validate(new_char)
                 except Exception:

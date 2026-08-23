@@ -292,7 +292,7 @@ def test_rewards_gate_after_phase_three(runs):
     assert scen.mode == "adventure" and session.public_result() is None
     assert session.adventure is not None and session.adventure.is_final_gate
     lu = session.snapshot_for("c1")["adventure"]["level_up"]
-    assert lu["kind"] == "levelup" and lu["final"] is True
+    assert lu["final"] is True and lu["phase_grant"] == 30
     assert _confirm_act_end_level_up(session)
     # Items landed, the finale transitioned, and the party is in town for Act II.
     assert scen.act_wrapup is None and scen.mode == "town" and scen.act_index == 1

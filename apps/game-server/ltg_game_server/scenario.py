@@ -28,7 +28,8 @@ import copy
 import random
 from typing import Any, Callable, Dict, List, Optional
 
-from ltg_core.schema import (LEVEL_UP_POINTS, level_band, level_for_points,
+from ltg_core.schema import (LEVEL_THRESHOLDS, LEVEL_UP_POINTS, MAX_LEVEL, PHASE_GRANTS,
+                             level_band, level_for_points, level_progress,
                              points_to_next_level)
 
 from . import content, items, llm, loot, scenario_content as sc
@@ -49,6 +50,18 @@ STANDING_FLAGS = ("defeated_once", "quest_accepted", "act_1_complete",
 DEFERRED_PREFIX = "deferred_"
 DEFAULT_REASK = "Well — have you had time to consider what I asked?"
 DEFAULT_DEFER_LABEL = "Not yet — we have business to see to first."
+
+
+def _spent_points_of(ch: Dict[str, Any]) -> int:
+    """A character dict's cumulative level-up spending — with the same
+    migration the schema applies: a copy saved before §D17-2.3 is credited the
+    earned total (the old scheme spent as it granted), or else what its stamped
+    level implies."""
+    if "spent_points" in ch:
+        return int(ch.get("spent_points") or 0)
+    earned = int(ch.get("earned_points", 0) or 0)
+    level = int(ch.get("level", 1) or 1)
+    return earned if earned > 0 else LEVEL_THRESHOLDS[max(1, min(level, MAX_LEVEL))]
 
 
 class ScenarioRun:
@@ -81,12 +94,16 @@ class ScenarioRun:
         self.loadouts: List[Dict[str, Any]] = copy.deepcopy(loadouts)
         self.banked: Dict[str, int] = {cid: 0 for cid in character_ids}
         self.earned: Dict[str, int] = {cid: 0 for cid in character_ids}
+        # Points SPENT at level-up screens (§D17-2.3): the character's level
+        # derives from this, never from what is merely banked.
+        self.spent: Dict[str, int] = {cid: 0 for cid in character_ids}
         self.gold: Dict[str, int] = {cid: STARTING_GOLD for cid in character_ids}
         # Current HP carried between adventure and town (None == full).
         self.hp: Dict[str, Optional[int]] = {cid: None for cid in character_ids}
         for cid, lo in zip(self.character_ids, self.loadouts):
             ch = lo.get("character", {}) or {}
             self.earned[cid] = int(ch.get("earned_points", 0) or 0)
+            self.spent[cid] = _spent_points_of(ch)
         # Progression
         self.scenario_number = 1
         self.act_index = 0
@@ -142,12 +159,21 @@ class ScenarioRun:
         return self.character_ids.index(cid)
 
     def levels(self) -> List[int]:
-        return [level_for_points(self.earned.get(cid, 0)) for cid in self.character_ids]
+        """Character levels — derived from points SPENT (T-78, §D17-2.3)."""
+        return [level_for_points(self.spent.get(cid, 0)) for cid in self.character_ids]
+
+    def potential_levels(self) -> List[float]:
+        """The level each character's EARNED points reach, as a continuous
+        number — what they could be if they spent everything. Encounter
+        budgets and item tiers read this, so a bank of unspent points is never
+        a way to face weaker enemies."""
+        return [level_progress(self.earned.get(cid, 0)) for cid in self.character_ids]
 
     def effective_level(self) -> int:
-        """T-81: derived level + floor(worn points ÷ 30), party average, floored."""
+        """T-81: potential level + floor(worn points ÷ 30), party average,
+        floored. Budgets and tiers read this."""
         lv = [l + items.effective_level_bonus(lo)
-              for l, lo in zip(self.levels(), self.loadouts)]
+              for l, lo in zip(self.potential_levels(), self.loadouts)]
         return max(1, int(sum(lv) / max(1, len(lv))))
 
     def act_tier(self) -> int:
@@ -174,7 +200,8 @@ class ScenarioRun:
         for cid, lo in zip(self.character_ids, self.loadouts):
             ch = lo.setdefault("character", {})
             ch["earned_points"] = int(self.earned.get(cid, 0))
-            ch["level"] = level_for_points(ch["earned_points"])
+            ch["spent_points"] = int(self.spent.get(cid, 0))
+            ch["level"] = level_for_points(ch["spent_points"])
 
     # -- arrival & materialization (§D17-6.2) ------------------------------ #
     def arrive(self, materialization: Optional[Dict[str, Any]] = None) -> None:
@@ -545,38 +572,33 @@ class ScenarioRun:
     def is_last_act(self) -> bool:
         return self.act_index >= len(self.arc["acts"]) - 1
 
-    def gate_policy(self) -> Dict[str, Any]:
-        """Where this act's level-up SCREENS open. Points are earned every phase
-        (+10 / +20 / +30, T-57); the screens are scheduled:
-
-        - the run's opening act: one after Phase I — the first phase win ticks
-          level 2 — plus the act-end screen behind the spoils;
-        - every act after that: the act-end screen only, so Phases I and II
-          close on a Phase Clear interlude and the party spends 60 points in
-          one sitting;
-        - the closing act of a STANDARD scenario: no act-end screen at all —
-          the run ends on that boss, and the points have nowhere to go.
-          Everquest always gets one, because the next arc is coming.
-        """
-        opening_act = self.scenario_number == 1 and self.act_index == 0
-        final_screen = bool(self.options.get("everquest")) or not self.is_last_act()
-        return {"screen_phases": {0} if opening_act else set(),
-                "final_screen": final_screen}
+    def act_ends_on_screen(self) -> bool:
+        """Does this act's boss get a level-up screen behind the spoils? Every
+        boundary offers one (§D17-2.3) — except the closing boss of a STANDARD
+        scenario, where the run ends and the points have nowhere to go.
+        Everquest always gets one, because the next arc is coming."""
+        return bool(self.options.get("everquest")) or not self.is_last_act()
 
     def phase_budget_levels(self) -> List[float]:
-        """The level each phase of THIS act is budgeted at (§D17-2.3): the
-        opening act ramps after Phase I (its level-up screen is there); every
-        act after it is fought at one level throughout, since the party spends
-        its points at the act's END."""
-        return llm.phase_budget_levels(self.effective_level(),
-                                       self.gate_policy()["screen_phases"])
+        """The level each phase of THIS act is budgeted at (T-62, §D17-2.3):
+        the party's potential — earned points plus the grants the phases
+        before it will have paid (+10, +20) — as a continuous level, plus the
+        worn-gear bonus (T-81). Reads what the party COULD be at each phase,
+        so a bank of unspent points never makes the fights easier."""
+        gear = [items.effective_level_bonus(lo) for lo in self.loadouts]
+        out: List[float] = []
+        paid = 0
+        for i in range(content.PHASE_COUNT):
+            lv = [level_progress(self.earned.get(cid, 0) + paid) + g
+                  for cid, g in zip(self.character_ids, gear)]
+            out.append(max(1.0, sum(lv) / max(1, len(lv))))
+            paid += PHASE_GRANTS[i] if i < len(PHASE_GRANTS) else PHASE_GRANTS[-1]
+        return out
 
     def adopt_adventure(self, run: AdventureRun) -> None:
-        """Attach a (fresh or restored) AdventureRun and stamp this act's
-        level-up schedule onto it."""
-        policy = self.gate_policy()
-        run.screen_phases = set(policy["screen_phases"])
-        run.final_screen = bool(policy["final_screen"])
+        """Attach a (fresh or restored) AdventureRun and stamp onto it whether
+        this act ends on a level-up screen."""
+        run.final_screen = self.act_ends_on_screen()
         self.adventure = run
         if self.act_wrapup == "levelup" and run.complete:
             run.open_final_gate()   # a reload inside the act-end screen
@@ -596,6 +618,7 @@ class ScenarioRun:
         for cid, live in zip(self.character_ids, run.live_ids):
             run.banked[live] = int(self.banked.get(cid, 0))
             run.earned[live] = int(self.earned.get(cid, 0))
+            run.spent[live] = int(self.spent.get(cid, 0))
         # HP carried in from town (None == full).
         for cid, c in zip(self.character_ids, state.party):
             hp = self.hp.get(cid)
@@ -629,6 +652,7 @@ class ScenarioRun:
             old_earned = self.earned.get(cid, 0)
             self.earned[cid] = int(run.earned.get(live, old_earned))
             self.banked[cid] = int(run.banked.get(live, self.banked.get(cid, 0)))
+            self.spent[cid] = int(run.spent.get(live, self.spent.get(cid, 0)))
             # T-85: gold at the points rate — every point won is a gold piece.
             self.gold[cid] = (self.gold.get(cid, 0)
                               + max(0, self.earned[cid] - old_earned) * GOLD_PER_POINT)
@@ -927,14 +951,16 @@ class ScenarioRun:
         for cid, lo, lvl in zip(self.character_ids, loadouts, self.levels()):
             ch = lo.get("character", {}) or {}
             earned = self.earned.get(cid, 0)
+            spent = self.spent.get(cid, 0)
             out.append({
                 "id": cid, "name": ch.get("name", cid), "portrait": ch.get("portrait", ""),
-                "level": lvl, "earned_points": earned,
-                "points_to_next_level": points_to_next_level(earned),
-                # The band the progress bar fills (T-78): what this level cost
-                # to reach, and what the next one costs (None at max level).
-                "level_floor": level_band(earned)[0],
-                "level_ceiling": level_band(earned)[1],
+                "level": lvl, "earned_points": earned, "spent_points": spent,
+                # The level follows the points SPENT (§D17-2.3); the band the
+                # progress bar fills (T-78) is what this level cost to reach
+                # and what the next one costs (None at max level).
+                "points_to_next_level": points_to_next_level(spent),
+                "level_floor": level_band(spent)[0],
+                "level_ceiling": level_band(spent)[1],
                 "banked": self.banked.get(cid, 0), "gold": self.gold.get(cid, 0),
                 "hp": self.hp.get(cid), "max_hp": ch.get("hp"),
                 "build": {"hp": ch.get("hp"), "starting_mana": list(ch.get("starting_mana", [])),
@@ -1058,6 +1084,7 @@ class ScenarioRun:
             "options": dict(self.options),
             "character_ids": list(self.character_ids),
             "banked": dict(self.banked), "earned": dict(self.earned),
+            "spent": dict(self.spent),
             "gold": dict(self.gold), "hp": dict(self.hp),
             "scenario_number": self.scenario_number, "act_index": self.act_index,
             "mode": self.mode, "location_id": self.location_id,
@@ -1083,6 +1110,9 @@ class ScenarioRun:
         self.options.update(block.get("options") or {})
         self.banked = {k: int(v) for k, v in (block.get("banked") or {}).items()}
         self.earned = {k: int(v) for k, v in (block.get("earned") or {}).items()}
+        # A save from before §D17-2.3 recorded no spending: the old scheme spent
+        # as it granted, so the earned total is the right credit.
+        self.spent = {k: int(v) for k, v in (block.get("spent") or self.earned).items()}
         self.gold = {k: int(v) for k, v in (block.get("gold") or {}).items()}
         self.hp = {k: (None if v is None else int(v)) for k, v in (block.get("hp") or {}).items()}
         self.scenario_number = int(block.get("scenario_number", 1))

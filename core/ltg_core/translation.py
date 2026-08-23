@@ -612,10 +612,7 @@ def _keyword_phrase(keywords, params=None) -> str:
         return "all abilities"
     names = []
     for k in keywords:
-        disp = KEYWORDS.get(k, {}).get("display", k)
-        if k == "protection" and params and params.get("from"):
-            disp += f" from {params['from']}"
-        names.append(disp)
+        names.append(KEYWORDS.get(k, {}).get("display", k))
     return _join_and(names)
 
 

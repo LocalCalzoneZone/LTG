@@ -116,8 +116,12 @@ def test_lint_draw_any_side_flagged():
 
 def test_lint_exclude_self_on_enemy():
     c = card(effects=[{"kind": "deal_damage", "amount": 2,
-                       "target": {"mode": "chosen", "side": "enemy", "exclude_self": True, "targeted": True}}])
+                       "target": {"mode": "all", "side": "enemy", "exclude_self": True}}])
     assert any("no-op" in m for m in lint_card(c))
+    # A chosen "another enemy" is meaningful (distinct from the card's other picks).
+    c = card(effects=[{"kind": "deal_damage", "amount": 2,
+                       "target": {"mode": "chosen", "side": "enemy", "exclude_self": True, "targeted": True}}])
+    assert not any("no-op" in m for m in lint_card(c))
 
 
 def test_lint_counter_on_non_instant():

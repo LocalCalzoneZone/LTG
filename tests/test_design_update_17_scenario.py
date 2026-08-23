@@ -85,8 +85,8 @@ def _drive(session, kind):
 
 
 def _win_adventure(session):
-    """Drive the running adventure to completion through its boundary gates —
-    level-up screens and Phase Clear interludes alike (§D17-2.3)."""
+    """Drive the running adventure to completion through its boundary gates,
+    spending nothing (§D17-2.3: every boundary offers a level-up screen)."""
     adv = session.adventure
     for _ in range(len(adv.phases)):
         session.state.result = "victory"
@@ -296,9 +296,11 @@ def test_start_adventure_win_and_return_to_next_act(runs):
     assert scen.flags["act_1_complete"] and scen.quest["title"] == "Quest 2"
     assert scen.completed_acts[0]["quest"] == "Quest 1"
     assert set(session.seats) == {"loadout_soren", "loadout_ys"}
-    # Two level-ups earned → level 3, 60 gold each (T-85), points carried.
+    # 60 points and 60 gold earned (T-85); nothing spent, so still level 1
+    # (§D17-2.3: the level follows the spend) with the 60 banked.
     sheet = session.snapshot_for("c1")["party_sheet"]
-    assert sheet[0]["level"] == 3 and sheet[0]["earned_points"] == 60
+    assert sheet[0]["level"] == 1 and sheet[0]["earned_points"] == 60
+    assert sheet[0]["banked"] == 60 and sheet[0]["spent_points"] == 0
     assert sheet[0]["gold"] == sc_run.STARTING_GOLD + 60
     kinds = [s["kind"] for s in runs.run_detail(run_id)["saves"]]
     assert kinds == ["act_start", "quest_accept", "adventure_start", "phase_boundary",
@@ -485,87 +487,123 @@ def _play_act(session, take_rewards=True):
         _take_rewards(session)
 
 
-def test_points_are_earned_every_phase_but_spent_on_a_schedule(runs):
-    """Opening act: +10 / +20 / +30 as the phases fall, a level-up screen after
-    Phase I, a Phase Clear interlude after Phase II, and the act-end screen
-    queued behind the spoils (§D17-2.3)."""
+def _build_of(adv, slot=0):
+    """The entering build as the schema reads it (the fixture loadouts are
+    legacy presets whose raw dicts carry no explicit build fields)."""
+    from ltg_core.schema import Character
+    return Character.model_validate(adv.loadouts[slot]["character"])
+
+
+def _hp_of(adv, slot=0):
+    return int(_build_of(adv, slot).hp)
+
+
+def test_points_are_earned_every_phase_and_level_follows_the_spend(runs):
+    """§D17-2.3: +10 / +20 / +30 land as the phases fall; a spend screen opens
+    at every boundary; the LEVEL is derived from what is actually spent."""
     session, scen, _run_id = _start(runs)
     _accept_quest(session)
     session.town_verb("c1", "leave", {})
     session.town_verb("c1", "start_adventure", {})
     adv = session.adventure
-    soren = adv.live_ids[0]
-    assert adv.screen_phases == {0} and adv.final_screen is True
+    soren, ys = adv.live_ids
+    assert adv.final_screen is True
 
-    # Phase I won: +10 in the pool, level 2 reached, and a SPEND screen.
+    # Phase I won: +10 in the pool — nothing has been spent, so still level 1.
     session.state.result = "victory"
     adv.on_state_change(session.state)
     session._run_hooks()
     assert adv.earned[soren] == 10 and adv.banked[soren] == 10
-    assert adv.gate_kind == "levelup" and adv.next_level() == 2
+    assert adv.spent[soren] == 0 and adv.derived_level(soren) == 1
     assert session.public_result() is None
-    for live in list(adv.live_ids):
-        session.seats[live] = "c1"
-        session.confirm_level_up("c1", live, {})
+    lu = session.snapshot_for("c1")["adventure"]["level_up"]
+    assert lu["level"] == 1 and lu["phase_grant"] == 10 and lu["final"] is False
+    # Soren spends 8 of the 10 on +2 HP (his ninth step, T-79) and banks 2:
+    # spending is what levels — 8 spent is still level 1 (L2 costs 10).
+    session.seats[soren] = session.seats[ys] = "c1"
+    session.confirm_level_up("c1", soren, {"hp": _hp_of(adv, 0) + 2})
+    assert adv.spent[soren] == 8 and adv.banked[soren] == 2 and adv.derived_level(soren) == 1
+    # Ys presses on without buying: nothing spent, everything banked.
+    session.confirm_level_up("c1", ys, {})
+    assert adv.spent[ys] == 0 and adv.banked[ys] == 10
     assert adv.phase_index == 1
 
-    # Phase II won: +20 banks, but the boundary is an INTERLUDE — nothing to buy.
+    # Phase II won: +20. Soren now has 22 to spend; another step (8) takes his
+    # spending past 10 → level 2, stamped on the run copy.
     session.state.result = "victory"
     adv.on_state_change(session.state)
     session._run_hooks()
-    assert adv.earned[soren] == 30 and adv.banked[soren] == 30
-    assert adv.gate_kind == "interlude"
-    with pytest.raises(ValueError, match="interlude"):
-        adv.confirm_level_up(soren, {"hp": int(adv.loadouts[0]["character"]["hp"]) + 2})
-    for live in list(adv.live_ids):
-        session.seats[live] = "c1"
-        session.confirm_level_up("c1", live, {})
-    assert adv.phase_index == 2
+    assert adv.banked[soren] == 22 and adv.banked[ys] == 30
+    session.confirm_level_up("c1", soren, {"hp": _hp_of(adv, 0) + 2})
+    assert adv.spent[soren] == 16 and adv.derived_level(soren) == 2
+    assert adv.loadouts[0]["character"]["level"] == 2
+    assert adv.loadouts[0]["character"]["spent_points"] == 16
+    session.confirm_level_up("c1", ys, {})
+    assert adv.derived_level(ys) == 1                # banked 30, spent 0
 
-    # Phase III won: +30, and the spoils come FIRST — the level-up is queued.
+    # Phase III won: +30, and the spoils come FIRST — the screen is queued.
     session.state.result = "victory"
     adv.on_state_change(session.state)
     session._run_hooks()
     assert adv.earned[soren] == 60 and adv.complete
     assert scen.act_wrapup == "rewards" and scen.rewards is not None
-    assert adv.level_up is None                      # not yet: the spoils are open
-    _take_rewards(session)
-    # 60 points and 60 gold for the act, and the party is in town for Act II.
+    assert adv.level_up is None
+    for i in range(len(scen.rewards["items"])):
+        session.economy_verb("c1", "reward_assign", {"index": i, "target": "discard"})
+    session.economy_verb("c1", "reward_accept", {})
+    assert adv.is_final_gate and scen.act_wrapup == "levelup"
+    # Ys finally spends: +2 Power (10 + 10) and +12 HP (5+6+6+7+7+8) = 59 — one
+    # point short of level 3, which is exactly the point: the level is what
+    # you have COMMITTED, and the cap check is held to the level reached.
+    ys_b = _build_of(adv, 1)
+    session.confirm_level_up("c1", ys, {"hp": ys_b.hp + 12, "power_bought": ys_b.power_bought + 2})
+    assert adv.spent[ys] == 59 and adv.derived_level(ys) == 2 and adv.banked[ys] == 1
+    session.confirm_level_up("c1", soren, {})
+    # In town: 60 earned and 60 gold each; levels read the SPEND.
     assert scen.mode == "town" and scen.act_index == 1
-    assert scen.earned["loadout_soren"] == 60
-    assert scen.gold["loadout_soren"] == sc_run.STARTING_GOLD + 60
-    assert scen.levels() == [3, 3]
+    assert scen.earned == {"loadout_soren": 60, "loadout_ys": 60}
+    assert scen.gold["loadout_soren"] == scen.gold["loadout_ys"]
+    assert scen.spent == {"loadout_soren": 16, "loadout_ys": 59}
+    assert scen.levels() == [2, 2]
+    assert scen.loadouts[1]["character"]["level"] == 2
+    assert scen.loadouts[1]["character"]["spent_points"] == 59
 
 
-def test_later_acts_spend_only_at_the_act_end_screen(runs):
+def test_banking_never_buys_weaker_enemies(runs):
+    """Budgets and tiers read the points EARNED (the party's potential), not
+    the level a sandbagger shows (§D17-2.3)."""
     session, scen, _run_id = _start(runs)
-    _play_act(session)                                # Act I
+    _play_act(session)                                # nobody spends a point
+    assert scen.levels() == [1, 1] and scen.earned["loadout_soren"] == 60
+    assert scen.effective_level() == 3                # 60 earned → L3 potential
+    assert scen.act_tier() == 3
+    # The next act's phases are budgeted off the earned trajectory (60, 70, 90).
+    lv = scen.phase_budget_levels()
+    assert [round(x, 2) for x in lv] == [3.0, 3.22, 3.67]
+
+
+def test_the_power_cap_reads_the_level_the_spend_reaches(runs):
+    session, scen, _run_id = _start(runs)
     _accept_quest(session)
     session.town_verb("c1", "leave", {})
     session.town_verb("c1", "start_adventure", {})
     adv = session.adventure
-    assert adv.screen_phases == set() and adv.final_screen is True
-    kinds = []
-    for _ in range(2):
-        session.state.result = "victory"
-        adv.on_state_change(session.state)
-        session._run_hooks()
-        kinds.append(adv.gate_kind)
-        for live in list(adv.live_ids):
-            session.seats[live] = "c1"
-            session.confirm_level_up("c1", live, {})
-    assert kinds == ["interlude", "interlude"]        # no mid-adventure shopping
+    soren, ys = adv.live_ids
     session.state.result = "victory"
     adv.on_state_change(session.state)
     session._run_hooks()
-    soren = adv.live_ids[0]
-    # A whole act's 60 points arrive in one screen — on top of Act I's,
-    # which this party (a test that buys nothing) also banked.
-    assert adv.banked[soren] == 120 and adv.earned[soren] == 120
-    _take_rewards(session)
-    assert scen.earned["loadout_soren"] == 120
-    assert scen.gold["loadout_soren"] == sc_run.STARTING_GOLD + 120
-    assert scen.levels() == [4, 4]                    # T-78: 120 → level 4
+    session.seats[soren] = session.seats[ys] = "c1"
+    old_power = int(_build_of(adv, 0).power_bought)
+    # +1 Power costs 10 here — exactly the pool — which is ALSO what level 2
+    # costs, so the purchase lifts the cap it needs: allowed.
+    session.confirm_level_up("c1", soren, {"power_bought": old_power + 1})
+    assert adv.derived_level(soren) == 2
+    # Ys tries the same at the entering Power cap without reaching the level
+    # that raises it — refused, the pool untouched.
+    ys_raw = adv.loadouts[1]["character"]
+    with pytest.raises(ValueError):
+        session.confirm_level_up("c1", ys, {"power_bought": 99})
+    assert adv.banked[ys] == 10 and adv.level_up[ys]["confirmed"] is False
 
 
 def test_the_closing_act_has_an_end_screen_only_in_everquest(runs):
@@ -574,18 +612,17 @@ def test_the_closing_act_has_an_end_screen_only_in_everquest(runs):
         for _ in range(2):
             _play_act(session)
         assert scen.act_index == 2 and scen.is_last_act()
-        assert scen.gate_policy()["final_screen"] is expected
+        assert scen.act_ends_on_screen() is expected
         _accept_quest(session)
         session.town_verb("c1", "leave", {})
         session.town_verb("c1", "start_adventure", {})
         _win_adventure(session)
         assert scen.rewards is not None
         _take_rewards(session)
-        # Points are earned either way; only Everquest gets to spend them.
+        # Points are earned either way; only Everquest gets a screen for them.
         assert scen.earned["loadout_soren"] == 180
         if everquest:
             assert scen.scenario_number == 2 and scen.act_index == 0
-            assert scen.banked["loadout_soren"] <= 180
         else:
             assert scen.mode == "complete"
 
@@ -593,13 +630,14 @@ def test_the_closing_act_has_an_end_screen_only_in_everquest(runs):
 def test_the_sheet_carries_the_level_progress_band(runs):
     session, scen, _run_id = _start(runs)
     row = scen.party_block()[0]
-    assert row["earned_points"] == 0 and row["level_floor"] == 0
-    assert row["level_ceiling"] == 10 and row["points_to_next_level"] == 10
-    _play_act(session)
+    assert row["earned_points"] == 0 and row["spent_points"] == 0
+    assert (row["level_floor"], row["level_ceiling"]) == (0, 10)
+    assert row["points_to_next_level"] == 10
+    _play_act(session)                                # earns 60, spends nothing
     row = scen.party_block()[0]
-    assert row["level"] == 3 and row["earned_points"] == 60
-    assert (row["level_floor"], row["level_ceiling"]) == (60, 105)
-    assert row["points_to_next_level"] == 45
+    assert row["level"] == 1 and row["earned_points"] == 60 and row["banked"] == 60
+    assert row["spent_points"] == 0 and row["points_to_next_level"] == 10
+    assert (row["level_floor"], row["level_ceiling"]) == (0, 10)
 
 
 def test_a_reload_inside_the_act_wrapup_resumes_it(runs):

@@ -530,30 +530,37 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
   );
 }
 
-/** The level progress bar (§D17-2.3): how far this character's cumulative
- * points have carried them through the current level's band (T-78). Points are
- * won every phase (+10 / +20 / +30), so the bar creeps forward inside an
- * adventure even when the level number does not tick. */
+/** The level progress bar (§D17-2.3): the level follows the points SPENT, so
+ * the solid fill is committed progress through this level's band (T-78), and
+ * the faint segment beyond it is what is banked — potential the next level-up
+ * screen could turn into level. */
 function LevelProgress({ row }: { row: PartySheetRow }) {
-  const earned = row.earned_points ?? 0;
+  const spent = row.spent_points ?? row.earned_points ?? 0;
+  const banked = row.banked ?? 0;
   const floor = row.level_floor ?? 0;
   const ceiling = row.level_ceiling ?? null;
   const span = ceiling != null ? Math.max(1, ceiling - floor) : 1;
-  const pct = ceiling != null
-    ? Math.min(100, Math.max(0, ((earned - floor) / span) * 100))
-    : 100;
+  const pctOf = (pts: number) =>
+    ceiling != null ? Math.min(100, Math.max(0, ((pts - floor) / span) * 100)) : 100;
+  const spentPct = pctOf(spent);
+  const bankedPct = Math.max(0, pctOf(spent + banked) - spentPct);
   return (
     <div className="mt-2">
-      <div className="h-[5px] w-full border border-line bg-black/50">
+      <div className="flex h-[5px] w-full border border-line bg-black/50">
         <div
           className="h-full bg-gradient-to-r from-brass to-brass-hi transition-[width] duration-500"
-          style={{ width: `${pct}%` }}
-          title={`${earned} of ${ceiling ?? earned} points`}
+          style={{ width: `${spentPct}%` }}
+          title={`${spent} of ${ceiling ?? spent} points spent`}
+        />
+        <div
+          className="h-full bg-brass/25 transition-[width] duration-500"
+          style={{ width: `${bankedPct}%` }}
+          title={`${banked} banked — spend them at the next level-up screen`}
         />
       </div>
       <div className="mt-1 flex items-baseline justify-between gap-2 text-[9px] font-light text-mist">
         <span>
-          {earned} points earned{row.banked ? ` · ${row.banked} unspent` : ""}
+          {spent} spent{banked ? ` · ${banked} banked` : ""}
         </span>
         <span>
           {ceiling != null
