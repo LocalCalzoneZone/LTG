@@ -553,6 +553,40 @@ class Destroy(EffectBase):
     target: TargetOrSlot
 
 
+class SetReference(EffectBase):
+    """Remember a number under a name for the rest of this resolution — the
+    value-side twin of a shared target slot. `value` is any ordinary value
+    (a constant or a reference, multiplier included), read when THIS effect
+    resolves: the `target_*` refs read `target` (a slot ref or descriptor;
+    default yourself). Later effects on the card use it as {"ref": "$<name>"}
+    — "remember the target's max HP as R1, destroy it, heal R1".
+
+    The snapshot is taken at this effect's position in the order: put it
+    BEFORE the effect that would change or remove what it reads. Names are
+    per card; a `$name` ref must name a set_reference on the same card."""
+
+    kind: Literal["set_reference"] = "set_reference"
+    name: str
+    value: StatValue
+    target: TargetOrSlot = Field(default_factory=lambda: TargetDescriptor(mode=TargetMode.self_))
+
+    @field_validator("name")
+    @classmethod
+    def _plain_name(cls, v: str) -> str:
+        v = v.strip().lstrip("$")
+        if not v or not v.replace("_", "").isalnum():
+            raise ValueError("set_reference name must be a plain identifier (e.g. R1)")
+        return v
+
+
+def stored_ref_name(value) -> Optional[str]:
+    """The set_reference name a {"ref": "$R1"} value reads, else None."""
+    ref = getattr(value, "ref", None)
+    if isinstance(ref, str) and ref.startswith("$"):
+        return ref[1:]
+    return None
+
+
 class Exile(EffectBase):
     """Remove a creature from play.
 
@@ -1173,6 +1207,7 @@ LEAF_EFFECT_CLASSES = [
     Regen,
     Charge,
     Destroy,
+    SetReference,
     Exile,
     ConsumeCorpse,
     Bounce,
@@ -1617,6 +1652,15 @@ class Card(BaseModel):
         for name, desc in self.targets.items():
             if desc.mode != TargetMode.chosen:
                 raise ValueError(f"shared slot '{name}' must be mode 'chosen'")
+        # Stored values: a {"ref": "$R1"} must name a set_reference on this card.
+        stored = {e.name for e in iter_effects(self.effects) if e.kind == "set_reference"}
+        for effect in iter_effects(self.effects):
+            for fname in type(effect).model_fields:
+                want = stored_ref_name(getattr(effect, fname, None))
+                if want is not None and want not in stored:
+                    raise ValueError(
+                        f"{effect.kind}.{fname} reads stored value '${want}' but no "
+                        "set_reference on this card declares it")
         # Slot refs must point at declared slots; draw/scry can't hit enemies.
         # Descend into modal modes / conditional branches so nested effects are
         # checked too.

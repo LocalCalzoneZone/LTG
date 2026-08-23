@@ -2907,6 +2907,7 @@ def _new_ctx(st: GameState, item: StackItem) -> dict:
     ctx["party_size"] = len(st.party)
     ctx["enemy_count"] = len(st.living_enemies())
     ctx["caster_obj"] = st.combatant(item.source_id)
+    ctx["stored"] = item.stored  # set_reference writes here; the item keeps it
     # `is_dead` (§D9-1.3) reads the target's state AS RESOLUTION BEGINS, so an
     # earlier effect in the same resolution (exile consuming the corpse) doesn't
     # flip the answer mid-card.
@@ -4030,6 +4031,10 @@ def _value(amount, ctx: dict) -> int:
 
 def _ref_value(amount: Ref, ctx: dict) -> int:
     """The unscaled number a reference names right now."""
+    if amount.ref.startswith("$"):
+        # A value a `set_reference` earlier on this same resolution remembered.
+        # Unset (reads before its setter, or outside a resolution) is 0.
+        return int((ctx.get("stored") or {}).get(amount.ref[1:], 0) or 0)
     if amount.ref == "destroyed_target.level":
         return int(ctx.get("destroyed_target", {}).get("level", 0))
     if amount.ref == "mana_capacity":
@@ -5286,6 +5291,16 @@ def _tick_control(st: GameState) -> None:
             _end_control(st, tok, "duration expired")
 
 
+def _r_set_reference(st, item, effect, target, ctx):
+    """Remember a number for the rest of this resolution (`{"ref": "$name"}`
+    reads it). The value is read NOW, with `target_*` refs aimed at this
+    effect's own target — so a snapshot taken before a destroy survives it."""
+    n = _value(effect.value, ctx)
+    ctx.setdefault("stored", {})[effect.name] = n
+    _log(st, "set_reference", f"{item.label} remembers {n} as {effect.name}.",
+         name=effect.name, value=n, target=_tid(target))
+
+
 def _r_grant_keyword(st, item, effect, target, ctx):
     dur = _duration_value(effect)
     for kw in effect.keywords:
@@ -5340,6 +5355,7 @@ def _r_add_mana(st, item, effect, target, ctx):
 RESOLVERS = {
     "deal_damage": _r_deal_damage,
     "heal": _r_heal,
+    "set_reference": _r_set_reference,
     "lose_life": _r_lose_life,
     "poison": _r_poison,
     "regen": _r_regen,

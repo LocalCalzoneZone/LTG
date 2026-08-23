@@ -703,6 +703,11 @@ class StackItem:
     # §D19-1: the corpse this action spends, independent of `target_id` — every
     # corpse-state verb on the item binds here rather than to the living target.
     corpse_id: Optional[str] = None
+    # Values a `set_reference` effect remembered during this item's resolution
+    # (name → number), read by {"ref": "$name"}. Lives on the item rather than
+    # the transient ctx so it survives a mid-resolution pause (a move_card /
+    # scry choice rebuilds the ctx on resume).
+    stored: Dict[str, int] = field(default_factory=dict)
     # Base (pre-bonus) Power of a basic attack. The damage it deals is recomputed at
     # RESOLUTION as max(0, attack_power + source.power_bonus) — so a wound/anthem landing
     # while the swing sits on the stack changes what lands (R-7). None for spells/abilities.
