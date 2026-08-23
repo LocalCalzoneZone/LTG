@@ -22,12 +22,6 @@ export function ActionBar({ choices, reaction, char }: {
 }) {
   const select = useGame((s) => s.selectChoice);
   const armed = useGame((s) => s.armed);
-  const startPassAll = useGame((s) => s.startPassAll);
-  const passAllFor = useGame((s) => s.passAllFor);
-  // Pass All is a per-character commitment: lit only when THIS character (the
-  // one the pass action belongs to) is auto-passing. Clicking again cancels.
-  const passActor = choices?.pass?.candidates[0]?.actor_id;
-  const passAllActive = passActor != null && passAllFor.includes(passActor);
 
   const coreBtn = ({ key, Icon, label, flavor }: (typeof CORE)[number]) => {
     const choice = choices?.[key] as Choice | undefined;
@@ -94,13 +88,11 @@ export function ActionBar({ choices, reaction, char }: {
     );
   };
 
-  const passBtnCls = (lit: boolean) =>
+  const stackBtnCls = (enabled: boolean) =>
     `caps-label min-h-0 flex-1 border text-[11px] tracking-[0.16em] transition ${
-      !choices?.pass
-        ? "cursor-not-allowed border-line/50 text-dimmed/60"
-        : lit
-          ? "border-brass bg-gradient-to-b from-brass-hi to-brass text-ink-0"
-          : "border-brass/60 bg-brass/10 text-brass hover:bg-brass hover:text-ink-0"
+      enabled
+        ? "border-brass/60 bg-brass/10 text-brass hover:bg-brass hover:text-ink-0"
+        : "cursor-not-allowed border-line/50 text-dimmed/60"
     }`;
 
   return (
@@ -114,25 +106,27 @@ export function ActionBar({ choices, reaction, char }: {
       <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-3 gap-1.5">
         {CORE.map(coreBtn)}
         {skillBtn()}
-        {/* Pass / Pass All share the last cell — Pass All keeps passing until
-            the stack fully resolves. Passing is usually THE decision: brass. */}
+        {/* Pass / Delay share the last cell. Pass answers a reaction window
+            (usually THE decision: brass). Delay is a main-phase move: the
+            character drops to the end of the party turn order for the rest of
+            the encounter and the next character goes now. */}
         <div className="flex min-h-0 flex-col gap-1.5">
           <button
             disabled={!choices?.pass}
             onClick={() => choices?.pass && select(choices.pass)}
-            className={passBtnCls(false)}
+            className={stackBtnCls(!!choices?.pass)}
           >
             Pass
           </button>
           <button
-            disabled={!choices?.pass}
-            onClick={startPassAll}
-            title={passAllActive
-              ? "Auto-passing until the stack resolves — click to cancel"
-              : "This character passes every window until the stack fully resolves"}
-            className={passBtnCls(passAllActive)}
+            disabled={!choices?.delay}
+            onClick={() => choices?.delay && select(choices.delay)}
+            title={choices?.delay
+              ? "Move to the end of the party turn order for the rest of the encounter — the next character acts now; your turn comes round last"
+              : "Delay — only at the start of your turn, once per turn, when another character still has a turn to take"}
+            className={stackBtnCls(!!choices?.delay)}
           >
-            Pass All
+            Delay
           </button>
         </div>
       </div>

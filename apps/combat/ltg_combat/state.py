@@ -286,6 +286,10 @@ class CharacterState:
     # Several sorcery-speed casts ride one entry — Cast is a single action.
     proactive_modes: List[str] = field(default_factory=list)
     turn_ended: bool = False
+    # Delayed this turn already (Delay moves the character to the END of the
+    # party turn order, for the rest of the encounter). Once per turn, so two
+    # characters can't ping-pong behind each other forever. Reset at upkeep.
+    delayed: bool = False
     capacity_chosen: bool = False  # locked this turn's +1 capacity colour yet?
     # Spells cast this turn (reset at upkeep) — read by `spells_cast` conditions.
     spells_cast_turn: int = 0

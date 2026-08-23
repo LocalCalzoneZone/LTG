@@ -93,6 +93,7 @@ export interface Choices {
   mitigate?: Choice;
   pass?: Choice;
   endTurn?: Choice;
+  delay?: Choice; // move to the end of the turn order (persists for the encounter)
   // Heroic actions (D8-3): the once-per-encounter Skill / Ultimate, when legal.
   skill?: Choice;
   ultimate?: Choice;
@@ -141,6 +142,8 @@ export function buildChoices(legal: LegalAction[]): Choices {
   if (pass.length) out.pass = mk("pass", "pass", pass, "Pass");
   const end = pick("end_turn");
   if (end.length) out.endTurn = mk("end_turn", "end_turn", end, "End Turn");
+  const delay = pick("delay");
+  if (delay.length) out.delay = mk("delay", "delay", delay, "Delay");
 
   // Skill / Ultimate (D8-3): grouped like a cast — a modal heroic action offers
   // one sub-choice per mode.

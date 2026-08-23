@@ -218,7 +218,7 @@ def prepare_scenario(content: Dict[str, Any], party_size: int,
 # Decision points that carry player agency — castability is tallied only here,
 # never inside forced sub-decision windows (choose_target and friends), where
 # an untallied hand would read as "unaffordable".
-_AGENCY_KINDS = frozenset({"cast", "attack", "defend", "end_turn", "pass",
+_AGENCY_KINDS = frozenset({"cast", "attack", "defend", "end_turn", "delay", "pass",
                            "mitigate", "use_skill", "use_ultimate",
                            "stance_ability", "drop_channels", "move"})
 

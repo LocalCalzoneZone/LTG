@@ -533,6 +533,7 @@ def _upkeep_draws(st: GameState) -> None:
         c.acted_mode = None
         c.proactive_modes = []
         c.turn_ended = False
+        c.delayed = False
         c.taunted_to = None  # enemy taunt is a this-turn bind (§F-3)
         c.spells_cast_turn = 0  # `spells_cast` conditions count per turn
         _log(st, "mana_refresh",
@@ -1996,6 +1997,7 @@ def _apply(st: GameState, action: Action) -> None:
         "pass": _do_pass,
         "settle": _do_settle,
         "end_turn": _do_end_turn,
+        "delay": _do_delay,
         "attack": _do_attack,
         "cast": _do_cast,
         "defend": _do_defend,
@@ -2323,6 +2325,35 @@ def _do_end_turn(st: GameState, action: Action) -> None:
     suffix = " (auto)" if getattr(action, "auto", False) else ""
     _log(st, "end_turn", f"{actor.name} ends their turn{suffix}.", character=actor.id,
          auto=bool(getattr(action, "auto", False)))
+
+
+def _can_delay(st: GameState, actor: CharacterState) -> bool:
+    """Delay is offered at the START of a character's turn (no proactive action
+    taken yet), once per turn, and only when another living character still has
+    a turn to take this round — otherwise the turn would simply bounce back."""
+    if actor.delayed or actor.proactive_modes or actor.stunned > 0:
+        return False
+    return any(c.id != actor.id and not c.turn_ended for c in _party_ordered(st))
+
+
+def _do_delay(st: GameState, action: Action) -> None:
+    """Delay: move the actor to the END of the party turn order — for the rest
+    of the encounter (party_order is the fixed initiative list, so the new order
+    holds every later round too) — and hand the main phase to the next character
+    in line. The actor's turn is NOT ended: it comes back round once everyone
+    ahead of it has gone."""
+    actor = st.character(action.actor_id)
+    order = list(st.party_order or [c.id for c in st.party])
+    if actor.id in order:
+        order.remove(actor.id)
+    order.append(actor.id)
+    st.party_order = order
+    actor.delayed = True
+    st.priority = None
+    names = " → ".join(c.name for c in _party_ordered(st))
+    _log(st, "delay", f"{actor.name} delays — moving to the end of the turn order "
+         f"({names}).", character=actor.id,
+         order=[c.id for c in _party_ordered(st)])
 
 
 def _proactive_allowance(actor: CharacterState) -> int:
@@ -6449,6 +6480,8 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
             actions += _cast_actions(st, actor, card)
     actions += _heroic_actions(st, actor, main_phase=True)  # Skill / Ultimate (D8-3)
     actions += _drop_actions(st, actor)
+    if _can_delay(st, actor):
+        actions.append(Action("delay", actor.id, label="Delay (go last in turn order)"))
     actions.append(Action("end_turn", actor.id, label="End turn"))
     return actions
 
@@ -7130,7 +7163,9 @@ def auto_pass_action(state: GameState) -> Optional[Action]:
     # above — so the sets below need no drop refinement.
     if kinds == {"pass"}:
         return Action("pass", st.priority, auto=True, label="Pass (auto)")
-    if kinds == {"end_turn"}:
+    # Delay on its own is not a meaningful play (nothing to do now, nothing to
+    # do later either) — a bare end_turn(+delay) set still auto-ends the turn.
+    if kinds and kinds <= {"end_turn", "delay"}:
         return Action("end_turn", st.priority, auto=True, label="End turn (auto)")
     return None
 
