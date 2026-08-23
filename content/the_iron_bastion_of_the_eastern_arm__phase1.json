@@ -159,7 +159,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase1/bastion_bulwark-c0bfe4d0.png"
     },
     {
       "id": "redwake_corsair",
@@ -222,7 +223,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase1/redwake_corsair-bd2efb0c.png"
     },
     {
       "id": "corsair_skiff_archer",
@@ -285,7 +287,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase1/corsair_skiff_archer-6b48b41f.png"
     }
   ],
   "tokens": {},

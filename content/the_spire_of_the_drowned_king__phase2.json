@@ -1,0 +1,343 @@
+{
+  "name": "The Grand Nave of the Spire",
+  "scene": "A vaulted basilica half-submerged in clear green seawater, lit by massive brass braziers burning scented whale-oil. Giant-carved statues of ancient sea-kings line the walls, and gilded rigging hangs between marble columns.",
+  "scene_image": "/art/the_spire_of_the_drowned_king__phase2/scene-0850e4ab.png",
+  "enemies": [
+    {
+      "id": "corsair_skiffmaster",
+      "name": "Corsair Skiffmaster",
+      "flavor": "Channels a warband chantey that pumps all allies; rallies crew when comrades fall.",
+      "description": "A flamboyant pirate officer sporting a gold-trimmed frock coat, feathered tricorn, and an ivory whistle around his throat.",
+      "hp": 9,
+      "power": 4,
+      "level": 6,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warlord",
+        "bard"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "chantey_of_plunder",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Chantey of Plunder \u2014 held song granting all allies +2/+2 while channeled",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 2,
+              "toughness": 2,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rallying_bellow",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Rallying Roar \u2014 heal an ally for 7",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "cutlass_strike",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Flashing Steel \u2014 strike for 6 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase2/corsair_skiffmaster-a954a926.png"
+    },
+    {
+      "id": "coral_peltast",
+      "name": "Coral Peltast",
+      "flavor": "Hurls venom-dipped harpoons at highest-threat targets and repositions swiftly.",
+      "description": "An agile scout wearing boiled leather and shell greaves, balancing lightly atop ruined plinths with a brace of barbed javelins.",
+      "hp": 6,
+      "power": 3,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "hunter",
+        "archer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "barbed_harpoon",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Barbed Harpoon \u2014 deal 5 damage and inflict poison to highest threat",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "evasive_roll",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Evasive Tumble \u2014 retreat to home position"
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase2/coral_peltast-e04ae50f.png"
+    },
+    {
+      "id": "brass_automaton_guard",
+      "name": "Brass Automaton Guard",
+      "flavor": "Unflinching ancient construct that shields itself and taunts threats.",
+      "description": "An eight-foot mechanical sentry forged from burnished sea-brass and green bronze, venting steam from hydraulic joints as it raises an iron tower shield.",
+      "hp": 12,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "knight",
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "steam_shield",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Steam Barrier \u2014 gain protection against next attack",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "piston_slam",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Piston Slam \u2014 strike for 5 and taunt",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase2/brass_automaton_guard-c3ba05da.png"
+    },
+    {
+      "id": "tide_witch_acolyte",
+      "name": "Spire Occultist",
+      "flavor": "Stuns primed heroes and counters incoming spells.",
+      "description": "A hooded mystic with kelp wrapped around her arms, chanting invocations in an archaic tongue while clutching an orb of swirling dark brine.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "wizard",
+        "cultist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "drowning_grasp",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "primed_hero",
+          "telegraph": "Drowning Hex \u2014 stun the primed hero",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "spell_snare",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 3,
+          "priority": 15,
+          "action_type": "spell",
+          "target_rule": "trigger_source",
+          "telegraph": "Brine Snare \u2014 counter the cast spell",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase2/tide_witch_acolyte-8a97304b.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "corsair_skiffmaster",
+      "brass_automaton_guard",
+      "coral_peltast",
+      "tide_witch_acolyte",
+      "coral_peltast"
+    ],
+    "2": [
+      "corsair_skiffmaster",
+      "corsair_skiffmaster",
+      "brass_automaton_guard",
+      "brass_automaton_guard",
+      "coral_peltast",
+      "coral_peltast",
+      "coral_peltast",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte"
+    ],
+    "3": [
+      "corsair_skiffmaster",
+      "corsair_skiffmaster",
+      "corsair_skiffmaster",
+      "brass_automaton_guard",
+      "brass_automaton_guard",
+      "brass_automaton_guard",
+      "coral_peltast",
+      "coral_peltast",
+      "coral_peltast",
+      "coral_peltast",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte"
+    ],
+    "4": [
+      "corsair_skiffmaster",
+      "corsair_skiffmaster",
+      "corsair_skiffmaster",
+      "corsair_skiffmaster",
+      "brass_automaton_guard",
+      "brass_automaton_guard",
+      "brass_automaton_guard",
+      "brass_automaton_guard",
+      "coral_peltast",
+      "coral_peltast",
+      "coral_peltast",
+      "coral_peltast",
+      "coral_peltast",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte",
+      "tide_witch_acolyte"
+    ]
+  }
+}

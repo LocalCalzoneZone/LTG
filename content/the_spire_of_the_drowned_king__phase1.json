@@ -1,0 +1,368 @@
+{
+  "name": "The Coral Balcony Breach",
+  "scene": "A windswept marble balcony hanging over crashing turquoise swells, hemmed by petrified coral balustrades and wind-torn gold-and-vermilion corsair flags. Iron carronades sit choked with jagged coral rubble and the corpses of fallen sentries.",
+  "scene_image": "/art/the_spire_of_the_drowned_king__phase1/scene-698bf6d9.png",
+  "enemies": [
+    {
+      "id": "corsair_deckhand",
+      "name": "Corsair Deckhand",
+      "flavor": "Drags heroes into the front line and strikes back when slain.",
+      "description": "A sun-blackened sailor with braided sea-grass in his hair, wielding a heavy iron boarding gaff and a notched cutlass.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "hook_drag",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Boarding Hook \u2014 drag to the front rank and strike for 3",
+          "verbs": [
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "dying_slash",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Parting Strike \u2014 lash out for 4 as life fails",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase1/corsair_deckhand-76a2b573.png"
+    },
+    {
+      "id": "reef_carronader",
+      "name": "Reef Carronader",
+      "flavor": "Consumes fallen allies to blast entire rows; channels shrapnel barrage.",
+      "description": "A soot-stained gunner strapped into a leather harness, loading a swivel-mounted bronze mortar with heavy coral stone and corpse-flesh.",
+      "hp": 6,
+      "power": 3,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "artificer",
+        "archer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "corpse_mortar",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Corpse-Mortar \u2014 consume a fallen crewman to shell the front rank for 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            },
+            {
+              "kind": "consume_corpse",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "channel_shrapnel",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Shrapnel Fusillade \u2014 held barrage dealing 2 damage every turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase1/reef_carronader-a12cacdb.png"
+    },
+    {
+      "id": "corsair_buccaneer",
+      "name": "Corsair Buccaneer",
+      "flavor": "Heavy line-breaker that grows furious as comrades fall.",
+      "description": "A massive orc privateer clad in riveted turtle-shell plate, dual-wielding hooked boarding axes etched with runic teeth.",
+      "hp": 9,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "orc",
+        "human"
+      ],
+      "classes": [
+        "brute",
+        "berserker"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "blood_cleave",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Heavy Cleave \u2014 deal 6 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "avenge_crew",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Avenging Fury \u2014 +2/+2 permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase1/corsair_buccaneer-3b8a3a82.png"
+    },
+    {
+      "id": "reef_chirurgeon",
+      "name": "Reef Chirurgeon",
+      "flavor": "Mends fallen corsairs and cripples high-threat heroes with barbed darts.",
+      "description": "A bird-masked field medic wrapped in waxed oilskin aprons, carrying a wicker crate of restorative salves and bone needles.",
+      "hp": 12,
+      "power": 2,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "cleric",
+        "healer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "soothing_balm",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "wounded_ally",
+          "telegraph": "Soothing Balm \u2014 heal an ally for 7",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "emergency_stitches",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Emergency Stitch \u2014 heal wounded ally for 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "needle_dart",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Crippling Dart \u2014 wound highest threat -2/-2",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase1/reef_chirurgeon-fdbd9243.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "reef_carronader",
+      "reef_chirurgeon",
+      "corsair_buccaneer",
+      "corsair_deckhand",
+      "corsair_deckhand"
+    ],
+    "2": [
+      "reef_carronader",
+      "reef_carronader",
+      "reef_chirurgeon",
+      "reef_chirurgeon",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand"
+    ],
+    "3": [
+      "reef_carronader",
+      "reef_carronader",
+      "reef_carronader",
+      "reef_chirurgeon",
+      "reef_chirurgeon",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand"
+    ],
+    "4": [
+      "reef_carronader",
+      "reef_carronader",
+      "reef_carronader",
+      "reef_carronader",
+      "reef_chirurgeon",
+      "reef_chirurgeon",
+      "reef_chirurgeon",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_buccaneer",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand",
+      "corsair_deckhand"
+    ]
+  }
+}
