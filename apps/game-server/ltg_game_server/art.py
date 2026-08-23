@@ -119,7 +119,13 @@ def enemy_prompt(enc: Dict[str, Any], enemy: Dict[str, Any],
     desc = (override_text or enemy.get("description") or "").strip()
     if not desc:
         desc = f'A dark fantasy creature called "{name}".'
-    parts = [f"{_style()}\n\n{_ENEMY_TASK}The subject — {name}:\n{desc}"]
+    # §D21: the type line anchors the concept — the painter is told what the
+    # creature IS and what it DOES, so a "necromancer" never drifts into a
+    # generic monster and an "undead archer" keeps its bow.
+    tags = [str(t) for t in (enemy.get("types") or [])] \
+        + [str(t) for t in (enemy.get("classes") or enemy.get("supertypes") or [])]
+    tag_line = f" It is: {', '.join(tags)}." if tags else ""
+    parts = [f"{_style()}\n\n{_ENEMY_TASK}The subject — {name}:\n{desc}{tag_line}"]
     scene = str(enc.get("scene") or "").strip()
     if scene:
         parts.append(f"\n\nIt is encountered here (match the mood and palette; "

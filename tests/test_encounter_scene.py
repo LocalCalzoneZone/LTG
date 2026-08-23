@@ -75,6 +75,7 @@ def _enemy(eid, desc="A drowned scholar in rotted robes, lantern-eyed."):
     return {"id": eid, "name": eid.title(), "hp": 8, "power": 2, "level": 2,
             "row": row, "attack_mode": mode,
             "flavor": "hits things", "description": desc,
+            "types": ["undead"], "classes": ["warrior"],         # §D21 gate
             "components": [dict(c) for c in comps]}
 
 

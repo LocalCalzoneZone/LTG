@@ -108,6 +108,9 @@ export interface PanelAnimBundle {
 }
 
 export interface CharacterView {
+  // §D21 type line from the sheet.
+  types?: string[];
+  classes?: string[];
   id: string;
   name: string;
   archetype: string;
@@ -223,6 +226,9 @@ export interface CorpseView {
 }
 
 export interface CreatureView {
+  // §D21: what it is (race) / what it does (class) — up to 2 each.
+  types?: string[];
+  classes?: string[];
   id: string;
   name: string;
   // The POOL enemy id behind this creature (a layout clone "wolf_2" -> "wolf");

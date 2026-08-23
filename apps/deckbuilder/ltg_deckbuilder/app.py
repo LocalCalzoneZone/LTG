@@ -35,6 +35,8 @@ from ltg_core.schema import (
     MODE_VALUES,
     PRICE_STATS,
     CORPSE_LEGAL_EFFECTS,
+    CREATURE_CLASSES,
+    CREATURE_TYPES,
     REF_VALUES,
     Row,
     SIDE_VALUES,
@@ -207,7 +209,11 @@ def api_effect_specs() -> dict:
             # §D19-5: the verbs whose chosen target may be CORPSE-exclusive
             # (state: "corpse") — the editor shows its "corpse only" checkbox
             # for exactly these.
-            "corpse_kinds": sorted(CORPSE_LEGAL_EFFECTS)}
+            "corpse_kinds": sorted(CORPSE_LEGAL_EFFECTS),
+            # §D21: the closed creature type/class vocabularies — the
+            # conditional builder's dropdowns and the sheet's type-line pickers.
+            "creature_types": list(CREATURE_TYPES),
+            "creature_classes": list(CREATURE_CLASSES)}
 
 
 class CharacterPriceBody(BaseModel):

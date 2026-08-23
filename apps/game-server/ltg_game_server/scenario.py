@@ -39,6 +39,9 @@ from .dialogue import MAX_CHOICES, Conversation
 # +20 points pays 20 gold, so an act is worth 60 of each (§D17-2.3).
 GOLD_PER_POINT = 1
 GOLD_PER_LEVEL_UP = LEVEL_UP_POINTS * GOLD_PER_POINT
+# Purse a character rides into a scenario with — enough that the first town
+# visit is a real shop trip rather than window-shopping until Act I pays out.
+STARTING_GOLD = 15
 STANDING_FLAGS = ("defeated_once", "quest_accepted", "act_1_complete",
                   "act_2_complete", "act_3_complete")
 # A party that said "let us get back to you" is asked again the next time they
@@ -78,7 +81,7 @@ class ScenarioRun:
         self.loadouts: List[Dict[str, Any]] = copy.deepcopy(loadouts)
         self.banked: Dict[str, int] = {cid: 0 for cid in character_ids}
         self.earned: Dict[str, int] = {cid: 0 for cid in character_ids}
-        self.gold: Dict[str, int] = {cid: 0 for cid in character_ids}
+        self.gold: Dict[str, int] = {cid: STARTING_GOLD for cid in character_ids}
         # Current HP carried between adventure and town (None == full).
         self.hp: Dict[str, Optional[int]] = {cid: None for cid in character_ids}
         for cid, lo in zip(self.character_ids, self.loadouts):

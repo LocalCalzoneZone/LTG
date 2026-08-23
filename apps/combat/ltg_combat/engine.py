@@ -35,6 +35,7 @@ from typing import List, Optional, Tuple
 from ltg_core.schema import (
     ACTION_MODIFIERS,
     CORPSE_LEGAL_EFFECTS,
+    INSTANT_ACTION_MODIFIERS,
     Card,
     DealDamage,
     Duration,
@@ -45,7 +46,9 @@ from ltg_core.schema import (
     TargetDescriptor,
     TargetMode,
     Timing,
+    TargetScope,
     slot_name,
+    slot_scope,
     t_chosen,
     t_row,
 )
@@ -2878,6 +2881,15 @@ def _new_ctx(st: GameState, item: StackItem) -> dict:
     # flip the answer mid-card.
     if item.target_id is not None and st.corpse(item.target_id) is not None:
         ctx["target_is_dead"] = True
+    # §D19-9: the GROUND each target site stands on, pinned as this resolution
+    # begins — the (side, row) a scoped effect's blast is aimed at. Read only
+    # when the anchor is gone by the time that effect runs (see `_ground_victims`).
+    ground: Dict[str, "tuple[str, str]"] = {}
+    for tid in {item.target_id, *(item.targets or ())}:
+        obj = st.combatant(tid) if tid else None
+        if obj is not None and getattr(obj, "row", None):
+            ground[tid] = ("enemy" if isinstance(obj, EnemyState) else "ally", obj.row)
+    ctx["ground"] = ground
     if item.targets:
         top = item.effects
         modal = next((e for e in item.effects
@@ -3274,6 +3286,32 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
         elif log_it:
             _log(st, "unhandled",
                  "(channeled exile is only modelled for enemies this milestone)", kind=k)
+    elif k == "modify_action":
+        # A channeled action modifier (§D19-7): "while channeled, your Mitigate
+        # reduces by full Power" rides `action_mods` for as long as the channel
+        # holds and lifts on the break. Only characters have evergreen actions;
+        # the INSTANT modifiers (refresh_skill / charge_ultimate / drain_ultimate)
+        # are one-shot by nature and cannot be continuous.
+        mod = effect.modifier
+        if not isinstance(target, CharacterState) or mod in INSTANT_ACTION_MODIFIERS:
+            if log_it:
+                _log(st, "unhandled",
+                     f"(continuous '{mod}' modifier has no standing form)", kind=k)
+            return
+        if sign > 0:
+            target.action_mods[mod] = "while_channeled"
+            if log_it:
+                _log(st, "action_mod",
+                     f"{target.name}: {ACTION_MODIFIERS[effect.action][mod]} "
+                     f"(while channelled).",
+                     target=_tid(target), modifier=mod, action=effect.action)
+        elif target.action_mods.get(mod) == "while_channeled":
+            del target.action_mods[mod]
+            if log_it:
+                _log(st, "action_mod", f"{target.name}'s {effect.action} returns to "
+                     f"normal (channel ends).", target=_tid(target), modifier=mod)
+        if effect.action == "attack":
+            _sync_attack_mode(target)
     elif k in _STAT_CONTINUOUS and hasattr(target, "power_bonus"):
         polarity = -1 if k == "wound" else 1  # wound is a −X/−X aura (R-7)
         # Stat refs (pump X aura, +1 per player) resolve against the holder's
@@ -3619,6 +3657,28 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
 
     # One effect can hit a SET (mode 'all') or a single creature; resolve per target.
     for target in _resolution_targets(st, item, effect, ctx):
+        desc = _effect_desc(item, effect)
+        scope = getattr(getattr(desc, "scope", None), "value",
+                        getattr(desc, "scope", None))
+        # §D19-9 — THE GROUND SURVIVES ITS ANCHOR. A scoped (row/blast) effect
+        # whose pick fell to an EARLIER effect on this same card still covers the
+        # ground it was aimed at: "deal 4 to a target, then 3 to it and its row"
+        # must not lose its blast because the first half killed the anchor. Same
+        # principle as §D18-4 — a row shape aims at ground, not at a name.
+        # The ground is pinned as the resolution BEGINS, so killing the target in
+        # RESPONSE still fizzles the whole action (nothing was pinned by then).
+        if target is None and scope is not None:
+            ground = _ground_victims(st, item, effect, ctx, scope)
+            if ground:
+                _log(st, "splash",
+                     f"{item.label} bursts across the "
+                     f"{'row' if scope == 'row' else 'row and adjacent rows'} its "
+                     f"target stood in: " + ", ".join(c.name for c in ground) + ".",
+                     scope=scope, victims=[_tid(c) for c in ground], ground=True)
+                for victim in ground:
+                    ctx["target_obj"] = victim
+                    handler(st, item, effect, victim, ctx)
+                continue
         # A per-target effect with no resolved target does nothing — fizzle rather than
         # crash. This covers a card cast with no target whose effect still expects one
         # (e.g. a `chosen`/`targeted:false` prevent that was never given a creature).
@@ -3652,9 +3712,6 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
         # (it is already dead; a sibling `consume_corpse` spends it, resolving
         # last) — and the damage lands on everything living in its footprint.
         victims = [target]
-        desc = _effect_desc(item, effect)
-        scope = getattr(getattr(desc, "scope", None), "value",
-                        getattr(desc, "scope", None))
         corpse_anchor = (isinstance(target, Corpse) and scope is not None
                          and effect.kind == "deal_damage")
         if scope is not None and target is not None and (
@@ -3687,7 +3744,8 @@ def _site_target(item: StackItem, ctx, effect, desc) -> Optional[str]:
     otherwise the primary target_id (conditional-nested effects, single-target
     cards). Slot refs key by slot name; direct descriptors by effect identity."""
     if ctx is not None and "site_target" in ctx:
-        key = ("slot", desc[1:]) if isinstance(desc, str) else ("eff", id(effect))
+        key = (("slot", slot_name(desc)) if isinstance(desc, str)
+               else ("eff", id(effect)))
         if key in ctx["site_target"]:
             return ctx["site_target"][key]
     return item.target_id
@@ -3698,7 +3756,7 @@ def _site_id(item: StackItem, ctx, desc, eff_key) -> Optional[str]:
     slot refs key by name, an inline descriptor by the caller-supplied `eff_key`
     (so two target fields on the same effect don't collide on id())."""
     if ctx is not None and "site_target" in ctx:
-        key = ("slot", desc[1:]) if isinstance(desc, str) else eff_key
+        key = ("slot", slot_name(desc)) if isinstance(desc, str) else eff_key
         if key in ctx["site_target"]:
             return ctx["site_target"][key]
     return None
@@ -3800,7 +3858,12 @@ def _creatures_on_side(st: GameState, side: str, item: StackItem, desc,
     set (`_REACHES_DOWNED`). Omit it and downed characters are left out."""
     state = getattr(desc, "state", None)
     state = getattr(state, "value", state)
-    if state == "corpse":
+    # §D19-10: `consume_corpse` has no domain but bodies, so a `mode: all` use
+    # reads the CORPSES whatever the state axis says — "consume every enemy
+    # corpse" is the only thing the verb could have meant. (`exile` / `control`
+    # stay explicit: mode:all over the living is meaningful for them, so they
+    # need `state: "corpse"` to narrow.)
+    if state == "corpse" or kind == "consume_corpse":
         out = list(st.corpses)
     elif side == "enemy":
         out = list(st.living_enemies())
@@ -3887,6 +3950,14 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
     if cond.property == "row":
         want = cond.row.value if hasattr(cond.row, "value") else cond.row
         return target is not None and getattr(target, "row", None) == want
+    if cond.property == "type":
+        # §D21: the target's race tags. A corpse keeps its body's types, so
+        # "if the target is an undead" still answers over a corpse pick.
+        obj = target if target is not None else st.corpse(item.target_id)
+        return cond.type in (getattr(obj, "types", None) or [])
+    if cond.property == "class":
+        obj = target if target is not None else st.corpse(item.target_id)
+        return cond.class_ in (getattr(obj, "classes", None) or [])
     return False
 
 
@@ -4575,6 +4646,27 @@ def _r_strip_intent(st, item, effect, target, ctx):
     _strip_slot(st, target, slot2)
 
 
+def _r_break_channel(st, item, effect, target, ctx):
+    """§D19-11: end every channel the target holds — the same all-or-nothing
+    break a big hit causes (GDD §8), reached deliberately. Reserved mana returns
+    to the pool and each ending channel fires its `channel_break` trigger, so a
+    ritual can still sting as it dies. Only creatures channel; a token or a
+    corpse caught by a side-wide target is passed over."""
+    reason = item.label or "broken"
+    if isinstance(target, CharacterState):
+        if not target.channels:
+            _log(st, "no_channel", f"{target.name} is holding no channel.",
+                 target=_tid(target), label=item.label)
+            return
+        _break_channels(st, target, reason=reason)
+    elif isinstance(target, EnemyState):
+        if not target.channels:
+            _log(st, "no_channel", f"{target.name} is holding no channel.",
+                 target=_tid(target), label=item.label)
+            return
+        _break_enemy_channels(st, target, reason=reason)
+
+
 def _r_stun(st, item, effect, target, ctx):
     if isinstance(target, EnemyState):
         target.stunned += int(getattr(effect, "intents", 1))
@@ -4954,11 +5046,40 @@ def _r_move(st, item, effect, target, ctx):
 
 
 def _effect_desc(item: StackItem, effect):
-    """The effect's target descriptor, resolving a '$slot' ref through the card."""
+    """The effect's target descriptor, resolving a '$slot' ref through the card —
+    with a "$slot+row" / "$slot+blast" use's splash merged in (§D19-8), so the
+    splash machinery sees what THIS effect covers while its siblings sharing the
+    bare ref stay pinpoint."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str):
-        return item.card.targets.get(desc[1:]) if item.card is not None else None
+        if item.card is None:
+            return None
+        resolved = item.card.targets.get(slot_name(desc) or "")
+        use = slot_scope(desc)
+        if resolved is not None and use is not None:
+            return resolved.model_copy(update={"scope": TargetScope(use)})
+        return resolved
     return desc
+
+
+def _ground_victims(st: GameState, item: StackItem, effect, ctx, scope: str) -> List:
+    """§D19-9: the creatures standing on a scoped effect's PINNED GROUND.
+
+    Read only when the effect's anchor is gone — killed by an EARLIER effect on
+    the same card. The blast was aimed at a place; the body falling first does
+    not un-aim it. Empty when no ground was pinned (the target was already gone
+    as the resolution began), so killing a target in RESPONSE still fizzles the
+    whole action exactly as before."""
+    desc = getattr(effect, "target", None)
+    tid = _site_target(item, ctx, effect, desc)
+    side, row = ((ctx or {}).get("ground") or {}).get(tid, (None, None))
+    if side is None:
+        return []
+    span = 0 if scope == "row" else 1
+    prow = _row_rank(row)
+    pool = (list(st.living_enemies()) if side == "enemy"
+            else _party_pool(st, getattr(effect, "kind", None)) + list(st.living_tokens()))
+    return [c for c in _ordered(pool) if abs(_row_rank(c.row) - prow) <= span]
 
 
 def _splash_targets(st: GameState, pick, scope: str, kind: Optional[str] = None) -> List:
@@ -5038,6 +5159,7 @@ def _mind_control(st: GameState, item: StackItem, enemy: EnemyState,
         max_hp=enemy.max_hp, hp=enemy.hp, power=enemy.power,
         row=enemy.row, attack_mode=enemy.attack_mode, level=enemy.level,
         keywords=dict(enemy.keywords),
+        types=list(enemy.types), classes=list(enemy.classes),   # §D21
         controlled_by=item.source_id, control_left=turns, revert=enemy)
     # The venom (and any regeneration) rides the body across the table (D8-2).
     tok.poison_effects, enemy.poison_effects = enemy.poison_effects, []
@@ -5048,6 +5170,12 @@ def _mind_control(st: GameState, item: StackItem, enemy: EnemyState,
     span = f"for {turns} turn(s)" if turns else "for the encounter"
     _log(st, "controlled", f"{enemy.name} is dominated — it fights for your party "
          f"{span}.", enemy=enemy.id, token=tok.id, by=item.source_id, turns=turns)
+
+
+def _clean_tags_rise(types: List[str]) -> List[str]:
+    """A raised body's type line: undead first, then what it was (cap 2 — a
+    risen goblin is "undead goblin"; a risen undead is just undead)."""
+    return (["undead"] + [t for t in types if t != "undead"])[:2]
 
 
 def _raise_corpse(st: GameState, item: StackItem, corpse: Corpse,
@@ -5065,6 +5193,8 @@ def _raise_corpse(st: GameState, item: StackItem, corpse: Corpse,
             id=f"{corpse.id}_undead{st.token_seq}", name=f"{corpse.name} (risen)",
             max_hp=hp, hp=hp, level=corpse.level, power=corpse.power,
             row=corpse.row, home_row=corpse.row,
+            # §D21: the risen keep what they were, and are undead now besides.
+            types=_clean_tags_rise(corpse.types), classes=list(corpse.classes),
             attack_mode=corpse.attack_mode,
             intent_template={"name": "Undead Strike", "amount": corpse.power,
                              "action_type": "ability", "intent_type": "attack",
@@ -5079,6 +5209,7 @@ def _raise_corpse(st: GameState, item: StackItem, corpse: Corpse,
         id=f"{corpse.id}_undead{st.token_seq}", name=f"{corpse.name} (risen)",
         max_hp=hp, hp=hp, power=corpse.power, row=corpse.row,
         attack_mode=corpse.attack_mode, level=corpse.level,
+        types=_clean_tags_rise(corpse.types), classes=list(corpse.classes),
         controlled_by=item.source_id, control_left=turns, revert=None)
     st.tokens.append(tok)
     span = f"for {turns} turn(s)" if turns else "for the encounter"
@@ -5199,6 +5330,7 @@ RESOLVERS = {
     "fight": _r_fight,
     "counter": _r_counter,
     "strip_intent": _r_strip_intent,
+    "break_channel": _r_break_channel,
     "stun": _r_stun,
     "pump": _r_pump,
     "wound": _r_wound,
@@ -6686,7 +6818,7 @@ def _effect_target_options(st: GameState, effect, card=None):
     A "$slot" target resolves its descriptor through the card's slot table."""
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) and card is not None:
-        desc = card.targets.get(desc[1:])
+        desc = card.targets.get(slot_name(desc) or "")
     side = desc.side.value if getattr(desc, "side", None) is not None else "any"
     return _pick_options(st, side, bool(getattr(desc, "targeted", False)),
                          effect.kind, getattr(desc, "state", None))
@@ -6774,7 +6906,7 @@ def _target_options_for(st: GameState, effects, card: Card = None):
     for e in _iter_leaf(live):
         desc = getattr(e, "target", None)
         if isinstance(desc, str):  # "$T1" slot ref — resolve its side from the card
-            sd = card.targets.get(desc[1:]) if card is not None else None
+            sd = card.targets.get(slot_name(desc) or "") if card is not None else None
             if sd is not None:
                 side = sd.side.value if sd.side is not None else "any"
                 targeted = bool(getattr(sd, "targeted", False))
@@ -6815,7 +6947,7 @@ def _target_sites(effects, card: Card):
 
     def add(desc, eff_key, kind, forced=False):
         if isinstance(desc, str):  # "$T1" slot ref — one shared site per slot name
-            name = desc[1:]
+            name = slot_name(desc)  # "$T1+row" shares T1's pick (§D19-8)
             if name in seen_slots:
                 return
             seen_slots.add(name)

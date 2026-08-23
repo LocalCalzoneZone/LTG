@@ -21,6 +21,7 @@ from tests.test_design_update_17_scenario import (_accept_quest, _confirm_act_en
                                                    _drive, _fake_materializer,
                                                    _win_adventure)
 from tests.test_design_update_17_towns import arc_raw, town_raw
+from ltg_game_server import scenario as sc_run
 from ltg_game_server.scenario import ScenarioRun
 
 
@@ -255,7 +256,7 @@ def test_stock_rolls_per_act_and_shop_buy_sell_trade(runs):
     assert scen.gold["loadout_soren"] == 100 - first["buy_price"] + int(first["points_price"] * 0.5)
     # Trade gold to Ys (same client → immediate).
     session.town_verb("c1", "give", {"character_id": "loadout_soren", "to": "loadout_ys", "gold": 10})
-    assert scen.gold["loadout_ys"] == 10
+    assert scen.gold["loadout_ys"] == sc_run.STARTING_GOLD + 10
     second = scen.act["stock"]["tolls_forge"][0]
     scen.gold["loadout_ys"] = 0
     with pytest.raises(ValueError, match="not enough"):

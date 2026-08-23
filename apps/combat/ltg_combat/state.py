@@ -191,6 +191,10 @@ class CharacterState:
     power: int
     hand_size: int
     archetype: str = ""  # display-only label; the engine derives no stats from it
+    # §D21 type line: what the hero IS (race) / DOES (class), from the sheet —
+    # read by target_property conditions exactly as an enemy's tags are.
+    types: List[str] = field(default_factory=list)
+    classes: List[str] = field(default_factory=list)
     attack_mode: str = "melee"  # melee | ranged (R-1/R-3) — drives reachability
     level: int = 1              # ordering / level-gates (R-6)
     hand: List[Card] = field(default_factory=list)
@@ -337,6 +341,16 @@ class Corpse:
     row: str
     power: int
     max_hp: int
+
+    @property
+    def types(self) -> List[str]:
+        """§D21: a body keeps its race tags — "if the target is an undead" still
+        answers over a corpse pick."""
+        return list(getattr(self.body, "types", None) or [])
+
+    @property
+    def classes(self) -> List[str]:
+        return list(getattr(self.body, "classes", None) or [])
     level: int
     attack_mode: str = "melee"
     is_boss: bool = False
@@ -357,6 +371,10 @@ class TokenState:
     row: str = "front"
     attack_mode: str = "melee"
     level: int = 1
+    # §D21: type/class tags — a raised corpse's token inherits the body's types
+    # (plus "undead"); authored token defs may carry their own.
+    types: List[str] = field(default_factory=list)
+    classes: List[str] = field(default_factory=list)
     intent: Optional["Intent"] = None  # telegraphed in the Intents step (R-5)
     # Control bookkeeping (§D9-1.4): a controlled combatant is a party-side token.
     # `controlled_by` is the caster; `control_left` counts End Steps until control
@@ -536,6 +554,11 @@ class EnemyState:
     # parks it forever).
     components: List["Component"] = field(default_factory=list)
     cooldowns: Dict[str, int] = field(default_factory=dict)
+    # §D21: what the creature IS (race — undead, goblin …) and what it DOES
+    # (class — archer, wizard …). Up to 2 of each; read by target_property
+    # conditions and the art prompt. Empty on legacy content — permissive.
+    types: List[str] = field(default_factory=list)
+    classes: List[str] = field(default_factory=list)
     is_boss: bool = False       # §F-9: removal-immune outside the execute window; enrages ≤25%
     enraged: bool = False       # one-way: set the first time a boss falls to ≤25% max HP
     # A boss that declares TWO intents every round, not only after enrage — the

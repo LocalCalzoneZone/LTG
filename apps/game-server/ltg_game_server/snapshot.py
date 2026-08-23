@@ -126,6 +126,9 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "id": cd["id"],
         "name": cd["name"],
         "archetype": cd["archetype"],
+        # §D21 type line from the sheet.
+        "types": list(getattr(char, "types", None) or []),
+        "classes": list(getattr(char, "classes", None) or []),
         "portrait": portrait,  # loadout art (data URL / image URL), "" if none
         "description": description,  # the loadout's character blurb ("" if none)
         # Panel animations (Update 16): clips + per-card picks; None when the
@@ -229,6 +232,9 @@ def _creature_snapshot(view: GameState, enemy,
         "intents": veiled_intents(view, enemy),
         # The `rises` trait is public (§D9-1.5) — the stirring state, not the veil.
         "rises": getattr(enemy, "rises", None),
+        # §D21: what it is / what it does — the inspect panel's type line.
+        "types": list(getattr(enemy, "types", None) or []),
+        "classes": list(getattr(enemy, "classes", None) or []),
         # The doom-clock badge (§D12-1.5): rounds left on a live race clock,
         # for the marked enemy only — None everywhere else.
         "doom_clock": doom_clock(view, enemy),

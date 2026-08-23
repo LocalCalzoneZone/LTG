@@ -407,14 +407,58 @@ def _check_grant_keywords(keywords: List[str], params: Optional[dict], for_grant
 # An effect's target is either a TargetDescriptor OR a "$slot" reference resolved
 # at the card level (see Card.targets). Slot refs let several effects share one
 # chosen target, so the engine resolves it once and applies it to every effect.
-SLOT_REF_PATTERN = r"^\$[A-Za-z_][A-Za-z0-9_]*$"
+# §D19-8: a ref may carry a per-use splash suffix — "$T1+row" / "$T1+blast".
+SLOT_REF_PATTERN = r"^\$[A-Za-z_][A-Za-z0-9_]*(\+(row|blast))?$"
 SlotRef = Annotated[str, StringConstraints(pattern=SLOT_REF_PATTERN)]
 TargetOrSlot = Union[TargetDescriptor, SlotRef]
 
 
+# --------------------------------------------------------------------------- #
+# Creature types & classes (Design Update 21)
+# --------------------------------------------------------------------------- #
+# TYPE = what a creature IS — its race / nature. CLASS = what it DOES — its
+# profession / role (MTG-class wording: Warrior, Wizard …). Every generated
+# enemy carries 1–2 of each, and PLAYER CHARACTERS may pick up to 2 of each on
+# the sheet; they feed the art prompt (concept anchoring) and the engine's
+# target_property conditions ("if the target is an undead / a wizard").
+# Closed registries: the editor's dropdowns and the generation gate both read
+# them, so a card and a creature can never disagree on spelling.
+CREATURE_TYPES = (
+    "human", "elf", "dwarf", "halfling", "goblin", "orc", "giant", "troll",
+    "merfolk", "fae", "undead", "spirit", "demon", "dragon", "beast", "bird",
+    "serpent", "vermin", "insect", "spider", "plant", "fungus", "elemental",
+    "construct", "ooze", "horror",
+)
+CREATURE_CLASSES = (
+    "warrior", "knight", "soldier", "brute", "berserker", "archer", "hunter",
+    "scout", "rogue", "assassin", "monk", "wizard", "shaman", "necromancer",
+    "druid", "cleric", "cultist", "ritualist", "healer", "warlord",
+    "artificer", "noble", "bard",
+)
+MAX_TYPE_TAGS = 2         # up to two of each per creature
+# Back-compat aliases (same-session rename; nothing shipped on the old names).
+ENEMY_TYPES = CREATURE_TYPES
+ENEMY_SUPERTYPES = CREATURE_CLASSES
+
+
 def slot_name(target) -> Optional[str]:
-    """Return the slot name if `target` is a "$slot" reference, else None."""
-    return target[1:] if isinstance(target, str) and target.startswith("$") else None
+    """Return the slot name if `target` is a "$slot" reference, else None.
+
+    §D19-8: a ref may carry a PER-USE splash suffix — "$T1+row" / "$T1+blast" —
+    "this effect covers the shared pick AND its row (blast: plus adjacent rows)".
+    The suffix belongs to the USE, not the pick: two effects may share one slot
+    while only one of them splashes. `slot_name` strips it; `slot_scope` reads it."""
+    if not (isinstance(target, str) and target.startswith("$")):
+        return None
+    return target[1:].split("+", 1)[0]
+
+
+def slot_scope(target) -> Optional[str]:
+    """The per-use splash suffix of a "$slot+scope" reference ("row" / "blast"),
+    or None for a bare ref / non-ref (§D19-8)."""
+    if not (isinstance(target, str) and target.startswith("$") and "+" in target):
+        return None
+    return target.split("+", 1)[1]
 
 
 # --------------------------------------------------------------------------- #
@@ -562,6 +606,21 @@ class Counter(EffectBase):
 
 class StripIntent(EffectBase):
     kind: Literal["strip_intent"] = "strip_intent"
+    target: TargetOrSlot
+
+
+class BreakChannel(EffectBase):
+    """Break every channel the target is holding (§D19-11).
+
+    The answer to a held ritual, on both sides of the table: a hero's Dispel
+    ends an enemy channeler's rite; an enemy's Ward-Breaker ends a hero's aura.
+    All-or-nothing, exactly like a breaking hit (GDD §8) — a holder's channels
+    end together, their reserved mana returns to the pool, and each ending
+    channel fires its `channel_break` trigger, so breaking a ritual can still
+    spring its dying sting. Only creatures hold channels; anything else (a
+    token, a corpse) is passed over."""
+
+    kind: Literal["break_channel"] = "break_channel"
     target: TargetOrSlot
 
 
@@ -1103,6 +1162,7 @@ LEAF_EFFECT_CLASSES = [
     Fight,
     Counter,
     StripIntent,
+    BreakChannel,
     Stun,
     Pump,
     Wound,
@@ -1144,15 +1204,23 @@ class CastModeCondition(BaseModel):
 
 class TargetPropertyCondition(BaseModel):
     """True when the (main) target has a property — a keyword, a side, a level
-    (compared with exactly / or_more / or_less), a battlefield row, or is dead
-    (`is_dead`: the resolved target is a corpse — §D9-1.3)."""
+    (compared with exactly / or_more / or_less), a battlefield row, is dead
+    (`is_dead`: the resolved target is a corpse — §D9-1.3), or carries an enemy
+    TYPE / SUPERTYPE (§D21: "if the target is an undead" / "…a wizard")."""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
     kind: Literal["target_property"] = "target_property"
-    property: Literal["has_keyword", "side", "level", "row", "is_dead"]
+    property: Literal["has_keyword", "side", "level", "row", "is_dead",
+                      "type", "class"]
     keyword: Optional[str] = None
     side: Optional[Side] = None
     level: Optional[int] = None
     row: Optional[Row] = None
+    type: Optional[str] = None
+    # `class` is a Python keyword — the field is `class_`, aliased both ways so
+    # authored JSON and dumps alike read {"property": "class", "class": "wizard"}.
+    class_: Optional[str] = Field(default=None, alias="class")
     compare: Literal["exactly", "or_more", "or_less"] = "exactly"
 
     @model_validator(mode="after")
@@ -1168,6 +1236,18 @@ class TargetPropertyCondition(BaseModel):
             raise ValueError("target_property 'level' requires a level")
         if self.property == "row" and self.row is None:
             raise ValueError("target_property 'row' requires a row")
+        if self.property == "type":
+            if not self.type:
+                raise ValueError("target_property 'type' requires a type")
+            if self.type not in CREATURE_TYPES:
+                raise ValueError(f"unknown creature type '{self.type}' — one of "
+                                 f"{', '.join(CREATURE_TYPES)}")
+        if self.property == "class":
+            if not self.class_:
+                raise ValueError("target_property 'class' requires a class")
+            if self.class_ not in CREATURE_CLASSES:
+                raise ValueError(f"unknown creature class '{self.class_}' — one of "
+                                 f"{', '.join(CREATURE_CLASSES)}")
         return self
 
 
@@ -1524,11 +1604,28 @@ class Card(BaseModel):
         # Descend into modal modes / conditional branches so nested effects are
         # checked too.
         for effect in iter_effects(self.effects):
+            # §D19-10: `consume_corpse` has no domain but bodies — stamp the
+            # corpse axis onto an INLINE descriptor that omitted it, so the card
+            # text, the pick enumeration and the resolver all read the same
+            # honest shape ("consume all enemy corpses", not "all enemies"). A
+            # "$slot" ref is left alone: the slot is shared, and narrowing it
+            # would narrow its other uses too — tick "corpse only" on the slot.
+            if effect.kind == "consume_corpse":
+                desc = getattr(effect, "target", None)
+                if (not isinstance(desc, str) and desc is not None
+                        and desc.state != TargetState.corpse):
+                    effect.target = desc.model_copy(update={"state": TargetState.corpse})
             name = slot_name(getattr(effect, "target", None))
             if name is not None and name not in self.targets:
                 raise ValueError(
                     f"effect references undeclared slot '${name}'; declare it in 'targets'"
                 )
+            suffix = slot_scope(getattr(effect, "target", None))
+            if suffix is not None and suffix not in ("row", "blast"):
+                raise ValueError(
+                    f"slot reference '${name}+{suffix}': the splash suffix must be "
+                    "'row' or 'blast' (§D19-8 — e.g. \"$T1+row\" covers the shared "
+                    "pick and its row)")
             if effect.kind in ("draw", "scry", "move_card"):
                 desc = self.resolved_target(effect)
                 if desc is not None and desc.side == Side.enemy:
@@ -1591,11 +1688,17 @@ class Card(BaseModel):
         return self
 
     def resolved_target(self, effect) -> Optional[TargetDescriptor]:
-        """The effect's effective descriptor, resolving a slot ref if present."""
+        """The effect's effective descriptor, resolving a slot ref if present —
+        with a "$slot+scope" use's splash merged in (§D19-8), so every check that
+        reads the descriptor sees what this USE actually covers."""
         target = getattr(effect, "target", None)
         name = slot_name(target)
         if name is not None:
-            return self.targets.get(name)
+            desc = self.targets.get(name)
+            use = slot_scope(target)
+            if desc is not None and use is not None:
+                return desc.model_copy(update={"scope": TargetScope(use)})
+            return desc
         return target
 
     # Player cards are always spells; their speed derives from `timing`
@@ -1864,6 +1967,12 @@ class Character(BaseModel):
     keyword: Optional[str] = None             # at most one buyable keyword (§P-3)
     row: Row = Row.front
 
+    # --- type line (§D21): what the hero IS (race) and DOES (role), up to 2
+    # each from the closed registries. Pure identity — costs no points, feeds
+    # the same target_property conditions and art anchoring enemies use.
+    types: List[str] = Field(default_factory=list)
+    classes: List[str] = Field(default_factory=list)
+
     # --- heroic actions (Design Update 08 §D8-3): authored on the character sheet
     # with the full card schema — NOT library cards (never drawn, outside the
     # 20-card deck, rarity quotas and the singleton rule; exempt from deck lints).
@@ -1931,6 +2040,18 @@ class Character(BaseModel):
             raise ValueError(f"HP floor is {BASELINE_HP} (§P-4)")
         if self.starting_cards < BASELINE_CARDS:
             raise ValueError("starting cards floor is 1 (§P-4)")
+        # Type line (§D21): up to 2 of each, registry values only (the sheet's
+        # selectors offer exactly these) — dedupe quietly, reject the unknown.
+        self.types = list(dict.fromkeys(self.types))[:MAX_TYPE_TAGS]
+        self.classes = list(dict.fromkeys(self.classes))[:MAX_TYPE_TAGS]
+        for t in self.types:
+            if t not in CREATURE_TYPES:
+                raise ValueError(f"unknown creature type '{t}' — one of "
+                                 f"{', '.join(CREATURE_TYPES)}")
+        for c in self.classes:
+            if c not in CREATURE_CLASSES:
+                raise ValueError(f"unknown creature class '{c}' — one of "
+                                 f"{', '.join(CREATURE_CLASSES)}")
         if self.legacy:
             return self
         if self.hp % 2 != 0:

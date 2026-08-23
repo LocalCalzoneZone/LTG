@@ -241,7 +241,7 @@ The town reuses the combat screen's shell: backdrop + card slots + inspect modal
 
 ### D17-5.3 Gold — per character, XP-shaped
 
-Every character earns **gold at the same rate as points: one gold per point** — 10 / 20 / 30 as the phases fall, 60 an act (T-85, §D17-2.3) — into their **own** wallet; how it is split and spent is per character. Additional gold from selling (50% of `points_price`, T-86) and from quest hooks (`give_gold`). Prices are `points_price` in gold (merchant premium: ×1.25 on stock, T-86). No free restock anywhere — potions are priced, and the party gets no pass for lacking a healer. Trading items and gold between characters is **town-only**, via the character sheet, and needs both players' clicks (a two-party confirm, not the whole table).
+Every character rides into a scenario with a **starting purse of 15 gold** (T-87), so the first town visit is a real shop trip rather than window-shopping until Act I pays out. Beyond that they earn **gold at the same rate as points: one gold per point** — 10 / 20 / 30 as the phases fall, 60 an act (T-85, §D17-2.3) — into their **own** wallet; how it is split and spent is per character. Additional gold from selling (50% of `points_price`, T-86) and from quest hooks (`give_gold`). Prices are `points_price` in gold (merchant premium: ×1.25 on stock, T-86). No free restock anywhere — potions are priced, and the party gets no pass for lacking a healer. Trading items and gold between characters is **town-only**, via the character sheet, and needs both players' clicks (a two-party confirm, not the whole table).
 
 ### D17-5.4 Dialogue — authored at generation, walked at runtime
 

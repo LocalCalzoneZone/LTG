@@ -452,3 +452,13 @@ label.inline.mini { font-size: 11px; gap: 3px; }
 .anim-file { color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 60px; }
 .anim-add { display: flex; align-items: center; gap: 10px; }
 .anim-empty { color: var(--dim); font-size: 12px; padding: 10px 0; }
+
+/* §D21 type line — chips + add select under Name/Level */
+.tag-pick { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tag-chip {
+  background: var(--panel-2, #1c2430); border: 1px solid var(--line, #35404e);
+  color: var(--ink, #cfd8e3); border-radius: 3px; padding: 2px 8px;
+  font-size: 11px; letter-spacing: 0.04em; cursor: pointer;
+}
+.tag-chip:hover { border-color: var(--accent, #b08d57); }
+.tag-add { font-size: 11px; max-width: 110px; }
