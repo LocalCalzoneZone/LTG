@@ -1,0 +1,352 @@
+{
+  "name": "The Flooded Casemates",
+  "scene": "A low-ceilinged armory of black basalt blocks, half-submerged in dark sea water. Floating powder casks bump against iron-bound pillars, and pale green corpse-light shimmers across the dripping stone ceiling.",
+  "scene_image": "",
+  "enemies": [
+    {
+      "id": "brine_necromancer",
+      "name": "Brine-Touched Warlock",
+      "flavor": "Raises fallen minions and channels a dark flood \u2014 eliminate before corpses multiply.",
+      "description": "A pale sorcerer draped in seaweed and barnacle-encrusted robes, clutching an ivory wand carved from a sea-leviathan rib.",
+      "hp": 10,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "necromancer",
+        "wizard"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "raise_drowned",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "corpse",
+          "action_type": "spell",
+          "telegraph": "Raise Drowned \u2014 raise a fallen minion",
+          "verbs": [
+            {
+              "kind": "control",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "chamber_flood",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "priority": 25,
+          "cooldown": 3,
+          "action_type": "spell",
+          "target_rule": "valuation",
+          "telegraph": "Chamber Flood \u2014 rising dark waters deal 2 damage each turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "necrotic_ward",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Necrotic Ward \u2014 ward against spell damage",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "spell_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drowned_powder_hauler",
+      "name": "Drowned Powder-Hauler",
+      "flavor": "A waterlogged corpse that revives after death unless burned or controlled.",
+      "description": "A bloated drowned sailor bound in rotting hemp rope, clutching a water-sealed cask of black powder with water-bleached hands.",
+      "hp": 8,
+      "power": 1,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "rises": 2,
+      "types": [
+        "undead"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "soggy_swipe",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Soggy Swipe \u2014 deal 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "death_throes",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "priority": 10,
+          "once_per_encounter": true,
+          "target_rule": "trigger_source",
+          "telegraph": "Powder Splash \u2014 deal 3 to killer",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "corpse_burster",
+      "name": "Grave-Powder Bombardier",
+      "flavor": "Consumes nearby fallen corpses to ignite shrapnel explosions across the front rank.",
+      "description": "A manic dwarven corsair in soot-stained leather, carrying alchemical ignition flares and hooked iron tongs to drag fallen bodies.",
+      "hp": 10,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer",
+        "cultist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "powder_detonation",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Powder Detonation \u2014 consume corpse to blast front row for 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            },
+            {
+              "kind": "consume_corpse",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "anchoring_slam",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Anchoring Slam \u2014 deal 3 and taunt attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deck_cannoneer",
+      "name": "Casemate Cannoneer",
+      "flavor": "Fires devastating grapeshot at your hardest hitters and braces behind thick iron mantlets.",
+      "description": "A burly gunner wielding a shortened swivel gun resting on an iron monopod, face blackened with gunpowder residue.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "archer",
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "shrapnel_blast",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Shrapnel Blast \u2014 deal 6 to highest threat",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "iron_shell",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "priority": 15,
+          "once_per_encounter": true,
+          "target_rule": "self",
+          "telegraph": "Iron Shell \u2014 prevent next combat damage",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "combat_kind": "all",
+              "uses": "next",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "brine_necromancer",
+      "corpse_burster",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler"
+    ],
+    "2": [
+      "brine_necromancer",
+      "corpse_burster",
+      "deck_cannoneer",
+      "deck_cannoneer",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler"
+    ],
+    "3": [
+      "brine_necromancer",
+      "corpse_burster",
+      "corpse_burster",
+      "corpse_burster",
+      "deck_cannoneer",
+      "deck_cannoneer",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler"
+    ],
+    "4": [
+      "brine_necromancer",
+      "corpse_burster",
+      "corpse_burster",
+      "corpse_burster",
+      "corpse_burster",
+      "corpse_burster",
+      "deck_cannoneer",
+      "deck_cannoneer",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler",
+      "drowned_powder_hauler"
+    ]
+  }
+}

@@ -781,9 +781,13 @@ class Session:
     def set_art(self, art: Dict[str, Any]) -> None:
         """Swap in fresh art references (scene + pool-enemy urls), keeping this
         session's live-id -> pool-id map (the roster never changes mid-game) and
-        the party's loadout descriptions (encounter_art knows neither)."""
+        the party's loadout descriptions AND panel-animation bundles
+        (encounter_art knows none of these — dropping `char_anims` here used
+        to silently kill every hero's panel clips the moment a mid-fight art
+        generation landed)."""
         self.art = {**art, "base_of": self.art.get("base_of", {}),
-                    "char_descriptions": self.art.get("char_descriptions", {})}
+                    "char_descriptions": self.art.get("char_descriptions", {}),
+                    "char_anims": self.art.get("char_anims", {})}
 
     # -- snapshots ----------------------------------------------------------- #
     def snapshot_for(self, client_id: str) -> Dict[str, Any]:

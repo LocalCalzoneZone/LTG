@@ -1,13 +1,64 @@
 {
-  "name": "The Sunken Peristyle",
-  "scene": "Turquoise waters lap against half-submerged giant marble pillars draped in golden kelp fronds. Schools of jewel-scaled damselfish dart between cracked archways where reef-scavengers pry at ancient brass fixtures.",
-  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/scene-3ff1e438.png",
+  "name": "The Flooded Vestibule",
+  "scene": "Sunlight filters through turquoise waters into a flooded marble entrance hall. Massive fluted pillars of green giant-stone rise from the pool, hung with thick ribbons of kelp and flowering sea anemones.",
+  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/scene-f1a0b0a5.png",
   "enemies": [
     {
-      "id": "barnacle_crusher",
-      "name": "Barnacle Crusher",
-      "flavor": "Regenerates shell plates until struck by a solid blow.",
-      "description": "A waist-high crustacean clad in thick calcified plates and clusters of razor-sharp acorn barnacles, clicking massive asymmetric cerulean claws.",
+      "id": "shoal_scrapper",
+      "name": "Shoal Scrapper",
+      "flavor": "A slippery scavenger that lunges with sharpened coral and scampers back.",
+      "description": "A wiry, webbed-toed goblin with mottled turquoise skin and a harness of woven kelp, brandishing a dagger chipped from razor-sharp staghorn coral.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "goblin"
+      ],
+      "classes": [
+        "scout"
+      ],
+      "components": [
+        {
+          "id": "coral_shiv",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Coral Shiv \u2014 deal 3 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "skitter_back",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Skitter through Kelp"
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/shoal_scrapper-3ee93321.png"
+    },
+    {
+      "id": "barnacle_crustacean",
+      "name": "Barnacle Crustacean",
+      "flavor": "Projects a heavy shell-shield over its allies and pinches attackers.",
+      "description": "A broad, knee-high reef crab encased in calcified barnacle plates, clicking heavy serrated pincers encrusted with blue sea-moss.",
       "hp": 5,
       "power": 1,
       "level": 2,
@@ -20,34 +71,37 @@
       "classes": [
         "brute"
       ],
-      "keywords": [],
       "components": [
         {
-          "id": "shell_regen",
-          "archetype": "Fortify",
+          "id": "shell_wall",
+          "archetype": "Ward",
           "timing": "proactive",
-          "priority": 30,
+          "priority": 20,
           "cooldown": 2,
-          "target_rule": "self",
-          "telegraph": "Mend Carapace \u2014 gains Regen (heals +0/+1 each Upkeep until hit)",
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Barnacle Ward \u2014 protect a wounded ally against the next blow",
           "verbs": [
             {
-              "kind": "regen",
-              "amount": 1,
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
               "target": {
-                "mode": "self"
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
               }
             }
           ]
         },
         {
-          "id": "pincer_snap",
-          "archetype": "Burst",
-          "timing": "proactive",
-          "priority": 20,
+          "id": "crushing_pincer",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
           "cooldown": 2,
-          "target_rule": "valuation",
-          "telegraph": "Crushing Pincer \u2014 heavy snap for 3 damage",
+          "target_rule": "trigger_source",
+          "telegraph": "Pincer Snap \u2014 deal 3 to the attacker",
           "verbs": [
             {
               "kind": "deal_damage",
@@ -61,36 +115,57 @@
           ]
         }
       ],
-      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/barnacle_crusher-dc0bcb7d.png"
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/barnacle_crustacean-aababfc3.png"
     },
     {
-      "id": "coral_mender",
-      "name": "Reef Shaman",
-      "flavor": "Channels vitality to wounded allies; break its focus or face an endless wall.",
-      "description": "A hunched goblin clad in braided sea-grass and a headdress of living staghorn coral, brandishing a staff of polished driftwood.",
-      "hp": 4,
+      "id": "kelp_chanter",
+      "name": "Kelp Chanter",
+      "flavor": "Channels a dragging current while mending wounded allies.",
+      "description": "A slender merfolk mystic draped in long kelp veils, holding a singing conch shell that hums with swirling turquoise water.",
+      "hp": 3,
       "power": 1,
-      "level": 1,
+      "level": 2,
       "row": "rear",
       "home_row": "rear",
       "attack_mode": "ranged",
       "types": [
-        "goblin"
+        "merfolk"
       ],
       "classes": [
         "shaman"
       ],
-      "keywords": [],
       "components": [
         {
-          "id": "soothing_surge",
+          "id": "dragging_current",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Dragging Current \u2014 a held chant: 2 damage each turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "shoal_mend",
           "archetype": "Fortify",
           "timing": "proactive",
+          "once_per_encounter": true,
           "priority": 25,
-          "cooldown": 2,
           "target_rule": "lowest_hp_ally",
-          "action_type": "spell",
-          "telegraph": "Soothing Surge \u2014 heal the lowest ally 3",
+          "telegraph": "Shoal Mend \u2014 heal an ally 3",
           "verbs": [
             {
               "kind": "heal",
@@ -102,64 +177,41 @@
               }
             }
           ]
-        },
-        {
-          "id": "living_kelp_song",
-          "archetype": "Fortify",
-          "timing": "proactive",
-          "priority": 35,
-          "cooldown": 3,
-          "channel": true,
-          "action_type": "spell",
-          "target_rule": "self",
-          "telegraph": "Kelp Song \u2014 channel an aura granting +1 Power to all allies",
-          "verbs": [
-            {
-              "kind": "pump",
-              "power": 1,
-              "toughness": 0,
-              "duration": "while_channeled",
-              "target": {
-                "mode": "all",
-                "side": "enemy"
-              }
-            }
-          ]
         }
       ],
-      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/coral_mender-105c8aae.png"
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase1/kelp_chanter-4df4407f.png"
     }
   ],
   "tokens": {},
   "difficulty": "standard",
   "layouts": {
     "1": [
-      "barnacle_crusher",
-      "coral_mender"
+      "shoal_scrapper",
+      "kelp_chanter"
     ],
     "2": [
-      "barnacle_crusher",
-      "barnacle_crusher",
-      "coral_mender",
-      "coral_mender"
+      "shoal_scrapper",
+      "shoal_scrapper",
+      "barnacle_crustacean",
+      "kelp_chanter"
     ],
     "3": [
-      "barnacle_crusher",
-      "barnacle_crusher",
-      "barnacle_crusher",
-      "coral_mender",
-      "coral_mender",
-      "coral_mender"
+      "shoal_scrapper",
+      "shoal_scrapper",
+      "shoal_scrapper",
+      "barnacle_crustacean",
+      "barnacle_crustacean",
+      "kelp_chanter"
     ],
     "4": [
-      "barnacle_crusher",
-      "barnacle_crusher",
-      "barnacle_crusher",
-      "barnacle_crusher",
-      "coral_mender",
-      "coral_mender",
-      "coral_mender",
-      "coral_mender"
+      "shoal_scrapper",
+      "shoal_scrapper",
+      "shoal_scrapper",
+      "shoal_scrapper",
+      "barnacle_crustacean",
+      "barnacle_crustacean",
+      "kelp_chanter",
+      "kelp_chanter"
     ]
   }
 }

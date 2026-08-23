@@ -409,7 +409,13 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
             continue
         try:
             lo = Loadout.model_validate(raw)
-        except Exception:
+        except Exception as exc:
+            # A character that fails validation drops out of the picker with no
+            # other signal (it's still a valid *file*, just not a valid loadout
+            # under the current schema — e.g. a retired keyword) — silent enough
+            # that a character can "disappear" with nothing to explain why.
+            # Loud on the server console instead: one line naming the file.
+            print(f"[content] {path}: not loaded as a character — {exc}")
             continue
         cid = path.stem
         char = lo.character

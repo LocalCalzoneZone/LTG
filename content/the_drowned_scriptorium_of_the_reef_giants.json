@@ -1,18 +1,18 @@
 {
   "kind": "adventure",
   "name": "The Drowned Scriptorium of the Reef-Giants",
-  "flavor": "Delve into the sunlit, submerged marble vaults of ancient giants to secure an astrological relic.",
+  "flavor": "Delve into turquoise-flooded giant-vaults to recover a lost brass star-chart before the saboteurs complete their plot.",
   "phases": [
     {
-      "narration": "You cast off from the timber jetties of Azure, following Harbourmistress Ilenya Sarn's warnings and Princess Turanda's promised gold toward the outer shoals. Where the ancient giant-built sea-wall fractures into the open sea, the marble crest of the Drowned Scriptorium breaks the waves. Stepping onto the flooded steps where the water reaches your waist, you are greeted by snapping pincers and the hissing chants of coral scavengers guarding the peristyle.",
+      "narration": "You leave the timber docks of Azure behind, sailing through the broken outer sea-wall into the sun-dappled shallows. Ahead, the shattered pediment of the Reef-Giant Scriptorium juts from the turquoise water, its emerald marble stairs submerged beneath gently swaying kelp. As your skiff glides into the flooded antechamber, scuttling scavengers and coral-scaled sentries rise from the sunken flagstones to bar your passage.",
       "encounter_id": "the_drowned_scriptorium_of_the_reef_giants__phase1"
     },
     {
-      "narration": "Wading deeper through submerged grand archways, the sound of grinding gears reverberates through the water. Colossal brass astrolabes turn lazily on the ceiling, catching the blue light. But the mechanism is not abandoned: salvage-harpooners perch atop the rusted cogwheels, ready to hook intruders and drag them into the electrified machinery.",
+      "narration": "Wading deeper through waist-high sea water, you enter the towering scriptorium halls. Shelves carved for giants stretch into the vaulted shadows, filled with stone tablets and tarnished brass scroll-cases. Clockwork sentinels left behind by the ancient builders grind to life in the flooded aisles, their brass joints groaning as they ready heavy clamps and disruption cantrips to halt your advance.",
       "encounter_id": "the_drowned_scriptorium_of_the_reef_giants__phase2"
     },
     {
-      "narration": "You breach the central sanctuary: an immense domed chamber where the water is calm and crystalline. At the chamber's apex sits the Gilded Star-Chart, its brass planetary spheres aligned to constellations long forgotten. Floating before the dais is the Scriptorium's ancient guardian\u2014an animated giant-wrought astromancer draped in kelp and starlight, flanked by an immovable carapace warder.",
+      "narration": "You step into the central rotunda of the Scriptorium. At the room's center, resting upon a submerged dais, glitters the colossal brass star-chart Princess Turanda seeks. But standing over it is Archon Pelagios\u2014a titanic giant-automaton whose core burns with sapphire sea-fire. As you breach the chamber, its ocular lenses ignite with golden light, and its massive bronze limbs churn the flooded floor into a roaring whirlpool.",
       "encounter_id": "the_drowned_scriptorium_of_the_reef_giants__phase3"
     }
   ],

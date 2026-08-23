@@ -2496,6 +2496,13 @@ Write:
 6. "reask" (optional): a map of NPC id → the line that NPC opens with when the
    party comes back after saying they would think it over ("Well? Have you had
    time to consider what I asked?"), in their own voice.
+7. "accepted" / "declined" / "committed" (optional, for every NPC who offers
+   a quest): a map of NPC id → ONE closing line in their voice — "accepted" is
+   what they say when the party takes an offer (relief, a warning, a blessing
+   for the road); "declined" when the party says they will think on it;
+   "committed" when the party explains they are already sworn to someone
+   else's task this act and cannot take this one. Each is spoken once and the
+   conversation ends on it. Omit a map and a plain default is used.
 
 Output contract:
 {"quests": [{"id": "...", "title": "...", "text": "...", "adventure_theme": "..."}, ×2–4],
@@ -2503,7 +2510,10 @@ Output contract:
  "dialogues": {"<npc id>": {tree}},
  "flavor": {"<npc id>": "..."},
  "topics": {"<npc id>": [{"ask": "...", "reply": "...", "requires": ["knows_x"]}]},
- "reask": {"<npc id>": "..."}}
+ "reask": {"<npc id>": "..."},
+ "accepted": {"<npc id>": "..."},
+ "declined": {"<npc id>": "..."},
+ "committed": {"<npc id>": "..."}}
 """
 
 

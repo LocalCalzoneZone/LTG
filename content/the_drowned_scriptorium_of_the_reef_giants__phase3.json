@@ -1,38 +1,45 @@
 {
-  "name": "The Star-Chart Sanctum",
-  "scene": "A domed circular observatory flooded waist-deep, illuminated by celestial glyphs glowing aquamarine beneath the water. In the center, a gigantic brass celestial sphere spins steadily over a marble dais.",
-  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/scene-0d0350e9.png",
+  "name": "The Sunken Astrolabe Vault",
+  "scene": "A domed circular amphitheater of emerald marble open to the sky above. Massive concentric brass rings of an ancient astrolabe rotate slowly through clear turquoise water, surrounded by towering coral pillars.",
+  "scene_image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/scene-2b631ae9.png",
   "enemies": [
     {
-      "id": "scriptorium_astromancer",
-      "name": "Arch-Astromancer Thalassos",
-      "flavor": "Channels astral tides and sweeps rows with celestial brass; enrages into a storm.",
-      "description": "A floating nine-foot construct of polished bronze and luminescent pearl, four segmented arms manipulating floating brass star-orbs that hum with azure arcane light.",
-      "hp": 22,
+      "id": "archon_pelagios",
+      "name": "Archon Pelagios",
+      "flavor": "A giant-forged astrolabe guardian. Cleaves wide formations; erupts when bloodied.",
+      "description": "A twelve-foot colossus forged of verdant giant-stone and burnished brass plates, crowned with a rotating star-chart ring and wielding a massive hydraulic poleaxe.",
+      "hp": 32,
       "power": 3,
-      "level": 5,
-      "row": "rear",
-      "home_row": "rear",
-      "attack_mode": "ranged",
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "keywords": [
+        "reach"
+      ],
       "types": [
+        "giant",
         "construct"
       ],
       "classes": [
-        "wizard"
+        "warlord"
       ],
-      "is_boss": true,
-      "keywords": [],
       "components": [
         {
-          "id": "celestial_alignment",
+          "id": "cleaving_astrolabe",
           "archetype": "Burst",
           "timing": "proactive",
-          "phase": "pre_enrage",
           "priority": 25,
           "cooldown": 2,
+          "condition": {
+            "kind": "hero_count",
+            "op": ">=",
+            "value": 3
+          },
           "target_row": "front",
-          "action_type": "spell",
-          "telegraph": "Star-Sweep \u2014 4 spell damage across the front row",
+          "action_type": "attack",
+          "telegraph": "Cleaving Astrolabe \u2014 4 damage to the entire front row",
           "verbs": [
             {
               "kind": "deal_damage",
@@ -48,15 +55,36 @@
           ]
         },
         {
-          "id": "astral_conduit",
+          "id": "piston_smash",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Piston Smash \u2014 deal 6 to the strongest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "submerging_deluge",
           "archetype": "Burst",
           "timing": "proactive",
           "phase": "post_enrage",
           "priority": 20,
           "cooldown": 2,
-          "action_type": "spell",
           "target_rule": "self",
-          "telegraph": "Supernova Burst \u2014 4 spell damage to ALL heroes",
+          "action_type": "spell",
+          "telegraph": "Submerging Deluge \u2014 4 damage to ALL heroes",
           "verbs": [
             {
               "kind": "deal_damage",
@@ -69,46 +97,15 @@
           ]
         },
         {
-          "id": "starlight_mantle",
-          "archetype": "Drain",
-          "timing": "proactive",
-          "priority": 30,
-          "cooldown": 3,
-          "channel": true,
-          "action_type": "spell",
-          "target_rule": "valuation",
-          "telegraph": "Starlight Siphon \u2014 channel 2 damage to a hero every upkeep, healing self for 2",
-          "verbs": [
-            {
-              "kind": "deal_damage",
-              "amount": 2,
-              "trigger": "upkeep",
-              "target": {
-                "mode": "chosen",
-                "side": "ally",
-                "targeted": true
-              }
-            },
-            {
-              "kind": "heal",
-              "amount": 2,
-              "trigger": "upkeep",
-              "target": {
-                "mode": "self"
-              }
-            }
-          ]
-        },
-        {
-          "id": "astral_detonation",
+          "id": "astrolabe_overdrive",
           "archetype": "Enrage",
           "priority": 5,
           "target_rule": "self",
-          "telegraph": "CELESTIAL REALIGNMENT \u2014 +2/+2 permanently, and astral flare strikes all heroes for 4",
+          "telegraph": "ASTROLABE OVERDRIVE \u2014 +3/+2 permanently and steam erupts for 3",
           "verbs": [
             {
               "kind": "counters",
-              "power": 2,
+              "power": 3,
               "toughness": 2,
               "target": {
                 "mode": "self"
@@ -116,67 +113,23 @@
             },
             {
               "kind": "deal_damage",
-              "amount": 4,
+              "amount": 3,
               "target": {
                 "mode": "all",
                 "side": "ally"
               }
             }
           ]
-        }
-      ],
-      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/scriptorium_astromancer-88da3044.png"
-    },
-    {
-      "id": "carapace_warder",
-      "name": "Carapace Warder",
-      "flavor": "Layers protective shields over the Astromancer; retaliates against attackers.",
-      "description": "A monolithic coral-encrusted golem hunkered low like a massive sea-tortoise, raising massive shield-slabs of petrified nautilus shell.",
-      "hp": 8,
-      "power": 1,
-      "level": 2,
-      "row": "front",
-      "home_row": "front",
-      "attack_mode": "melee",
-      "types": [
-        "elemental",
-        "construct"
-      ],
-      "classes": [
-        "knight"
-      ],
-      "keywords": [],
-      "components": [
-        {
-          "id": "reef_aegis",
-          "archetype": "Ward",
-          "timing": "proactive",
-          "priority": 20,
-          "cooldown": 2,
-          "target_rule": "lowest_hp_ally",
-          "telegraph": "Nautilus Ward \u2014 grant all-damage protection to the Astromancer",
-          "verbs": [
-            {
-              "kind": "protection",
-              "parameter": "all_damage",
-              "combat_kind": "all",
-              "target": {
-                "mode": "chosen",
-                "side": "ally",
-                "targeted": true
-              }
-            }
-          ]
         },
         {
-          "id": "coral_retaliation",
+          "id": "steam_vent",
           "archetype": "Punish",
           "timing": "reactive",
           "trigger": "on_hit",
+          "priority": 20,
           "cooldown": 2,
-          "priority": 25,
           "target_rule": "trigger_source",
-          "telegraph": "Spiny Retaliation \u2014 deal 3 damage back to attacker",
+          "telegraph": "Steam Vent \u2014 deal 3 to the attacker",
           "verbs": [
             {
               "kind": "deal_damage",
@@ -190,39 +143,226 @@
           ]
         }
       ],
-      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/carapace_warder-14814d4d.png"
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/archon_pelagios-8bb0054f.png"
+    },
+    {
+      "id": "star_dial_sentinel",
+      "name": "Star-Dial Sentinel",
+      "flavor": "Sweeps frontlines when facing groups and restores fellow constructs.",
+      "description": "A stout, brass-plated automaton shaped like a tiered sundial, grinding forward on stone rollers while venting warm sea-mist.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "dial_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "condition": {
+            "kind": "hero_count",
+            "op": ">=",
+            "value": 3
+          },
+          "target_row": "front",
+          "telegraph": "Dial Sweep \u2014 deal 3 to the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "dial_battery",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Mend Plating \u2014 heal an ally 3",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/star_dial_sentinel-20641a2e.png"
+    },
+    {
+      "id": "shoal_siphonist",
+      "name": "Shoal Siphonist",
+      "flavor": "Channels an enervating vortex and blasts with pressurized water.",
+      "description": "A hooded merfolk ritualist adorned in shimmering abalone scales, swirling twin orbs of spinning water in webbed claws.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "merfolk"
+      ],
+      "classes": [
+        "cultist"
+      ],
+      "components": [
+        {
+          "id": "siphon_aura",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Siphoning Vortex \u2014 a held chant: heroes fight at -1/-0",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "pressurized_jet",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Pressurized Jet \u2014 deal 4 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/shoal_siphonist-dafe8960.png"
+    },
+    {
+      "id": "reef_stalker",
+      "name": "Reef Stalker",
+      "flavor": "Strikes from the flank with venomous fangs and slinks away.",
+      "description": "A thick-scaled sea serpent with glowing turquoise dorsal frills and needle fangs dripping with dark paralyzing venom.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "serpent"
+      ],
+      "classes": [
+        "scout"
+      ],
+      "components": [
+        {
+          "id": "venom_strike",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Reef Venom \u2014 poison a hero",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "slip_through",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Slither into Shadows"
+        }
+      ],
+      "image": "/art/the_drowned_scriptorium_of_the_reef_giants__phase3/reef_stalker-40d40fdc.png"
     }
   ],
   "tokens": {},
   "difficulty": "standard",
   "layouts": {
     "1": [
-      "scriptorium_astromancer",
-      "carapace_warder"
+      "archon_pelagios",
+      "star_dial_sentinel"
     ],
     "2": [
-      "scriptorium_astromancer",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder"
+      "archon_pelagios",
+      "star_dial_sentinel",
+      "shoal_siphonist",
+      "reef_stalker"
     ],
     "3": [
-      "scriptorium_astromancer",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder"
+      "archon_pelagios",
+      "star_dial_sentinel",
+      "star_dial_sentinel",
+      "shoal_siphonist",
+      "shoal_siphonist",
+      "reef_stalker",
+      "reef_stalker"
     ],
     "4": [
-      "scriptorium_astromancer",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder",
-      "carapace_warder"
+      "archon_pelagios",
+      "star_dial_sentinel",
+      "star_dial_sentinel",
+      "star_dial_sentinel",
+      "shoal_siphonist",
+      "shoal_siphonist",
+      "shoal_siphonist",
+      "reef_stalker",
+      "reef_stalker",
+      "reef_stalker",
+      "reef_stalker"
     ]
   }
 }

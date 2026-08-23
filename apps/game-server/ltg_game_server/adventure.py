@@ -330,16 +330,15 @@ class AdventureRun:
         self.carry = {}
         for c in state.party:
             # Everything shuffles up together at the boundary — hand, library,
-            # graveyard, and the cards of silently-dropped channels — and the
-            # next phase opens on a FRESH hand of starting-cards (first-playtest
-            # amendment: carrying the literal hand let cards accumulate).
-            # A held channel whose card is the character's SHEET content — a
-            # channeled Skill or Ultimate (D8-3) — is not a library card and
-            # must not be folded in: doing so dealt the Skill into the next
-            # phase's hand as a real deck card, one more copy per boundary.
-            cards = (list(c.hand) + list(c.library) + list(c.graveyard)
-                     + [ch.card for ch in c.channels
-                        if ch.card.id not in _heroic_ids(c)])
+            # graveyard — and the next phase opens on a FRESH hand of
+            # starting-cards (first-playtest amendment: carrying the literal
+            # hand let cards accumulate).
+            # Held channels are NOT folded in: a channeled library card goes
+            # to the graveyard the moment it is cast (engine R-9) and the
+            # channel merely references it, so adding `ch.card` here dealt a
+            # second copy into every later phase (one more per boundary); a
+            # channeled Skill/Ultimate is sheet content and never deck at all.
+            cards = list(c.hand) + list(c.library) + list(c.graveyard)
             self.carry[c.id] = {
                 "hp": c.hp,  # temp mods are encounter-duration; they clear
                 "cards": copy.deepcopy(cards),

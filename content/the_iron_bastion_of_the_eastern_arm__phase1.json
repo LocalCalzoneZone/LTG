@@ -1,0 +1,371 @@
+{
+  "name": "The Shattered Causeway",
+  "scene": "A cyclopean granite bridge spanning Azure's outer lagoon, its heavy stone blocks cracked by pounding surf. Redwake signal lanterns cast bloody reflections across wet basalt, while iron-tipped barricades block the barbican archway.",
+  "scene_image": "/art/the_iron_bastion_of_the_eastern_arm__phase1/scene-1cf08c15.png",
+  "enemies": [
+    {
+      "id": "redwake_standard_bearer",
+      "name": "Redwake Horn-Chanter",
+      "flavor": "Chants a war-dirge that saps the party's vitality \u2014 silence the horn before reinforcements surge.",
+      "description": "A broad-shouldered pirate officer wrapped in a tattered crimson sash, raising a heavy curved brass horn banded in black iron.",
+      "hp": 10,
+      "power": 1,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "bard",
+        "warlord"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "war_horn_dirge",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "War-Horn Dirge \u2014 held chant: all heroes fight at -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rallying_blast",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Rallying Blast \u2014 heal an ally 5",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "unflinching_stance",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Unflinching Stance \u2014 absorb the next blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase1/redwake_standard_bearer-d5741fc2.png"
+    },
+    {
+      "id": "bastion_bulwark",
+      "name": "Bastion Bulwark",
+      "flavor": "Plants an iron tower shield to protect allies and punishes those who strike them.",
+      "description": "A heavily armoured corsair shock-trooper clad in pitted plate armor, anchoring a notched steel pavise into the causeway mortar.",
+      "hp": 12,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "soldier",
+        "knight"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "shield_of_the_line",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Shield of the Line \u2014 grant protection to an ally",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "brace_and_batter",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Brace and Batter \u2014 deal 4 and taunt the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "redwake_corsair",
+      "name": "Redwake Boarder",
+      "flavor": "Lashes out with cutlass and boarding gaff, punishing direct attacks.",
+      "description": "A lean, sun-darkened reaver armed with a curved boarding cutlass and a barbed gaff-hook, leaping over barricades with feral agility.",
+      "hp": 10,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warrior",
+        "rogue"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "cleaving_hack",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Cleaving Hack \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "boarding_lash",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Boarding Lash \u2014 deal 3 to attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "corsair_skiff_archer",
+      "name": "Corsair Skiff-Archer",
+      "flavor": "Hangs back to loose barbed arrows and scatters caltrops when pressed.",
+      "description": "A sharpshooter in sea-drenched leather armor, nocking black-fletched broadheads on a composite yew bow.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "archer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "barbed_volley",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Barbed Volley \u2014 deal 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "caltrop_scatter",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 20,
+          "once_per_encounter": true,
+          "target_rule": "trigger_source",
+          "telegraph": "Caltrop Scatter \u2014 wound attacker -1/-1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "redwake_standard_bearer",
+      "bastion_bulwark",
+      "redwake_corsair"
+    ],
+    "2": [
+      "redwake_standard_bearer",
+      "bastion_bulwark",
+      "redwake_corsair",
+      "redwake_corsair",
+      "bastion_bulwark",
+      "corsair_skiff_archer"
+    ],
+    "3": [
+      "redwake_standard_bearer",
+      "redwake_standard_bearer",
+      "bastion_bulwark",
+      "bastion_bulwark",
+      "redwake_corsair",
+      "redwake_corsair",
+      "corsair_skiff_archer",
+      "corsair_skiff_archer",
+      "corsair_skiff_archer",
+      "corsair_skiff_archer"
+    ],
+    "4": [
+      "redwake_standard_bearer",
+      "redwake_standard_bearer",
+      "bastion_bulwark",
+      "bastion_bulwark",
+      "bastion_bulwark",
+      "bastion_bulwark",
+      "redwake_corsair",
+      "redwake_corsair",
+      "redwake_corsair",
+      "redwake_corsair",
+      "corsair_skiff_archer",
+      "corsair_skiff_archer",
+      "corsair_skiff_archer",
+      "corsair_skiff_archer"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "redwake_standard_bearer",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The War-Horn Screams \u2014 fortress reinforcements surge",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 3,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ]
+    },
+    "resolved": false
+  }
+}
