@@ -1,0 +1,403 @@
+{
+  "name": "The Horn-Throne of the Outer Spire",
+  "scene": "An open circular amphitheater crowning the spire, exposed to the howling tempest. In the center rises a cyclopean bronze horn fifty feet wide, humming with azure arcane energy and shaking the flagstones underfoot.",
+  "scene_image": "/art/the_spire_of_the_drowned_king__phase3/scene-42287ca3.png",
+  "enemies": [
+    {
+      "id": "corsair_queen_turanda",
+      "name": "Corsair Queen Turanda",
+      "flavor": "The dread pirate queen; snipes heroes with uncanny precision and erupts in fury when bloodied.",
+      "description": "A statuesque pirate warlord in a gilded corsair breastplate and trailing indigo cape, wielding a twin-pronged rapier crackling with ocean thunder.",
+      "hp": 41,
+      "power": 4,
+      "level": 8,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warlord",
+        "assassin"
+      ],
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "tempest_strike",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Tempest Rapier \u2014 deal 8 damage to the highest threat",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 8,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "ritual_sever",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 22,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "condition": {
+            "kind": "hero_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "telegraph": "Sever Focus \u2014 strike for 7 and break all channeled rituals",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "break_channel",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "bronze_horn_blast",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Bronze Horn Blast \u2014 unleash a deafening 5-damage shockwave across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "cutlass_riposte",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Duellist Riposte \u2014 deal 5 damage to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "queens_wrath",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "QUEEN'S WRATH \u2014 +3/+3 permanently, and a tidal surge crashes for 5 damage to all heroes",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase3/corsair_queen_turanda-8406c8e2.png"
+    },
+    {
+      "id": "spire_sniper",
+      "name": "Spire Sharpshooter",
+      "flavor": "Assassinating sniper that hunts the party's damage dealer and silences spellcasters.",
+      "description": "A corsair marksman in dark velvet kneeling atop an alabaster archway, leveling an ornate long-rifle loaded with silver shot.",
+      "hp": 8,
+      "power": 4,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "assassin",
+        "archer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "heart_seeker",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Heart-Seeker Shot \u2014 deal 7 damage to the highest threat",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hush_bullet",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "channeling_player",
+          "condition": {
+            "kind": "hero_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "telegraph": "Hushing Bullet \u2014 silence the channeling caster",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "cast",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase3/spire_sniper-c59cbd03.png"
+    },
+    {
+      "id": "storm_ritualist",
+      "name": "Storm Ritualist",
+      "flavor": "Channels a sustained lightning storm across the party and shields wounded champions.",
+      "description": "An elder mystic with silvered hair and robes patterned like stormclouds, holding aloft a trident wrapped in crackling blue arcs.",
+      "hp": 12,
+      "power": 2,
+      "level": 5,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "shaman",
+        "ritualist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "maelstrom_channel",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Maelstrom Litany \u2014 held storm dealing 2 damage to all heroes every turn",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "gale_shield",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Gale Shield \u2014 grant protection to the lowest HP ally",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase3/storm_ritualist-34d71768.png"
+    },
+    {
+      "id": "corsair_duellist",
+      "name": "Corsair Duellist",
+      "flavor": "Locks down hero skills and parries incoming weapon swings.",
+      "description": "A swaggering swordsman with braided sideburns and a main-gauche parrying dagger, spinning his rapier in dazzling patterns.",
+      "hp": 6,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "rogue",
+        "warrior"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "tendon_cut",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 3,
+          "target_rule": "highest_threat",
+          "telegraph": "Hamstring Lunge \u2014 lock the Skill of the highest threat",
+          "verbs": [
+            {
+              "kind": "modify_action",
+              "action": "skill",
+              "modifier": "lock_skill",
+              "duration": "encounter",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "steel_parry",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Steel Parry \u2014 parry the incoming attack",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "attack"
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_spire_of_the_drowned_king__phase3/corsair_duellist-3ddced02.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "corsair_queen_turanda",
+      "spire_sniper",
+      "corsair_duellist"
+    ],
+    "2": [
+      "corsair_queen_turanda",
+      "spire_sniper",
+      "spire_sniper",
+      "storm_ritualist",
+      "storm_ritualist",
+      "corsair_duellist",
+      "corsair_duellist"
+    ],
+    "3": [
+      "corsair_queen_turanda",
+      "spire_sniper",
+      "spire_sniper",
+      "spire_sniper",
+      "storm_ritualist",
+      "storm_ritualist",
+      "storm_ritualist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist"
+    ],
+    "4": [
+      "corsair_queen_turanda",
+      "spire_sniper",
+      "spire_sniper",
+      "spire_sniper",
+      "spire_sniper",
+      "storm_ritualist",
+      "storm_ritualist",
+      "storm_ritualist",
+      "storm_ritualist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist",
+      "corsair_duellist"
+    ]
+  }
+}

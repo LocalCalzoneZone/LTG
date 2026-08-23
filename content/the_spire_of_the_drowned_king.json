@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Spire of the Drowned King",
+  "flavor": "Storm the coral-encrusted outer spire to silence Corsair Queen Turanda's giant-forged horn before Azure is washed away.",
+  "phases": [
+    {
+      "narration": "Captain Orsolo Vane's cutter shears across the jagged shoals with a sickening shudder of timber, slamming prow-first into the Spire's grand upper terrace. Salt spray still clings to your armor as corsair deckhands and gunners scramble over overturned amphorae, hauling dead comrades to feed the hungry maw of scrap-firing deck mortars.",
+      "encounter_id": "the_spire_of_the_drowned_king__phase1"
+    },
+    {
+      "narration": "You kick through the arched mahogany doors into the Spire's grand interior nave. Deep seawater laps across inlaid pearl mosaics as brass skiffmasters lead sea-shanties that whip their warband into a frenzy, their voices bouncing off towering basalt columns that shudder with every distant horn vibration.",
+      "encounter_id": "the_spire_of_the_drowned_king__phase2"
+    },
+    {
+      "narration": "You emerge onto the Spire's apex, deafened by the reverberating blare of the giant-forged bronze horn. Corsair Queen Turanda stands atop the throne platform with her cutlass bared and her twin wheel-lock pistols smoking, cold fury in her eyes as stormwinds tear at her silk cape. Behind her, the horn's tidal mechanism turns, ready to unleash the final surge that will drown Azure.",
+      "encounter_id": "the_spire_of_the_drowned_king__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

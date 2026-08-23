@@ -1,7 +1,7 @@
 {
   "name": "The Flooded Casemates",
   "scene": "A low-ceilinged armory of black basalt blocks, half-submerged in dark sea water. Floating powder casks bump against iron-bound pillars, and pale green corpse-light shimmers across the dripping stone ceiling.",
-  "scene_image": "",
+  "scene_image": "/art/the_iron_bastion_of_the_eastern_arm__phase2/scene-0166e78c.png",
   "enemies": [
     {
       "id": "brine_necromancer",
@@ -87,7 +87,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase2/brine_necromancer-d2943471.png"
     },
     {
       "id": "drowned_powder_hauler",
@@ -150,7 +151,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase2/drowned_powder_hauler-842569e5.png"
     },
     {
       "id": "corpse_burster",
@@ -232,7 +234,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase2/corpse_burster-0ac68013.png"
     },
     {
       "id": "deck_cannoneer",
@@ -295,7 +298,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase2/deck_cannoneer-464c43fd.png"
     }
   ],
   "tokens": {},

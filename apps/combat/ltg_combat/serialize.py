@@ -472,7 +472,7 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
             "text": ch.card.translated_text or "",
             # What ending this channel will fire ("" when it has no break trigger)
             # — the Channels modal shows it as a warning note next to Drop.
-            "break_text": channel_break_clause(ch.card.effects, ch.card.targets),
+            "break_text": channel_break_clause(ch.effects, ch.card.targets),
         } for ch in char.channels],
         "hand": [card_dict(c) for c in char.hand],
         "library": [card_dict(c) for c in char.library],

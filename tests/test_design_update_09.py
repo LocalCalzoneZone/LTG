@@ -871,6 +871,57 @@ def test_stun_suppresses_one_of_the_two_intents():
     assert st.character("p").hp == hp1 - 3 - 1   # boss's single 3 + the wall's 1
 
 
+ALL_ENEMIES_T = {"mode": "all", "side": "enemy"}
+
+
+def test_a_mass_strip_unravels_both_of_a_boss_intents():
+    """Playtest bug (2026-08-23): "remove the telegraphed intent of ALL enemies"
+    (Turin's Righteous Fury) took only the first slot, so an enraged boss's second
+    swing still landed. A side-wide strip offers no per-intent pick, so it takes
+    every declared slot; the §D9-4 '::2' pick belongs to a CHOSEN strip only."""
+    unmake = _card("unmake", "Unmake", "sorcery", {"colors": {"U": 1}},
+                   [{"kind": "strip_intent", "target": ALL_ENEMIES_T}])
+    st = _fury_state(hand_cards=[unmake])
+    hp0 = settle(st).character("p").hp
+    st = _do(st, "cast", card_id="unmake")
+    st = _do(st, "pass")
+    boss = settle(st).enemy("boss")
+    assert boss.intent is None and boss.intent2 is None
+    assert boss.round_intent_status == "stripped"
+    assert boss.round_intent2_status == "stripped"
+    assert settle(st).enemy("wall").intent is None      # and every other enemy
+    st = _drive_turn(st)
+    assert st.character("p").hp == hp0                  # nothing at all landed
+
+
+def test_a_mass_strip_with_nothing_declared_still_lingers():
+    """§D19-5 is unchanged by the sweep: a mass strip that finds no declared intent
+    still clings, to smother the next declaration as it forms."""
+    from ltg_combat.engine import _r_strip_intent
+    from ltg_core.schema import StripIntent
+
+    st = _fury_state()
+    boss = st.enemy("boss")
+    boss.intent = boss.intent2 = None
+    effect = StripIntent.model_validate({"kind": "strip_intent", "target": ALL_ENEMIES_T})
+    _r_strip_intent(st, None, effect, boss, {})
+    assert boss.strip_pending == 1
+    assert st.log[-1].type == "strip_intent_pending"
+
+
+def test_a_chosen_strip_still_takes_only_the_picked_intent():
+    """The regression guard for §D9-4: the sweep must not turn every strip into a
+    mass strip — a chosen pick still unravels exactly the line the player named."""
+    strip = _card("unravel", "Unravel", "instant", {"colors": {"U": 1}},
+                  [{"kind": "strip_intent", "target": CHOSEN_ENEMY_T}])
+    st = _fury_state(hand_cards=[strip])
+    st = _do(st, "cast", card_id="unravel", target_id="boss")
+    st = _do(st, "pass")
+    boss = settle(st).enemy("boss")
+    assert boss.intent is None and boss.intent2 is not None
+    assert boss.round_intent_status == "stripped"
+
+
 def test_strip_removes_one_chosen_intent_of_two():
     strip = _card("unravel", "Unravel", "instant", {"colors": {"U": 1}},
                   [{"kind": "strip_intent", "target": CHOSEN_ENEMY_T}])

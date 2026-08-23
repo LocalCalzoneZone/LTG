@@ -1,7 +1,7 @@
 {
   "name": "The Upper Battery Bastion",
   "scene": "The open stone ramparts at the crest of the fortress, winds roaring and sea-spray flying over crenellations. Massive iron bombards sit in bronze swivels beside smoking braziers, overlooking the green waters of Azure in the distance.",
-  "scene_image": "",
+  "scene_image": "/art/the_iron_bastion_of_the_eastern_arm__phase3/scene-2bc9547f.png",
   "enemies": [
     {
       "id": "commodore_kallisto",
@@ -115,7 +115,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase3/commodore_kallisto-695b5186.png"
     },
     {
       "id": "blade_duellist",
@@ -182,7 +183,8 @@
           "target_rule": "self",
           "telegraph": "Fancy Footwork \u2014 disengage to middle rank"
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase3/blade_duellist-97496a1a.png"
     },
     {
       "id": "sea_witch_arcanist",
@@ -247,7 +249,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase3/sea_witch_arcanist-1eb20b0d.png"
     },
     {
       "id": "corsair_marine",
@@ -318,7 +321,8 @@
             }
           ]
         }
-      ]
+      ],
+      "image": "/art/the_iron_bastion_of_the_eastern_arm__phase3/corsair_marine-ad8b47de.png"
     }
   ],
   "tokens": {},

@@ -100,11 +100,56 @@
   opacity: 0.5;
 }
 
+/* ---- Ward aura (CharacterCard / CreatureCard) ----------------------------
+   A standing damage shield: a ring inscribed just inside the card's frame with
+   a soft wash behind it, held for as long as the shield is up. The one-shot
+   `fx-ward` announces protection arriving; this is the same idea at rest, so it
+   breathes slowly and stays quiet enough to sit under the card's own chrome.
+   `--ward-color` is an "r, g, b" triplet from the lane (see WardAura.tsx). */
+.fx-ward-aura {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.fx-ward-aura-ring {
+  position: absolute;
+  inset: calc(3px + var(--ward-inset, 0%));
+  border: 1px solid rgba(var(--ward-color), 0.8);
+  box-shadow:
+    0 0 10px 1px rgba(var(--ward-color), 0.45),
+    inset 0 0 14px 1px rgba(var(--ward-color), 0.3);
+  animation: fx-ward-aura-breathe 3.2s ease-in-out infinite;
+}
+/* The wash under the ring: a lit dome standing over the card. Strongest at the
+   frame and gone by the middle, so the art underneath still carries the card. */
+.fx-ward-aura-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    88% 74% at 50% 50%,
+    transparent 38%,
+    rgba(var(--ward-color), 0.3) 100%
+  );
+  animation: fx-ward-aura-breathe 3.2s ease-in-out infinite;
+}
+@keyframes fx-ward-aura-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* Stillness is a setting: the breathing glows hold steady at mid-strength
    under the OS preference; one-shot stamps are not loops and stay. */
 @media (prefers-reduced-motion: reduce) {
   .fx-channel-base,
-  .fx-ritual-base {
+  .fx-ritual-base,
+  .fx-ward-aura-ring,
+  .fx-ward-aura-glow {
     animation: none;
     opacity: 0.75;
   }

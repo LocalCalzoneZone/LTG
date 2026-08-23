@@ -107,6 +107,21 @@ export interface PanelAnimBundle {
   stances: Record<string, Partial<Record<StanceSlotName, string>>>;
 }
 
+/** One standing damage shield on a combatant — what the ward aura draws.
+ *
+ * `kind` separates the two verbs: a `prevent` shield is on a clock (`uses` null
+ * nullifies every matching hit until it lapses; a number is an N-shot), while a
+ * `protection` charge simply waits, one entry per charge, until it is spent.
+ * `reach` narrows a combat-lane shield to melee or ranged. The non-damage
+ * shields (pacified / silenced) are never sent — they bind a creature rather
+ * than guard it. */
+export interface Ward {
+  lane: "all" | "combat" | "spell";
+  kind: "prevent" | "protection";
+  reach: "all" | "melee" | "ranged";
+  uses: number | null;
+}
+
 export interface CharacterView {
   // §D21 type line from the sheet.
   types?: string[];
@@ -125,6 +140,7 @@ export interface CharacterView {
   channels_summary: ChannelSummary[];
   status_tags: string[];
   keywords: KeywordInfo[];
+  wards: Ward[];
   // +1/+1 counters received; their stat change is already inside power/hp.
   counters: number;
   // Typed counters (D8-2) — public information.
@@ -244,6 +260,7 @@ export interface CreatureView {
   hp: StatBlock;
   attack_mode: string;
   keywords: KeywordInfo[];
+  wards: Ward[];
   // +1/+1 counters received; their stat change is already inside power/hp.
   counters: number;
   // Typed counters (D8-2) — public on both sides; stat changes already folded in.
@@ -286,6 +303,7 @@ export interface TokenView {
   power: StatBlock;
   hp: StatBlock;
   keywords: KeywordInfo[];
+  wards: Ward[];
   counters: number;
   poison_counters: number;
   regen_counters: number;

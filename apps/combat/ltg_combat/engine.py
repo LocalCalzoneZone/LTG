@@ -373,7 +373,7 @@ def _fire_capacity_increase(st: GameState, char: CharacterState) -> None:
     """Recurring `capacity_increase` channel effects (landfall) fire whenever this
     holder's mana capacity rises — the +1/turn lock and any ramp (GDD §8)."""
     for ch in list(char.channels):
-        fired = [e for e in ch.card.effects
+        fired = [e for e in ch.effects
                  if getattr(e, "trigger", None) == "capacity_increase"]
         if fired:
             _fire_channel_effects(st, char, "party", ch, fired)
@@ -499,7 +499,7 @@ def _fire_event(st: GameState, event: str, actor,
         for holder, ch in party_watch:
             if ch not in holder.channels:  # broken by an earlier trigger this event
                 continue
-            fired = _matching_event_effects(ch.card.effects, event, holder, "party",
+            fired = _matching_event_effects(ch.effects, event, holder, "party",
                                             ch.target_id, actor, spell_timing)
             if not fired:
                 continue
@@ -564,7 +564,7 @@ def _fire_recurring(st: GameState) -> None:
     enemy channels (the ritual ticks players must decide to interrupt)."""
     for holder in st.living_party():
         for ch in list(holder.channels):
-            fired = [e for e in ch.card.effects
+            fired = [e for e in ch.effects
                      if getattr(e, "trigger", None) == "upkeep"]
             if fired:
                 _fire_channel_effects(st, holder, "party", ch, fired)
@@ -3014,6 +3014,25 @@ def _effects_of_mode(item: StackItem, modal_effect) -> List:
     return list(modal_effect.modes[idx].effects)
 
 
+def _channel_effect_list(item: StackItem, card) -> List:
+    """A held channel's EFFECTIVE effects: the card's, with a top-level `modal`
+    replaced by the mode(s) the caster picked at cast.
+
+    Playtest bug (2026-08-23): a "choose one" written on a channelled card did
+    nothing at all. `_start_channel` sorts a card's effects into continuous
+    (held), `channel_start` (fires once) and `upkeep`/event (recurring) — and a
+    `modal` wrapper is none of those, so the picked mode was never looked at.
+    Expanding the pick once, here, means every rule that reads the channel sees
+    the chosen mode exactly as if it had been written at the card's top level."""
+    out: List = []
+    for e in card.effects:
+        if getattr(e, "kind", None) == "modal" and getattr(e, "trigger", None) is None:
+            out.extend(_effects_of_mode(item, e))
+        else:
+            out.append(e)
+    return out
+
+
 def _modal_is_multi(modal_effect) -> bool:
     """True for a multi-select modal (Cryptic Command's "choose two"): the mode an
     action/stack-item carries is then a bitmask of mode indices, not an index."""
@@ -3027,6 +3046,53 @@ def _modal_is_multi(modal_effect) -> bool:
 def _is_continuous(effect) -> bool:
     return (getattr(effect, "trigger", None) is None
             and getattr(effect, "duration", None) == Duration.while_channeled)
+
+
+# Verbs whose `while_channeled` grant is a STANDING TAG on the creature: the
+# duration is stored beside the grant, so lifting one is idempotent and only
+# ever takes back what a channel's own duration put there.
+_CHANNEL_TAG_KINDS = ("modify_action", "grant_keyword")
+
+
+def _nested_channel_effects(effects) -> List:
+    """Every `while_channeled` tag a channelled card carries somewhere OTHER than
+    as a plain top-level continuous effect — inside a `channel_start` trigger, a
+    conditional, a modal mode, or a stance's replaced ability.
+
+    Those resolve through the ordinary one-shot path (`_is_continuous` demands an
+    untriggered top-level effect), so `_start_channel` never registered them as
+    continuous and the break never lifted them. Playtest bug (2026-08-23): "while
+    channeled, your Mitigate is no longer once per turn", written as a
+    `channel_start` conditional, stayed on for the rest of the encounter after the
+    channel ended. Restricted to the tag verbs — a nested stat aura rides the temp
+    layers, which the End step already clears, and lifting it here would subtract
+    the buff twice."""
+    out: List = []
+
+    def walk(items, top: bool) -> None:
+        for e in items or []:
+            kind = getattr(e, "kind", None)
+            if kind == "conditional":
+                walk(getattr(e, "effects", None), False)
+                continue
+            if kind == "modal":
+                for mode in getattr(e, "modes", None) or []:
+                    walk(getattr(mode, "effects", None), False)
+                continue
+            if kind == "stance":
+                for slot in ("attack", "defend", "mitigate", "move"):
+                    ability = getattr(e, slot, None)
+                    if ability is not None and not isinstance(ability, str):
+                        walk(getattr(ability, "effects", None), False)
+                continue
+            if top and _is_continuous(e):
+                continue                       # already lifted by _remove_continuous
+            if (kind in _CHANNEL_TAG_KINDS
+                    and getattr(e, "duration", None) == Duration.while_channeled):
+                out.append(e)
+
+    walk(effects, True)
+    return out
 
 
 def _desc_scope(desc) -> Optional[str]:
@@ -3078,13 +3144,16 @@ def _start_channel(st: GameState, item: StackItem) -> None:
     holder = st.character(item.source_id)
     channel = Channel(card=item.card, holder_id=holder.id,
                       reserved=list(item.reserved), target_id=item.target_id,
-                      started_turn=st.turn, x=item.x)
+                      started_turn=st.turn, x=item.x,
+                      # A modal channel holds the mode the caster picked, not the
+                      # unresolved "choose one" wrapper (see _channel_effect_list).
+                      effects=_channel_effect_list(item, item.card))
     holder.channels.append(channel)
     _log(st, "channel_start",
          f"{holder.name} channels {item.card.name} (reserves {_mana_str(channel.reserved)}).",
          character=holder.id, card=item.card.id, reserved=list(channel.reserved))
-    _pin_channel_splash(st, channel, item.card.effects)  # §D9-3.2 row/blast
-    for effect in item.card.effects:
+    _pin_channel_splash(st, channel, channel.effects)  # §D9-3.2 row/blast
+    for effect in channel.effects:
         if _is_continuous(effect):
             _apply_continuous(st, channel, effect)
     # channel_start effects resolve as a list so an interactive scry/move_card
@@ -3092,7 +3161,7 @@ def _start_channel(st: GameState, item: StackItem) -> None:
     # CAST's (§D19-5): it carries the per-site target bindings, so a chosen-target
     # start effect lands on the creature picked at cast rather than falling back
     # to the card's primary target.
-    starts = [e for e in item.card.effects
+    starts = [e for e in channel.effects
               if getattr(e, "trigger", None) == "channel_start"]
     if starts:
         _resolve_effect_list(st, item, starts, _new_ctx(st, item))
@@ -3165,11 +3234,14 @@ def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None
     if not enemy.channels:
         return
     for ch in list(enemy.channels):
-        for effect in ch.effects:
-            if _is_continuous(effect):
-                for target in _enemy_channel_targets(st, ch, effect):
-                    _apply_static(st, target, effect, -1, log_it=False,
-                                  holder_id=enemy.id)
+        lift = [e for e in ch.effects if _is_continuous(e)]
+        # …plus the while_channeled tags the component granted from a nested
+        # position (see _nested_channel_effects) — the mirror of the party side.
+        lift += _nested_channel_effects(ch.effects)
+        for effect in lift:
+            for target in _enemy_channel_targets(st, ch, effect):
+                _apply_static(st, target, effect, -1, log_it=False,
+                              holder_id=enemy.id)
         _log(st, "channel_end", f"{enemy.name}'s {ch.name} is broken ({reason}).",
              enemy=enemy.id, component=ch.component_id, label=ch.name, reason=reason)
     ended = list(enemy.channels)
@@ -3273,15 +3345,23 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
                     break
         return
     if k == "grant_keyword":
-        for kw in effect.keywords:
+        # A lift takes back only what a CHANNEL granted: a keyword the creature
+        # also holds for the encounter (or permanently) outlives the break, and
+        # a nested tag whose conditional never fired lifts nothing at all — so
+        # the sweep in `_nested_channel_effects` stays silent when it is a no-op.
+        touched = list(effect.keywords)
+        if sign < 0:
+            touched = [kw for kw in effect.keywords
+                       if target.keywords.get(kw) == "while_channeled"]
+        for kw in touched:
             if sign > 0:
                 target.keywords[kw] = "while_channeled"
             else:
-                target.keywords.pop(kw, None)
-        if log_it:
+                del target.keywords[kw]
+        if log_it and touched:
             verb = "gains" if sign > 0 else "loses"
-            _log(st, "grant_keyword", f"{target.name} {verb} {', '.join(effect.keywords)} (channel).",
-                 target=_tid(target), keywords=list(effect.keywords))
+            _log(st, "grant_keyword", f"{target.name} {verb} {', '.join(touched)} (channel).",
+                 target=_tid(target), keywords=list(touched))
     elif k == "exile":
         # A channeled exile suspends the target while the channel holds (sign +1)
         # and returns it when the channel breaks (sign −1). Spell exile never reaches
@@ -3380,7 +3460,7 @@ def _reapply_channel_stats(st: GameState) -> None:
     they persist across turns. Quiet (log_it=False): the initial cast already logged."""
     for holder in st.living_party():
         for channel in holder.channels:
-            for effect in channel.card.effects:
+            for effect in channel.effects:
                 if _is_continuous(effect) and effect.kind in _REAPPLIED_CONTINUOUS:
                     for target in _continuous_targets(st, channel, effect):
                         _apply_static(st, target, effect, +1, log_it=False,
@@ -3441,9 +3521,14 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
         return
     released: List[str] = []
     for channel in channels:
-        for effect in channel.card.effects:
+        for effect in channel.effects:
             if _is_continuous(effect):
                 _remove_continuous(st, channel, effect)
+        # …and the while_channeled tags the card granted from a channel_start
+        # trigger / conditional / modal mode / stance ability, which the
+        # continuous pass above never saw (see _nested_channel_effects).
+        for effect in _nested_channel_effects(channel.effects):
+            _remove_continuous(st, channel, effect)
         released.extend(channel.reserved)
         _log(st, "channel_end", f"{channel.card.name}'s channel ends (the card is "
              f"already in the graveyard).", character=char.id, card=channel.card.id, reason=reason)
@@ -3456,7 +3541,7 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
          character=char.id, released=list(released), reason=reason)
     for channel in channels:
         _fire_channel_break(st, char.id, "party", channel.card.name,
-                            channel.card.effects, channel.target_id, x=channel.x,
+                            channel.effects, channel.target_id, x=channel.x,
                             card=channel.card)
     _raise_next_trigger_pick(st)
 
@@ -3647,16 +3732,24 @@ _TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge"
 _CARD_ZONE_VERBS = frozenset({"draw", "scry", "move_card"})
 
 
-def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
+def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict,
+                   target_filter=None) -> None:
     # Container effects expand here so resolution composes (no modal-in-modal).
     if effect.kind == "modal":
         for sub in _effects_of_mode(item, effect):
-            _resolve_effect(st, item, sub, ctx)
+            _resolve_effect(st, item, sub, ctx, target_filter)
         return
     if effect.kind == "conditional":
+        # A property condition with no chosen pick behind it filters each nested
+        # effect's targets one by one rather than gating the branch wholesale.
+        filt = _target_property_filter(item, effect)
+        if filt is not None:
+            for sub in effect.effects:
+                _resolve_effect(st, item, sub, ctx, filt)
+            return
         if _condition_holds(st, item, effect, ctx):
             for sub in effect.effects:
-                _resolve_effect(st, item, sub, ctx)
+                _resolve_effect(st, item, sub, ctx, target_filter)
         else:
             _log(st, "condition_false",
                  f"{item.label}: condition not met — skipped.", kind="conditional",
@@ -3680,6 +3773,12 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict) -> None:
 
     # One effect can hit a SET (mode 'all') or a single creature; resolve per target.
     for target in _resolution_targets(st, item, effect, ctx):
+        # A per-creature property filter (see `_target_property_filter`): only the
+        # creatures that match take the effect. A targetless verb (draw, ramp…)
+        # resolves with no creature to test and is left alone.
+        if (target_filter is not None and target is not None
+                and not _target_property_holds(target_filter, target)):
+            continue
         desc = _effect_desc(item, effect)
         scope = getattr(getattr(desc, "scope", None), "value",
                         getattr(desc, "scope", None))
@@ -3952,16 +4051,26 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
         if ctx.get("target_is_dead"):
             return True
         return target is None and st.corpse(item.target_id) is not None
+    # The remaining properties are pure functions of one creature, so they are
+    # shared with the per-target FILTER path (see `_target_property_filter`).
+    obj = target if target is not None else st.corpse(item.target_id)
+    return _target_property_holds(cond, obj)
+
+
+def _target_property_holds(cond, obj) -> bool:
+    """Does one creature (or corpse) satisfy a `target_property` condition? Split
+    out of `_condition_holds` so the same test can gate a branch on the card's
+    chosen pick OR filter a set of targets creature by creature."""
+    if obj is None:
+        return False
     if cond.property == "has_keyword":
-        return target is not None and _has_kw(target, cond.keyword)
+        return _has_kw(obj, cond.keyword)
     if cond.property == "side":
         want = cond.side.value if hasattr(cond.side, "value") else cond.side
-        if target is None:
-            return False
-        is_ally = isinstance(target, (CharacterState, TokenState))
+        is_ally = isinstance(obj, (CharacterState, TokenState))
         return (want == "ally") == is_ally
     if cond.property == "level":
-        lvl = getattr(target, "level", None)
+        lvl = getattr(obj, "level", None)
         if lvl is None:
             return False
         compare = getattr(cond, "compare", "exactly")
@@ -3972,16 +4081,38 @@ def _condition_holds(st: GameState, item: StackItem, cond_effect, ctx: dict) -> 
         return lvl == cond.level
     if cond.property == "row":
         want = cond.row.value if hasattr(cond.row, "value") else cond.row
-        return target is not None and getattr(target, "row", None) == want
+        return getattr(obj, "row", None) == want
     if cond.property == "type":
-        # §D21: the target's race tags. A corpse keeps its body's types, so
+        # §D21: the creature's race tags. A corpse keeps its body's types, so
         # "if the target is an undead" still answers over a corpse pick.
-        obj = target if target is not None else st.corpse(item.target_id)
         return cond.type in (getattr(obj, "types", None) or [])
     if cond.property == "class":
-        obj = target if target is not None else st.corpse(item.target_id)
         return cond.class_ in (getattr(obj, "classes", None) or [])
     return False
+
+
+def _target_property_filter(item: StackItem, cond_effect):
+    """The condition to apply CREATURE BY CREATURE inside this conditional, or
+    None when it is an ordinary gate.
+
+    "Deal 3 damage to everyone that is an undead" (Turin's Consecrate) is written
+    as a `target_property` condition wrapping an `all`-target effect. The gate
+    reads the card's single chosen pick — and a card whose every target is `all`
+    has no pick, so `item.target_id` was None, the gate was simply false, and the
+    whole branch was skipped (playtest bug 2026-08-23: the heal and the corpse
+    sweep landed, the damage never did). With no pick to read, the property is a
+    FILTER over each nested effect's own target set instead.
+
+    A card that DOES name a target keeps the gate: "deal 4 to a chosen enemy; if
+    it is undead, deal 2 to all enemies" still reads the pick, as authored."""
+    cond = cond_effect.condition
+    if getattr(cond, "kind", None) != "target_property":
+        return None
+    if cond.property == "is_dead":
+        return None          # corpse semantics — a gate on the pick, never a filter
+    if item.target_id is not None or getattr(item, "targets", None):
+        return None          # there IS a pick: the condition gates on it
+    return cond
 
 
 def _resolve_target(st: GameState, item: StackItem, effect):
@@ -4656,15 +4787,39 @@ def _strip_slot(st: GameState, target: EnemyState, slot2: bool) -> None:
          f"*{reveal}*.", enemy=target.id, reveal=reveal, slot=2 if slot2 else 1)
 
 
+def _strips_every_slot(effect) -> bool:
+    """Does this strip unravel EVERY declared intent rather than one chosen line?
+    A side-wide target ("remove the telegraphed intent of all enemies") offers no
+    per-intent pick, so it takes both of an enraged boss's slots. Playtest bug
+    (2026-08-23): it took only the first, and the boss's second swing still
+    landed. A `chosen` strip keeps the §D9-4 pick (the '::2' handle)."""
+    desc = getattr(effect, "target", None)
+    if desc is None or isinstance(desc, str):
+        return False
+    mode = getattr(desc, "mode", None)
+    return mode is not None and mode != TargetMode.chosen
+
+
 def _r_strip_intent(st, item, effect, target, ctx):
     if not isinstance(target, EnemyState):
         return
-    # §D9-4: against an enraged boss the player chose WHICH declared intent to
-    # strip — the '::2' handle marked the second (recorded in ctx by _lookup_target).
-    slot2 = ctx.get("intent_slot") == 2
-    intent = target.intent2 if slot2 else target.intent
-    if intent is None and not slot2 and target.intent2 is not None:
-        slot2, intent = True, target.intent2   # only the second slot still holds one
+    if _strips_every_slot(effect):
+        # No pick was made, so any '::2' handle in ctx belongs to another target
+        # site on this card and must not narrow the sweep.
+        slots = [s for s in (False, True)
+                 if (target.intent2 if s else target.intent) is not None]
+        for slot2 in slots:
+            _strip_slot(st, target, slot2)
+        if slots:
+            return
+        intent = None
+    else:
+        # §D9-4: against an enraged boss the player chose WHICH declared intent to
+        # strip — the '::2' handle marked the second (recorded in ctx by _lookup_target).
+        slot2 = ctx.get("intent_slot") == 2
+        intent = target.intent2 if slot2 else target.intent
+        if intent is None and not slot2 and target.intent2 is not None:
+            slot2, intent = True, target.intent2   # only the second slot still holds one
     if intent is None:
         # §D19-5: NOTHING is declared right now — a channel's upkeep strip
         # resolves in the intents window, before declaration, and used to no-op
@@ -6366,7 +6521,7 @@ def _active_stance(char: Optional[CharacterState]):
     """The stance effect on one of the holder's channels, or None (§D9-2).
     Read live: breaking or dropping the channel removes the stance instantly."""
     for ch in getattr(char, "channels", []) or []:
-        for e in ch.card.effects:
+        for e in ch.effects:
             if getattr(e, "kind", None) == "stance":
                 return e
     return None
@@ -6384,7 +6539,7 @@ def _stance_card(char: Optional[CharacterState]) -> Optional[Card]:
     replacement's effects may reference the card's shared target slots ("$T1"),
     so enumeration and resolution need the card to resolve them."""
     for ch in getattr(char, "channels", []) or []:
-        for e in ch.card.effects:
+        for e in ch.effects:
             if getattr(e, "kind", None) == "stance":
                 return ch.card
     return None

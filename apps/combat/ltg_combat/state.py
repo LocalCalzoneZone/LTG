@@ -170,6 +170,17 @@ class Channel:
     # for the channel's whole life — reasserted each end step and lifted when
     # it ends — even if they moved rows (or are suspended) meanwhile.
     splash_ids: List[str] = field(default_factory=list)
+    # THE HELD EFFECTS — the card's, with a top-level `modal` replaced by the
+    # mode(s) the caster picked at cast. Every rule that asks "what is this
+    # channel doing" reads this rather than `card.effects`, so a modal channel's
+    # chosen mode is held, ticks and lifts exactly like a plainly-written one
+    # (playtest bug 2026-08-23: it did nothing at all). Left empty by a caller
+    # that has no pick to expand, and then defaults to the card's own effects.
+    effects: List[Effect] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.effects:
+            self.effects = list(self.card.effects)
 
 
 # --------------------------------------------------------------------------- #

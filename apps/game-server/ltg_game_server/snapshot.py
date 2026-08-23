@@ -84,6 +84,43 @@ def _power_block(cur: int, base: int, modifier: int) -> Dict[str, int]:
     return {"current": cur, "base": base, "modifier": modifier}
 
 
+# The damage lanes a shield can answer, as the client's short lane names. The
+# other two `prevent` parameters — `attack` (Pacifism) and `cast` (Silence) — are
+# ACTION shields that bind the creature rather than guard it, so they are
+# deliberately absent: a ward aura on a silenced enemy would advertise protection
+# it does not have.
+_WARD_LANES = {"all_damage": "all", "combat_damage": "combat",
+               "spell_damage": "spell"}
+
+
+def _wards(obj) -> List[Dict[str, Any]]:
+    """The damage shields standing on a combatant right now, so the client can
+    show that it is warded without knowing any rules.
+
+    Two verbs land here and they behave differently, so the client is told which:
+    a `prevent` shield is a clock — `uses` None nullifies every matching hit until
+    the End step (or, on a channel, until the channel breaks), a positive `uses`
+    is an N-shot; a `protection` charge has no clock and simply waits, one entry
+    per charge, until something matching is negated. `reach` narrows a combat-lane
+    shield to melee or ranged ("all" = either)."""
+    out: List[Dict[str, Any]] = []
+    for tag in getattr(obj, "prevent_tags", None) or []:
+        lane = _WARD_LANES.get(getattr(tag, "parameter", ""))
+        if lane is None:
+            continue          # an action shield (pacified / silenced), not a ward
+        out.append({"lane": lane, "kind": "prevent",
+                    "reach": getattr(tag, "combat_kind", "all") or "all",
+                    "uses": getattr(tag, "uses", None)})
+    for tag in getattr(obj, "protection_tags", None) or []:
+        lane = _WARD_LANES.get(getattr(tag, "parameter", ""))
+        if lane is None:
+            continue
+        out.append({"lane": lane, "kind": "protection",
+                    "reach": getattr(tag, "combat_kind", "all") or "all",
+                    "uses": 1})
+    return out
+
+
 def _keyword_list(obj) -> List[Dict[str, str]]:
     """Active keyword statics with their registry display name + gloss, so the
     client can render an icon and a tooltip without knowing any rules."""
@@ -141,6 +178,8 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "hp": _power_block(char.effective_hp, cd["max_hp"], cd["temp_mod"]),
         "incapacitated": not char.alive,
         "is_channeling": bool(char.channels),
+        # Standing damage shields (prevent / protection) — the ward aura.
+        "wards": _wards(char),
         "channels_summary": cd["channels"],  # id/name/target/text per held channel
         "status_tags": cd["status_tags"],
         "keywords": _keyword_list(char),
@@ -216,6 +255,8 @@ def _creature_snapshot(view: GameState, enemy,
         "hp": _power_block(enemy.effective_hp, ed["max_hp"], ed["temp_mod"]),
         "attack_mode": ed["attack_mode"],
         "keywords": _keyword_list(enemy),
+        # Standing damage shields (prevent / protection) — the ward aura.
+        "wards": _wards(enemy),
         "counters": getattr(enemy, "counters", 0),
         # Typed counters + the public charge gauge (D8-2): counts are public on
         # both sides; what the charge FEEDS stays hidden until it fires.
@@ -265,6 +306,8 @@ def _token_snapshot(view: GameState, token,
         "power": _power_block(token.current_power, token.power, token.power_bonus),
         "hp": _power_block(token.effective_hp, token.max_hp, token.temp_mod),
         "keywords": _keyword_list(token),
+        # Standing damage shields (prevent / protection) — the ward aura.
+        "wards": _wards(token),
         "counters": getattr(token, "counters", 0),
         "poison_counters": getattr(token, "poison_counters", 0),
         "regen_counters": getattr(token, "regen_counters", 0),
