@@ -388,47 +388,60 @@ def _tgt(t) -> str:
     return _subject(t, _RENDER_TARGETS.get(), _RENDER_CHANNELED.get())
 
 
+_MULT_WORD = {2: "twice", 3: "three times", 4: "four times"}
+
+
 def _value(v) -> str:
     if isinstance(v, Ref):
-        if v.ref == "mana_capacity":
-            return "your mana capacity"
+        base = _ref_phrase(v)
+        mult = getattr(v, "mult", 1) or 1
+        if mult == 1:
+            return base
         if v.ref == "x":
-            return "X"
-        if v.ref == "party_size":
-            return "the party size"
-        if v.ref == "enemy_count":
-            return "the number of enemies"
-        if v.ref == "caster_power":
-            return "your Power"
-        if v.ref == "caster_hp":
-            return "your current HP"
-        if v.ref == "target_power":
-            return "its Power"
-        if v.ref == "target_hp":
-            return "its current HP"
-        if v.ref == "caster_base_power":
-            return "your base Power"
-        if v.ref == "caster_base_hp":
-            return "your maximum HP"
-        if v.ref == "target_base_power":
-            return "its base Power"
-        if v.ref == "target_base_hp":
-            return "its maximum HP"
-        if v.ref == "casting_cost":
-            return "its casting cost"
-        if v.ref == "caster_last_damage":
-            return "the last damage you took"
-        if v.ref == "target_last_damage":
-            return "the last damage it took"
-        if v.ref.endswith(".level"):
-            return "its Level"
-        return v.ref
+            return f"{mult}X"
+        return f"{_MULT_WORD.get(mult, f'{mult}×')} {base}"
     return str(v)
+
+
+def _ref_phrase(v: Ref) -> str:
+    if v.ref == "mana_capacity":
+        return "your mana capacity"
+    if v.ref == "x":
+        return "X"
+    if v.ref == "party_size":
+        return "the party size"
+    if v.ref == "enemy_count":
+        return "the number of enemies"
+    if v.ref == "caster_power":
+        return "your Power"
+    if v.ref == "caster_hp":
+        return "your current HP"
+    if v.ref == "target_power":
+        return "its Power"
+    if v.ref == "target_hp":
+        return "its current HP"
+    if v.ref == "caster_base_power":
+        return "your base Power"
+    if v.ref == "caster_base_hp":
+        return "your maximum HP"
+    if v.ref == "target_base_power":
+        return "its base Power"
+    if v.ref == "target_base_hp":
+        return "its maximum HP"
+    if v.ref == "casting_cost":
+        return "its casting cost"
+    if v.ref == "caster_last_damage":
+        return "the last damage you took"
+    if v.ref == "target_last_damage":
+        return "the last damage it took"
+    if v.ref.endswith(".level"):
+        return "its Level"
+    return v.ref
 
 
 def _is_capacity(v) -> bool:
     """True when a value scales by mana capacity ("for each land you control")."""
-    return isinstance(v, Ref) and v.ref == "mana_capacity"
+    return isinstance(v, Ref) and v.ref == "mana_capacity" and (v.mult or 1) == 1
 
 
 def _is_phrase_ref(v) -> bool:

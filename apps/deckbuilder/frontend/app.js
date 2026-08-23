@@ -1229,12 +1229,15 @@ function refNames(current) {
 
 function valueControlHtml(i, spec, val) {
   const p = spec.name;
-  let type = "number", num = 1, ref = "";
+  let type = "number", num = 1, ref = "", mult = 1;
   if (val === "all") type = "all";
   else if (val && typeof val === "object" && "ref" in val) {
     if (val.ref === "mana_capacity") type = "capacity";
     else { type = "ref"; ref = val.ref; }
+    mult = val.mult || 1;
   } else num = val;
+  // A reference may be scaled — "twice your base Power" is {ref, mult: 2}.
+  const multCtl = `<label class="inline mini" title="Multiplier applied to the referenced value (e.g. 2 = twice your base Power)">×<input class="val-mult" type="number" min="1" data-i="${i}" data-p="${p}" value="${mult}" style="width:48px"/></label>`;
   const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refNames(ref).map((r) =>
     `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(REFS[r] || r)}</option>`).join("")}</select>`;
   // Stat values (pump/wound/counters power & toughness) admit no "all" — the
@@ -1249,7 +1252,8 @@ function valueControlHtml(i, spec, val) {
       <option value="ref" ${type === "ref" ? "selected" : ""}>reference</option>
     </select>
     ${type === "number" ? `<input class="val-input" type="number" data-i="${i}" data-p="${p}" value="${num}" />` : ""}
-    ${type === "ref" ? refSel : ""}`;
+    ${type === "ref" ? refSel : ""}
+    ${type === "ref" || type === "capacity" ? multCtl : ""}`;
 }
 
 // The trigger control: (none) / a lifecycle trigger / "on event…" which opens
@@ -1966,7 +1970,19 @@ function wireDetail(idx) {
   document.querySelectorAll(".val-input").forEach((inp) => {
     inp.onchange = () => {
       const i = +inp.dataset.i, p = inp.dataset.p;
-      editorItems[i][p] = inp.type === "number" ? (parseInt(inp.value) || 0) : { ref: inp.value };
+      const cur = editorItems[i][p];
+      const mult = cur && typeof cur === "object" && cur.mult > 1 ? { mult: cur.mult } : {};
+      editorItems[i][p] = inp.type === "number" ? (parseInt(inp.value) || 0) : { ref: inp.value, ...mult };
+      commitEffects(idx, false);
+    };
+  });
+  document.querySelectorAll(".val-mult").forEach((inp) => {
+    inp.onchange = () => {
+      const i = +inp.dataset.i, p = inp.dataset.p;
+      const cur = editorItems[i][p];
+      if (!cur || typeof cur !== "object" || !("ref" in cur)) return;
+      const m = Math.max(1, parseInt(inp.value) || 1);
+      editorItems[i][p] = m > 1 ? { ref: cur.ref, mult: m } : { ref: cur.ref };
       commitEffects(idx, false);
     };
   });

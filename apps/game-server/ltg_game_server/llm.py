@@ -821,6 +821,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "double_next", "filter": "spell", "target": {"mode": "self"}},   // its next spell/ability to resolve, resolves twice; filter ∈ spell|ability|action
             {"kind": "copy_spell"},                               // REACTIVE only (on_spell_cast): copies the triggering spell — the copy MIRRORS back at its caster; NO target field
             {"kind": "heal", "amount": {"ref": "caster_last_damage"}, "target": {"mode": "self"}},  // retro combo: heal the last damage this enemy took
+            {"kind": "deal_damage", "amount": {"ref": "caster_base_power", "mult": 2}, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // a scaled reference: twice this enemy's printed Power; mult is an integer ≥ 1
             {"kind": "protection", "parameter": "all_damage", "combat_kind": "all", "target": {"mode": "self"}},   // a one-shot CHARGE (no clock): negates the next matching damaging spell/attack/ability, whenever it comes (Ward); parameter ∈ all_damage|combat_damage|spell_damage
             {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; NO target field
             {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: −0/−1 per Upkeep until healed

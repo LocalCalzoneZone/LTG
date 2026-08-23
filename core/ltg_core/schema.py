@@ -308,9 +308,21 @@ Trigger = Union[TriggerType, EventTrigger]
 
 
 class Ref(BaseModel):
-    """A late-bound value the resolver fills in, e.g. {"ref": "destroyed_target.level"}."""
+    """A late-bound value the resolver fills in, e.g. {"ref": "destroyed_target.level"}.
+
+    `mult` scales the resolved number — {"ref": "caster_base_power", "mult": 2}
+    is "twice your base Power". Integer, ≥ 1; omitted from JSON when 1 so every
+    existing card's serialization is unchanged."""
 
     ref: str
+    mult: int = Field(1, ge=1)
+
+    @model_serializer(mode="wrap")
+    def _omit_unit_mult(self, handler):
+        out = handler(self)
+        if isinstance(out, dict) and out.get("mult") == 1:
+            out.pop("mult", None)
+        return out
 
 
 # The value references the engine can resolve, with display labels. The editor
