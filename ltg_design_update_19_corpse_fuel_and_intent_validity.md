@@ -94,3 +94,76 @@ Mechanics threaded through:
 ```
 
 One pick serves both verbs; the engine guarantees the blast resolves before the body is spent, whatever order the effects are authored in.
+
+## D19-7. Channeled action modifiers
+
+**Origin (playtest).** Turin's *Divine Aura* — a channeled Skill: "While channeled: you have Defender, your Mitigate reduces by full Power" — granted the keyword and silently dropped the modifier. `_apply_static`, the dispatcher for a channel's continuous effects, had branches for keywords, stat auras, taunt, prevent, and exile, but none for `modify_action`: the `mitigate_full` half fell into "(continuous 'modify_action' not modelled this milestone)".
+
+**The fix.** A `modify_action` with `duration: while_channeled` now rides `action_mods` with that duration for as long as the channel holds and lifts on the break (voluntary drop, breaking hit, or incapacitation — all routes go through the same `_remove_continuous`). Attack-mode modifiers re-sync reach on apply and lift. Characters only (enemies have no evergreen actions), and the INSTANT modifiers (`refresh_skill` / `charge_ultimate` / `drain_ultimate`) have no standing form — they resolve once or not at all, and a channeled one logs itself as unhandled rather than ticking every turn for free.
+
+Verified with the shipped skill: X = full Power while the channel holds, back to `ceil(Power/2)` the moment it drops.
+
+## D19-8. Per-use splash on a shared slot
+
+**Origin (playtest).** "One effect should hit the target; another should hit the target and its row." Impossible to author: `scope` lived on the shared slot's descriptor, so every `$T1` use inherited the splash — pinpoint-plus-area cards forced two independent picks.
+
+**The rule.** Scope belongs to the USE, not the pick. A slot reference may carry a splash suffix:
+
+- `"$T1"` — the shared pick only;
+- `"$T1+row"` — the pick and its whole row;
+- `"$T1+blast"` — the pick, its row, and the adjacent rows.
+
+All uses share ONE pick (sites key on the base name, so no combinatorial cast explosion); each effect resolves with its own footprint. `slot_name`/`slot_scope` are the single parse pair — every raw `[1:]` ref parse in the engine now routes through them — and `resolved_target`/`_effect_desc`/translation `_resolve` merge the use's scope into the descriptor they return, so validation (including the §D19-6 corpse-blast exception), the splash machinery, and the card text all see what each use covers. Scope authored on the slot itself still works (every use inherits it — the pre-§D19-8 behaviour).
+
+Card text names the difference: *"Choose an enemy: they suffer −1/−1, then take 2 damage (and so does its whole row)."*
+
+**Deckbuilder:** an effect linked to a slot gains a footprint select — "the pick only / + its whole row / + row & adjacent" — writing the suffix; removing a slot materializes each use's own scope inline.
+
+**The cleaner Corpse Explosion** (§D19-6 composed with §D19-8): a scopeless corpse slot, the damage carrying its own footprint —
+
+```json
+"targets": {"T1": {"mode": "chosen", "side": "enemy", "targeted": true, "state": "corpse"}},
+"effects": [
+  {"kind": "deal_damage", "amount": 4, "target": "$T1+row"},
+  {"kind": "consume_corpse", "target": "$T1"}
+]
+```
+
+## D19-9. The ground survives its anchor
+
+**Origin (playtest).** "Deal 4 to a target; if you are channeling, deal 3 to it **and its whole row**" lost its blast entirely when the first 4 killed the anchor: the row-mates took nothing. Reordering is not a fix — the splash half sits inside a conditional, which would capture every effect placed after it.
+
+**The rule.** A **scoped** (row/blast) effect is aimed at GROUND, not at a name — the same principle §D18-4 established for enemy row shapes, now applied to player cards. The (side, row) of every target site is **pinned as the resolution begins** (`_new_ctx` → `ctx["ground"]`). If a scoped effect's anchor is gone by the time that effect runs, `_ground_victims` resolves the blast over the pinned footprint instead of fizzling. The body falling first does not un-aim the blast.
+
+Deliberately preserved:
+
+- **Killing the target in RESPONSE still fizzles the whole action.** Nothing is pinned until the resolution starts, so a removal or bounce cast into the window works exactly as before — the counterplay is untouched, and only a card killing its *own* anchor mid-resolution is covered.
+- **Only scoped effects are ground.** "Deal 4, then wound it" still loses the wound when the 4 kills — there is no area to fall back on, and a pinpoint rider was never aimed at a place.
+- Ground victims are splash: incidental, never targeted, so hexproof does not shelter them — consistent with §D9-3.2.
+
+The log distinguishes the case: *"Lance bursts across the row its target stood in: …"* (`ground: true`), beside the ordinary splash and the §D19-6 corpse-anchored line.
+
+## D19-10. The whole-side corpse sweep
+
+**Origin (playtest).** "Restore 2 HP to all allies; remove all enemy corpses" reported *"finds no corpse to consume"* with bodies plainly on the board. The `consume_corpse` half was authored `{"mode": "all", "side": "enemy"}` — and the corpse axis (`state: "corpse"`) was missing, because the editor only kept `state` on **chosen** targets. So the sweep resolved over the LIVING enemies, and every one of them fizzled the verb.
+
+**The rule.** `consume_corpse` has no domain but bodies, so a whole-side sweep means the corpses — there is nothing else it could have meant. Three layers, so the shape is honest everywhere:
+
+- **Schema normalization**: a `consume_corpse` effect with an *inline* descriptor that omits the axis is stamped `state: "corpse"` at Card validation. The card text, the pick enumeration and the resolver then all read the same shape, and the saved JSON is self-describing. A **`$slot` ref is left alone** — the slot is shared, and narrowing it would narrow its other uses; tick "corpse only" on the slot instead (§D19-6).
+- **Resolver backstop**: `_creatures_on_side` reads the corpses whenever the verb is `consume_corpse`, so enemy components — which never pass through Card validation — get the same rule. `exile` / `control` stay explicit: a mode:all sweep over the living is meaningful for them, so they still need `state: "corpse"` to narrow.
+- **Editor**: the corpse axis now survives `normTarget` on a **mode:all** target, and the "corpse only" checkbox is offered there for corpse-legal verbs (the §D19-6 corpse-anchored *blast* remains a chosen pick only, since it needs a splash scope).
+
+Card text reads *"Restore 2 HP to all allies. Consume all enemy corpses."*
+
+## D19-11. `break_channel` — the deliberate answer to a ritual
+
+Until now a held channel could only be ended by a **breaking hit** (≥25% of max HP), the holder's incapacitation, or a voluntary drop. There was no verb for "end that rite", so neither side could build the clean answer to a channel-centred threat.
+
+**The verb.** `{"kind": "break_channel", "target": {…}}` — breaks every channel the target is holding. All-or-nothing, exactly like a breaking hit (GDD §8):
+
+- the holder's channels end **together** — a break was never per-channel;
+- **reserved mana returns to the pool** (§8), which matters: breaking a hero's aura hands them their mana back that turn;
+- every ending channel fires its **`channel_break` trigger** as a respondable stack item, so a ritual's dying sting still springs — the answer is not a free out;
+- only creatures channel; a token or a corpse caught by a side-wide target is passed over, and a holder with nothing held logs `no_channel` rather than fizzling noisily.
+
+**Both sides of the table.** It is a plain leaf effect, so the deckbuilder offers it automatically (`effect_specs` is derived from the schema) — a hero's Dispel, or a rider chained on a shared slot (*"Choose an enemy: they take 3 damage, then have their channels broken."*). On the enemy side it is legal as a component verb or as a rider on a hit; the prompt pairs it with `"target_rule": "channeling_player"` and the `hero_channeling` gate so a ritual-breaker never fires into a party holding nothing, and prices it as a Debilitate. An intent carrying it classifies as **interference** (the lockdown family) in the veiled telegraph.

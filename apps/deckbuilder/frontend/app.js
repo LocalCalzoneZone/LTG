@@ -384,11 +384,46 @@ function buyRow(label, totalText, canMinus, canPlus, onMinus, onPlus, priceText)
   return row;
 }
 
+// §D21: one type-line picker — current tags as removable chips plus an "add"
+// select while under the 2-tag cap. `field` is "types" | "classes".
+function renderTagPick(elId, field, vocab) {
+  const ch = state.character;
+  const tags = ch[field] || [];
+  const el = $(elId);
+  if (!el) return;
+  const chips = tags.map((t) =>
+    `<button class="tag-chip" data-field="${field}" data-tag="${t}" title="Remove">${t} ×</button>`).join("");
+  const options = vocab.filter((t) => !tags.includes(t));
+  const add = tags.length < 2
+    ? `<select class="tag-add" data-field="${field}">
+         <option value="">add…</option>
+         ${options.map((t) => `<option value="${t}">${t}</option>`).join("")}
+       </select>` : "";
+  el.innerHTML = chips + add;
+  el.querySelectorAll(".tag-chip").forEach((b) => {
+    b.onclick = () => {
+      state.character[b.dataset.field] =
+        (state.character[b.dataset.field] || []).filter((t) => t !== b.dataset.tag);
+      renderCharacter(); scheduleValidate();
+    };
+  });
+  el.querySelectorAll(".tag-add").forEach((sel) => {
+    sel.onchange = () => {
+      if (!sel.value) return;
+      const cur = state.character[sel.dataset.field] || [];
+      state.character[sel.dataset.field] = [...cur, sel.value].slice(0, 2);
+      renderCharacter(); scheduleValidate();
+    };
+  });
+}
+
 function renderCharacter() {
   const ch = state.character;
   $("#char-name").value = ch.name;
   $("#char-desc").value = ch.description || "";
   $("#char-level").textContent = ch.level || 1;
+  renderTagPick("#type-pick", "types", CREATURE_TYPES);     // §D21 type line
+  renderTagPick("#class-pick", "classes", CREATURE_CLASSES);
   renderPortrait();
   renderAnimations();
 
@@ -956,6 +991,9 @@ let REFS = { "mana_capacity": "your mana capacity",
              "destroyed_target.level": "the destroyed target's level" };
 // Verbs whose chosen target may be CORPSE-exclusive (§D9-1.3 / §D19-5).
 let CORPSE_KINDS = ["control", "exile", "consume_corpse"];
+// §D21: creature type (race) / class (role) vocabularies, from the server.
+let CREATURE_TYPES = ["human", "elf", "dwarf", "undead", "beast", "construct"];
+let CREATURE_CLASSES = ["warrior", "archer", "wizard", "cleric", "rogue"];
 const MODE_LABEL = { self: "You", chosen: "Choose one", all: "All" };
 const SIDE_LABEL = { ally: "Ally", enemy: "Enemy", any: "Either" };
 
@@ -967,6 +1005,8 @@ async function loadSpecs() {
     SIDES = r.sides;
     if (r.refs) REFS = r.refs;
     if (r.corpse_kinds) CORPSE_KINDS = r.corpse_kinds;
+    if (r.creature_types) CREATURE_TYPES = r.creature_types;
+    if (r.creature_classes) CREATURE_CLASSES = r.creature_classes;
   } catch (e) { /* editor falls back to whatever the card already holds */ }
 }
 
@@ -1020,7 +1060,10 @@ function normalizeCharacter(ch) {
 
 // Mirror of backend describe_target, for slot/link labels.
 function describeTargetJS(d) {
-  if (typeof d === "string") return d; // "$slot" ref
+  if (typeof d === "string") {  // "$slot" ref, maybe with a §D19-8 use suffix
+    const use = slotUseScope(d);
+    return slotBase(d) + (use === "row" ? " + its row" : use === "blast" ? " + row & adjacent" : "");
+  }
   if (!d || d.mode === "self") return "you";
   if (d.mode === "all") {
     const n = { ally: "all allies", enemy: "all enemies", any: "everyone" }[d.side];
@@ -1036,15 +1079,27 @@ function describeTargetJS(d) {
   return `${art} ${noun}${splash}${d.targeted ? ", targeted" : ""}`;
 }
 
+// §D19-8: a slot ref may carry a per-use splash suffix — "$T1+row" / "$T1+blast".
+// The suffix belongs to the USE: two effects share one pick while only one splashes.
+function slotBase(ref) { return typeof ref === "string" ? ref.split("+", 1)[0] : ref; }
+function slotUseScope(ref) {
+  if (typeof ref !== "string" || !ref.includes("+")) return "";
+  return ref.split("+")[1] || "";
+}
+
 // Normalize a descriptor so it stays schema-coherent as the user toggles mode.
 function normTarget(d) {
   if (d.mode === "self") return { mode: "self" };
   const out = { mode: d.mode, side: d.side || "ally", exclude_self: !!d.exclude_self };
   if (d.mode === "chosen") {
     out.targeted = !!d.targeted;
-    // The corpse axis (§D9-1.3) and splash scope (§D9-3.2) ride chosen targets.
-    if (d.state && d.state !== "living") out.state = d.state;
+    // The splash scope (§D9-3.2) rides a chosen pick only.
     if (d.scope) out.scope = d.scope;
+  }
+  // The corpse axis (§D9-1.3) rides a chosen pick OR a whole-side sweep
+  // (§D19-10: "consume all enemy corpses" is a mode:all shape).
+  if ((d.mode === "chosen" || d.mode === "all") && d.state && d.state !== "living") {
+    out.state = d.state;
   }
   if (d.mode === "all" && d.rows && d.rows.length) out.rows = d.rows;
   return out;
@@ -1101,16 +1156,27 @@ function targetControlHtml(i, current, card, field = "target") {
   const isSlot = typeof current === "string";
   const slots = Object.keys(card.targets);
   const f = `data-i="${i}" data-field="${field}"`;
+  const base = slotBase(current);
   const linkOpts = [`<option value="__direct__" ${isSlot ? "" : "selected"}>Build target…</option>`];
   if (slots.length) {
     linkOpts.push(`<optgroup label="Shared slot">`);
-    slots.forEach((s) => linkOpts.push(`<option value="$${s}" ${current === "$" + s ? "selected" : ""}>↪ ${slotLabel(s, card)}</option>`));
+    slots.forEach((s) => linkOpts.push(`<option value="$${s}" ${base === "$" + s ? "selected" : ""}>↪ ${slotLabel(s, card)}</option>`));
     linkOpts.push(`</optgroup>`);
   }
   linkOpts.push(`<option value="__new_slot__">+ New shared slot</option>`);
   const link = `<select class="tgt-link" ${f}>${linkOpts.join("")}</select>`;
 
-  if (isSlot) return `<span class="tgt-builder">${link}<span class="tgt-summary">↪ ${describeTargetJS(current)}</span></span>`;
+  if (isSlot) {
+    // §D19-8: THIS effect's footprint around the shared pick — the pick alone,
+    // its row, or its row plus adjacent rows. Per use; siblings stay pinpoint.
+    const use = slotUseScope(current);
+    const useSel = `<select class="tgt-use-scope" ${f} title="This effect's footprint around the shared pick (§D19-8): the pick alone, the pick + its row, or the pick + its row and adjacent rows. Per effect — the other effects on this slot keep their own.">
+        <option value="" ${use === "" ? "selected" : ""}>the pick only</option>
+        <option value="row" ${use === "row" ? "selected" : ""}>+ its whole row</option>
+        <option value="blast" ${use === "blast" ? "selected" : ""}>+ row & adjacent</option>
+      </select>`;
+    return `<span class="tgt-builder">${link}${useSel}<span class="tgt-summary">↪ ${describeTargetJS(current)}</span></span>`;
+  }
 
   const d = current || { mode: "chosen", side: "any" };
   const modeSel = `<select class="tgt-mode" ${f}>${MODES.map((m) => `<option value="${m}" ${d.mode === m ? "selected" : ""}>${MODE_LABEL[m] || m}</option>`).join("")}</select>`;
@@ -1124,9 +1190,14 @@ function targetControlHtml(i, current, card, field = "target") {
   // Checked, the pick offers CORPSES ONLY — it cannot name a living enemy, and
   // a body gone by resolution simply fizzles.
   const kind = (editorItems[i] || {}).kind;
-  const corpseable = CORPSE_KINDS.includes(kind) || kind === "deal_damage";
-  const corpse = d.mode === "chosen" && corpseable ?
-    `<label class="inline mini" title="${kind === "deal_damage"
+  // §D19-10: a corpse-legal verb may sweep a whole side's bodies (mode:all); a
+  // corpse-ANCHORED blast (§D19-6) is a chosen pick only.
+  const corpseable = CORPSE_KINDS.includes(kind)
+    || (d.mode === "chosen" && kind === "deal_damage");
+  const corpse = (d.mode === "chosen" || d.mode === "all") && corpseable ?
+    `<label class="inline mini" title="${d.mode === "all"
+        ? "Corpse only (§D9-1.3): sweep the corpses on that side of the battlefield instead of its living creatures."
+        : kind === "deal_damage"
         ? "Corpse-anchored blast (§D19-6): the pick offers corpses only — the body is the blast point (it takes nothing), and the damage covers everything living in its splash. Requires a splash scope; checking this sets one."
         : "Corpse only (§D9-1.3): the pick offers corpses on the battlefield, never the living — and fizzles if the body is gone by resolution"}"><input type="checkbox" class="tgt-corpse" ${f} ${d.state === "corpse" ? "checked" : ""}/> corpse only</label>` : "";
   // Splash scope (§D9-3.2): the pick's row, or its row plus adjacent rows.
@@ -1458,12 +1529,20 @@ function conditionControlHtml(i, cond) {
         <option value="side" ${prop === "side" ? "selected" : ""}>is on side</option>
         <option value="level" ${prop === "level" ? "selected" : ""}>is level</option>
         <option value="row" ${prop === "row" ? "selected" : ""}>is in row</option>
-        <option value="is_dead" ${prop === "is_dead" ? "selected" : ""}>is dead (a corpse)</option></select>`;
+        <option value="is_dead" ${prop === "is_dead" ? "selected" : ""}>is dead (a corpse)</option>
+        <option value="type" ${prop === "type" ? "selected" : ""}>is a type (race)</option>
+        <option value="class" ${prop === "class" ? "selected" : ""}>is a class (role)</option></select>`;
     if (prop === "has_keyword") {
       const kwSpec = (EFFECT_SPECS.grant_keyword?.params || []).find((p) => p.name === "keywords") || {};
       const opts = kwSpec.options || [];
       rest += `<select class="cond-keyword" data-i="${i}">${opts.map((o) =>
         `<option value="${o}" ${cond.keyword === o ? "selected" : ""}>${escapeHtml((kwSpec.labels && kwSpec.labels[o]) || o)}</option>`).join("")}</select>`;
+    } else if (prop === "type") {
+      rest += `<select class="cond-type" data-i="${i}">${CREATURE_TYPES.map((t) =>
+        `<option value="${t}" ${cond.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>`;
+    } else if (prop === "class") {
+      rest += `<select class="cond-class" data-i="${i}">${CREATURE_CLASSES.map((t) =>
+        `<option value="${t}" ${cond["class"] === t ? "selected" : ""}>${t}</option>`).join("")}</select>`;
     } else if (prop === "level") {
       rest += `<input type="number" class="cond-level" data-i="${i}" min="1" value="${cond.level ?? 1}" />
         <select class="cond-compare" data-i="${i}">
@@ -1851,6 +1930,11 @@ function wireDetail(idx) {
   });
   // Target descriptor builder
   document.querySelectorAll(".tgt-link").forEach((sel) => { sel.onchange = () => onTargetLink(idx, +sel.dataset.i, sel.value, sel.dataset.field || "target"); });
+  document.querySelectorAll(".tgt-use-scope").forEach((sel) => { sel.onchange = () => {
+    const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target";
+    if (typeof e[f] !== "string") return;
+    e[f] = slotBase(e[f]) + (sel.value ? "+" + sel.value : "");   // §D19-8
+    commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-mode").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], mode: sel.value }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-side").forEach((sel) => { sel.onchange = () => { const e = editorItems[+sel.dataset.i], f = sel.dataset.field || "target"; e[f] = normTarget({ ...e[f], side: sel.value }); commitEffects(idx, true); }; });
   document.querySelectorAll(".tgt-exclude").forEach((cb) => { cb.onchange = () => { const e = editorItems[+cb.dataset.i], f = cb.dataset.field || "target"; e[f] = normTarget({ ...e[f], exclude_self: cb.checked }); commitEffects(idx, true); }; });
@@ -1904,6 +1988,8 @@ function wireDetail(idx) {
         level: { kind: "target_property", property: "level", level: 1, compare: "exactly" },
         row: { kind: "target_property", property: "row", row: "front" },
         is_dead: { kind: "target_property", property: "is_dead" },
+        type: { kind: "target_property", property: "type", type: CREATURE_TYPES[0] },
+        class: { kind: "target_property", property: "class", "class": CREATURE_CLASSES[0] },
       };
       editorItems[+sel.dataset.i].condition = byProp[sel.value] || byProp.has_keyword;
       commitEffects(idx, true);
@@ -1911,6 +1997,8 @@ function wireDetail(idx) {
   });
   document.querySelectorAll(".cond-keyword").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.keyword = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-row").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.row = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-type").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition.type = sel.value; commitEffects(idx, true); }; });
+  document.querySelectorAll(".cond-class").forEach((sel) => { sel.onchange = () => { editorItems[+sel.dataset.i].condition["class"] = sel.value; commitEffects(idx, true); }; });
   document.querySelectorAll(".cond-cprop").forEach((sel) => {
     sel.onchange = () => {
       const byProp = {
@@ -2010,7 +2098,12 @@ function wireDetail(idx) {
       // Re-materialize the descriptor into every field that linked this slot (a
       // fight links two: target + other).
       editorItems.forEach((e) => ["target", "other"].forEach((f) => {
-        if (e[f] === "$" + s) e[f] = clone(card.targets[s]);
+        if (slotBase(e[f]) === "$" + s) {   // "$T1" and "$T1+row" alike (§D19-8)
+          const use = slotUseScope(e[f]);
+          const d = clone(card.targets[s]);
+          if (use) d.scope = use;           // the use's footprint survives inline
+          e[f] = d;
+        }
       }));
       delete card.targets[s];
       commitEffects(idx, true);
@@ -2029,7 +2122,7 @@ function onTargetLink(idx, i, value, field = "target") {
   if (value === "__direct__") {
     // unlink: materialize the current descriptor (copy the slot's, or default)
     e[field] = typeof e[field] === "string"
-      ? clone(card.targets[e[field].slice(1)]) || { mode: "chosen", side: "any" }
+      ? clone(card.targets[slotBase(e[field]).slice(1)]) || { mode: "chosen", side: "any" }
       : e[field];
   } else if (value === "__new_slot__") {
     const name = nextSlotName(card);

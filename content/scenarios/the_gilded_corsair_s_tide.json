@@ -1,0 +1,750 @@
+{
+  "kind": "scenario",
+  "title": "The Gilded Corsair's Tide",
+  "town_id": "azure",
+  "town_name": "Azure",
+  "arc": {
+    "title": "The Gilded Corsair's Tide",
+    "villain": "Corsair Queen Turanda",
+    "stakes": "If the party fails, Corsair Queen Turanda will shatter Azure's ancient sea-wall with giant-forged tidal magic, drowning the ninety islets and leaving the floating city defenseless against her pirate fleet. Azure's sunlit canals, craft guilds, and floating markets will be swept away into the salt deeps forever.",
+    "acts": [
+      {
+        "title": "The Gilded Star-Chart",
+        "hook": "Princess Turanda invites the party to a lavish banquet aboard her barge, begging them to delve into the Drowned Scriptorium in the outer shoals to recover a brass star-chart she claims will prove her royal birthright. However, Harbourmistress Ilenya Sarn warns that Turanda's armed retainers have also been seen breaking into the Old Cistern under the fish market to tamper with the sea-gates. The party must decide whether to sail out to the monster-plagued Scriptorium for royal gold or descend into the Cistern to capture the saboteurs before the lower canals flood.",
+        "questgiver_location": "the_gilded_barge",
+        "questgiver_npc": "princess_turanda",
+        "handoff": "harbourmistress_ilenya_sarn",
+        "adventure_theme": "The Drowned Scriptorium of the Reef-Giants (flooded marble halls crawling with armored barnacle-crabs, tide-goblins, and ancient brass puzzle traps)",
+        "tone_notes": "Sun-dappled turquoise waters, drifting kelp fronds, weathered green giant-stonework, and glittering coral-choked corridors."
+      },
+      {
+        "title": "Breach at the Eastern Arm",
+        "hook": "Turanda casts off her disguise as her corsairs seize the giant-built Iron Tide Bastion on Azure's crumbling eastern sea-wall, turning dwarf-forged siege cannons toward the city. Archivist Maelen Thistlebar urges the heroes to storm the bastion's upper battery to spike the heavy cannons before the walls fall, while Master Smith Hedda Stromm pleads with them to intercept a corsair barge convoy hauling volatile black-powder kegs through the Reed-Flat Canals to cut off the fortress's supplies.",
+        "questgiver_location": "the_tidewatch_archive",
+        "questgiver_npc": "archivist_maelen_thistlebar",
+        "handoff": "hedda_stromm",
+        "adventure_theme": "The Iron Tide Bastion (a colossal stone sea-fortress manned by elite Redwake corsair marines, chained marsh-drakes, and barricaded ramparts)",
+        "tone_notes": "Booming cannon fire, lashing sea-spray, salt-stained battlements, and clashing steel under a bruised twilight sky."
+      },
+      {
+        "title": "The Drowned Horn",
+        "hook": "Queen Turanda has retreated to the Spire of the Drowned King at the outer reef, activating a giant-forged bronze horn capable of summoning a devastating tidal wave to scour Azure from the map while her pirate fleet waits to pillage the wreckage. Captain Orsolo Vane offers to pilot a nimble cutter through the razor-shoals to assault the Spire's open grand balcony directly, while artificer Vessa Quillingham provides a brass diving bell so the party can enter through the flooded lower sluices and disable the horn's tidal gears before confronting the Queen.",
+        "questgiver_location": "the_nine_dials",
+        "questgiver_npc": "captain_orsolo_vane",
+        "handoff": "vessa_quillingham",
+        "adventure_theme": "The Spire of the Drowned King (a towering spiral citadel of ancient white marble and pink coral, filled with elite corsair champions, giant sea-gargoyles, and Corsair Queen Turanda herself)",
+        "tone_notes": "Roaring tidal currents, reverberating bronze horn blasts, wind-whipped silk banners, and grand sea-throne halls."
+      }
+    ],
+    "cast": [
+      {
+        "id": "princess_turanda",
+        "name": "Princess Turanda",
+        "role": "Claimant royal and pleasure-barge mistress",
+        "persona": "Draped in lavender silk and clinking with gold bangles, Turanda holds court aboard her opulent barge with theatrical sighs and regal entitlement. She laments the loss of her ancestral island kingdom to barbaric raiders and promises chests of sunken pearls to any hero who champions her cause. Beneath her dramatic swoons and perfumed smiles lies an iron-willed sea commander who calculates every coin and every dagger.",
+        "portrait_desc": "A radiant high elf with amber eyes and elaborate braided silver hair, wearing an amethyst silk gown, a tiara of polished pink coral, and holding a gold-leafed fan.",
+        "art_url": "",
+        "location": "the_gilded_barge",
+        "acts": [
+          1,
+          2
+        ],
+        "secret": "She is actually the ruthless admiral of the Redwake Corsair fleet, using her royal facade to trick Azure's folk into locating the lost Giant Keys to the city's sea-wall.",
+        "topics": []
+      }
+    ],
+    "places": [
+      {
+        "id": "the_gilded_barge",
+        "name": "The Gilded Barge",
+        "function": "flavor",
+        "description": "A magnificent triple-decked pleasure galley of purple-lacquered cedar and gilded scrollwork, moored along the Salt Stair with fluttering silk pennants.",
+        "interior_scene": "Thick velvet cushions, brass censers drifting sweet sea-clove smoke, and tables piled with candied figs, roasted marsh-fowl, and sparkling spiced wine.",
+        "exterior_scene": "A towering spectacle of gilded carvings, purple silk awnings, and brass deck-lanterns whose bright reflections dazzle the muddy canal water around the quay.",
+        "interior_art_url": "",
+        "exterior_art_url": "",
+        "acts": [
+          1,
+          2
+        ]
+      }
+    ],
+    "loot_lexicon": {
+      "theme": "salt",
+      "second": "iron",
+      "materials": [
+        "Saltglass",
+        "Coral",
+        "Whalebone",
+        "Driftwood",
+        "Sailcloth",
+        "Tide-Iron",
+        "Pig-Lead",
+        "Black Iron"
+      ],
+      "epithets": [
+        "Tide-Worn",
+        "Salt-Bitten",
+        "Deepwater",
+        "Drowned",
+        "Storm-Struck",
+        "Barnacled",
+        "Cold-Forged",
+        "Rust-Marked"
+      ],
+      "suffixes": [
+        "the Last Sail",
+        "the Long Tide",
+        "the Drowned Choir",
+        "Hollow Water",
+        "the Blackworks",
+        "the Cold Anvil"
+      ],
+      "details": [
+        "still smelling of brine",
+        "green with old weed",
+        "crusted white along every seam",
+        "rust bloomed and scrubbed back a dozen times"
+      ],
+      "flavor": [
+        "Cold, and it stays cold.",
+        "It came up in a net. Nobody claimed it.",
+        "The salt has been eating it for years and has not finished.",
+        "Somebody went under holding this.",
+        "Honest weight, honestly balanced.",
+        "It has been rehafted three times."
+      ],
+      "forms": {
+        "melee": [
+          "greatblade",
+          "cleaver",
+          "glaive",
+          "warpick",
+          "maul",
+          "poleaxe"
+        ],
+        "ranged": [
+          "harpoon",
+          "recurve",
+          "javelins",
+          "sling",
+          "hookshot"
+        ],
+        "accessory": [
+          "gauntlet",
+          "seal",
+          "charm",
+          "bracer",
+          "torc",
+          "ring"
+        ],
+        "consumable": [
+          "draught",
+          "incense",
+          "cordial",
+          "salve",
+          "powder",
+          "tincture",
+          "tonic",
+          "water"
+        ]
+      }
+    }
+  },
+  "act1": {
+    "adventure_id": "",
+    "quest_id": "",
+    "materialization": {
+      "quests": [
+        {
+          "id": "drowned_scriptorium",
+          "title": "The Drowned Scriptorium",
+          "text": "Princess Turanda offers a chest of minted gold to anyone who will delve into the Drowned Scriptorium in the outer shoals. An ancient brass star-chart lies within the giant-cut vaults, which she insists contains the royal lineage proving her island kingdom. The ruins are sunken, brine-flooded, and infested with coral vermin.",
+          "adventure_theme": "The Drowned Scriptorium of the Reef-Giants, navigating flooded marble halls, disarming giant brass puzzle traps, and fighting tide-goblins and armored barnacle-crabs."
+        },
+        {
+          "id": "old_cistern_saboteurs",
+          "title": "Sabotage in the Old Cistern",
+          "text": "Harbourmistress Ilenya Sarn has caught wind of armed sellswords breaking into the Old Cistern beneath the fish market. If the saboteurs tamper with the sea-gates, salt water will flood the lower residential canals within hours. She needs seasoned fighters to descend into the brick sluices, clear out the giant vermin, and capture the intruders alive.",
+          "adventure_theme": "The Old Cistern beneath the Fish Market, wading through flooded brick tunnels, fighting giant sewer crabs, and subduing armed corsair saboteurs before they breach the canal sluices."
+        }
+      ],
+      "quest": {
+        "title": "The Drowned Scriptorium",
+        "text": "Princess Turanda offers a chest of minted gold to anyone who will delve into the Drowned Scriptorium in the outer shoals. An ancient brass star-chart lies within the giant-cut vaults, which she insists contains the royal lineage proving her island kingdom. The ruins are sunken, brine-flooded, and infested with coral vermin."
+      },
+      "arrival": "You step from a flat-bottomed ferry onto the sun-warmed marble of the Salt Stair, where Azure opens around you like a painted fan. Nine canals cut between rows of blue-plastered houses and flower-hung balconies, crowded with skiffs, eel-boats, and shouting fruit vendors. Above the rooftops, the Salt Bell tower gleams in bronze beside a sky of brilliant sea-green, while right along the quay, Princess Turanda's triple-decked pleasure galley rests in purple cedar and gold leaf, its scented braziers sending thin ribbons of sandalwood across the salt breeze.",
+      "dialogues": {
+        "princess_turanda": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Ah, champions! Come, sit upon the cushions. My heart is heavy with exile, yet the fates have delivered capable blades to my deck. Will you hear the plea of a princess in distress?",
+              "choices": [
+                {
+                  "label": "We were forced to retreat from the shoals, Highness, but we are ready to try again.",
+                  "next": "retry",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "Tell us what you need done, Princess.",
+                  "next": "pitch",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_star_chart",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "This is quite an opulent warship for an exile.",
+                  "next": "flattery",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "flattery": {
+              "speaker": "npc",
+              "text": "Opulence is the only armour a deposed queen has left, darling. A gilded cage to remind these lagoon merchants that royal blood cannot be bought with fish scales.",
+              "choices": [
+                {
+                  "label": "What is it you want from us?",
+                  "next": "pitch",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_star_chart",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "pitch": {
+              "speaker": "npc",
+              "text": "Three leagues out on the razor-shoals lies the Drowned Scriptorium, built by the reef-giants of old. Within its sunken vault rests a brass star-chart inscribed with the lost lineage of my island throne. Bring it to me, and you shall have a chest of gold coins.",
+              "choices": [
+                {
+                  "label": "Harbourmistress Sarn claims your retainers are causing trouble at the docks.",
+                  "next": "sarn_complaint",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We will sail for the Drowned Scriptorium and recover your chart.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "drowned_scriptorium"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We need time to prepare before sailing into giant ruins.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "sarn_complaint": {
+              "speaker": "narration",
+              "text": "Turanda waves a ringed hand dismissively, her golden bracelets clinking against the silk armrest.",
+              "choices": [
+                {
+                  "label": "What does the Harbourmistress want?",
+                  "next": "sarn_redirect",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "sarn_redirect": {
+              "speaker": "npc",
+              "text": "Ilenya Sarn sees smugglers in every shadow and pirates under every dock! If you wish to waste your steel checking cellar rat-traps for the harbour watch, go speak to her at the customs desk. But my gold awaits true heroes.",
+              "choices": [
+                {
+                  "label": "We'll speak with Harbourmistress Sarn first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "direct_to",
+                      "npc": "harbourmistress_ilenya_sarn",
+                      "location": null
+                    },
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                },
+                {
+                  "label": "We will take your offer. We sail for the Scriptorium.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "drowned_scriptorium"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                }
+              ]
+            },
+            "retry": {
+              "speaker": "npc",
+              "text": "The sea-tides are unforgiving, but a true crown is won through persistence. The reef-giants' scriptorium still holds my star-chart. Will you venture into the drowned halls once more?",
+              "choices": [
+                {
+                  "label": "We are ready to brave the Drowned Scriptorium again.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "drowned_scriptorium"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Give us a moment to rest and resupply.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "harbourmistress_ilenya_sarn": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Mind your footing on the wet marble. If you're looking for honest work and not perfumed nonsense from that purple barge, listen closely.",
+              "choices": [
+                {
+                  "label": "We were battered in the cistern, Harbourmistress, but we can clear it now.",
+                  "next": "retry",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "What trouble are you dealing with?",
+                  "next": "cistern_pitch",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_cistern_tampering",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "Princess Turanda mentioned you had concerns about the docks.",
+                  "next": "cistern_pitch",
+                  "requires": [
+                    "knows_star_chart"
+                  ],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_cistern_tampering",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "Just admiring the harbour traffic.",
+                  "next": "idle",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "idle": {
+              "speaker": "npc",
+              "text": "Admire it from behind the yellow line. We have ninety barges unloading salted bream and three merchant houses arguing over mooring rights.",
+              "choices": [
+                {
+                  "label": "You mentioned having real work for us?",
+                  "next": "cistern_pitch",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_cistern_tampering",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "cistern_pitch": {
+              "speaker": "npc",
+              "text": "An hour ago, watchmen spotted armed men forcing the iron grate into the Old Cistern under the fish market. Those conduits regulate the canal sea-gates. If those saboteurs jam the sluice-chains, half of Cobble Reach will be under five feet of salt water by nightfall.",
+              "choices": [
+                {
+                  "label": "Who are these saboteurs?",
+                  "next": "who_saboteurs",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We will enter the Old Cistern and secure the sea-gates.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "old_cistern_saboteurs"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Let us look into our supplies first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "who_saboteurs": {
+              "speaker": "npc",
+              "text": "Foreign sellswords wearing corsair leather under heavy cloaks. They rowed straight off that gilded pleasure galley when the watch changed. Clear the tunnels, smash whatever wedges they brought, and bring me whoever is leading them.",
+              "choices": [
+                {
+                  "label": "Consider the sea-gates secured. We're going in.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "old_cistern_saboteurs"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We need a moment to consider.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "retry": {
+              "speaker": "npc",
+              "text": "The sluice grates are still groaning under the fish market. If you have your breath back, get down there before the tide surges through the broken gates.",
+              "choices": [
+                {
+                  "label": "We're going back into the cistern.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "old_cistern_saboteurs"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Give us a moment to catch our breath.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "perrinelle_cobbleworth": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Come in, wipe your boots, and sit! Fresh eel pie is coming out of the brick oven, and there's dry linen on the rack. What can I do for you travellers?",
+              "choices": [
+                {
+                  "label": "We need a warm meal and a good night's rest. (Restore Party)",
+                  "next": "rested",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "How fares the inn today, mistress?",
+                  "next": "gossip",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "rested": {
+              "speaker": "npc",
+              "text": "Feather mattresses aired this very morning! You sleep soundly while the tide rolls under the floor, and I'll have fried oats ready at dawn.",
+              "choices": []
+            },
+            "gossip": {
+              "speaker": "npc",
+              "text": "Busy as a fish ladder! Between the spice barge arrivals and that grand foreign princess throwing coins from her deck, everybody's talking about fortune. Just mind the wet steps down by the canal arch.",
+              "choices": [
+                {
+                  "label": "We'll keep that in mind. Good day, Perrinelle.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        },
+        "hedda_stromm": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Clang! Mind the slack-tub, traveller. Azure water eats bad iron for breakfast, so if you're stepping onto a boat, you want dwarf-forged boarding steel.",
+              "choices": [
+                {
+                  "label": "Show us what weapons and armour you have for sale.",
+                  "next": "browsing",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Have you noticed any strange blades being carried around the quay?",
+                  "next": "blade_rumour",
+                  "requires": [
+                    "knows_cistern_tampering"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "Just admiring the forge.",
+                  "next": "farewell",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "browsing": {
+              "speaker": "npc",
+              "text": "Short reach, heavy chopping back, hook on the tip. Pick it up, test the balance on the wet plank, and tell me if it fits your palm.",
+              "choices": []
+            },
+            "blade_rumour": {
+              "speaker": "npc",
+              "text": "Aye. Two days ago, some masked ruffians bought four dozen iron wedges and heavy crow-bars off my neighbor. That's not boat repair tools—that's gate-breaking kit.",
+              "choices": [
+                {
+                  "label": "That confirms what Harbourmistress Sarn suspected.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "farewell": {
+              "speaker": "npc",
+              "text": "Keep your pommel dry and your feet planted!",
+              "choices": []
+            }
+          }
+        }
+      },
+      "flavor": {
+        "old_bramble": "The herons are roosting high on the outer sea-wall today. Means a deep swell is pushing through the giant stones.",
+        "pip_ansel": "I saw three men with heavy pry-bars slip down the sewer stairs by the fish quay! I wrote their coat colours in my book!",
+        "vessa_quillingham": "Mind the brass dial on the left! That one measures canal depth, and right now the needle is twitching like a startled shrimp.",
+        "captain_orsolo_vane": "The lagoon looks peaceful enough from this chair, but out past the broken wall, the tide rips hard enough to spin a three-master.",
+        "sula_orrick": "If you're going into the wet ruins out in the shoals, take a pinch of dried fever-mint. Lagoon water breeds a wicked chill.",
+        "doctor_ambrose_fennel": "Sunken giant tombs? Pure folly! You'll catch the damp-lung and come crawling back to my leech jars, mark my words.",
+        "toma_quickstep": "Need a fast skiff out to the shoals or across the canal? Toma Quickstep is your man—half price if you don't mind a splash of spray!",
+        "bertola_vane": "Salt air ruins good cinnamon faster than water! If you need spice that can survive a drenching on the outer reefs, buy my resin-sealed flasks.",
+        "nio_fessari": "Those guards from the lavender barge bought five identical lacquered wolf-masks yesterday. Men only wear matching faces when they plan to be somewhere they shouldn't.",
+        "archivist_maelen_thistlebar": "The Drowned Scriptorium was carved in the Second Age before the sea-wall sank. Beautiful stone arches, but perilous tides.",
+        "wren_ossily": "I found an old survey of the Old Cistern under the fish market—did you know it has six emergency iron sluice gates built to stop sea-surges?"
+      },
+      "topics": {
+        "old_bramble": [
+          {
+            "ask": "Have you ever rowed out to the Drowned Scriptorium?",
+            "reply": "Twice when I was forty years younger. Giant-cut marble sticking out of the kelp. Mind the barnacle-crabs—they crack skiff hulls like walnut shells.",
+            "requires": [
+              "knows_star_chart"
+            ]
+          },
+          {
+            "ask": "What do you know about the cistern under the fish market?",
+            "reply": "Old brick vaults. If anybody messes with the iron counterweights on those sluices, the low canals will fill with sea-sludge by sunset.",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ],
+        "pip_ansel": [
+          {
+            "ask": "What did you see near the fish market cistern?",
+            "reply": "Four burly sailors in dark leather coats! They had crowbars wrapped in greasy canvas and slipped right through the grating into the dark!",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ],
+        "vessa_quillingham": [
+          {
+            "ask": "Could a giant star-chart survive out in the drowned ruins?",
+            "reply": "Reef-giant brass doesn't rust, my friend! It forms a green lacquer and lasts a thousand years under salt brine. Splendid piece of mechanism if you can pry it loose.",
+            "requires": [
+              "knows_star_chart"
+            ]
+          }
+        ],
+        "captain_orsolo_vane": [
+          {
+            "ask": "What do you make of Princess Turanda's claims?",
+            "reply": "She speaks like a queen from an old ballad, but her crew handles deck-lines like deep-water buccaneers, not royal footmen. Keep your hand on your pouch.",
+            "requires": [
+              "knows_star_chart"
+            ]
+          }
+        ],
+        "sula_orrick": [
+          {
+            "ask": "Any advice for delving into the flooded cistern?",
+            "reply": "Watch for sewer rot and crab nips. Rub this tallow salve on your boots to keep the salt leeches from biting through the leather.",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ],
+        "doctor_ambrose_fennel": [
+          {
+            "ask": "What happens if the canal sluices are jammed?",
+            "reply": "Stagnant brine fills the cellars, the eastern wells foul, and we get the spotted lagoon ague within three days! Tell Ilenya to double the watch!",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ],
+        "toma_quickstep": [
+          {
+            "ask": "Can your boat take us to the outer reef ruins?",
+            "reply": "I can drop you right at the broken peristyle of the Scriptorium! Just watch out for the tide-goblins that nest in the dry arches above the waterline.",
+            "requires": [
+              "knows_star_chart"
+            ]
+          }
+        ],
+        "bertola_vane": [
+          {
+            "ask": "Has the Princess been spending gold in the market?",
+            "reply": "Hand over fist! But every sovereign she spends is stamped with an island mint that was sacked twenty years ago. Makes you wonder whose treasury she cleared out.",
+            "requires": [
+              "knows_star_chart"
+            ]
+          }
+        ],
+        "nio_fessari": [
+          {
+            "ask": "Did you see who went down into the fish market cistern?",
+            "reply": "They were wearing heavy wool hoods over wolf-masks. Foreign craftsmanship. Whoever hired them didn't want a single face remembered by the market folk.",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ],
+        "archivist_maelen_thistlebar": [
+          {
+            "ask": "What do the archive records say of the Drowned Scriptorium?",
+            "reply": "The reef-giants kept their star-charts on etched brass plates fixed to the central astrolabe tower. It sank beneath the waves four centuries ago during the great storm.",
+            "requires": [
+              "knows_star_chart"
+            ]
+          },
+          {
+            "ask": "Why are the fish market sea-gates so critical?",
+            "reply": "They act as Azure's pressure valve. If closed against the high tide, the outer wall holds; if wedged open, the incoming surge will drown the southern artisans' quarter.",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ],
+        "wren_ossily": [
+          {
+            "ask": "Are there maps of the Old Cistern?",
+            "reply": "Yes! The masonry was laid by the stone-masons' guild two hundred years back. It has three flooded sluice chambers and an iron gate room directly beneath the central fish stall.",
+            "requires": [
+              "knows_cistern_tampering"
+            ]
+          }
+        ]
+      },
+      "reask": {
+        "princess_turanda": "Have you reconsidered my offer, champions? The tides wait for no one, and my ancestral star-chart still rests in the giant ruins.",
+        "harbourmistress_ilenya_sarn": "Well? Have you made up your mind to secure those cistern gates before Azure's low streets take on three feet of salt water?"
+      },
+      "stock": {}
+    }
+  },
+  "difficulty": "standard"
+}

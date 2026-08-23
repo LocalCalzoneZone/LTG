@@ -543,3 +543,360 @@ def test_a_blast_scope_covers_adjacent_rows_and_an_empty_row_fizzles():
     assert st.enemy("mid_a").hp == 6              # adjacent row covered
     assert st.enemy("rear_b").hp == 10            # two rows out — untouched
     assert st.corpse("husk") is None
+
+
+# --------------------------------------------------------------------------- #
+# §D19-7 — channeled action modifiers ("while channeled: your Mitigate …")
+# --------------------------------------------------------------------------- #
+def test_a_channeled_action_modifier_rides_and_lifts_with_the_channel():
+    """Playtest (Turin's Divine Aura): a channeled Skill granting Defender AND
+    `mitigate_full` while_channeled applied the keyword and silently dropped the
+    modifier — `_apply_static` had no modify_action branch. It now rides
+    `action_mods` for the channel's life and lifts on the break."""
+    from ltg_combat.engine import _apply_static, _mitigate_value
+    from ltg_core.schema import ModifyAction, TargetDescriptor
+
+    st = _state([_char("p", power=4)], [_enemy()])
+    hero = st.character("p")
+    eff = ModifyAction.model_validate({
+        "kind": "modify_action", "action": "mitigate", "modifier": "mitigate_full",
+        "target": {"mode": "self"}, "duration": "while_channeled"})
+    _apply_static(st, hero, eff, +1)
+    assert hero.action_mods.get("mitigate_full") == "while_channeled"
+    assert _mitigate_value(hero) == 4                        # full Power, not ceil(4/2)
+    _apply_static(st, hero, eff, -1)
+    assert "mitigate_full" not in hero.action_mods
+    assert _mitigate_value(hero) == 2                        # back to half
+
+
+def test_an_instant_modifier_has_no_standing_form():
+    from ltg_combat.engine import _apply_static
+    from ltg_core.schema import ModifyAction
+    st = _state([_char("p")], [_enemy()])
+    hero = st.character("p")
+    eff = ModifyAction.model_validate({
+        "kind": "modify_action", "action": "ultimate", "modifier": "charge_ultimate",
+        "amount": 15, "target": {"mode": "self"}, "duration": "while_channeled"})
+    _apply_static(st, hero, eff, +1)
+    assert "charge_ultimate" not in hero.action_mods         # logged, never applied
+    assert any(l.type == "unhandled" for l in st.log)
+
+
+# --------------------------------------------------------------------------- #
+# §D19-8 — per-use splash on a shared slot ("$T1" vs "$T1+row")
+# --------------------------------------------------------------------------- #
+FISSURE = {
+    "id": "fissure", "name": "Fissure", "source_name": "Fissure",
+    "rarity": "common", "level": 1, "type": "Sorcery", "timing": "sorcery",
+    "cost": {"generic": 0, "colors": {}},
+    "targets": {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}},
+    "effects": [
+        {"kind": "wound", "power": 1, "toughness": 1, "target": "$T1"},
+        {"kind": "deal_damage", "amount": 2, "target": "$T1+row"},
+    ],
+    "validated": True,
+}
+
+
+def test_slot_suffix_vocabulary():
+    from ltg_core.schema import Card, slot_name, slot_scope
+    assert slot_name("$T1+row") == "T1" and slot_scope("$T1+row") == "row"
+    assert slot_name("$T1") == "T1" and slot_scope("$T1") is None
+    Card.model_validate(FISSURE)                     # legal
+    bad = copy.deepcopy(FISSURE)
+    bad["effects"][1]["target"] = "$T1+everything"
+    with pytest.raises(ValueError):
+        Card.model_validate(bad)
+
+
+def test_one_pick_per_effect_footprint():
+    """The ask: one shared target where effect A hits the pick alone and effect
+    B hits the pick AND its row. "$T1" stays pinpoint; "$T1+row" splashes."""
+    from ltg_combat.engine import apply_action, legal_actions
+
+    def en(eid, row, hp=10):
+        return {"id": eid, "name": eid, "hp": hp, "level": 1, "row": row,
+                "intent": {"name": "Hit", "amount": 1, "action_type": "attack",
+                           "intent_type": "attack", "targeting": "lowest_hp_party",
+                           "mode": "melee"}}
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": 30, "power": 2, "hand_size": 1,
+                   "identity": ["R"], "row": "front", "attack_mode": "melee",
+                   "library": [copy.deepcopy(FISSURE), _filler("pad")]}],
+        "enemies": [en("a", "front"), en("b", "front"), en("c", "rear")]})
+    for _ in range(100):
+        acts = legal_actions(st)
+        casts = [x for x in acts if x.kind == "cast" and x.card_id == "fissure"]
+        if casts:
+            # ONE pick despite two slot uses — no combinatorial explosion.
+            assert sorted(x.target_id for x in casts) == ["a", "b", "c"]
+            st = apply_action(st, next(x for x in casts if x.target_id == "a"))[0]
+            break
+        a = next((x for x in acts if x.kind == "pass"), None) or \
+            next((x for x in acts if x.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+    while st.stack:
+        a = next((x for x in legal_actions(st) if x.kind == "pass"), None)
+        if a is None:
+            break
+        st = apply_action(st, a)[0]
+    ea, eb, ec = st.enemy("a"), st.enemy("b"), st.enemy("c")
+    assert (ea.effective_hp, ea.power_bonus) == (7, -1)   # wound + blast on the pick
+    assert (eb.effective_hp, eb.power_bonus) == (8, 0)    # blast only — no wound
+    assert ec.effective_hp == 10                          # other row untouched
+
+
+def test_suffixed_use_reads_in_the_card_text():
+    from ltg_core.schema import Card
+    from ltg_core.translation import render_effects
+    c = Card.model_validate(FISSURE)
+    text = render_effects(c.effects, c.targets)
+    assert "(and so does its whole row)" in text
+    # The pinpoint clause carries no row rider.
+    assert text.count("row") == 1
+
+
+def test_corpse_explosion_can_author_the_suffix_form():
+    """§D19-6 + §D19-8 compose: a scopeless corpse slot, the damage carrying its
+    own footprint — the cleaner authoring of the same card."""
+    from ltg_core.schema import Card
+    card = {
+        "id": "ce2", "name": "ce2", "source_name": "ce2", "rarity": "common",
+        "level": 2, "type": "Sorcery", "timing": "sorcery",
+        "cost": {"generic": 0, "colors": {}},
+        "targets": {"T1": {"mode": "chosen", "side": "enemy", "targeted": True,
+                           "state": "corpse"}},
+        "effects": [
+            {"kind": "deal_damage", "amount": 4, "target": "$T1+row"},
+            {"kind": "consume_corpse", "target": "$T1"},
+        ], "validated": True}
+    Card.model_validate(card)                        # the §D19-6 exception sees the use's scope
+
+
+# --------------------------------------------------------------------------- #
+# §D19-9 — the ground survives its anchor
+# --------------------------------------------------------------------------- #
+LANCE = {
+    "id": "lance", "name": "Lance", "source_name": "Lance", "rarity": "common",
+    "level": 1, "type": "Sorcery", "timing": "sorcery",
+    "cost": {"generic": 0, "colors": {}},
+    "targets": {"T1": {"mode": "chosen", "side": "any", "targeted": True}},
+    "effects": [
+        {"kind": "deal_damage", "amount": 4, "target": "$T1"},
+        {"kind": "deal_damage", "amount": 3, "target": "$T1+row"},
+    ],
+    "validated": True,
+}
+
+
+def _row_enemy(eid, row, hp=10):
+    return {"id": eid, "name": eid, "hp": hp, "level": 1, "row": row,
+            "intent": {"name": "Hit", "amount": 1, "action_type": "attack",
+                       "intent_type": "attack", "targeting": "lowest_hp_party",
+                       "mode": "melee"}}
+
+
+def _cast_lance(anchor_hp, card=None):
+    from ltg_combat.engine import apply_action, legal_actions
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": 30, "power": 2, "hand_size": 1,
+                   "identity": ["R"], "row": "front", "attack_mode": "melee",
+                   "library": [copy.deepcopy(card or LANCE), _filler("pad")]}],
+        "enemies": [_row_enemy("anchor", "front", hp=anchor_hp),
+                    _row_enemy("mate", "front"), _row_enemy("far", "rear")]})
+    for _ in range(100):
+        acts = legal_actions(st)
+        casts = [x for x in acts if x.kind == "cast" and x.card_id == "lance"]
+        if casts:
+            st = apply_action(st, next(x for x in casts if x.target_id == "anchor"))[0]
+            break
+        a = next((x for x in acts if x.kind == "pass"), None) or \
+            next((x for x in acts if x.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+    while st.stack:
+        a = next((x for x in legal_actions(st) if x.kind == "pass"), None)
+        if a is None:
+            break
+        st = apply_action(st, a)[0]
+    return st
+
+
+def test_the_blast_lands_when_its_own_card_kills_the_anchor():
+    """Playtest: "deal 4 to a target, then 3 to it and its row" lost the blast
+    entirely when the first 4 killed the anchor — the row-mates took nothing."""
+    st = _cast_lance(anchor_hp=4)
+    assert st.enemy("anchor") is None                 # the first hit killed it
+    assert st.enemy("mate").hp == 7                   # the blast still covered the row
+    assert st.enemy("far").hp == 10                   # a different row, untouched
+    assert any(l.type == "splash" and l.data.get("ground") for l in st.log)
+
+
+def test_a_surviving_anchor_is_unchanged():
+    st = _cast_lance(anchor_hp=10)
+    assert st.enemy("anchor").hp == 3                 # 4 + 3, both on the pick
+    assert st.enemy("mate").hp == 7 and st.enemy("far").hp == 10
+
+
+def test_the_conditional_wrapped_form_works_too():
+    """The shape from the editor: the splash lives inside a conditional, so it
+    cannot simply be reordered ahead of the single-target hit."""
+    from ltg_combat.state import Channel
+    from ltg_combat.engine import apply_action, legal_actions
+    from ltg_core.schema import Card
+
+    card = copy.deepcopy(LANCE)
+    card["effects"] = [
+        {"kind": "deal_damage", "amount": 4, "target": "$T1"},
+        {"kind": "conditional",
+         "condition": {"kind": "caster_property", "property": "channeling"},
+         "effects": [{"kind": "deal_damage", "amount": 3, "target": "$T1+row"}]},
+    ]
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": 30, "power": 2, "hand_size": 1,
+                   "identity": ["R"], "row": "front", "attack_mode": "melee",
+                   "library": [card, _filler("pad")]}],
+        "enemies": [_row_enemy("anchor", "front", hp=4), _row_enemy("mate", "front")]})
+    st.character("p").channels.append(
+        Channel(card=Card.model_validate(_filler("aura")), holder_id="p"))
+    for _ in range(100):
+        acts = legal_actions(st)
+        casts = [x for x in acts if x.kind == "cast" and x.card_id == "lance"]
+        if casts:
+            st = apply_action(st, next(x for x in casts if x.target_id == "anchor"))[0]
+            break
+        a = next((x for x in acts if x.kind == "pass"), None) or \
+            next((x for x in acts if x.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+    while st.stack:
+        a = next((x for x in legal_actions(st) if x.kind == "pass"), None)
+        if a is None:
+            break
+        st = apply_action(st, a)[0]
+    assert st.enemy("anchor") is None and st.enemy("mate").hp == 7
+
+
+def test_killing_the_target_in_response_still_fizzles():
+    """The counterplay must survive: ground is pinned as the resolution BEGINS,
+    so a target removed BEFORE that pins nothing and the whole action fizzles."""
+    from ltg_combat.engine import _ground_victims, _new_ctx
+    from ltg_combat.state import StackItem
+    from ltg_core.schema import DealDamage, TargetDescriptor
+
+    st = _state([_char("p")], [_enemy("still_here")])
+    item = StackItem(kind="spell", source_id="p", source_side="party",
+                     label="Lance", effects=[], target_id="already_gone")
+    ctx = _new_ctx(st, item)
+    assert ctx["ground"] == {}                        # nothing to pin
+    eff = DealDamage(amount=3, target=TargetDescriptor.model_validate(
+        {"mode": "chosen", "side": "enemy", "targeted": True, "scope": "row"}))
+    assert _ground_victims(st, item, eff, ctx, "row") == []
+
+
+def test_an_unscoped_effect_still_fizzles_on_a_dead_anchor():
+    """Only a SCOPED effect is ground. "Deal 4, then wound it" still loses the
+    wound when the 4 kills — there is no area to fall back on."""
+    card = copy.deepcopy(LANCE)
+    card["effects"] = [
+        {"kind": "deal_damage", "amount": 4, "target": "$T1"},
+        {"kind": "wound", "power": 1, "toughness": 1, "target": "$T1"},
+    ]
+    st = _cast_lance(anchor_hp=4, card=card)
+    assert st.enemy("anchor") is None
+    assert st.enemy("mate").power_bonus == 0          # nothing leaked onto the row
+    assert any(l.type == "fizzle" for l in st.log)
+
+
+# --------------------------------------------------------------------------- #
+# §D19-10 — a whole-side corpse sweep ("consume all enemy corpses")
+# --------------------------------------------------------------------------- #
+SANCTIFY = {
+    "id": "sanctify", "name": "Sanctify", "source_name": "Sanctify",
+    "rarity": "common", "level": 2, "type": "Sorcery", "timing": "sorcery",
+    "cost": {"generic": 0, "colors": {}},
+    "effects": [
+        {"kind": "heal", "amount": 2, "target": {"mode": "all", "side": "ally"}},
+        {"kind": "consume_corpse", "target": {"mode": "all", "side": "enemy"}},
+    ],
+    "validated": True,
+}
+
+
+def test_consume_corpse_normalizes_an_inline_descriptor_to_the_corpse_axis():
+    """Playtest: authored as mode:all/side:enemy WITHOUT the corpse axis (the
+    editor had no way to set it on an all-mode target), so it resolved over the
+    LIVING enemies and reported "finds no corpse to consume"."""
+    from ltg_core.schema import Card
+    c = Card.model_validate(copy.deepcopy(SANCTIFY))
+    desc = c.effects[1].target
+    assert getattr(desc.state, "value", desc.state) == "corpse"
+    # The heal beside it is untouched.
+    assert getattr(c.effects[0].target.state, "value", c.effects[0].target.state) == "living"
+
+
+def test_a_slot_ref_is_left_for_the_author_to_narrow():
+    """A shared slot is not stamped — narrowing it would narrow its other uses."""
+    from ltg_core.schema import Card
+    card = copy.deepcopy(SANCTIFY)
+    card["targets"] = {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}}
+    card["effects"][1]["target"] = "$T1"
+    c = Card.model_validate(card)
+    slot = c.targets["T1"]
+    assert getattr(slot.state, "value", slot.state) == "living"   # untouched
+
+
+def test_the_sweep_reads_naturally():
+    from ltg_core.schema import Card
+    from ltg_core.translation import render_effects
+    text = render_effects(Card.model_validate(copy.deepcopy(SANCTIFY)).effects)
+    assert text == "Restore 2 HP to all allies. Consume all enemy corpses."
+
+
+def test_the_sweep_clears_every_corpse_and_spares_the_living():
+    from ltg_combat.engine import apply_action, legal_actions
+    st = state_from_dict({
+        "party": [{"id": "a", "name": "a", "hp": 20, "power": 2, "hand_size": 1,
+                   "identity": ["W"], "row": "front", "attack_mode": "melee",
+                   "library": [copy.deepcopy(SANCTIFY), _filler("pad")]},
+                  {"id": "b", "name": "b", "hp": 15, "power": 1, "hand_size": 1,
+                   "identity": ["U"], "row": "rear", "attack_mode": "ranged",
+                   "library": [_filler("p"), _filler("q")]}],
+        "enemies": [_enemy("live", hp=12)]})
+    st.character("a").hp, st.character("b").hp = 14, 9
+    _lay_a_corpse(st, cid="husk_a", row="front")
+    _lay_a_corpse(st, cid="husk_b", row="rear")
+    for _ in range(100):
+        acts = legal_actions(st)
+        casts = [x for x in acts if x.kind == "cast" and x.card_id == "sanctify"]
+        if casts:
+            st = apply_action(st, casts[0])[0]
+            break
+        a = next((x for x in acts if x.kind == "pass"), None) or \
+            next((x for x in acts if x.kind == "end_turn"), None) or acts[0]
+        st = apply_action(st, a)[0]
+    while st.stack:
+        a = next((x for x in legal_actions(st) if x.kind == "pass"), None)
+        if a is None:
+            break
+        st = apply_action(st, a)[0]
+    assert st.character("a").hp == 16 and st.character("b").hp == 11   # the modest heal
+    assert st.corpses == []                                            # every body spent
+    assert st.enemy("live").hp == 12                                   # the living untouched
+    assert not any(l.type == "fizzle" for l in st.log)
+
+
+def test_an_enemy_component_sweep_reads_corpses_too():
+    """Enemy components never pass through Card validation, so the resolver
+    carries the same rule as a runtime backstop."""
+    from ltg_combat.engine import _creatures_on_side
+    from ltg_combat.state import StackItem
+    from ltg_core.schema import TargetDescriptor
+    st = _state([_char("p")], [_enemy("live")])
+    _lay_a_corpse(st, cid="husk")
+    item = StackItem(kind="ability", source_id="live", source_side="enemy",
+                     label="Feast", effects=[], target_id=None)
+    desc = TargetDescriptor.model_validate({"mode": "all", "side": "enemy"})
+    out = _creatures_on_side(st, "enemy", item, desc, "consume_corpse")
+    assert [c.id for c in out] == ["husk"]
+    # A different verb over the same descriptor still means the living.
+    out2 = _creatures_on_side(st, "enemy", item, desc, "deal_damage")
+    assert [c.id for c in out2] == ["live"]

@@ -50,6 +50,7 @@ def _enemy(eid, components):
     return {"id": eid, "name": eid.replace("_", " ").title(), "hp": 8,
             "power": 2, "level": 2, "row": "front", "attack_mode": "melee",
             "flavor": "does things", "description": "A brass automaton.",
+            "types": ["construct"], "classes": ["warrior"],      # §D21 gate
             "components": components}
 
 

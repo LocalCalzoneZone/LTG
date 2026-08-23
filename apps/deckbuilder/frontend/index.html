@@ -35,6 +35,15 @@
       <section class="panel" id="character-panel">
         <input id="char-name" class="char-name" type="text" placeholder="Name" />
         <div class="char-level">Level <span id="char-level">1</span></div>
+        <!-- §D21 type line: what the hero IS (race) / DOES (class), up to 2 each -->
+        <div class="field type-line">
+          <span>Type</span>
+          <div id="type-pick" class="tag-pick"></div>
+        </div>
+        <div class="field type-line">
+          <span>Class</span>
+          <div id="class-pick" class="tag-pick"></div>
+        </div>
         <textarea id="char-desc" class="char-desc" rows="4" placeholder="Description"></textarea>
         <div id="budget-meter" class="budget-meter"></div>
         <div id="stat-block" class="stat-block"></div>

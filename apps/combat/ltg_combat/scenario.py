@@ -387,6 +387,22 @@ def _objective_state(spec: Dict[str, Any]) -> "tuple[Optional[Objective], set]":
     ), reserve_ids
 
 
+def _clean_tags(raw) -> List[str]:
+    """§D21 type/class lists: lowercase slugs, deduped, capped at 2. A lone
+    string is tolerated. The engine stays permissive about the VOCABULARY (the
+    generation gate enforces the registry; hand-authored content may experiment)."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    out: List[str] = []
+    for t in raw:
+        t = _slug(str(t))
+        if t and t not in out:
+            out.append(t)
+    return out[:2]
+
+
 def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameState:
     """Build the pre-upkeep setup state from a scenario dict.
 
@@ -413,7 +429,9 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             hand = extras + hand
         party.append(CharacterState(
             id=p.get("id", _slug(p["name"])), name=p["name"],
-            archetype=p.get("archetype", ""), max_hp=int(p["hp"]), hp=int(p["hp"]),
+            archetype=p.get("archetype", ""),
+            types=_clean_tags(p.get("types")), classes=_clean_tags(p.get("classes")),
+            max_hp=int(p["hp"]), hp=int(p["hp"]),
             power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
             identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
             row=p.get("row", "front"),
@@ -461,6 +479,10 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
         enemies.append(EnemyState(
             id=e.get("id", _slug(e["name"])), name=e["name"],
             max_hp=int(e["hp"]), hp=int(e["hp"]), level=int(e["level"]),
+            # §D21: race + class tags, up to 2 of each (legacy content: empty;
+            # "supertypes" read as the same-session legacy spelling of classes).
+            types=_clean_tags(e.get("types")),
+            classes=_clean_tags(e.get("classes", e.get("supertypes"))),
             # Attack power defaults to the intent's damage when not given explicitly.
             power=int(e.get("power", e.get("intent", {}).get("amount", 0))),
             row=row, home_row=e.get("home_row", row),
@@ -594,6 +616,8 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
         "level": char.level,
         "hand_size": block["starting_cards"],
         "identity": [c.value for c in char.starting_mana],
+        "types": list(getattr(char, "types", []) or []),        # §D21 type line
+        "classes": list(getattr(char, "classes", []) or []),
         "keywords": list(block["keywords"]),  # the one bought keyword (§P-3), if any
         "parry_reduce": 2,
         "library": [c.model_dump(mode="json") for c in lo.cards],

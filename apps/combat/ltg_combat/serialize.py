@@ -101,6 +101,7 @@ def _pip_str(colors: List[str]) -> str:
 # --------------------------------------------------------------------------- #
 _HOSTILE_KINDS = {"deal_damage", "lose_life", "destroy", "exile", "bounce", "stun",
                   "taunt", "wound", "sap", "poison", "fight", "strip_intent",
+                  "break_channel",
                   # Enemies only ever use the HOSTILE action modifiers (Hamstring,
                   # Drain Ult, stripping reach), so one on an intent is hostile —
                   # without this it would classify as "support" to the player.
@@ -112,7 +113,7 @@ _HOSTILE_KINDS = {"deal_damage", "lose_life", "destroy", "exile", "bounce", "stu
 # Hamstring or a Silence never wears the same word as a sword swing — the player
 # needs to know which kind of trouble is coming, since the answers differ.
 _CONTROL_KINDS = {"stun", "taunt", "strip_intent", "remove_keyword", "counter",
-                  "sap", "modify_action", "prevent", "move_card"}
+                  "sap", "modify_action", "prevent", "move_card", "break_channel"}
 
 # Side-sensitive verbs: hostile only when they reach the PARTY. An enemy's
 # `prevent` is usually a Ward on itself (support); aimed at a hero it is a

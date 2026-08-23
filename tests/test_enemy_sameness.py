@@ -41,6 +41,7 @@ def _comp(cid, archetype, rule="valuation", kind="deal_damage", timing="proactiv
 def _enemy(eid, comps, row="front", mode="melee"):
     return {"id": eid, "name": eid.title(), "hp": 8, "power": 2, "level": 2,
             "row": row, "attack_mode": mode, "description": "A shape in the dark.",
+            "types": ["horror"], "classes": ["rogue"],           # §D21 gate
             "components": comps}
 
 

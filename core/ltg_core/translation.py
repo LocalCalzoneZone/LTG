@@ -49,6 +49,7 @@ from .schema import (
     TargetState,
     Wound,
     slot_name,
+    slot_scope,
     t_all,
     t_chosen,
     t_self,
@@ -332,6 +333,11 @@ def describe_target(desc, channeled: bool = False) -> str:
     if desc.mode == TargetMode.all:
         noun = {Side.ally: "all allies", Side.enemy: "all enemies", Side.any: "everyone"}[desc.side]
         out = ("all other " + noun.split(" ", 1)[1]) if desc.exclude_self and desc.side != Side.enemy else noun
+        state = getattr(getattr(desc, "state", None), "value",
+                        getattr(desc, "state", None))
+        if state == "corpse":     # §D19-10: an all-mode sweep over the bodies
+            out = ("all corpses" if desc.side == Side.any
+                   else f"all {desc.side.value} corpses")
         if getattr(desc, "rows", None):
             out += f" in {_rows_phrase(desc.rows)}"
         return out
@@ -354,10 +360,16 @@ def _is_self(t) -> bool:
 
 
 def _resolve(target, targets):
-    """Resolve a target (descriptor or slot ref) to a descriptor, or None."""
+    """Resolve a target (descriptor or slot ref) to a descriptor, or None. A
+    "$slot+row" / "$slot+blast" use (§D19-8) merges its splash into the returned
+    descriptor, so the phrase says what this USE covers."""
     s = slot_name(target)
     if s is not None:
-        return (targets or {}).get(s)
+        desc = (targets or {}).get(s)
+        use = slot_scope(target)
+        if desc is not None and use is not None:
+            return desc.model_copy(update={"scope": use})
+        return desc
     return target if not isinstance(target, str) else None
 
 
@@ -654,7 +666,15 @@ def _condition_phrase(cond) -> str:
         return f"the target is in the {row} row"
     if cond.property == "is_dead":
         return "the target is dead (a corpse)"
+    if cond.property == "type":
+        return f"the target is {_an(cond.type)}"
+    if cond.property == "class":
+        return f"the target is {_an(cond.class_)}"
     return "the condition holds"
+
+
+def _an(word: str) -> str:
+    return f"an {word}" if word and word[0] in "aeiou" else f"a {word}"
 
 
 def _token_phrase(e) -> str:
@@ -765,6 +785,10 @@ def _target_condition_qualifier(cond) -> str:
     if cond.property == "row":
         row = cond.row.value if hasattr(cond.row, "value") else cond.row
         return f"in the {row} row"
+    if cond.property == "type":
+        return f"that is {_an(cond.type)}"
+    if cond.property == "class":
+        return f"that is {_an(cond.class_)}"
     return "that qualifies"
 
 
@@ -784,7 +808,8 @@ def _targets_external(effect) -> bool:
 # target_property conditions with a natural noun-phrase qualifier ("a target
 # with flying"). Anything else — is_dead included — reads clearer as the plain
 # "If <condition>, <effect>." form, so a player always sees the condition.
-_QUALIFIER_PROPERTIES = ("has_keyword", "level", "side", "row")
+_QUALIFIER_PROPERTIES = ("has_keyword", "level", "side", "row",
+                         "type", "class")   # §D21
 
 
 def _render_conditional(e) -> str:
@@ -884,6 +909,15 @@ def _render_control(e) -> str:
     # Control takes the living and the dead alike (§D9-1.4) — say so on the card.
     return (f"Gain control of {_tgt(e.target)} or a corpse {_control_span(e)} — a "
             f"living enemy fights for you; a corpse rises as an undead ally at half HP.")
+
+
+def _render_break_channel(e) -> str:
+    subj = _subject(e.target, _RENDER_TARGETS.get(), True)
+    if subj == "yourself":
+        return "Break your own channels."
+    if _plural(e.target, _RENDER_TARGETS.get()):
+        return f"Break the channels of {subj}."
+    return f"Break {subj}'s channels."
 
 
 def _render_strip_intent(e) -> str:
@@ -1016,6 +1050,7 @@ RENDERERS = {
     "bounce": lambda e: f"Return {_tgt(e.target)} to hand.",
     "fight": lambda e: f"{_tgt(e.target).capitalize()} fights {_tgt(e.other)}.",
     "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
+    "break_channel": _render_break_channel,
     "strip_intent": _render_strip_intent,
     "stun": _render_stun,
     "pump": _render_pump,
@@ -1098,6 +1133,7 @@ _CLAUSE = {
     "control": lambda e: f"come under your control {_control_span(e)}",
     "move": lambda e: f"are moved {_MOVE_DIR_PHRASE.get(e.direction, e.direction)}",
     "strip_intent": lambda e: "lose their telegraphed intent",
+    "break_channel": lambda e: "have their channels broken",
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
     "protection": lambda e: f"gain protection ({_protection_phrase(e)} against them is negated)",
@@ -1175,7 +1211,15 @@ def _render_effects(effects: List[Effect], targets, channeled: bool) -> str:
             handled.add(id(e))
         slot_type = targets.get(s)
         phrase = _tgt(slot_type) if slot_type is not None else f"${s}"
-        clauses = [_clause(e) for e in group]
+        clauses = []
+        for e in group:
+            clause = _clause(e)
+            use = slot_scope(getattr(e, "target", None))
+            if use == "row":       # §D19-8: this use splashes; its siblings don't
+                clause += " (and so does its whole row)"
+            elif use == "blast":
+                clause += " (and so do its row and the adjacent rows)"
+            clauses.append(clause)
         parts.append(f"Choose {phrase}: they " + ", then ".join(clauses) + ".")
 
     # Then the direct-target effects, in order.

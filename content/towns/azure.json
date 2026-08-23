@@ -3,7 +3,7 @@
   "name": "Azure",
   "region_flavor": "Azure stands on ninety timber-piled islets in a warm green lagoon, where the River Cinnamere fans out into reed-flats and the open sea glitters beyond a broken sea-wall built by giants nobody remembers.",
   "scene": "Nine canals braid between houses of blue-washed plaster and pink brick, every doorstep a boat-step, every bridge crowded with fishmongers, chandlers and gulls the size of geese. Above the roofs rise the Salt Bell tower with its bronze sea-drake weathervane, a hundred laundry lines, and the striped mooring poles of the merchant houses, painted in their family colours. At dusk lamp-boats go out with hooked poles to light the canal lanterns, and the water turns to a road of floating gold.",
-  "art_url": "",
+  "art_url": "/art/towns/azure/town-28f2c7c6.png",
   "locations": [
     {
       "id": "the_gilded_eel",
@@ -11,11 +11,11 @@
       "function": "inn",
       "description": "A four-storey inn leaning fondly over the Ropewalk Canal, famous for eel pie, feather beds, and a landlady who remembers every guest's name and breakfast.",
       "exterior_scene": "A tall narrow house of blue plaster with white shutters, its ground floor open to the canal through a wide boat-arch where a green skiff is tied. Over the water-door hangs a fat gilded eel of hammered copper, polished at the belly where boatmen tap it for luck.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-the_gilded_eel-49d19981.png",
       "interior_scene": "A low common room floored in worn red tile, with an iron stove in the corner and eel-pies cooling on a rack above it, breathing pepper and pastry into the air. Copper pans and a hundred brass door-keys hang from beams above the long oak bar, and light comes green and wobbling off the canal through the boat-arch, sliding across the ceiling all day. Stairs of dark wood climb past a wall of guest-names scratched into the plaster.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-the_gilded_eel-b7c67ca0.png",
       "scene": "A low common room floored in worn red tile, with an iron stove in the corner and eel-pies cooling on a rack above it, breathing pepper and pastry into the air. Copper pans and a hundred brass door-keys hang from beams above the long oak bar, and light comes green and wobbling off the canal through the boat-arch, sliding across the ceiling all day. Stairs of dark wood climb past a wall of guest-names scratched into the plaster.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-the_gilded_eel-b7c67ca0.png",
       "npcs": [
         {
           "id": "perrinelle_cobbleworth",
@@ -23,7 +23,7 @@
           "role": "innkeeper",
           "persona": "A halfling of forty-odd summers with the energy of a kettle just off the boil, Perrinelle runs the Eel with total cheer and total control, talking while she works and working while she talks. She believes there is no sorrow that cannot be reduced by a hot bath, a second helping, and a clean pillowcase, and she will fight the Chandlers' Guild in open court over the price of candles. She was born on a river barge and cannot sleep unless she can hear water, so her own bedroom is the one directly over the boat-arch. She keeps a ledger of every guest's preferred breakfast going back nineteen years and considers forgetting one a personal disgrace.",
           "portrait_desc": "A round-cheeked halfling woman, curly chestnut hair pinned up with three brass skewers, flour on one forearm. She wears a canvas apron over a good striped dress and stands with fists on hips like a small friendly bollard.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-perrinelle_cobbleworth-8042e122.png",
           "topics": [
             {
               "ask": "What's in the pie?",
@@ -46,7 +46,7 @@
           "role": "retired canal-ranger and hearth-fixture",
           "persona": "A weathered human of seventy who spent his life patrolling the reed-flats outside the sea-wall for smugglers and marsh-drakes, and now occupies the bench nearest the stove with the authority of a magistrate. He talks in short, dry sentences and finds most modern dangers overrated, though he has genuine respect for the big grey herons and the tides. He is teaching himself to carve decoy ducks and has produced eleven that all look slightly angry. Anyone who buys him a mug of the dark beer gets a lesson in reading the lagoon's channel-marks, whether they asked or not.",
           "portrait_desc": "An old human man, lean and brown as a boot, white stubble and a bald crown, in a faded oilskin coat far too good to throw away. A knife-scarred thumb, a carving in one hand, and boots dried stiff by thirty years of stove-heat.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-old_bramble-091b6a39.png",
           "topics": [
             {
               "ask": "You know the lagoon?",
@@ -67,11 +67,11 @@
       "function": "weaponsmith",
       "description": "A dwarven smithy built on its own stone islet at the Iron Quay, where every blade is water-tested in the canal before it leaves the door.",
       "exterior_scene": "A squat block of grey granite among the plaster houses, its two chimneys smoking and its wide double doors thrown open to the quay, glowing orange at all hours. The sign is a real anvil bolted to the wall above the lintel, with an iron sea-drake curled around it and a mooring ring below for customers who arrive by boat.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-stromm_s_forge-96c1b334.png",
       "interior_scene": "Heat rolls off a brick forge with a bellows the size of a rowboat, and the floor is dark slate scattered with black scale that crunches underfoot. Spears, boarding axes and canal-hooks stand racked along one wall; on the opposite wall, finished blades hang from pegs in order of length, every one with a paper tag tied to its guard. A slate quenching trough fed by a canal pipe gurgles in the corner, and the whole room smells of hot iron, coal smoke and wet stone.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-stromm_s_forge-1b8bfbaf.png",
       "scene": "Heat rolls off a brick forge with a bellows the size of a rowboat, and the floor is dark slate scattered with black scale that crunches underfoot. Spears, boarding axes and canal-hooks stand racked along one wall; on the opposite wall, finished blades hang from pegs in order of length, every one with a paper tag tied to its guard. A slate quenching trough fed by a canal pipe gurgles in the corner, and the whole room smells of hot iron, coal smoke and wet stone.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-stromm_s_forge-1b8bfbaf.png",
       "npcs": [
         {
           "id": "hedda_stromm",
@@ -79,7 +79,7 @@
           "role": "master smith",
           "persona": "A dwarf of a hundred and ten who makes boarding weapons for a city that fights on wet planks, and is loudly, cheerfully proud of it. She speaks in short hammer-strokes, praises good work in anyone regardless of who made it, and refuses to sell a blade to a customer who cannot show her how they intend to hold it. She is in a long, elaborate, entirely non-violent feud with the Bargemen's Guild, who once delivered her a barge of wet coal and have never adequately apologised. Her private ambition is to forge a bell for the Salt Bell tower, and she has a scale model of one on her workbench that she taps whenever she is thinking.",
           "portrait_desc": "A broad dwarf woman in her prime, iron-grey braid coiled tight under a leather cap, forearms shiny with old burn-marks. Scorched leather apron over a sleeveless red tunic, and a stance like a mooring post.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-hedda_stromm-00e0875f.png",
           "topics": [
             {
               "ask": "Why so many hooks and short blades?",
@@ -102,7 +102,7 @@
           "role": "apprentice, age eleven",
           "persona": "A human child apprenticed to Hedda since she was nine, small, sooty, and appallingly well-informed about everything happening on the Iron Quay. She asks three questions for every one she answers and keeps a notebook of every blade that leaves the shop, including who bought it and what they were wearing. She is convinced something very large lives in the sunken cellar under the old fish market, because she has heard a shell-scraping sound down there twice at low tide. She works the bellows with total seriousness and has recently been promoted to tying the paper tags, which she considers the making of her career.",
           "portrait_desc": "A skinny human girl of eleven with a shaved-short crop of black hair and soot in the creases of her neck. She wears a cut-down leather apron that reaches her shins and clutches a fat, greasy notebook.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-pip_ansel-eada89e5.png",
           "topics": [
             {
               "ask": "What's under the fish market?",
@@ -123,11 +123,11 @@
       "function": "artificer",
       "description": "A crooked shop of glass and brass where compasses, tide-rings, lamp-charms and small clockwork oddities are made for sailors, spies and the merely curious.",
       "exterior_scene": "A narrow three-window shopfront squeezed between two warehouses, its plaster painted deep blue and studded with nine painted clock-faces, none of them agreeing. The bow window is crowded with brass instruments on velvet, and a small mechanical gull on the sign-bracket turns its head whenever the door opens.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-the_nine_dials-6ff50a2f.png",
       "interior_scene": "A cramped, glittering room lined floor-to-ceiling with shallow drawers, each labelled in a spidery hand — LODESTONE, LENSES, GULL-FEATHER, SPRINGS (GOOD). A jeweller's lamp with a water-filled globe throws a hard white circle onto the workbench, where half-built tide-rings lie on a felt mat beside tweezers and a pot of clove oil. Everything ticks slightly out of step, and a smell of hot brass, oil and clove hangs in the still air.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-the_nine_dials-c33e2386.png",
       "scene": "A cramped, glittering room lined floor-to-ceiling with shallow drawers, each labelled in a spidery hand — LODESTONE, LENSES, GULL-FEATHER, SPRINGS (GOOD). A jeweller's lamp with a water-filled globe throws a hard white circle onto the workbench, where half-built tide-rings lie on a felt mat beside tweezers and a pot of clove oil. Everything ticks slightly out of step, and a smell of hot brass, oil and clove hangs in the still air.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-the_nine_dials-c33e2386.png",
       "npcs": [
         {
           "id": "vessa_quillingham",
@@ -135,7 +135,7 @@
           "role": "artificer",
           "persona": "A gnome in her sixties, small, brisk and delighted by problems, who talks quickly and with her hands and cannot let an unbalanced thing stay unbalanced. She sells tide-rings that warn of the flood, lamp-charms that will not blow out in sea wind, and compasses that point at whatever you last held longest — and she explains exactly how each works, at length, because she is proud of them. She distrusts the fashion for masked business among the merchant houses, on the grounds that a mask is a badly designed object with no adjustment for the nose. Every night she winds the shop's nine clocks deliberately wrong, so that thieves listening at the wall can never tell what hour she keeps.",
           "portrait_desc": "A tiny gnome woman with white hair scraped into a bun skewered by two thin screwdrivers, and a brass loupe strapped over one eye. She wears a slate-grey coat covered in small tool-pockets and mismatched buttons, each button an ornament in itself.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-vessa_quillingham-f41952f9.png",
           "topics": [
             {
               "ask": "What's a tide-ring?",
@@ -158,7 +158,7 @@
           "role": "half-elf sea captain, waiting on a repair",
           "persona": "A half-elf shipmaster of indeterminate middle age who has been waiting eleven weeks for Vessa to rebuild his grandfather's astrolabe and now essentially lives in the shop's one good chair. He is courteous, gossipy and unhurried, with a voice like a warm evening, and he knows the sailing gossip of six ports and the marriage gossip of nine merchant houses. He carries the astrolabe's empty case everywhere as though a widower with a locket. He insists he is not idle but on shore leave, a distinction he defends with great feeling and no evidence.",
           "portrait_desc": "A tall, elegant half-elf man with silver-streaked black hair tied back, a close beard, and a faded blue captain's coat with good buttons and a mended cuff. He sits with one boot crossed over the other, a battered wooden instrument case balanced on his knee.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-captain_orsolo_vane-f84a3139.png",
           "topics": [
             {
               "ask": "Waiting for something?",
@@ -179,11 +179,11 @@
       "function": "apothecary",
       "description": "An apothecary under a rooftop physic garden, where lagoon herbs, imported roots and honest tonics are ground fresh while you wait.",
       "exterior_scene": "A wide-shouldered brick house with a green-painted door reached by three stone canal-steps, and a trellised roof-garden spilling rosemary and grey sea-lavender over the parapet above. The sign is a mortar and pestle carved from pale stone, with a bunch of drying herbs hung beneath it that gets replaced every market day.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-the_salt_garden-59075458.png",
       "interior_scene": "A long cool room smelling of crushed mint, beeswax and vinegar, its ceiling beams hung so thickly with drying bundles you must duck to cross the floor. Behind the counter, shelves of blue glass jars are labelled in chalk, and a copper still burbles quietly in the alcove with a pan under its drip. A ladder in the back corner goes straight up through a hatch to the roof garden, letting down a square of sunlight and the smell of wet earth.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-the_salt_garden-c66c7da3.png",
       "scene": "A long cool room smelling of crushed mint, beeswax and vinegar, its ceiling beams hung so thickly with drying bundles you must duck to cross the floor. Behind the counter, shelves of blue glass jars are labelled in chalk, and a copper still burbles quietly in the alcove with a pan under its drip. A ladder in the back corner goes straight up through a hatch to the roof garden, letting down a square of sunlight and the smell of wet earth.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-the_salt_garden-c66c7da3.png",
       "npcs": [
         {
           "id": "sula_orrick",
@@ -191,7 +191,7 @@
           "role": "apothecary",
           "persona": "A half-orc woman of fifty with enormous careful hands and the patient warmth of someone who has sat up with a great many fevers. She speaks slowly and low, asks what you actually ate before she sells you anything, and refuses to stock the fashionable powders the merchant houses want because they do nothing but taste expensive. She grew every herb on the roof from cuttings begged off barge-crews, and she can tell you which port each plant came from. She keeps a fat orange cat named Ledger who sleeps in the empty scale-pan and must be lifted out for every weighing.",
           "portrait_desc": "A tall half-orc woman with olive-grey skin, small tusks, and black hair wound in a cloth wrap the colour of dried figs. She wears a linen smock with rolled sleeves and a dozen small stains, and a leather belt strung with brass measuring spoons.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-sula_orrick-acd7ba1f.png",
           "topics": [
             {
               "ask": "What grows on the roof?",
@@ -214,7 +214,7 @@
           "role": "elderly physician, permanent guest",
           "persona": "A human physician of eighty-two, retired from the Guild of Barber-Surgeons and utterly unretired in spirit, who occupies the stool by the still and comments on all of Sula's work. He is courtly, twinkling, and a fanatical believer in leeches, which he keeps in a lidded jar on his lap and will offer to anyone who admits to a headache. He and Sula have argued about the four humours for nineteen years and would each be desolate without the other. He remembers the great lagoon fever of his youth in exact detail and will tell you which streets it spared.",
           "portrait_desc": "A very old human man, pink-scalped with a fringe of white hair, in a dusty black coat with velvet cuffs worn shiny. Half-moon spectacles low on his nose, and a corked glass jar of dark water cradled in his lap.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-doctor_ambrose_fennel-1b69d326.png",
           "topics": [
             {
               "ask": "Do those leeches work?",
@@ -235,11 +235,11 @@
       "function": "docks",
       "description": "Azure's main sea-quay and customs house, where cargo, rumour and passengers all come ashore up the same broad marble steps.",
       "exterior_scene": "A long stone quay where twenty-odd striped mooring poles stand in the green water, fronted by a broad flight of marble steps worn hollow by centuries of boots. Behind them squats the customs house, a low arcaded building of pink brick with a slate roof, its wall pegged with brass tally-plates and a black chalkboard listing today's arrivals.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-the_salt_stair-4b949035.png",
       "interior_scene": "The customs hall is a long arcade of pink brick pillars, its floor gritty with sand and spilled grain, echoing every footstep twice. A vast tide-chart is painted directly onto the far wall, updated in coloured chalk, and beneath it stand weighing beams, a rack of numbered lead seals, and stacked crates stencilled with the marks of six ports. Salt air comes straight through the seaward arches with the slap of water on stone and the constant creak of mooring lines.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-the_salt_stair-9158594c.png",
       "scene": "The customs hall is a long arcade of pink brick pillars, its floor gritty with sand and spilled grain, echoing every footstep twice. A vast tide-chart is painted directly onto the far wall, updated in coloured chalk, and beneath it stand weighing beams, a rack of numbered lead seals, and stacked crates stencilled with the marks of six ports. Salt air comes straight through the seaward arches with the slap of water on stone and the constant creak of mooring lines.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-the_salt_stair-9158594c.png",
       "npcs": [
         {
           "id": "harbourmistress_ilenya_sarn",
@@ -247,7 +247,7 @@
           "role": "harbourmistress",
           "persona": "An elf of some three hundred years who has held the Salt Stair for four human generations and regards the merchant houses as weather — predictable, seasonal, not to be argued with. She is dry, precise and quietly funny, and she notices everything that comes ashore, including things that arrive in coffins, barrels and diplomatic luggage. She cares most about the sea-wall, which is crumbling on its eastern arm, and she petitions the Council about it with the persistence of a dripping tap. She keeps a jar of foreign coins skimmed from the mud at low tide and can date each one to the decade.",
           "portrait_desc": "A tall, straight-backed elf woman with close-cropped grey-blonde hair and pale grey eyes, ageless of face and unhurried of movement. She wears a long slate coat with the harbour's brass anchor pinned at the throat and carries a bundle of tally-slips like a bouquet.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-harbourmistress_ilenya_sarn-957900b4.png",
           "topics": [
             {
               "ask": "What comes through here?",
@@ -270,7 +270,7 @@
           "role": "halfling eel-boat ferryman",
           "persona": "A halfling in his twenties who poles a narrow black eel-boat for hire and knows every water-door, back canal and low bridge in Azure, most of them by nickname. He is talkative, boastful, entirely good-hearted, and will name a price twice and settle for the first. He earns half his living carrying passengers and the other half carrying messages between people who would rather not be seen writing to each other, a service he considers an art form. He is saving up for a second boat and has already painted the name on a plank: Quickstep the Second.",
           "portrait_desc": "A wiry young halfling with sun-bleached brown curls, bare feet, and a red sash knotted at the waist over rolled canvas trousers. He balances easily on one heel with a long ash pole across his shoulders.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-toma_quickstep-78b96558.png",
           "topics": [
             {
               "ask": "Can you get me anywhere in the city?",
@@ -291,11 +291,11 @@
       "function": "market",
       "description": "A floating market of moored barges lashed under a broad humpbacked bridge, selling spice, fish, masks, fruit and gossip from dawn till the bell.",
       "exterior_scene": "A wide brick bridge with steps at both ends and a stone parapet crowded with awnings, beneath which thirty barges are lashed gunwale to gunwale into a bobbing marketplace. Striped canvas, hanging squid, brass scales and cages of green parrots make a roof of colour over the water, and the bridge's keystone is carved with a grinning stone fish.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-coriander_bridge_market-e3394156.png",
       "interior_scene": "You stand on a plank walkway laid between moored barges, and it lifts and settles under your boots with every passing boat. Open sacks of pepper, coriander and dried lemon peel line one hull; the next is a slab of wet slate glittering with mackerel and eels on cracked ice, dripping into the canal. The bridge's underside arches close overhead, damp brick echoing the shouting and the parrots, and everything smells of spice, fish-water and cut oranges.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-coriander_bridge_market-74ab4c33.png",
       "scene": "You stand on a plank walkway laid between moored barges, and it lifts and settles under your boots with every passing boat. Open sacks of pepper, coriander and dried lemon peel line one hull; the next is a slab of wet slate glittering with mackerel and eels on cracked ice, dripping into the canal. The bridge's underside arches close overhead, damp brick echoing the shouting and the parrots, and everything smells of spice, fish-water and cut oranges.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-coriander_bridge_market-74ab4c33.png",
       "npcs": [
         {
           "id": "bertola_vane",
@@ -303,7 +303,7 @@
           "role": "spice barge trader",
           "persona": "A stout human woman of forty-five who inherited three spice barges and doubled them by never once losing an argument about weight. She is loud, warm, generous with samples and utterly unsentimental about money, and she can tell a bad peppercorn by the sound it makes in the sack. She is aunt to half the market and lends money at rates she calls friendly and everyone else calls Bertola's rates. Her great grievance is the bridge toll the Council levied last spring, which she pays in the smallest coins she can find, counted out slowly.",
           "portrait_desc": "A broad human woman with sun-dark arms, gold hoops in both ears, and a green headscarf knotted over black hair going grey at the temple. She wears a leather money-apron with six pockets and stands braced on a rocking deck like it were bedrock.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-bertola_vane-b52a714c.png",
           "topics": [
             {
               "ask": "What's good today?",
@@ -322,7 +322,7 @@
           "role": "mask-maker",
           "persona": "A young human man who makes the papier-mâché and gilt masks that Azure's merchant houses wear to their careful negotiations, and who is privately thrilled by how much power a lacquered nose can hold. He is soft-spoken, watchful and mischievous, with an artist's habit of studying your face a beat too long. He can identify almost any mask in the city by its maker and often by its owner, though he claims a professional discretion he abandons for anyone who compliments his gilding. His masterwork, unsold and hung above his stall, is a heron's head in white and silver that he refuses to price.",
           "portrait_desc": "A slim human man of about twenty-five with ink-black hair falling into his eyes and gold leaf stuck to his fingertips and one cheekbone. He wears a paint-spattered smock over good clothes and a half-finished cat-mask pushed up on his forehead.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-nio_fessari-d311ff73.png",
           "topics": [
             {
               "ask": "Why does everyone here wear masks?",
@@ -347,11 +347,11 @@
       "function": "library",
       "description": "The city's record-house and reading room, keeping four centuries of harbour ledgers, sea-charts and the odd book nobody will admit to owning.",
       "exterior_scene": "A severe grey stone hall raised on a broad plinth above flood level, with twelve tall arched windows and a green copper roof gone streaky with salt. Its bronze doors are cast with a chart of the lagoon, and a stone bench flanks the steps where petitioners wait with their papers in oilcloth.",
-      "exterior_art_url": "",
+      "exterior_art_url": "/art/towns/azure/ext-the_tidewatch_archive-a6229d07.png",
       "interior_scene": "A hushed hall of dark oak galleries stacked two storeys high with ledgers, each spine stamped with a year and a harbour seal. Slanted reading desks run down the middle under hanging lamps, spread with sea-charts weighted at the corners by lead sinkers, and the air is dry with the paper-and-vinegar smell of the drying room. High windows drop long dusty blades of light across the floor, and the only sounds are a page turning and the faint knock of a boat against the water-gate below.",
-      "interior_art_url": "",
+      "interior_art_url": "/art/towns/azure/loc-the_tidewatch_archive-e6ddcc4b.png",
       "scene": "A hushed hall of dark oak galleries stacked two storeys high with ledgers, each spine stamped with a year and a harbour seal. Slanted reading desks run down the middle under hanging lamps, spread with sea-charts weighted at the corners by lead sinkers, and the air is dry with the paper-and-vinegar smell of the drying room. High windows drop long dusty blades of light across the floor, and the only sounds are a page turning and the faint knock of a boat against the water-gate below.",
-      "art_url": "",
+      "art_url": "/art/towns/azure/loc-the_tidewatch_archive-e6ddcc4b.png",
       "npcs": [
         {
           "id": "archivist_maelen_thistlebar",
@@ -359,7 +359,7 @@
           "role": "chief archivist",
           "persona": "An elf of four hundred and some years, courteous and slightly amused by everything, who has read every harbour ledger in the building and remembers most of them. He believes fiercely that a city's memory is its only real wall and that a lost ledger is a lost year, and he will help absolutely anyone who asks a specific question. He conducts a decades-long courtship of the Council's budget committee with the patience of a man who intends to outlive them. He drinks pale tea, never over paper, and keeps a chart of the lagoon's changing channels going back three hundred years, which he considers the most beautiful object in Azure.",
           "portrait_desc": "A slender elf with long white hair bound in a black ribbon, olive-pale skin and fine lines only at the eyes. He wears a scholar's grey robe with cuffs guarded in leather against ink, and moves with the unhurried grace of someone who has never once run in this building.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-archivist_maelen_thistlebar-8ce3754f.png",
           "topics": [
             {
               "ask": "What's the oldest thing here?",
@@ -382,7 +382,7 @@
           "role": "junior clerk and copyist",
           "persona": "A young half-elf clerk of about twenty, ferociously neat, who copies water-damaged ledgers back into fresh volumes and takes an almost surgical pride in matching old handwriting. She is shy with strangers until the subject is paper, at which point she becomes unstoppable. She has noticed that three pages are missing from the Vantorre warehouse registers of forty years ago, cut out with a very sharp knife, and she mentions it to anyone who will stand still. She keeps a saucer of milk for the archive's mouser and has named him Marginalia.",
           "portrait_desc": "A slight half-elf woman with straight brown hair cut level at the jaw and ink on the side of her hand. She wears a plain dove-grey dress with black sleeve-guards and holds a pen as though it were a scalpel.",
-          "art_url": "",
+          "art_url": "/art/towns/azure/npc-wren_ossily-b037f340.png",
           "topics": [
             {
               "ask": "What are you copying?",

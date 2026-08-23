@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from ltg_core.schema import ENEMY_SUPERTYPES, ENEMY_TYPES
+
 from . import content
 from ltg_combat.scenario import _slug
 
@@ -193,6 +195,19 @@ finite parts; the engine resolves them.
 | Artillery   | 2 | 2 | ranged           | rear  | 10 |
 | Caster-frame| 2 | 1 | ranged           | rear  | 7  |
 Upgrade prices: +1 HP = 1 pt · +1 Power = 3 pts · adding a ranged attack = 2 pts.
+
+## Types & classes (§D21 — REQUIRED on every enemy)
+Every enemy carries "types" (what it IS — its race/nature) and "classes"
+(what it DOES — its profession/role), 1–2 of each, from these CLOSED lists and
+no others:
+- TYPES: %ENEMY_TYPES%
+- CLASSES: %ENEMY_SUPERTYPES%
+Choose what the fiction says: a skeleton bowman is ["undead"] / ["archer"]; a
+plague-witch of the fens is ["human"] / ["wizard", "cultist"]; a bone-armoured
+war-boar is ["beast"] / ["brute"]. These feed two real systems — the painter
+receives them (so the art cannot drift off-concept), and player cards can key
+on them ("deal 5 to an undead", "wizards cost 1 more to answer") — so pick the
+tags a player would GUESS from looking at the creature, never the clever ones.
 
 ## Components (abilities — each has a cost; more/complex = higher level)
 archetype (typical effect) — base cost:
@@ -756,6 +771,8 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
       "row": "front" | "mid" | "rear",
       "home_row": "front" | "mid" | "rear",   // optional; where it redeploys to
       "attack_mode": "melee" | "ranged",
+      "types": ["undead"],              // REQUIRED, 1–2 from the TYPE list (what it IS)
+      "classes": ["warrior"],           // REQUIRED, 1–2 from the CLASS list (what it DOES)
       "is_boss": true,                  // AT MOST ONE enemy, only when asked for
       "rises": 2,                       // optional undead trait (min level 2, cost 3): revives after 2 Upkeeps, once
       "keywords": ["flying", ...],      // may be []
@@ -792,6 +809,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "counters", "power": <int>, "toughness": <int>, "target": {"mode": "self"}},  // PERMANENT (Escalate)
             {"kind": "stun",  "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero loses a turn
             {"kind": "taunt", "target": {"mode": "chosen", "side": "ally", "targeted": true}},     // hero must attack me (pair it with damage)
+            {"kind": "break_channel", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // RITUAL-BREAKER: ends every channel that hero holds — pair with target_rule "channeling_player" and condition {"kind":"hero_channeling","op":">=","value":1}
             // The three RESOURCE ATTACKS (see their section above). At most ONE per encounter.
             {"kind": "move_card", "count": 1, "source": "hand", "destination": "graveyard", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // FORCED DISCARD — must target a hero
             {"kind": "prevent", "parameter": "cast", "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // SILENCE — no card casts (attack/Skill/items still work)
@@ -842,7 +860,12 @@ spells to rebound). `amplify` and `double_next` are combo primers: use them as a
 windup the party can see coming (prime, then swing) — priming is one-shot and
 holds until spent. NEVER use these verbs (player-only; they do nothing
 or break the fight): destroy, bounce, strip_intent, fight, revive, draw, scry,
-ramp, add_mana, stance. `modify_action` is enemy-legal ONLY in its three HOSTILE
+ramp, add_mana, stance. `break_channel` IS enemy-legal — the mirror of the
+party's ritual-breaker: it ends every channel the hero it hits is holding. Give
+it `"target_rule": "channeling_player"` and gate it on
+{"kind":"hero_channeling","op":">=","value":1} so it never fires into a party
+with nothing held, and price it as a Debilitate. It is a fine RIDER on a hit
+("deal 4 and shatter their concentration"); as a whole turn it wants the gate. `modify_action` is enemy-legal ONLY in its three HOSTILE
 forms — see the resource-attack section (every other modifier retunes a hero's
 own actions in the hero's favour, so it would be a gift to the party).
 `move_card` is enemy-legal ONLY as FORCED DISCARD — see
@@ -858,19 +881,19 @@ ignores it on an enemy), so putting it on one buys nothing.
 
 EXAMPLE A — a B/R vampire coven (pool of 3 designs, scaled 1–4 by layouts):
 {"name":"Crimson Coven — Drain & Reactions","scene":"A desecrated hillside chapel at midnight: pews toppled, red votive candles guttering in pools of wax, and a shattered rose window casting broken moonlight across a blood-slick altar.","enemies":[
- {"id":"grave_thrall","name":"Grave Thrall","flavor":"A wall that shambles forward and drags heroes into its reach.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":3,"row":"front","attack_mode":"melee",
+ {"id":"grave_thrall","types":["undead"],"classes":["warrior"],"name":"Grave Thrall","flavor":"A wall that shambles forward and drags heroes into its reach.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":3,"row":"front","attack_mode":"melee",
   "components":[
    {"id":"corpse_grip","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Corpse-Grip — deal 5 and drag a hero into the wall","verbs":[
      {"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},
      {"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]},
    {"id":"grave_chill","archetype":"Debilitate","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Grave-Chill — wound the attacker -1/-1","verbs":[
      {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
- {"id":"bloodbat","name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers — it shrieks when hunted.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":3,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],
+ {"id":"bloodbat","types":["beast"],"classes":["scout"],"name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers — it shrieks when hunted.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":3,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],
   "components":[
    {"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Flit to the shadows"},
    {"id":"shriek","archetype":"Debilitate","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Piercing Shriek — wound the hunter -1/-1","verbs":[
      {"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
- {"id":"vampire_adept","name":"Vampire Adept","flavor":"Drains from safety, punishes your casting.","description":"A gaunt aristocrat in a high-collared black robe, chalk-white skin stretched over sharp bones, fingertips stained to the knuckle with old blood.","hp":6,"power":1,"level":4,"row":"rear","attack_mode":"ranged","keywords":["lifelink"],
+ {"id":"vampire_adept","types":["undead"],"classes":["wizard"],"name":"Vampire Adept","flavor":"Drains from safety, punishes your casting.","description":"A gaunt aristocrat in a high-collared black robe, chalk-white skin stretched over sharp bones, fingertips stained to the knuckle with old blood.","hp":6,"power":1,"level":4,"row":"rear","attack_mode":"ranged","keywords":["lifelink"],
   "components":[
    {"id":"drain","archetype":"Drain","timing":"proactive","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Life Drain — deal 3, heal 3","verbs":[
      {"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}},
@@ -886,26 +909,26 @@ EXAMPLE A — a B/R vampire coven (pool of 3 designs, scaled 1–4 by layouts):
 
 EXAMPLE B — a ritual CHANNEL, a counterspell sentinel, a bloodied moment, smart healing, and a token swarm:
 {"name":"Ironhide's Warband — Rite of the Boar","scene":"A palisaded war-camp gouged into a muddy hillside: banner poles of lashed bone, cookfires burned low, and churned earth littered with cracked shields.","enemies":[
- {"id":"ironhide","name":"Ironhide Warleader","flavor":"Swings while healthy; erupts when bloodied; punishes melee.","description":"A boar-headed brute two heads taller than a man, plated in riveted scrap-iron, bronze-capped tusks, hefting a chained maul.","hp":10,"power":3,"level":5,"row":"front","attack_mode":"melee","keywords":["trample"],
+ {"id":"ironhide","types":["beast","orc"],"classes":["warlord"],"name":"Ironhide Warleader","flavor":"Swings while healthy; erupts when bloodied; punishes melee.","description":"A boar-headed brute two heads taller than a man, plated in riveted scrap-iron, bronze-capped tusks, hefting a chained maul.","hp":10,"power":3,"level":5,"row":"front","attack_mode":"melee","keywords":["trample"],
   "components":[
    {"id":"bloodied_roar","archetype":"Escalate","timing":"reactive","trigger":"on_self_below_50","once_per_encounter":true,"priority":12,"target_rule":"self","telegraph":"BLOODIED ROAR — +2/+1, permanently","verbs":[
      {"kind":"counters","power":2,"toughness":1,"target":{"mode":"self"}}]},
    {"id":"punish","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Retaliate — deal 2 to the attacker","verbs":[
      {"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
- {"id":"bonechanter","name":"Bonechanter of the Sty","flavor":"Holds a rite that bleeds the party every turn — break it or drown.","description":"A hunched shaman draped in boar hides and knotted fetishes, rattling a staff of fused vertebrae that weeps a red haze.","hp":8,"power":1,"level":5,"row":"rear","attack_mode":"ranged",
+ {"id":"bonechanter","types":["orc"],"classes":["shaman","ritualist"],"name":"Bonechanter of the Sty","flavor":"Holds a rite that bleeds the party every turn — break it or drown.","description":"A hunched shaman draped in boar hides and knotted fetishes, rattling a staff of fused vertebrae that weeps a red haze.","hp":8,"power":1,"level":5,"row":"rear","attack_mode":"ranged",
   "components":[
    {"id":"blood_rite","archetype":"Drain","timing":"proactive","channel":true,"action_type":"spell","cooldown":3,"priority":20,"target_rule":"valuation","telegraph":"Blood Rite — a held ritual: 2 damage every turn and the party fights at -1/-0","verbs":[
      {"kind":"deal_damage","amount":2,"trigger":"upkeep","target":{"mode":"chosen","side":"ally","targeted":true}},
      {"kind":"wound","power":1,"toughness":0,"duration":"while_channeled","target":{"mode":"all","side":"ally"}}]},
    {"id":"mend","archetype":"Fortify","timing":"proactive","priority":30,"cooldown":2,"target_rule":"wounded_ally","telegraph":"Knit Hide — heal the most wounded ally 5","verbs":[
      {"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},
- {"id":"broodmother","name":"Hive Broodmother","flavor":"Spawns Husklings, at most two alive.","description":"A swollen, chitin-backed matriarch the size of an ox-cart, egg-sacs glistening along her flanks, dozens of larval eyes blinking in the dark.","hp":4,"power":2,"level":3,"row":"rear","attack_mode":"melee",
+ {"id":"broodmother","types":["spider"],"classes":["brute"],"name":"Hive Broodmother","flavor":"Spawns Husklings, at most two alive.","description":"A swollen, chitin-backed matriarch the size of an ox-cart, egg-sacs glistening along her flanks, dozens of larval eyes blinking in the dark.","hp":4,"power":2,"level":3,"row":"rear","attack_mode":"melee",
   "components":[
    {"id":"swarm","archetype":"Swarm","timing":"proactive","priority":20,"cooldown":2,"target_rule":"self","telegraph":"Spawn Husklings (x2)","verbs":[
      {"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]},
    {"id":"brood_fury","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","once_per_encounter":true,"priority":15,"target_rule":"self","telegraph":"Brood-Fury — +1/+1, permanently","verbs":[
      {"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},
- {"id":"mistveil_hexer","name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":5,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
+ {"id":"mistveil_hexer","types":["human","fae"],"classes":["wizard","rogue"],"name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":5,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],
   "components":[
    {"id":"hush","archetype":"Counter","timing":"reactive","trigger":"on_spell_cast","cooldown":3,"priority":15,"action_type":"spell","target_rule":"trigger_source","telegraph":"Hushing Mist — counter the spell","verbs":[
      {"kind":"counter","filter":"spell"}]},
@@ -923,7 +946,7 @@ EXAMPLE C — a BOSS encounter: phase gates, enrage, a healer, an escalate clock
 action-economy control (total weight: boss 6×2=12 + 3 + 3 + 3 = 21). Note the
 Emberling's escalate clock: the pump is cooldown 2, so every off-turn it SWINGS
 with everything it has stacked — never a cooldown-1 self-pump (punching-bag rule):
-{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
+{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","types":["dragon","human"],"classes":["warlord"],"name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","types":["human"],"classes":["cleric","cultist"],"name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","types":["elemental"],"classes":["brute"],"name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","types":["human"],"classes":["warrior","cultist"],"name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{
  "1":["ashen_tyrant","cinderpriest"],
  "2":["ashen_tyrant","cinderpriest","emberling","ashfang_zealot"],
  "3":["ashen_tyrant","cinderpriest","emberling","emberling","ashfang_zealot","ashfang_zealot"],
@@ -931,6 +954,13 @@ with everything it has stacked — never a cooldown-1 self-pump (punching-bag ru
 },"tokens":{}}
 
 Design a brand-new encounter (do not copy the examples' theme). Return ONLY the JSON."""
+
+# §D21: bake the closed type/class vocabularies into the instructions —
+# the template is stored in settings verbatim, so no render-time substitution
+# path exists for it (unlike the scenario prompts' %TONE%).
+DEFAULT_INSTRUCTIONS = (DEFAULT_INSTRUCTIONS
+                        .replace("%ENEMY_TYPES%", ", ".join(ENEMY_TYPES))
+                        .replace("%ENEMY_SUPERTYPES%", ", ".join(ENEMY_SUPERTYPES)))
 
 
 def _default_settings() -> Dict[str, Any]:
@@ -1483,6 +1513,37 @@ def _corpse_problems(encounter: Dict[str, Any]) -> List[str]:
     return problems
 
 
+def _type_problems(encounter: Dict[str, Any]) -> List[str]:
+    """§D21: every generated enemy carries 1–2 types (race) and 1–2 classes
+    (role), from the closed registries — the art prompt and the card conditions
+    both key on the exact spelling. Repair-friendly problem strings."""
+    problems: List[str] = []
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        for field, registry, what in (("types", ENEMY_TYPES, "type"),
+                                      ("classes", ENEMY_SUPERTYPES, "class")):
+            raw = e.get(field)
+            if raw is None and field == "classes":
+                raw = e.get("supertypes")   # same-session legacy spelling
+            if isinstance(raw, str):
+                raw = [raw]
+            if not isinstance(raw, list) or not raw:
+                problems.append(
+                    f'{name} has no "{field}" — every enemy needs 1–2 {what}s '
+                    f"from: {', '.join(registry)}")
+                continue
+            if len(raw) > 2:
+                problems.append(f"{name} has {len(raw)} {what}s — at most 2")
+            unknown = [str(t) for t in raw if str(t) not in registry]
+            if unknown:
+                problems.append(
+                    f"{name}: unknown {what}(s) {', '.join(unknown)} — choose from: "
+                    f"{', '.join(registry)}")
+    return problems
+
+
 def _taunt_problems(encounter: Dict[str, Any]) -> List[str]:
     """§D18-1: a taunt never fires alone. A component that grabs a hero's sword
     without also hitting them spends a whole enemy activation on a gesture —
@@ -1737,6 +1798,7 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
             problems.extend(_design_problems(encounter))  # §D14: kit floor
             problems.extend(_taunt_problems(encounter))   # §D18-1: taunt bites
             problems.extend(_corpse_problems(encounter))  # §D19-1: corpse fuel
+            problems.extend(_type_problems(encounter))    # §D21: types required
             problems.extend(_sameness_problems(encounter))  # anti-monotony
             if problems:
                 raise ValueError("; ".join(problems))
@@ -2052,6 +2114,7 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                     problems.extend(_design_problems(enc))  # §D14: kit floor
                     problems.extend(_taunt_problems(enc))   # §D18-1: taunt bites
                     problems.extend(_corpse_problems(enc))  # §D19-1: corpse fuel
+                    problems.extend(_type_problems(enc))    # §D21: types required
                     problems.extend(_sameness_problems(enc))  # anti-monotony
                     if not str(phase.get("narration") or "").strip():
                         problems.append('missing its "narration" (one short '

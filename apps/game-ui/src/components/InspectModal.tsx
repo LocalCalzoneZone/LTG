@@ -340,15 +340,17 @@ export function InspectModal() {
         : tokenLines(subject.view);
   // Characters show their loadout blurb in place of the archetype label;
   // enemies/tokens keep the level line and add their art-direction prose below.
+  const charTags = subject.kind === "character"
+    ? [...(subject.view.types ?? []), ...(subject.view.classes ?? [])].join(" · ")
+    : "";
   const subtitle =
     subject.kind === "character"
-      ? subject.view.description
-        ? ""
-        : subject.view.archetype
+      ? charTags || (subject.view.description ? "" : subject.view.archetype)
       : subject.kind === "creature"
         ? `${subject.view.is_boss ? "Boss · " : ""}Level ${roman(subject.view.level)} enemy${
             subject.view.attack_mode ? ` · ${subject.view.attack_mode}` : ""
-          }`
+          }${[...(subject.view.types ?? []), ...(subject.view.classes ?? [])]
+            .map((t) => ` · ${t}`).join("")}`
         : "ally";
 
   return (

@@ -10,6 +10,7 @@ import pytest
 
 from ltg_game_server import content, jobs, scenario_content as sc
 from ltg_game_server.runs import RunManager
+from ltg_game_server import scenario as sc_run
 from ltg_game_server.scenario import ScenarioRun
 from ltg_game_server.session import SessionManager
 
@@ -151,7 +152,8 @@ def test_arrival_materializes_and_town_snapshot_shape(runs):
     assert "villain" not in snap["quest_log"]
     assert snap["scenario"]["act_number"] == 1 and snap["scenario"]["acts_total"] == 3
     assert [p["id"] for p in snap["party_sheet"]] == ["loadout_soren", "loadout_ys"]
-    assert snap["party_sheet"][0]["level"] == 1 and snap["party_sheet"][0]["gold"] == 0
+    assert snap["party_sheet"][0]["level"] == 1
+    assert snap["party_sheet"][0]["gold"] == sc_run.STARTING_GOLD   # T-87: the opening purse
     # The arrival auto-saved.
     saves = runs.run_detail(run_id)["saves"]
     assert saves[-1]["kind"] == "act_start"
@@ -273,7 +275,8 @@ def test_quest_accept_fires_hooks_saves_and_generates_the_adventure(runs):
     conv = session.snapshot_for("c1")["conversation"]
     assert conv["node_id"] == "go"
     session.town_verb("c1", "choose", {"index": 0})
-    assert scen.gold["loadout_soren"] == 10 and scen.flags.get("aud_blessed")
+    assert scen.gold["loadout_soren"] == sc_run.STARTING_GOLD + 10   # the give_gold hook
+    assert scen.flags.get("aud_blessed")
     assert session.snapshot_for("c1")["conversation"] is None
 
 
@@ -295,7 +298,8 @@ def test_start_adventure_win_and_return_to_next_act(runs):
     assert set(session.seats) == {"loadout_soren", "loadout_ys"}
     # Two level-ups earned → level 3, 60 gold each (T-85), points carried.
     sheet = session.snapshot_for("c1")["party_sheet"]
-    assert sheet[0]["level"] == 3 and sheet[0]["gold"] == 60 and sheet[0]["earned_points"] == 60
+    assert sheet[0]["level"] == 3 and sheet[0]["earned_points"] == 60
+    assert sheet[0]["gold"] == sc_run.STARTING_GOLD + 60
     kinds = [s["kind"] for s in runs.run_detail(run_id)["saves"]]
     assert kinds == ["act_start", "quest_accept", "adventure_start", "phase_boundary",
                      "phase_boundary", "adventure_end", "rewards", "act_start"]
@@ -528,7 +532,8 @@ def test_points_are_earned_every_phase_but_spent_on_a_schedule(runs):
     _take_rewards(session)
     # 60 points and 60 gold for the act, and the party is in town for Act II.
     assert scen.mode == "town" and scen.act_index == 1
-    assert scen.earned["loadout_soren"] == 60 and scen.gold["loadout_soren"] == 60
+    assert scen.earned["loadout_soren"] == 60
+    assert scen.gold["loadout_soren"] == sc_run.STARTING_GOLD + 60
     assert scen.levels() == [3, 3]
 
 
@@ -558,7 +563,8 @@ def test_later_acts_spend_only_at_the_act_end_screen(runs):
     # which this party (a test that buys nothing) also banked.
     assert adv.banked[soren] == 120 and adv.earned[soren] == 120
     _take_rewards(session)
-    assert scen.earned["loadout_soren"] == 120 and scen.gold["loadout_soren"] == 120
+    assert scen.earned["loadout_soren"] == 120
+    assert scen.gold["loadout_soren"] == sc_run.STARTING_GOLD + 120
     assert scen.levels() == [4, 4]                    # T-78: 120 → level 4
 
 
