@@ -85,7 +85,7 @@ export interface EvergreenBlock {
 // deckbuilder; the engine reads none of it.
 export type AnimTrigger =
   | "attack" | "cast" | "channel" | "defend" | "mitigate"
-  | "skill" | "ultimate" | "hit" | "death" | "victory";
+  | "skill" | "ultimate" | "hit" | "death" | "revive" | "victory";
 
 export interface PanelAnimation {
   id: string;

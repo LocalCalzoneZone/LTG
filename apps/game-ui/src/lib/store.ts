@@ -293,9 +293,6 @@ export const useGame = create<StoreState>((set, get) => ({
       case "prompt":
         // priority is already carried inside `state`; nothing extra to store.
         break;
-      case "prompt":
-        // priority is already carried inside `state`; nothing extra to store.
-        break;
       case "game_over": {
         // The end-of-battle modal must not jump the queue: let the final
         // batch's choreography land (the grand death, the victory/defeat

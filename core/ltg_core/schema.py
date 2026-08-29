@@ -1978,6 +1978,9 @@ AnimTrigger = Literal[
     "ultimate",  # the Ultimate resolves
     "hit",       # the character takes damage
     "death",     # the character is incapacitated
+    "revive",    # the character stands back up — plays over the held death frame,
+                 # authored to open on the death clip's final frame and end on
+                 # the portrait pose
     "victory",   # the encounter is won — every standing hero plays it at once
 ]
 

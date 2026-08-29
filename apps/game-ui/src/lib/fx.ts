@@ -423,6 +423,9 @@ export function fxFromLog(
         break;
       case "revive":
         push("revive", str(d.character));
+        // The hero's revive clip (if authored) plays over the held death
+        // frame — it opens on that frame and stands the hero back up.
+        panel(str(d.character), "revive");
         break;
       case "incapacitated":
         push("downed", str(d.character));
