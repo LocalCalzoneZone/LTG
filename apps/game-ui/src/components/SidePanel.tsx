@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { actionModeColor } from "../lib/format";
 import { armedTargetIdSet, useGame } from "../lib/store";
 import type { CardView, LogEntry } from "../lib/types";
 import { HandCard } from "./Hand";
 import { JournalEntries } from "./TownScreen";
+import { Splitter, usePaneSize } from "./Splitter";
+
+// Intents ↔ Chronicle split: 0 = "natural height, capped" (no drag stored yet).
+const clampIntents = (h: number) => Math.min(Math.max(h, 64), Math.round(window.innerHeight * 0.6));
 
 /** `text` with the card name dotted-underlined (the hover-a-card affordance). */
 function withCardName(text: string, name: string | undefined) {
@@ -52,6 +56,18 @@ export function SidePanel() {
   // The card a hovered log line references, floated at a FIXED position (the
   // log scrolls, so an absolutely-positioned child would be clipped).
   const [hoverCard, setHoverCard] = useState<{ card: CardView; top: number; right: number } | null>(null);
+  // Draggable Intents ↔ Chronicle divider (persisted; 0 = natural capped height).
+  const [intentsH, setIntentsH, resetIntentsH] = usePaneSize("ltg_intents_h", 0, clampIntents);
+  const intentsWrapRef = useRef<HTMLDivElement>(null);
+  // Chronicle pin-to-bottom: newest events stay in view unless the player has
+  // scrolled up to read history.
+  const logRef = useRef<HTMLDivElement>(null);
+  const logPinned = useRef(true);
+  const logLen = useGame((s) => s.snapshot?.log.length ?? 0);
+  useEffect(() => {
+    const el = logRef.current;
+    if (el && logPinned.current) el.scrollTop = el.scrollHeight;
+  }, [logLen]);
   const showCard = (card: CardView | null | undefined) => (e: React.MouseEvent) => {
     if (!card) return;
     const r = e.currentTarget.getBoundingClientRect();
@@ -179,27 +195,56 @@ export function SidePanel() {
       {/* Intents (D8-1.5) — one veiled line per living enemy for this round
           (two for an enraged boss, §D9-4). The objective banner (§D12-1.5) is
           the pinned first line: fully public, present from turn 1. */}
-      <Panel title="Intents">
-        {snapshot.objective && snapshot.objective.status === "active" && (
-          <div className="mb-1 border-b border-brass/40 px-1 pb-1 text-[12px] leading-snug">
-            <span className="caps-label mr-1.5 border border-brass/50 px-1 text-[9px] tracking-[0.12em] text-brass">
-              objective
-            </span>
-            <span className="text-parch">{snapshot.objective.line}</span>
+      <div
+        ref={intentsWrapRef}
+        className="flex min-h-0 shrink flex-col"
+        // A dragged height overrides the natural (content-driven, capped) one, so
+        // a long intent list can never squeeze the Chronicle out of the column.
+        // `shrink` (not flex-none) lets the Chronicle's min-height floor win
+        // when a dragged height would otherwise push the log out of view.
+        style={intentsH ? { height: intentsH } : { maxHeight: "40%" }}
+      >
+        <Panel title="Intents" className="min-h-0 flex-1">
+          {snapshot.objective && snapshot.objective.status === "active" && (
+            <div className="mb-1 border-b border-brass/40 px-1 pb-1 text-[12px] leading-snug">
+              <span className="caps-label mr-1.5 border border-brass/50 px-1 text-[9px] tracking-[0.12em] text-brass">
+                objective
+              </span>
+              <span className="text-parch">{snapshot.objective.line}</span>
+            </div>
+          )}
+          <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
+            {snapshot.intents.length === 0 ? (
+              <Empty>no declared intents</Empty>
+            ) : (
+              snapshot.intents.map((it) => (
+                <IntentLine key={`${it.enemy_id}:${it.slot ?? 1}`} intent={it} />
+              ))
+            )}
           </div>
-        )}
-        {snapshot.intents.length === 0 ? (
-          <Empty>no declared intents</Empty>
-        ) : (
-          snapshot.intents.map((it) => (
-            <IntentLine key={`${it.enemy_id}:${it.slot ?? 1}`} intent={it} />
-          ))
-        )}
-      </Panel>
+        </Panel>
+      </div>
 
-      {/* Chronicle (fills the rest) */}
-      <Panel title="Chronicle" className="min-h-0 flex-1">
-        <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
+      <Splitter
+        vertical={false}
+        onMove={(y) => {
+          const top = intentsWrapRef.current?.getBoundingClientRect().top ?? 0;
+          setIntentsH(y - top);
+        }}
+        onReset={resetIntentsH}
+      />
+
+      {/* Chronicle (fills the rest — and never less than a few readable lines,
+          whatever the Intents divider was dragged to) */}
+      <Panel title="Chronicle" className="min-h-[110px] flex-1">
+        <div
+          ref={logRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            logPinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+          }}
+          className="scroll-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1"
+        >
           {snapshot.log.length === 0 ? (
             <Empty>no events yet</Empty>
           ) : (

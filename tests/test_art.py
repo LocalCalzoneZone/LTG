@@ -308,10 +308,25 @@ def test_comfyui_seed_placeholder_rolls_per_generation(loadouts, encounter, mock
 
 
 def test_comfyui_enemy_art_is_square(loadouts, encounter, mock_comfy):
+    # 768² (not the full 1024²): portraits are shown small, and the smaller
+    # render generates noticeably faster.
     _use_comfy()
     art.generate(encounter, "enemy", "ghoul")
     wf = mock_comfy["post"][0][1]["prompt"]
-    assert (wf["5"]["inputs"]["width"], wf["5"]["inputs"]["height"]) == (1024, 1024)
+    assert (wf["5"]["inputs"]["width"], wf["5"]["inputs"]["height"]) == (768, 768)
+
+
+def test_openrouter_enemy_aspect_is_a_plain_ratio(loadouts, encounter, mock_openrouter):
+    # The internal "enemy"/"item" size keys must map down to true ratio strings
+    # before they reach OpenRouter's image_config.
+    _set_key()
+    art.generate(encounter, "enemy", "ghoul")
+    assert mock_openrouter[-1]["image_config"] == {"aspect_ratio": "1:1"}
+
+
+def test_item_sizes_are_3_2_at_a_640_short_edge():
+    assert art.COMFY_SIZES["item"] == (960, 640)
+    assert art.OPENROUTER_ASPECTS["item"] == "3:2"
 
 
 def test_comfyui_requires_url_and_workflow(loadouts, encounter):

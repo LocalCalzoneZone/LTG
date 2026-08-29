@@ -1,0 +1,702 @@
+{
+  "kind": "scenario",
+  "title": "The Iron Pike of Cinnamere",
+  "town_id": "azure",
+  "town_name": "Azure",
+  "arc": {
+    "title": "The Iron Pike of Cinnamere",
+    "villain": "Captain Cassian Rook, a disgraced iron-clad sellsword captain who has organized the scattered marsh bandits into a disciplined warband aiming to choke Azure's supply lines and sack its merchant quays.",
+    "stakes": "If Captain Rook is not broken, Azure's trade canals will be starved into submission and his mercenaries will breach the historic sea-wall with stolen siege powder. The city's peaceful floating markets and timber homes will burn under an iron tyrant's heel.",
+    "acts": [
+      {
+        "title": "Blood on the Causeway",
+        "hook": "Master Korven's wagon train stumbles into Azure battered and stripped, warning that Captain Cassian Rook's raiders have fortified the forest trade road. The party must ride out to break the siege on the road, choosing either to storm the barricaded Timber-Gate Tollhouse where Rook's crossbowmen hold the bridge, or to raid the sunken reed-flats where raiders are dragging captured pack-mules and iron goods into hidden haulage barges.",
+        "questgiver_location": "the_salt_stair",
+        "questgiver_npc": "master_korven_toll",
+        "handoff": "harbourmistress_ilenya_sarn",
+        "adventure_theme": "The Cinnamere Sluice-Fort — a fortified logging weir of mossy timber palisades, iron winch-gates, and disciplined forest brigands.",
+        "tone_notes": "Sunlight through autumn river-oaks, whistling crossbow bolts, mud-splattered leather and honest caravan grit."
+      },
+      {
+        "title": "The Blackpowder Sluice",
+        "hook": "Documents from the tollhouse reveal Rook is stockpiling blasting powder to blow open the city's sea gates and starve the inner canals. Hedda Stromm demands the heroes strike before the powder reaches Azure's water-doors, offering two targets: plunge into the flooded limestone cellars of the Drowned Powder-Mill to detonate Rook's stores, or ambush Rook's armored river-drake barge as it navigates the narrow channel of Weeping Willow Reach.",
+        "questgiver_location": "stromm_s_forge",
+        "questgiver_npc": "hedda_stromm",
+        "handoff": "vessa_quillingham",
+        "adventure_theme": "Grey Heron Bluffs & the Sunken Powder Mill — dripping limestone caverns, groaning mill-wheels, and mercenary alchemists in heavy iron aprons.",
+        "tone_notes": "Sulphur smoke drifting over dark lagoon water, clanking machinery, sputtering copper fuses, and heroic clockwork hazards."
+      },
+      {
+        "title": "The Breach at the Sea-Wall",
+        "hook": "Captain Rook has anchored his armored war-hulks directly against the crumbling eastern arm of the ancient giant-built sea-wall, planting breaching charges beneath the bronze Salt Bell tower. Archivist Maelen Thistlebar urges the heroes to save the city's ancient ramparts, leaving them to choose between fighting through the wave-swept upper battlements to seize Rook's siege-ballistas, or navigating the flooded tidal crypts below to face Captain Rook aboard his dread flagship, the Iron Pike.",
+        "questgiver_location": "the_tidewatch_archive",
+        "questgiver_npc": "archivist_maelen_thistlebar",
+        "handoff": "old_bramble",
+        "adventure_theme": "The Giant's Sea-Wall & the Iron Pike — colossal wave-beaten megaliths, salt spray, flaming signal cauldrons, and the ironclad decks of a mercenary war-galley.",
+        "tone_notes": "Dramatic sea foam, roaring bronze bells, gleaming lanterns against stormy tides, and a thrilling final duel for Azure's freedom."
+      }
+    ],
+    "cast": [
+      {
+        "id": "master_korven_toll",
+        "name": "Master Korven Toll",
+        "role": "Wounded caravan master",
+        "persona": "A burly, gray-bearded wagoner in a blood-spotted leather duster, Korven speaks with blunt urgency and fierce loyalty to his haulers. He refuses to sit down until every surviving mule is stabled, nursing a broken wrist tied in clean linen. He is terrified by how organized the highway bandits were, insisting they moved like a drilled company of pikemen.",
+        "portrait_desc": "A grizzled middle-aged human wagoner with a splintered wooden splint on his forearm, soot-stained wool tunic, and weary but blazing brown eyes.",
+        "art_url": "",
+        "location": "the_salt_stair",
+        "acts": [
+          1,
+          2
+        ],
+        "secret": "Korven knows Rook was hired using coins bearing the private crest of a traitorous Azure merchant family, but he hid the coffer key inside his boot.",
+        "topics": []
+      }
+    ],
+    "places": [
+      {
+        "id": "the_wrecked_wain",
+        "name": "The Wrecked Wain",
+        "function": "flavor",
+        "description": "The shattered remains of the lead trade-wagon, hauled into the customs dock on the Salt Stair as proof of the highway ambushes.",
+        "interior_scene": "Inside the broken pine ribs of the wagon, splintered spice crates and snapped crossbow bolts litter the floorboards, smelling of damp cedar and stale smoke.",
+        "exterior_scene": "A heavy high-wheeled wagon with shattered axles, gouged by axe-blows and studded with barbed black-fletched quarrels, sitting upon the salt-crusted marble quayside.",
+        "interior_art_url": "",
+        "exterior_art_url": "",
+        "acts": [
+          1,
+          2
+        ]
+      }
+    ],
+    "loot_lexicon": {
+      "theme": "salt",
+      "second": "war",
+      "materials": [
+        "Saltglass",
+        "Coral",
+        "Sailcloth",
+        "Driftwood",
+        "Tide-Iron",
+        "Whalebone",
+        "Muster-Iron",
+        "Levy-Brass"
+      ],
+      "epithets": [
+        "Storm-Struck",
+        "Salt-Bitten",
+        "Deepwater",
+        "Barnacled",
+        "Tide-Worn",
+        "Drowned",
+        "Muster-Marked",
+        "Veteran"
+      ],
+      "suffixes": [
+        "Salt and Iron",
+        "the Long Tide",
+        "the Last Sail",
+        "the Drowned Choir",
+        "the Broken Muster",
+        "the Tithe-Taker"
+      ],
+      "details": [
+        "crusted white along every seam",
+        "green with old weed",
+        "still smelling of brine",
+        "a cut banner-scrap still knotted to it"
+      ],
+      "flavor": [
+        "Somebody went under holding this.",
+        "It came up in a net. Nobody claimed it.",
+        "The salt has been eating it for years and has not finished.",
+        "Cold, and it stays cold.",
+        "It has been surrendered twice and taken back three times.",
+        "Marked with a company that no longer musters."
+      ],
+      "forms": {
+        "melee": [
+          "glaive",
+          "maul",
+          "cleaver",
+          "sabre",
+          "flail",
+          "boarding_axe"
+        ],
+        "ranged": [
+          "javelins",
+          "harpoon",
+          "longbow",
+          "sling",
+          "boarsling"
+        ],
+        "accessory": [
+          "gauntlet",
+          "brooch",
+          "seal",
+          "charm",
+          "torc",
+          "mantle"
+        ],
+        "consumable": [
+          "flask",
+          "water",
+          "cordial",
+          "ash",
+          "philtre",
+          "tonic",
+          "resin",
+          "incense"
+        ]
+      }
+    }
+  },
+  "act1": {
+    "adventure_id": "",
+    "quest_id": "",
+    "materialization": {
+      "quests": [
+        {
+          "id": "storm_timber_gate",
+          "title": "Storm the Timber-Gate Tollhouse",
+          "text": "Captain Cassian Rook's mercenaries have seized the old logging weir on the Cinnamere Causeway, barricading the bridge with sharpened oak palisades and heavy winch-crossbows. Ride north through the river-woods, break the barricade, and scatter the crossbowmen before Azure's northern supply line is choked shut.",
+          "adventure_theme": "The Timber-Gate Causeway — storming an oak-log weir bridge bristling with mercenary pavises and heavy winched arbalests."
+        },
+        {
+          "id": "raid_reed_flat_barges",
+          "title": "Raid the Reed-Flat Barges",
+          "text": "Rook's raiders are hauling captured pack-mules, iron crates, and bound drovers down through the shallow marshes into concealed cargo barges. Slog into the sunken reed-flats, board the mud-bound barges, and recover Azure's stolen trade supplies before they are ferried into the raiders' deep camp.",
+          "adventure_theme": "The Sunken Reed-Flats — ambushing river-thieves and heavy haulage barges hidden among mossy weeping willows and shallow channels."
+        }
+      ],
+      "quest": {
+        "title": "Storm the Timber-Gate Tollhouse",
+        "text": "Captain Cassian Rook's mercenaries have seized the old logging weir on the Cinnamere Causeway, barricading the bridge with sharpened oak palisades and heavy winch-crossbows. Ride north through the river-woods, break the barricade, and scatter the crossbowmen before Azure's northern supply line is choked shut."
+      },
+      "arrival": "You step off the canal ferry onto the sunlit marble flags of the Salt Stair, where the warm green lagoon laps against ninety timber-piled islets and the bronze sea-drake atop the Salt Bell tower glints against a cloudless sky. The air smells of canal moss, roasting eel, and long pepper from the bridge markets, but the customary dockside chatter is hushed around the shattered frame of a freight wagon hauled onto the quay. Beside the splintered timbers, a gray-bearded wagon master in a blood-splattered duster tends his surviving mules, barking warnings to every merchant who passes about iron-clad pikemen holding the northern causeway.",
+      "dialogues": {
+        "master_korven_toll": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "narration",
+              "text": "Master Korven Toll pulls a tight knot into the linen sling binding his cracked left wrist, glaring toward the northern waterways with fierce, stubborn fury.",
+              "choices": [
+                {
+                  "label": "You look like you've barely survived a battle, master wagoner.",
+                  "next": "explain_ambush",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "What shattered that freight wagon on the quay?",
+                  "next": "explain_ambush",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We were driven back from the road once, but we're ready to hit Rook again.",
+                  "next": "retry_node",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "explain_ambush": {
+              "speaker": "npc",
+              "text": "That wasn't a common scrap with marsh beggars. Captain Cassian Rook—a disgraced sellsword captain in black plate—has turned the forest bandits into a drilled company. They sprang twenty heavy crossbows from the treeline, shattered my lead wain, and took the causeway bridge.",
+              "choices": [
+                {
+                  "label": "What kind of troops does Rook command?",
+                  "next": "rook_lore",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_rook_raiders",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "What have they seized, and what must be done?",
+                  "next": "quest_offers",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_rook_raiders",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "rook_lore": {
+              "speaker": "npc",
+              "text": "Deserters, highwaymen, and paid mercenaries from the border marches. They fight with iron pavise shields, winched arbalests, and heavy halberds. They hold the causeway at the tollhouse bridge and are loading stolen loot into barges in the reed-flats.",
+              "choices": [
+                {
+                  "label": "We'll storm the Timber-Gate Tollhouse and clear the bridge.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "storm_timber_gate"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll hunt down the haulage barges in the reed-flats and take back the cargo.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "raid_reed_flat_barges"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Hold on. We need to survey the city and prepare our steel first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "quest_offers": {
+              "speaker": "npc",
+              "text": "Rook's dogs have locked down the road in two places. Crossbowmen hold the Timber-Gate Tollhouse bridge to keep relief out, while his haulers are dragging our mules and iron crates into barges hidden in the sunken reed-flats. If nobody clears that road, Azure will starve by month's end.",
+              "choices": [
+                {
+                  "label": "We'll storm the Timber-Gate Tollhouse and clear the bridge.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "storm_timber_gate"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll hunt down the haulage barges in the reed-flats and take back the cargo.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "raid_reed_flat_barges"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Hold on. We need to survey the city and prepare our steel first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "retry_node": {
+              "speaker": "npc",
+              "text": "I saw you limp back onto the quay. Rook's crossbows bite deep, but that bridge and those reed-flat barges are still choking Azure. Are you going back out to finish it?",
+              "choices": [
+                {
+                  "label": "We're storming the Timber-Gate Tollhouse this time.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "storm_timber_gate"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We're raiding the reed-flat barges to recover the supplies.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "raid_reed_flat_barges"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Give us a moment to mend our wounds and rest.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "harbourmistress_ilenya_sarn": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "State your cargo or business at the Salt Stair. If you came seeking grain or iron from the north, you will find our ledgers very thin today.",
+              "choices": [
+                {
+                  "label": "What is the customs situation at the docks?",
+                  "next": "docks_status",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Master Korven says Captain Rook's raiders have severed the causeway.",
+                  "next": "sarn_advice",
+                  "requires": [
+                    "knows_rook_raiders"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "docks_status": {
+              "speaker": "npc",
+              "text": "The southern spice boats still arrive, but every overland wain from the Cinnamere road has ceased. Azure has nine canals, but only one road that touches dry land. When that road closes, the city feels it in three days.",
+              "choices": [
+                {
+                  "label": "We'll speak to the wagoners.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "direct_to",
+                      "npc": "master_korven_toll",
+                      "location": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "sarn_advice": {
+              "speaker": "npc",
+              "text": "Korven speaks the truth. If Rook secures the logging weirs and reed-flats, the merchant council will panic and lock the water-gates. Go speak with Korven by his wrecked wain if you have swords to spare.",
+              "choices": [
+                {
+                  "label": "We'll go hear what Korven needs.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "direct_to",
+                      "npc": "master_korven_toll",
+                      "location": null
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "perrinelle_cobbleworth": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Wipe the lagoon mud on the coir mat, dears! I've two pots of eel pie bubbling and feather ticks freshly sunned. What can the Gilded Eel do for you?",
+              "choices": [
+                {
+                  "label": "We need a warm meal and a sound night's sleep. (Rest)",
+                  "next": "rest_node",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "How are things in Azure with the road cut?",
+                  "next": "inn_gossip",
+                  "requires": [
+                    "knows_rook_raiders"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "rest_node": {
+              "speaker": "npc",
+              "text": "Up the stairs, second door over the boat arch. Hot water's in the copper kettle, and don't mind the creak of the floor—it's just the tide talking to the timbers.",
+              "choices": []
+            },
+            "inn_gossip": {
+              "speaker": "npc",
+              "text": "Flour prices are climbing already, and if my pie crusts suffer, Captain Rook will have me to answer to before any magistrate gets him! Rest up, fill your bellies, and go teach those brigands manners.",
+              "choices": []
+            }
+          }
+        },
+        "hedda_stromm": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Stromm's Forge. Boarding axes, billhooks, short stabbing steel. Show me how you hold it before you hand over silver, or go buy butter-knives on the bridge.",
+              "choices": [
+                {
+                  "label": "Let us see your weapons and armor. (Shop)",
+                  "next": "shop_node",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Have you heard about Rook's raiders blockading the road?",
+                  "next": "smith_opinion",
+                  "requires": [
+                    "knows_rook_raiders"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "shop_node": {
+              "speaker": "narration",
+              "text": "Hedda points to a rack of tempered steel blades, each balanced with a ring pommel and a hooked back-spike designed for wet deck-fighting.",
+              "choices": []
+            },
+            "smith_opinion": {
+              "speaker": "npc",
+              "text": "Aye, Korven's wagons were carrying my autumn charcoal shipment! If Rook's thieves think they can burn dwarven coal in their campfires while my hearth runs cool, put a pike through their ribs for me.",
+              "choices": []
+            }
+          }
+        },
+        "vessa_quillingham": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Mind the pendulum on the counter! Welcome to the Nine Dials. Tide-rings, storm-charms, and lodestone needles, all balanced to the third decimal.",
+              "choices": [
+                {
+                  "label": "Let's browse your artificer stock. (Shop)",
+                  "next": "shop_node",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Can your instruments help track Rook's river barges?",
+                  "next": "artificer_advice",
+                  "requires": [
+                    "knows_rook_raiders"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "shop_node": {
+              "speaker": "narration",
+              "text": "Vessa adjusts a set of brass calipers, gesturing across velvet-lined drawers filled with polished glass lenses, compasses, and delicate copper gears.",
+              "choices": []
+            },
+            "artificer_advice": {
+              "speaker": "npc",
+              "text": "A barge loaded with iron sinks four inches deeper into the silt. Watch the channel buoys—wherever the water eddies against the willow roots, that's where their stolen haul is wallowing!",
+              "choices": []
+            }
+          }
+        },
+        "sula_orrick": {
+          "root": "root",
+          "nodes": {
+            "root": {
+              "speaker": "npc",
+              "text": "Come in, come in out of the salt wind. Mind Ledger in the scale-pan. Do you need healing salves, willow-bark for fever, or stitch-thread?",
+              "choices": [
+                {
+                  "label": "We need tonics and apothecary supplies. (Shop)",
+                  "next": "shop_node",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Master Korven's men arrived with severe wounds.",
+                  "next": "apothecary_reaction",
+                  "requires": [
+                    "knows_rook_raiders"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "shop_node": {
+              "speaker": "narration",
+              "text": "Sula carefully lifts her large orange cat out of the balance pan and sets out earthenware jars of smelling salts, burn salves, and dried lagoon herbs.",
+              "choices": []
+            },
+            "apothecary_reaction": {
+              "speaker": "npc",
+              "text": "I dressed three puncture wounds from heavy arbalest bolts this morning. Those aren't hunting arrows; they're squared steel tips made to punch through ringmail. Take bitter-root tincture if you're riding into those woods.",
+              "choices": []
+            }
+          }
+        }
+      },
+      "flavor": {
+        "old_bramble": "Follow the grey herons along the outer stakes, not the pretty maps in the market. The herons know which mud holds a man and which mud swallows a wagon.",
+        "pip_ansel": "Master Korven's broken wagon has eleven bolt-holes in the tailgate! I counted them with my chalk while Hedda was quenching a hook-blade.",
+        "captain_orsolo_vane": "Shore leave is an art of patience, my friends. Though if this brigand Rook blocks the spice haulers much longer, the tavern wine is going to taste very sour indeed.",
+        "doctor_ambrose_fennel": "Arbalest bolts and road fevers! In my day, caravan guards carried vinegar-soaked sponges and three good leeches for puncture wounds. Nobody listens to the classics anymore.",
+        "toma_quickstep": "Need a quick pole down Weaver's Canal? Keep your head down under the bridges, and don't drop your shield over the gunwale!",
+        "bertola_vane": "Two copper toll to cross Coriander Bridge, and now highway thieves stealing my black pepper off the causeway! I'll pay Rook in copper half-farthings wrapped in a sock if he comes here.",
+        "nio_fessari": "A mask hides the trembling of a jaw, traveler. When the merchant princes hear of road brigands, their orders for gilded poker-faces double overnight.",
+        "archivist_maelen_thistlebar": "The Cinnamere Causeway was paved in the third century after the giants broke the outer wall. It has survived three dynastic wars; it will certainly outlive this Captain Rook if brave folk take the field.",
+        "wren_ossily": "I am cataloging the caravan manifests that didn't arrive today. Six wains of grain, three of iron bar, and a crate of ink. It is terribly frustrating when the ledger entries remain blank."
+      },
+      "topics": {
+        "old_bramble": [
+          {
+            "ask": "What do you know about the reed-flats where the raiders are hiding?",
+            "reply": "Tall reeds, soft marl bottom, and four weeping willows marking the old logging weir. If they're loading flat-bottom barges there, they'll have to wait for the ebb tide to pole them down into the lagoon. Catch 'em while they're stuck in the mud.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "pip_ansel": [
+          {
+            "ask": "Did you see what kind of weapons the raiders used on the wagons?",
+            "reply": "Square-headed arbalest bolts with barbed shanks! None of them came from our forge—they had stamped iron collars like the mercenary bands carry from the southern marches.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "captain_orsolo_vane": [
+          {
+            "ask": "Have you ever crossed paths with Captain Cassian Rook?",
+            "reply": "He commanded heavy pikemen for the merchant leagues five years back before he was cashiered for pillaging his own employers. A cold man who treats a skirmish like an accounting ledger. Do not expect him to surrender when his ranks waver.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "doctor_ambrose_fennel": [
+          {
+            "ask": "How are the surviving caravan haulers faring?",
+            "reply": "Bruised shoulders and cracked forearms from heavy pavise impacts. Sula gave them willow tea, but I applied three sturdy swamp leeches to the master wagoner's temples. He stopped shouting within the hour!",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "toma_quickstep": [
+          {
+            "ask": "Can your boat reach the sunken reed-flats?",
+            "reply": "Right up to the willow roots, if you don't mind ducking through the cat-tails! I can pole you within a stone's throw of their haulage barges without making a ripple on the water.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "bertola_vane": [
+          {
+            "ask": "Is the market already feeling the causeway blockade?",
+            "reply": "Long pepper is up three coppers a sack, and salt pork is getting scarce on the barges. If Rook isn't cleared out of the tollhouse soon, we'll all be eating dry lentils and staring at each other.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "nio_fessari": [
+          {
+            "ask": "Are the merchant houses worried about Rook's mercenaries?",
+            "reply": "Terrified behind their lacquered grins. They've already commissioned seven heron-visors and four gilded hawk-masks so they can sit in council without showing their pale lips.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "archivist_maelen_thistlebar": [
+          {
+            "ask": "Does the archive have maps of the Timber-Gate Tollhouse?",
+            "reply": "Gallery four, shelf twelve. The tollhouse is built upon four oak foundation piles with an iron winch for the logging boom. If you seize the upper winch-house, you command the entire bridge deck.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ],
+        "wren_ossily": [
+          {
+            "ask": "Were there any unusual cargo shipments listed on Korven's manifest?",
+            "reply": "Three heavy crates from the ironworks, stamped with a private seal that was filed off the manifest before departure. It's dreadfully irregular, but wagon masters rarely let copyists inspect their boots.",
+            "requires": [
+              "knows_rook_raiders"
+            ]
+          }
+        ]
+      },
+      "reask": {
+        "master_korven_toll": "Well? Have you sharpened your steel and chosen your ground? Azure's road won't clear itself while we stand on the quay."
+      },
+      "accepted": {
+        "master_korven_toll": "May your strikes be true and your shields hold. Break Rook's line and show those forest dogs that Azure doesn't kneel to road thieves."
+      },
+      "declined": {
+        "master_korven_toll": "Don't take too long thinking on it. Every hour that bridge stays barred, another wagon burns on the causeway."
+      },
+      "committed": {
+        "master_korven_toll": "I see you've already sworn your blades elsewhere for the moment. Finish that work fast and come back—the road is bleeding."
+      },
+      "stock": {}
+    }
+  },
+  "difficulty": "standard"
+}

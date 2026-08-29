@@ -37,9 +37,14 @@ ART_MODEL = llm.ART_MODEL
 # on first load — model weights stream from disk), and how often we poll.
 COMFY_TIMEOUT = 300.0
 COMFY_POLL_INTERVAL = 1.0
-# Pixel sizes injected for the %width%/%height% placeholders, per aspect.
+# Pixel sizes injected for the %width%/%height% placeholders, per aspect key.
+# "enemy" and "item" are internal SIZE keys (smaller renders for speed — enemy
+# portraits and item art are shown small); they map down to plain ratios for
+# OpenRouter via OPENROUTER_ASPECTS. Keep every pair a multiple of 64.
 COMFY_SIZES = {"16:9": (1792, 1024), "1:1": (1024, 1024), "3:4": (896, 1152),
-               "3:2": (1216, 832)}
+               "3:2": (1216, 832), "enemy": (768, 768), "item": (960, 640)}
+# OpenRouter's image_config only understands true ratio strings.
+OPENROUTER_ASPECTS = {"enemy": "1:1", "item": "3:2"}
 
 # Generated images write into the tracked content dir, beside the encounter /
 # adventure JSON they belong to, so a commit ships the art to every install.
@@ -146,7 +151,7 @@ def _request_image(api_key: str, prompt: str, aspect: str) -> Tuple[bytes, str]:
         "model": ART_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "modalities": ["image", "text"],
-        "image_config": {"aspect_ratio": aspect},
+        "image_config": {"aspect_ratio": OPENROUTER_ASPECTS.get(aspect, aspect)},
     }
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -358,7 +363,9 @@ def generate(encounter_id: str, kind: str, enemy_id: Optional[str] = None,
         # enemy_id is the canonical slot key: a pool enemy's id or a token def's
         # key (a token def carries no "id" of its own).
         enemy = _find_enemy(enc, enemy_id)
-        prompt, aspect, slot = enemy_prompt(enc, enemy, text), "1:1", str(enemy_id)
+        # "enemy": square like an NPC portrait, but 768px — the portraits are
+        # shown small, and the smaller render is noticeably faster to generate.
+        prompt, aspect, slot = enemy_prompt(enc, enemy, text), "enemy", str(enemy_id)
     else:
         raise ValueError(f"unknown art kind: {kind} (use 'scene' or 'enemy')")
 
@@ -557,10 +564,11 @@ def generate_item_art(item_id: str, text: str = "") -> Dict[str, Any]:
     if item is None:
         raise ValueError(f"unknown item: {item_id}")
     prompt = f"{_style()}\n\n{_ITEM_TASK}{item.name}. {text or item.art_desc or item.flavor}"
-    # 3:2 — the art frame on a card face (§D17-4.4: a consumable is played AS a
-    # card, so its art is painted for that slot; the square inventory tiles crop
-    # it with object-cover).
-    url = paint(prompt, "3:2", f"items/{item_id}", "item")
+    # "item": 3:2 — the art frame on a card face (§D17-4.4: a consumable is
+    # played AS a card, so its art is painted for that slot; the square
+    # inventory tiles crop it with object-cover) — rendered at a 640px short
+    # edge for generation speed.
+    url = paint(prompt, "item", f"items/{item_id}", "item")
     _items.set_item_art(item_id, url)
     return {"url": url}
 
@@ -696,7 +704,7 @@ def generate_spoil_art(item: Dict[str, Any]) -> Dict[str, Any]:
     if existing:
         return {"url": existing}
     subject = f'{item.get("name", "")}. {item.get("art_desc") or item.get("flavor") or ""}'
-    url = paint(f"{_style()}\n\n{_ITEM_TASK}{subject}", "3:2",
+    url = paint(f"{_style()}\n\n{_ITEM_TASK}{subject}", "item",
                 f"{SPOILS_FOLDER}/{iid}", "item", root=SPOILS_ROOT)
     return {"url": url}
 

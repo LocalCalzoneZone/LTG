@@ -736,6 +736,10 @@ export interface ConversationView {
   attributed: string | null;
   choices: { index: number; label: string; party_wide: boolean; ends: boolean }[];
   over: boolean;
+  // The full transcript, chat-style: every node shown so far plus each choice
+  // the party took (speaker "choice") — so every client sees the whole
+  // exchange, not just the current reply.
+  lines: { speaker: "npc" | "party" | "narration" | "choice"; text: string; attributed: string | null }[];
 }
 export interface JournalEntry {
   act: number; scenario: number; kind: "intro" | "heard" | "quest" | "event"; text: string; speaker: string; where: string;

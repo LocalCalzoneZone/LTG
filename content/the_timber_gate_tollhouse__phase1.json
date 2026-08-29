@@ -1,0 +1,206 @@
+{
+  "name": "The Golden River-Oaks",
+  "scene": "A sun-dappled wetland forest of massive autumn oaks standing in knee-deep river-water, crisscrossed by swaying rope bridges and hunting blinds hung with rusted iron bells.",
+  "scene_image": "/art/the_timber_gate_tollhouse__phase1/scene-0346cc09.png",
+  "enemies": [
+    {
+      "id": "marsh_scout",
+      "name": "Marsh Scout",
+      "flavor": "Slips through the reeds to evade strikes, leaving snagging tripwires.",
+      "description": "A lean river-scout in waterlogged leather and cattail camouflage, crouching low with a notched bone dagger and copper snare wire.",
+      "hp": 4,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "scout"
+      ],
+      "components": [
+        {
+          "id": "shallows_dodge",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Shallows Dodge \u2014 fades into the tall reeds"
+        },
+        {
+          "id": "tripwire_snare",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Tripwire Snare \u2014 wound the attacker -1/-0",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase1/marsh_scout-1c2f7d43.png"
+    },
+    {
+      "id": "canopy_sniper",
+      "name": "Canopy Sniper",
+      "flavor": "Fires from high tree-blinds; swings across rope bridges when targeted.",
+      "description": "A mercenary bowman clad in oiled wool, perched securely within a braided rope basket high in the river-oaks with a recurve yew bow.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "archer"
+      ],
+      "components": [
+        {
+          "id": "canopy_snipe",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Canopy Snipe \u2014 deal 3 to an exposed target",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "rope_swing",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 15,
+          "once_per_encounter": true,
+          "move_home": true,
+          "target_rule": "self",
+          "telegraph": "Rope Swing \u2014 reposition into the high branches"
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase1/canopy_sniper-7353727f.png"
+    },
+    {
+      "id": "whistle_falconer",
+      "name": "Whistle Falconer",
+      "flavor": "Directs a trained marsh hawk to harry heroes each turn; shields behind diving wings.",
+      "description": "A scarred river-hunter wearing a heavy boiled-leather gauntlet, whistling sharp commands to a red-tailed marsh falcon circling overhead.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "hunter"
+      ],
+      "components": [
+        {
+          "id": "falcon_dive",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "highest_threat",
+          "action_type": "ability",
+          "telegraph": "Falcon Dive \u2014 a held hunt: marsh hawk strikes for 1 damage every upkeep",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 1,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "wing_screen",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "self",
+          "telegraph": "Wing Screen \u2014 hawk dives to deflect incoming strike",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase1/whistle_falconer-44bf4fb4.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "canopy_sniper",
+      "marsh_scout"
+    ],
+    "2": [
+      "whistle_falconer",
+      "canopy_sniper",
+      "marsh_scout",
+      "marsh_scout"
+    ],
+    "3": [
+      "whistle_falconer",
+      "canopy_sniper",
+      "canopy_sniper",
+      "marsh_scout",
+      "marsh_scout",
+      "marsh_scout"
+    ],
+    "4": [
+      "whistle_falconer",
+      "whistle_falconer",
+      "canopy_sniper",
+      "canopy_sniper",
+      "marsh_scout",
+      "marsh_scout",
+      "marsh_scout",
+      "marsh_scout"
+    ]
+  }
+}

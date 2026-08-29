@@ -1,0 +1,700 @@
+{
+  "kind": "scenario",
+  "title": "The Coral Widow's Toll",
+  "town_id": "azure",
+  "town_name": "Azure",
+  "arc": {
+    "title": "The Coral Widow's Toll",
+    "villain": "Iskra Threnody, the Coral Widow — a sea-hag lairing in the drowned vaults beneath Azure's broken eastern sea-wall, who raises drowned soldiers and sailors as coral-crusted thralls and seeds living people with slivers of green witch-glass to bind them, unknowing, to her will.",
+    "stakes": "If the Coral Widow finishes rooting her glass in Azure's own folk and garrisons, she will command an unseen army from beneath the water and pull down the crumbling eastern sea-wall at the next flood tide, drowning the low canals before the city even knows it has fallen. The Duke's river garrison at Cinnamere Watch is very likely lost already; Azure could follow within the month.",
+    "acts": [
+      {
+        "title": "The Silence Upriver",
+        "hook": "Ser Elric Dunmore staggers ashore at the Salt Stair fevered and salt-crusted, bearing the Duke's seal: Cinnamere Watch, the river fort guarding Azure's approach, has sent no barge, no signal-fire, no word in three weeks, and he begs riders to learn its fate before the Duke sends soldiers who don't know the channels. But Harbourmistress Ilenya Sarn has a nearer worry — a crate of green glass with no port-mark sits sealed in her customs shed, addressed to a warehouse on the Iron Quay that has stood empty two years, and she wants eyes on whoever finally comes to claim it, since she cannot spare a guard from the Stair. Ride upriver into the silence, or wait in the rafters of an empty warehouse for whoever comes home to it?",
+        "questgiver_location": "the_salt_stair",
+        "questgiver_npc": "ser_elric_dunmore",
+        "handoff": "harbourmistress_ilenya_sarn",
+        "adventure_theme": "Cinnamere Watch, a Ducal river-fort in the reed-flats whose garrison has risen as coral-crusted drowned thralls — OR the Vantorre Empty Warehouse on the Iron Quay, staked out as smugglers land a crate of green witch-glass",
+        "tone_notes": "Grey fog and drowned reeds upriver, coral crusting on rusted armor; or lamp-dark crates and the sick green glint of glass under a stranger's collar — the first quiet proof something old and patient is already at work."
+      },
+      {
+        "title": "Glass in the Blood",
+        "hook": "Wren Ossily has matched the handwriting on those three pages cut from the Vantorre warehouse register to a real clerk of forty years past, and traced the thread: the family once leased 'salvage rights to the drowned steps' to an unnamed party for a yearly tribute of glass — a lease never repealed, and still, somehow, being paid. She wants the party to search the Vantorre counting-house for the current lease and sever the tribute before it renews. But Pip Ansel corners them at the forge insisting the scraping under the old fish market has gotten worse — crates of fish coming up glassy-eyed and strange, and nobody but her has noticed. Cut off a smuggling bloodline's old bargain in a guarded counting-house, or dig out whatever that bargain's price is growing under Azure's own market?",
+        "questgiver_location": "the_tidewatch_archive",
+        "questgiver_npc": "wren_ossily",
+        "handoff": "pip_ansel",
+        "adventure_theme": "the Vantorre counting-house on the Iron Quay, guarded by house men-at-arms hiding a live tribute-ledger — OR the drowned cellar beneath the old fish market, where witch-glass 'seed-crabs' are growing under Azure's own fish stalls",
+        "tone_notes": "Nervous lamplight and guild guards second-guessing their orders, versus barnacled dark and sickly green phosphorescence rising through the market's floor grates — the Widow's reach felt underfoot before anyone will say her name."
+      },
+      {
+        "title": "The Coral Widow's Toll",
+        "hook": "Ser Elric collapses in the Eel's common room, green light pulsing faintly under his skin like a lamp seen through water; Sula Orrick and Doctor Fennel find a sliver of witch-glass rooted near his heart, and it is answering someone. Pip Ansel swears the scraping under the fish market has gone dead silent, replaced by a smell of brine, as if whatever grew down there has moved on toward the sea. Harbourmistress Ilenya Sarn reports nine more blocks gone from the eastern sea-wall overnight and strange lights on the derelict lighthouse offshore. Follow the glass's pull down through the market cellar into the vaults it was cut from to save Elric, or sail the crumbling causeway out to the lighthouse where the Widow gathers her tribute before the next flood tide — either road ends the same way, if you're fast enough.",
+        "questgiver_location": "the_salt_garden",
+        "questgiver_npc": "sula_orrick",
+        "handoff": "harbourmistress_ilenya_sarn",
+        "adventure_theme": "the drowned vaults beneath the eastern sea-wall, reached through the fish-market cellar — OR the derelict outer lighthouse on the crumbling causeway where the Coral Widow, Iskra Threnody, gathers her tribute of glass and drowned men",
+        "tone_notes": "Cold green light through black water, coral thrones and barnacled bones; the sea-wall groaning underfoot as the tide climbs — high fantasy dread with a hearth-fire waiting behind them if they turn back too soon."
+      }
+    ],
+    "cast": [
+      {
+        "id": "ser_elric_dunmore",
+        "name": "Ser Elric Dunmore",
+        "role": "Ducal knight-courier, wounded messenger",
+        "persona": "A weary young knight of the Duke's household guard, courteous to a fault and quietly proud of the badge he wears, who rode three horses to death getting word out of Cinnamere Watch before it fell silent. He downplays his own exhaustion and insists on riding back upriver himself despite a fever that won't break, and turns oddly evasive when pressed on exactly how he got away. At night he dreams of green lantern-light under water and wakes with sand between his teeth no one can explain.",
+        "portrait_desc": "Gaunt young man in dented ducal blue-and-silver plate, salt-stiffened cloak, a fresh scar over one eyebrow, and — if held near firelight — a faint green sheen just under the skin of his collarbone.",
+        "art_url": "",
+        "location": "the_salt_stair",
+        "acts": [
+          1,
+          2,
+          3
+        ],
+        "secret": "He was taken briefly by the Coral Widow's thralls at Cinnamere Watch and carries a splinter of her witch-glass rooting near his heart; he does not know it, and by Act III it will nearly finish rooting, drawing him toward the sea-wall in his sleep.",
+        "topics": []
+      }
+    ],
+    "places": [
+      {
+        "id": "the_vantorre_warehouse",
+        "name": "the Vantorre Empty Warehouse",
+        "function": "flavor",
+        "description": "A tall brick warehouse on the Iron Quay, shutters painted with the Vantorre family's fading blue chevron, locked and idle for two years though the family insists it is merely 'under repair.'",
+        "interior_scene": "Dust-furred crate racks and one fresh crate cracked open by the water-door, packed in straw around shards of green glass that catch the lamplight like cats' eyes.",
+        "exterior_scene": "A blind brick face on the Iron Quay with a single barred water-door at canal level, the family's peeling blue chevron overhead, gulls nesting in the eaves.",
+        "interior_art_url": "",
+        "exterior_art_url": "",
+        "acts": [
+          1,
+          2
+        ]
+      }
+    ],
+    "loot_lexicon": {
+      "theme": "salt",
+      "second": "iron",
+      "materials": [
+        "Sailcloth",
+        "Saltglass",
+        "Tide-Iron",
+        "Coral",
+        "Whalebone",
+        "Driftwood",
+        "Pig-Lead",
+        "Slagsteel"
+      ],
+      "epithets": [
+        "Storm-Struck",
+        "Deepwater",
+        "Drowned",
+        "Tide-Worn",
+        "Barnacled",
+        "Salt-Bitten",
+        "Cold-Forged",
+        "Rivet-Bound"
+      ],
+      "suffixes": [
+        "Hollow Water",
+        "the Drowned Choir",
+        "the Long Tide",
+        "Salt and Iron",
+        "Bell-Metal",
+        "the Cold Anvil"
+      ],
+      "details": [
+        "crusted white along every seam",
+        "still smelling of brine",
+        "green with old weed",
+        "banded twice in riveted strap"
+      ],
+      "flavor": [
+        "Somebody went under holding this.",
+        "The salt has been eating it for years and has not finished.",
+        "It came up in a net. Nobody claimed it.",
+        "Cold, and it stays cold.",
+        "Honest weight, honestly balanced.",
+        "It rings when you set it down."
+      ],
+      "forms": {
+        "melee": [
+          "longknife",
+          "poleaxe",
+          "glaive",
+          "spear",
+          "maul",
+          "greatblade"
+        ],
+        "ranged": [
+          "sling",
+          "recurve",
+          "hookshot",
+          "crossbow",
+          "javelins"
+        ],
+        "accessory": [
+          "torc",
+          "seal",
+          "gauntlet",
+          "chain",
+          "ring",
+          "circlet"
+        ],
+        "consumable": [
+          "draught",
+          "salve",
+          "tincture",
+          "ash",
+          "flask",
+          "powder",
+          "incense",
+          "poultice"
+        ]
+      }
+    }
+  },
+  "act1": {
+    "adventure_id": "",
+    "quest_id": "",
+    "materialization": {
+      "quests": [
+        {
+          "id": "scout_cinnamere_watch",
+          "title": "The Silence at Cinnamere Watch",
+          "text": "Ser Elric Dunmore rode three horses into the ground to bring word to Azure: Cinnamere Watch, the river fort guarding the marsh approach, has sent neither barge nor beacon fire in three weeks. Ride up the Cinnamere reed-flats to the stone outpost and discover what has silenced the Duke's garrison.",
+          "adventure_theme": "Cinnamere Watch, a Ducal river-fort in the reed-flats whose garrison has risen as coral-crusted drowned thralls."
+        },
+        {
+          "id": "stakeout_vantorre_warehouse",
+          "title": "The Crate on the Iron Quay",
+          "text": "Harbourmistress Ilenya Sarn holds a heavy, unmarked crate of uncut green glass in customs, addressed to a Vantorre warehouse that has sat shuttered for two years. Lie in wait among the warehouse rafters and confront the smugglers when they come to claim the cargo.",
+          "adventure_theme": "The Vantorre Empty Warehouse on the Iron Quay, staked out as smugglers land a crate of green witch-glass."
+        }
+      ],
+      "quest": {
+        "title": "The Silence at Cinnamere Watch",
+        "text": "Ser Elric Dunmore rode three horses into the ground to bring word to Azure: Cinnamere Watch, the river fort guarding the marsh approach, has sent neither barge nor beacon fire in three weeks. Ride up the Cinnamere reed-flats to the stone outpost and discover what has silenced the Duke's garrison."
+      },
+      "arrival": "Your shallow-draft barge glides through the morning mist beneath the Salt Bell tower, where bronze chimes ring out over ninety sparkling islets. Gondolas painted in merchant heraldry bob along the blue-plastered canal fronts, and the scent of fried eel and dried coriander drifts from the market bridges. At the foot of the broad marble Salt Stair, a mud-spattered knight in ducal silver leans shivering against a striped mooring pole, his hand clamped hard over his salt-stained breastplate as dockers murmur around him.",
+      "dialogues": {
+        "ser_elric_dunmore": {
+          "root": "elric_root",
+          "nodes": {
+            "elric_root": {
+              "speaker": "narration",
+              "text": "The young knight trembles despite his heavy cloak, a crust of dried brine clinging to his gorget and his knuckles white on the hilt of his broadsword.",
+              "choices": [
+                {
+                  "label": "You look half-drowned, knight. What news from upriver?",
+                  "next": "elric_explain",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_cinnamere_silence",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "Who are you, and why do you carry the Duke's seal?",
+                  "next": "elric_explain",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_cinnamere_silence",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "We fell back from our last attempt, Ser Elric, but we are ready to ride again.",
+                  "next": "elric_reoffer",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "elric_explain": {
+              "speaker": "npc",
+              "text": "I am Ser Elric of the Duke's guard. Twenty men hold Cinnamere Watch two days upriver, but twenty-one days have passed without a single courier barge or signal lantern. The fort is dead silent, and the Duke cannot march blindly into the reed-flats without knowing what took the walls.",
+              "choices": [
+                {
+                  "label": "What do you expect us to find inside the fort?",
+                  "next": "elric_details",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We will take the reed road and scout Cinnamere Watch for you.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "scout_cinnamere_watch"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Is there no one in Azure who can help you?",
+                  "next": "elric_handoff",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_green_glass_crate",
+                      "value": true
+                    },
+                    {
+                      "kind": "direct_to",
+                      "npc": "harbourmistress_ilenya_sarn",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Let us prepare our gear before we commit to the road.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "elric_details": {
+              "speaker": "npc",
+              "text": "The fort sits where the river splits into salt marsh. When I fled, the lower gates were fouled with black weeds, and the garrison would not answer the horn. Find the sergeant's logbook or clear whatever took the bailey.",
+              "choices": [
+                {
+                  "label": "We'll ride for Cinnamere Watch at once.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "scout_cinnamere_watch"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We must consider our options first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "elric_handoff": {
+              "speaker": "npc",
+              "text": "Harbourmistress Ilenya Sarn up at the customs desk refuses to spare guards. She has her own panic—an unmarked crate of strange green glass landed for the abandoned Vantorre warehouse on the Iron Quay, and she fears smugglers.",
+              "choices": [
+                {
+                  "label": "Then we will handle your fort first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "scout_cinnamere_watch"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll speak to the Harbourmistress before deciding.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "elric_reoffer": {
+              "speaker": "npc",
+              "text": "You return alive, thank the heavens. The silence from Cinnamere Watch still weighs upon me like an anchor. Will you ride upriver, or has your purpose shifted to the harbourmistress's smuggled glass?",
+              "choices": [
+                {
+                  "label": "We will break through to Cinnamere Watch this time.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "scout_cinnamere_watch"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll take the stakeout at the Vantorre warehouse instead.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "stakeout_vantorre_warehouse"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We need another moment to bandage our wounds.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "harbourmistress_ilenya_sarn": {
+          "root": "ilenya_root",
+          "nodes": {
+            "ilenya_root": {
+              "speaker": "npc",
+              "text": "Mind your boots on the marble; the morning tide leaves slime on the third step. If you have cargo to declare, show your bill of lading, and if not, step aside for the herring barrels.",
+              "choices": [
+                {
+                  "label": "Ser Elric Dunmore mentioned an unmarked crate in customs.",
+                  "next": "ilenya_quest_explain",
+                  "requires": [
+                    "knows_green_glass_crate"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "Has anything suspicious landed at the Salt Stair recently?",
+                  "next": "ilenya_quest_explain",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_green_glass_crate",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "Just admiring the harbour masterwork. Good day, Harbourmistress.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "ilenya_quest_explain": {
+              "speaker": "npc",
+              "text": "Three nights ago a flatboat dropped a sealed iron-bound crate on my quay with no port-mark. Inside is raw, uncut green glass that smells of brine. The manifest names the Vantorre warehouse on the Iron Quay—a building that has been locked and supposedly empty since the old lord died. Someone sent a runner promising a midnight pickup.",
+              "choices": [
+                {
+                  "label": "Why not send your customs guards to seize them?",
+                  "next": "ilenya_details",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We can hide in the warehouse rafters and catch these smugglers for you.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "stakeout_vantorre_warehouse"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Let us think on it before we climb into dusty rafters.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "ilenya_details": {
+              "speaker": "npc",
+              "text": "The Council will not authorise a raid against a high merchant family's property without proof. If freelance blades ambush the receiver inside the warehouse, take their cargo, and bring me the delivery slip, the law stays on my side.",
+              "choices": [
+                {
+                  "label": "We'll stake out the Vantorre warehouse and bring you the slip.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "stakeout_vantorre_warehouse"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We need to look over our gear before we make a promise.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "perrinelle_cobbleworth": {
+          "root": "perrinelle_root",
+          "nodes": {
+            "perrinelle_root": {
+              "speaker": "npc",
+              "text": "Come in, come in, scrape the canal mud onto the hemp mat! I have eel pie coming out of the brick oven in four minutes and fresh straw in the double rooms upstairs.",
+              "choices": [
+                {
+                  "label": "A hot meal and feather beds for the night, Mistress Cobbleworth.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "How goes business on the Ropewalk Canal?",
+                  "next": "perrinelle_chat",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Just passing through, thank you.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "perrinelle_chat": {
+              "speaker": "npc",
+              "text": "Brisk as ever, though that knight sitting on the Salt Stair gives me the shivers. Looks like he was dragged through three miles of swamp weeds and haven't had a proper pudding since midsummer.",
+              "choices": [
+                {
+                  "label": "We will take a room and rest our boots.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "Good to know. We'll be on our way.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        },
+        "hedda_stromm": {
+          "root": "hedda_root",
+          "nodes": {
+            "hedda_root": {
+              "speaker": "npc",
+              "text": "Watch your cloaks near the slack-tub! Short steel, heavy hooks, and leaded hilts—everything forged to keep your footing on wet timber. What are you holding?",
+              "choices": [
+                {
+                  "label": "Show us what you have for sale, smith.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Just admiring the forge work today.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        },
+        "vessa_quillingham": {
+          "root": "vessa_root",
+          "nodes": {
+            "vessa_root": {
+              "speaker": "npc",
+              "text": "Mind the pendulum on your left, it tracks the noon current! If you need tide-rings, waterproof lantern mantles, or a compass that won't spin in a sea-cave, you're in the right shop.",
+              "choices": [
+                {
+                  "label": "Let us see your artificed wares.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "We're just browsing the clockwork, thank you.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        },
+        "sula_orrick": {
+          "root": "sula_root",
+          "nodes": {
+            "sula_root": {
+              "speaker": "npc",
+              "text": "Wipe your boots on the rosemary mat, traveler. If you have fever, bruised ribs, or salt-cramps from the lower canals, I have roots dried fresh from the roof garden.",
+              "choices": [
+                {
+                  "label": "We need remedies and tonics for travel.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "open_shop",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "No ailments today, mistress, but thank you.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "flavor": {
+        "old_bramble": "Follow the grey herons if you take a skiff past the western stakes; the tide-channels have shifted three yards south since the equinox.",
+        "pip_ansel": "Master Hedda let me stamp the inspection marks today! Look, three tiny waves right above the hilt—that means it won't snap if an eel bites it.",
+        "captain_orsolo_vane": "Waiting on brass is like waiting on love, my friend: expensive, irritating, and impossible to hurry without breaking the springs.",
+        "doctor_ambrose_fennel": "A touch of salt-marsh chill in your throat? Let me fetch the amber jar; three lively ones under the jawline will draw the bad humours right out.",
+        "toma_quickstep": "Quickstep's the name, poling's the trade! Two coppers to the spice market, three to the Iron Quay, and four if you're carrying anything that makes a ticking noise.",
+        "bertola_vane": "Smell that long pepper! Real Sunward harvest, not that sawdust they grind up in the eastern delta. Touch it, go on, free sample for an honest face.",
+        "nio_fessari": "A mask of gilded heron-feather for the grand ball, or silvered fox for a quiet conversation in a gondola? Every face tells a lie, traveler; mine simply do it in gold leaf.",
+        "archivist_maelen_thistlebar": "Every tide since the giants laid the wall is recorded on gallery three. Men imagine the sea changes its mind, but it merely follows the ledger.",
+        "wren_ossily": "The ink in the old Vantorre accounts from forty years back was made with iron gall and crushed lagoon snails. You can tell by how it resists the damp."
+      },
+      "topics": {
+        "old_bramble": [
+          {
+            "ask": "Have you seen any barges down from Cinnamere Watch?",
+            "reply": "Not a single grain punt in three weeks. Even the heron flocks won't roost near the watchtower sandbar right now. Water's too foul-smelling, like rotted kelp.",
+            "requires": [
+              "knows_cinnamere_silence"
+            ]
+          }
+        ],
+        "toma_quickstep": [
+          {
+            "ask": "Have you poled anyone near the empty Vantorre warehouse lately?",
+            "reply": "Two nights back! Four rowers in black hooded smocks landed three heavy crates wrapped in oiled canvas. Didn't speak a word, paid in heavy lead coin, and smelled like dead crabs.",
+            "requires": [
+              "knows_green_glass_crate"
+            ]
+          }
+        ],
+        "captain_orsolo_vane": [
+          {
+            "ask": "What do you know about that green glass in customs?",
+            "reply": "Witch-glass, sailors call it in the deep reef ports. It doesn't break when dropped on flagstones, and lights held near it glow like swamp phosphorus. Nasty stuff to smuggle.",
+            "requires": [
+              "knows_green_glass_crate"
+            ]
+          }
+        ],
+        "archivist_maelen_thistlebar": [
+          {
+            "ask": "What do the archives say about Cinnamere Watch?",
+            "reply": "Built two hundred years ago on the old giant foundations to keep marsh pirates out of Azure's grain trade. It has thick oak palisades, but if the water gate ever collapsed from rot, a garrison could be trapped inside.",
+            "requires": [
+              "knows_cinnamere_silence"
+            ]
+          }
+        ],
+        "wren_ossily": [
+          {
+            "ask": "Why is the Vantorre warehouse on the Iron Quay locked up?",
+            "reply": "It was sealed when old Lord Vantorre died, but the property tax is still paid every spring in advance by an anonymous bank draft. Somebody clearly wants those doors kept private.",
+            "requires": [
+              "knows_green_glass_crate"
+            ]
+          }
+        ]
+      },
+      "reask": {
+        "ser_elric_dunmore": "The hours run short, traveler. Will you scout Cinnamere Watch for the Duke, or aid the harbourmistress with her warehouse?",
+        "harbourmistress_ilenya_sarn": "Well? Have you decided to help me catch whoever ordered that green glass, or are you bound upriver for the knight's garrison?"
+      },
+      "accepted": {
+        "ser_elric_dunmore": "May the river currents stay in your favor. Take the western reed-channel and keep your blades dry until you see the watchtower.",
+        "harbourmistress_ilenya_sarn": "Good. Hide in the second-floor beams above the salt crates, and don't show steel until their boat is tied to the quay."
+      },
+      "declined": {
+        "ser_elric_dunmore": "Do not linger too long in the taverns. If the Watch has fallen, the road to Azure is wide open.",
+        "harbourmistress_ilenya_sarn": "Take your time, but if that crate disappears from my shed overnight, I will know someone tipped them off."
+      },
+      "committed": {
+        "ser_elric_dunmore": "I see your word is already given to the harbourmistress. May your steel strike true on the Iron Quay.",
+        "harbourmistress_ilenya_sarn": "Ride swift for the river fort, then. If the garrison is lost, smuggled glass will be the least of Azure's concerns."
+      },
+      "stock": {}
+    }
+  },
+  "difficulty": "standard"
+}

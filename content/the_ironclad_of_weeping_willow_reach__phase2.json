@@ -1,0 +1,384 @@
+{
+  "name": "The Gun-Deck of the Ironclad",
+  "scene": "The low-ceilinged gun-deck of an armored river barge: iron-clad timbers dripping condensed steam, stacks of pitch-sealed powder barrels rattling against bulkheads, and flickering lanterns casting long copper shadows over hot iron grates.",
+  "scene_image": "/art/the_ironclad_of_weeping_willow_reach__phase2/scene-65c70724.png",
+  "enemies": [
+    {
+      "id": "siege_bombardier",
+      "name": "Siege Bombardier",
+      "flavor": "Guards the powder fuse; punishes hero climaxes and drains building ultimate power.",
+      "description": "A broad-shouldered dwarf mercenary encased in blackened iron plating, wielding a heavy copper spark-flail and trailing lengths of smoking slow-match.",
+      "hp": 15,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer",
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "powder_swipe",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Spars of Fire \u2014 blast the entire front row for 4",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "gauge_drain",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "primed_hero",
+          "telegraph": "Dampen the Fuse \u2014 drain 20 ultimate power from the primed hero",
+          "verbs": [
+            {
+              "kind": "modify_action",
+              "action": "ultimate",
+              "modifier": "drain_ultimate",
+              "amount": 20,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "tyrant_backfire",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Powder Retaliation \u2014 deal 6 to whoever unleashes an ultimate",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase2/siege_bombardier-182310c4.png"
+    },
+    {
+      "id": "iron_deckhand",
+      "name": "Iron Deckhand",
+      "flavor": "Swings heavy wrenches; strikes out with vengeance when heroes charge their skills.",
+      "description": "A burly human sailor clad in grease-blackened leather and iron shynbaulds, swinging a four-foot iron valve spanner.",
+      "hp": 8,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "brute",
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "spanner_blow",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Spanner Clout \u2014 deal 4 and taunt the target",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "primed_retaliation",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "condition": {
+            "kind": "hero_primed",
+            "op": ">=",
+            "value": 1
+          },
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "primed_hero",
+          "telegraph": "Intercept the Blow \u2014 retaliate for 4 against a primed hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase2/iron_deckhand-c1781ec2.png"
+    },
+    {
+      "id": "copper_venter",
+      "name": "Copper Venter",
+      "flavor": "Channels scalding boiler steam; silences heroes whose ultimate gauges are nearly full.",
+      "description": "A lean human artificer with an iron mask welded over their nose and mouth, turning brass wheels on overhead high-pressure copper flues.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "artificer",
+        "wizard"
+      ],
+      "components": [
+        {
+          "id": "scalding_jet",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Boiler Venting \u2014 a held scalding blast: 2 damage each Upkeep to chosen hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "smother_surge",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 15,
+          "cooldown": 2,
+          "condition": {
+            "kind": "hero_gauge_pct",
+            "op": ">=",
+            "value": 80
+          },
+          "target_rule": "primed_hero",
+          "telegraph": "Steam Choke \u2014 silence a hero nearing ultimate capacity",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "cast",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase2/copper_venter-9223be80.png"
+    },
+    {
+      "id": "bilge_skewer",
+      "name": "Bilge Skewer",
+      "flavor": "Hamstrings hero skills; stabs wildly when spells are cast in the close quarters.",
+      "description": "A wiry cutthroat crouching along the bilge-timbers with twin serrated stiletto daggers, soot smeared thick across their eyes.",
+      "hp": 6,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "rogue",
+        "assassin"
+      ],
+      "components": [
+        {
+          "id": "hamstring_slice",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "once_per_encounter": true,
+          "target_rule": "highest_threat",
+          "telegraph": "Tendon Snip \u2014 lock the Skill of the deadliest hero for the encounter",
+          "verbs": [
+            {
+              "kind": "modify_action",
+              "action": "skill",
+              "modifier": "lock_skill",
+              "duration": "encounter",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "spell_reaction",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Bilge Riposte \u2014 lunge for 4 against any spellcaster",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase2/bilge_skewer-41b2a332.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "siege_bombardier",
+      "bilge_skewer",
+      "iron_deckhand"
+    ],
+    "2": [
+      "siege_bombardier",
+      "bilge_skewer",
+      "bilge_skewer",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "copper_venter"
+    ],
+    "3": [
+      "siege_bombardier",
+      "bilge_skewer",
+      "bilge_skewer",
+      "bilge_skewer",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "copper_venter",
+      "copper_venter",
+      "copper_venter"
+    ],
+    "4": [
+      "siege_bombardier",
+      "bilge_skewer",
+      "bilge_skewer",
+      "bilge_skewer",
+      "bilge_skewer",
+      "bilge_skewer",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "iron_deckhand",
+      "copper_venter",
+      "copper_venter",
+      "copper_venter",
+      "copper_venter"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 4,
+    "reinforcements": [],
+    "target": "siege_bombardier",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Powder-Train Ignites \u2014 shrapnel rips the deck!",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 4,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ]
+    },
+    "resolved": false
+  }
+}

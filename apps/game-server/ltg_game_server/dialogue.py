@@ -183,6 +183,18 @@ class Conversation:
         self.node_id: Optional[str] = tree["root"]
         self.attributed: Optional[str] = None   # live character id for "party" lines
         self.history: List[str] = []            # node ids walked
+        # The full transcript, chat-style, for the snapshot: every node shown
+        # plus each choice the party took (speaker "choice") — so every client
+        # in a multiplayer town sees the whole exchange, not just the reply.
+        self.lines: List[Dict[str, Any]] = []
+        self._record_node()
+
+    def _record_node(self) -> None:
+        node = self.node
+        if node is not None:
+            self.lines.append({"speaker": node["speaker"], "text": node["text"],
+                               "attributed": self.attributed
+                               if node["speaker"] == "party" else None})
 
     @property
     def node(self) -> Optional[Dict[str, Any]]:
@@ -214,7 +226,10 @@ class Conversation:
         if not all(flags.get(f) for f in ch.get("requires", [])):
             raise ValueError("that choice is not available")
         self.history.append(str(self.node_id))
+        self.lines.append({"speaker": "choice", "text": ch["label"],
+                           "attributed": self.attributed})
         self.node_id = ch["next"]
+        self._record_node()
         return copy.deepcopy(hooks_of(ch))
 
     def interject(self, text: str, farewell: str = "Farewell.") -> None:
@@ -234,6 +249,7 @@ class Conversation:
             "choices": [{"label": farewell, "next": None, "requires": [], "effects": []}],
         }
         self.node_id = nid
+        self._record_node()
 
     @property
     def over(self) -> bool:
@@ -249,6 +265,7 @@ class Conversation:
             "attributed": self.attributed,
             "choices": self.visible_choices(flags),
             "over": self.over,
+            "lines": [dict(l) for l in self.lines],
         }
 
 

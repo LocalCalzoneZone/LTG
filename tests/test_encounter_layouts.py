@@ -89,12 +89,36 @@ def test_check_layouts_requires_all_four_sizes():
         llm._check_layouts({"layouts": _LAYOUTS})     # missing "3"
 
 
+def _distinct_layouts():
+    """2x bodies AND 2x distinct designs at every size (the beta-playtest floor)."""
+    ids = [f"e{i}" for i in range(8)]
+    return {"1": ids[:2], "2": ids[:4], "3": ids[:6], "4": ids[:8]}
+
+
 def test_check_layouts_enforces_outnumbering_per_size():
-    layouts = {str(s): ["wolf"] * (2 * s) for s in range(1, 5)}
+    layouts = _distinct_layouts()
     llm._check_layouts({"layouts": layouts})          # exactly 2x everywhere: ok
-    layouts["3"] = ["wolf", "wolf"]                   # a party of 3 vs 2 bodies
+    layouts["3"] = ["e0", "e1"]                       # a party of 3 vs 2 bodies
     with pytest.raises(ValueError, match='layouts\\["3"\\]'):
         llm._check_layouts({"layouts": layouts})
+
+
+def test_check_layouts_enforces_the_distinct_design_floor():
+    """Outnumbering via clones is the sameness bug wearing a body count: a
+    party of N needs 2N DIFFERENT designs, not one statline echoed."""
+    layouts = _distinct_layouts()
+    layouts["4"] = ["e0", "e0", "e1", "e1", "e2", "e2", "e3", "e3"]  # 8 bodies, 4 designs
+    with pytest.raises(ValueError, match="distinct enemy design"):
+        llm._check_layouts({"layouts": layouts})
+
+
+def test_check_layouts_caps_clones_of_one_design():
+    layouts = _distinct_layouts()
+    layouts["4"] = layouts["4"] + ["e0", "e0", "e0"]   # e0 x4 among 11 bodies
+    with pytest.raises(ValueError, match="4 copies"):
+        llm._check_layouts({"layouts": layouts})
+    layouts["4"] = _distinct_layouts()["4"] + ["e0", "e0"]  # x3 is the ceiling: ok
+    llm._check_layouts({"layouts": layouts})
 
 
 # --- the prompt's gold examples must themselves pass the full gate -------------- #

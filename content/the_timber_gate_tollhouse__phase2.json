@@ -1,0 +1,235 @@
+{
+  "name": "The Sluice Bridge Barricade",
+  "scene": "A wide weir-bridge of wet oak timbers spanning the roaring sluice of the Cinnamere, fortified with sharpened palisades, dripping barrels of pine-tar pitch, and heavy iron pavises.",
+  "scene_image": "/art/the_timber_gate_tollhouse__phase2/scene-19642ab4.png",
+  "enemies": [
+    {
+      "id": "barricade_pikeman",
+      "name": "Barricade Pikeman",
+      "flavor": "Thrusts serrated pikes that open unpreventable bleeds; braces against front-rank charges.",
+      "description": "A stocky mercenary clad in river-rusted scale armor, bracing an eight-foot barbed pike against an oak-log bulwark.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "barbed_thrust",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Barbed Thrust \u2014 deal 4 and inflict 2 unpreventable bleed",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "lose_life",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "pike_brace",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Pike Brace \u2014 prevent the next melee attack",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "combat_damage",
+              "combat_kind": "melee",
+              "uses": "next",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase2/barricade_pikeman-6bc41d70.png"
+    },
+    {
+      "id": "sluice_sapper",
+      "name": "Sluice Sapper",
+      "flavor": "Channels burning pitch onto heroes; hurls shrapnel pots across the front row.",
+      "description": "A soot-stained mercenary in a thick leather apron, carrying a hand-cranked copper pump connected to a vat of bubbling pine pitch.",
+      "hp": 6,
+      "power": 1,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "components": [
+        {
+          "id": "toxic_pitch_sluice",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "action_type": "ability",
+          "telegraph": "Pitch Sluice \u2014 a held stream: 2 unpreventable lose_life every upkeep",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "pitch_bomb",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 35,
+          "target_row": "front",
+          "telegraph": "Pitch Pot \u2014 shatter for 3 damage across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase2/sluice_sapper-4303a3ff.png"
+    },
+    {
+      "id": "winch_arbalestier",
+      "name": "Winch Arbalestier",
+      "flavor": "Spikes highest-threat heroes with heavy steel bolts; scatters life-bleeding caltrops.",
+      "description": "A heavy-set mercenary operating an iron-cranked weir arbalest mounted upon a swiveling oak stanchion.",
+      "hp": 5,
+      "power": 3,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "archer"
+      ],
+      "components": [
+        {
+          "id": "winch_bolt",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Winch Bolt \u2014 fires a siege bolt for 5 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "scatter_caltrops",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Scatter Caltrops \u2014 attacker loses 2 life unpreventably",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase2/winch_arbalestier-d9ac68b9.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "barricade_pikeman",
+      "winch_arbalestier"
+    ],
+    "2": [
+      "barricade_pikeman",
+      "sluice_sapper",
+      "winch_arbalestier",
+      "barricade_pikeman"
+    ],
+    "3": [
+      "barricade_pikeman",
+      "barricade_pikeman",
+      "sluice_sapper",
+      "sluice_sapper",
+      "winch_arbalestier",
+      "winch_arbalestier"
+    ],
+    "4": [
+      "barricade_pikeman",
+      "barricade_pikeman",
+      "barricade_pikeman",
+      "sluice_sapper",
+      "sluice_sapper",
+      "sluice_sapper",
+      "winch_arbalestier",
+      "winch_arbalestier"
+    ]
+  }
+}

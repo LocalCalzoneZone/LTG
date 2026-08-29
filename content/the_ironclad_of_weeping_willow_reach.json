@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Ironclad of Weeping Willow Reach",
+  "flavor": "Board Captain Rook's armored river-drake barge before its siege powder reaches the lagoon gates of Azure.",
+  "phases": [
+    {
+      "narration": "You slip out of Azure at dawn, following Hedda Stromm's charts along the dark, sluggish bends of the River Cinnamere. Where weeping willow boughs trail like rotting silk in the green water, Captain Rook's outriders have lashed heavy skiffs across the narrows, coughing through plumes of yellow sulphur smoke as they level their pikes.",
+      "encounter_id": "the_ironclad_of_weeping_willow_reach__phase1"
+    },
+    {
+      "narration": "You heave yourselves over the greasy, rivet-studded freeboard onto the barge's lower gun-deck. Between clanking drive-shafts and sweating iron pipes, a siege bombardier stands over open barrels of black breaching powder with a glowing slow-match in hand, daring you to stop the spark before the barge becomes a floating volcano.",
+      "encounter_id": "the_ironclad_of_weeping_willow_reach__phase2"
+    },
+    {
+      "narration": "You kick through the hatch into the barge's iron wheelhouse. At the command helm stands Captain Krag, Rook's second-in-command, surrounded by alchemical necrotechs who shovel dead pike-hands into the furnace to feed the roaring drake-engine. The vessel surges forward toward Azure's sea-gates\u2014break Krag and kill the fire before the gates shatter.",
+      "encounter_id": "the_ironclad_of_weeping_willow_reach__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

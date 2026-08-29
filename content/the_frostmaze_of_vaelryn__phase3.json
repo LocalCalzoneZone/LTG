@@ -124,7 +124,7 @@
           "verbs": [
             {
               "kind": "counter",
-              "filter": "spell"
+              "filter": "ability"
             }
           ]
         },

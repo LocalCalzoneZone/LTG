@@ -1,7 +1,8 @@
 """Soak mode (§D12-3.6) — the free fuzzer.
 
 Seeded random-policy games asserting engine invariants after every action:
-HP within bounds, the ultimate gauge within 0–100, enemy charge non-negative,
+HP within bounds, the ultimate gauge within its level-scaled charge cost,
+enemy charge non-negative,
 ``legal_actions`` non-empty whenever the game is undecided, ``apply_action``
 never raising, and termination under the round cap. Failures write the repro
 key ``(spec hash, policy version, seed)`` and the stop-state summary to the
@@ -29,8 +30,9 @@ def check_invariants(st: GameState) -> List[str]:
     for c in st.party:
         if not 0 <= c.hp <= c.max_hp:
             problems.append(f"{c.id}: hp {c.hp} outside [0, {c.max_hp}]")
-        if not 0 <= c.ultimate_gauge <= 100:
-            problems.append(f"{c.id}: gauge {c.ultimate_gauge} outside [0, 100]")
+        if not 0 <= c.ultimate_gauge <= c.ultimate_charge_cost:
+            problems.append(f"{c.id}: gauge {c.ultimate_gauge} outside "
+                            f"[0, {c.ultimate_charge_cost}]")
         if len(c.pool) < 0 or len(c.reserved) > c.capacity:
             problems.append(f"{c.id}: reserved {len(c.reserved)} > capacity "
                             f"{c.capacity}")

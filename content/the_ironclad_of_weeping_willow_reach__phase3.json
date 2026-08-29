@@ -1,0 +1,388 @@
+{
+  "name": "The Wheelhouse & Drake-Boiler",
+  "scene": "The upper bridge and ironclad wheelhouse: great brass control wheels turn amid clouds of greasy black smoke, the massive bronze head of a drake-boiler vents orange fire, and piles of armored dead lie ready to be shoveled into the glowing furnace maw.",
+  "scene_image": "/art/the_ironclad_of_weeping_willow_reach__phase3/scene-5dd0a8db.png",
+  "enemies": [
+    {
+      "id": "barge_captain_krag",
+      "name": "Captain Krag the Iron-Lung",
+      "flavor": "Rook's brutal river commander. Consumes dead crew to stoke the dragon-boiler.",
+      "description": "A massive, scarred half-orc warlord in spiked black-iron plate, wearing a respirator mask of brass tubes that hiss with alchemical fire as he brandishes a double-bearded boarding axe.",
+      "hp": 29,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "orc",
+        "human"
+      ],
+      "classes": [
+        "warlord",
+        "berserker"
+      ],
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "furnace_blast",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Drake Exhaust \u2014 blast the entire front row for 5",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "corpse_furnace",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Stoke the Maw \u2014 deal 6 to the deadliest hero by consuming a fallen ally's corpse",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "consume_corpse",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tyrants_contempt",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "once_per_encounter": true,
+          "priority": 5,
+          "target_rule": "trigger_source",
+          "telegraph": "Tyrant's Contempt \u2014 counters a hero's ultimate with an iron sneer",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "ability"
+            }
+          ]
+        },
+        {
+          "id": "boiler_overload",
+          "archetype": "Enrage",
+          "priority": 1,
+          "target_rule": "self",
+          "telegraph": "BOILER OVERLOAD \u2014 Krag gains +3/+3 and erupts fire for 4 across the deck",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase3/barge_captain_krag-6e27549f.png"
+    },
+    {
+      "id": "dredge_necrotech",
+      "name": "Dredge Necrotech",
+      "flavor": "Raises fallen crew with copper shocks; siphons party vitality for the boiler.",
+      "description": "A pale scholar in rubberized apron and copper gauntlets wired with galvanic coils, muttering dark formulae over the dead.",
+      "hp": 6,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human",
+        "undead"
+      ],
+      "classes": [
+        "necromancer",
+        "artificer"
+      ],
+      "components": [
+        {
+          "id": "galvanic_raise",
+          "archetype": "Necromancy",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "corpse",
+          "telegraph": "Galvanic Jolt \u2014 raise a fallen ally corpse as an undead servant",
+          "verbs": [
+            {
+              "kind": "control",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "alchemical_drain",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "action_type": "spell",
+          "target_rule": "channeling_player",
+          "telegraph": "Siphon Concentration \u2014 deal 3 to a channeling hero and heal self 3",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 3,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase3/dredge_necrotech-e55e5928.png"
+    },
+    {
+      "id": "iron_dredge_husk",
+      "name": "Dredge Husk",
+      "flavor": "Bolted into rusted chain; rises from the deck once after falling.",
+      "description": "A drowned pike-man reanimated with copper staples through its skull, iron plates riveted directly into rotting grey flesh.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "rises": 2,
+      "types": [
+        "undead"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "rusted_grip",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Corpse Lock \u2014 deal 3 and taunt the target",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "husk_frenzy",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 25,
+          "target_rule": "self",
+          "telegraph": "Corpse Fury \u2014 gains +1/+1 when fellow crew falls",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase3/iron_dredge_husk-fc056139.png"
+    },
+    {
+      "id": "boiler_stoker",
+      "name": "Boiler Stoker",
+      "flavor": "Channels pressure to pump allies; feeds corpses into the furnace for wide bursts.",
+      "description": "A soot-covered brute wielding a heavy coal shovel, their chest scarred by bubbling boiler scalds.",
+      "hp": 8,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "brute",
+        "cultist"
+      ],
+      "components": [
+        {
+          "id": "corpse_blast",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Shovel Flash \u2014 deal 4 to front row by burning a fallen corpse",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            },
+            {
+              "kind": "consume_corpse",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true,
+                "state": "corpse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stoker_warband_chant",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Boiler Pressure Anthem \u2014 held channel: pumps all allies +1/+1",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase3/boiler_stoker-8249fd20.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "barge_captain_krag",
+      "iron_dredge_husk"
+    ],
+    "2": [
+      "barge_captain_krag",
+      "dredge_necrotech",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "boiler_stoker"
+    ],
+    "3": [
+      "barge_captain_krag",
+      "dredge_necrotech",
+      "dredge_necrotech",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "boiler_stoker",
+      "boiler_stoker",
+      "boiler_stoker"
+    ],
+    "4": [
+      "barge_captain_krag",
+      "dredge_necrotech",
+      "dredge_necrotech",
+      "dredge_necrotech",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "iron_dredge_husk",
+      "boiler_stoker",
+      "boiler_stoker",
+      "boiler_stoker",
+      "boiler_stoker",
+      "boiler_stoker"
+    ]
+  }
+}

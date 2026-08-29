@@ -21,6 +21,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from ltg_core.schema import Card, Effect
 
 
+# Gauge rework (2026-08-29): ultimate charge-cost growth per character level.
+# Level 1 costs 100 raw points; each level adds this many (level 4 → 160).
+GAUGE_LEVEL_STEP = 20
+
+
 # --------------------------------------------------------------------------- #
 # Prevention shields (R-11 `prevent [parameter]`)
 # --------------------------------------------------------------------------- #
@@ -274,13 +279,17 @@ class CharacterState:
     regen_counters: int = 0
 
     # Heroic actions (D8-3): the authored once-per-encounter Skill/Ultimate (core
-    # Card models with forced timing), their used flags, the public 0–100 ultimate
-    # gauge, and optional display flavour for the evergreen abilities.
+    # Card models with forced timing), their used flags, the ultimate gauge, and
+    # optional display flavour for the evergreen abilities. The gauge holds RAW
+    # POINTS toward a level-scaled charge cost (gauge rework, 2026-08-29);
+    # clients see `ultimate_gauge_pct`, the public 0–100 bar. `gauge_earned` is
+    # lifetime income this encounter, pre-clamp — soak/tuning telemetry only.
     skill: Optional[Card] = None
     ultimate: Optional[Card] = None
     skill_used: bool = False
     ultimate_used: bool = False
     ultimate_gauge: int = 0
+    gauge_earned: int = 0
     ability_flavor: Dict[str, Any] = field(default_factory=dict)
     # +25-on-ally-downed bookkeeping: set when this character's downing has been
     # credited to the rest of the party, cleared when they stand back up.
@@ -321,6 +330,20 @@ class CharacterState:
         # A player-character is "up" while effective_hp > 0; ≤ 0 is incapacitated
         # (recoverable — R-7). Lethality everywhere is keyed to effective_hp.
         return self.effective_hp > 0
+
+    @property
+    def ultimate_charge_cost(self) -> int:
+        """Raw points for a full ultimate bar: 100 + 20 per level past 1 (gauge
+        rework). Magnitude payouts (+1/HP, +1/damage, +1/mana…) stay flat, so as
+        stat budgets inflate the growing cost keeps turns-to-charge level-stable;
+        tempo payouts are denominated in percent of this cost instead."""
+        return 100 + GAUGE_LEVEL_STEP * (max(1, self.level) - 1)
+
+    @property
+    def ultimate_gauge_pct(self) -> int:
+        """The public 0–100 bar: raw gauge as a floored percentage of the charge
+        cost — exactly 100 only when the Ultimate is castable."""
+        return min(100, self.ultimate_gauge * 100 // self.ultimate_charge_cost)
 
     @property
     def current_power(self) -> int:
@@ -591,6 +614,9 @@ class EnemyState:
     # `intent_template` (name/amount/action_type); empty == melee-only.
     ranged_template: Dict[str, Any] = field(default_factory=dict)
     stunned: int = 0           # intents to skip (stun); decremented as they would declare
+    # The character whose stun is riding this enemy (last applier wins) — paid
+    # denial gauge as each stunned intent is skipped (gauge rework).
+    stunned_by: Optional[str] = None
     taunted_by: Optional[str] = None  # forced to target this character id (taunt, this turn)
     # §D19-5: strips that landed while this enemy had NO declared intent (an
     # upkeep-tick strip resolves in the intents window, before declaration).
@@ -903,6 +929,13 @@ class GameState:
     # Update 04 §F-3.3: at most one reaction per enemy per window). Reset whenever a
     # fresh window opens; cross-turn reuse is gated separately by per-component cooldowns.
     reacted_window: List[str] = field(default_factory=list)
+    # Reaction signatures that have already answered the CURRENT trigger episode
+    # ("pre:<uid>|<sig>" / "post:<uid>|<sig>" — see engine._reaction_signature).
+    # One spell on the stack is ONE episode however many windows it survives, so
+    # a horde of identical punishers answers it once, not once per body (§F-7.4
+    # pile-on rule, playtest 2026-08). Cleared at turn start; uid-keyed entries
+    # never collide across episodes.
+    reacted_episode: List[str] = field(default_factory=list)
     pending_break: List[str] = field(default_factory=list)  # channelers owed a break
     pending_choice: Optional["PendingChoice"] = None  # mid-resolution card-move choice
     # Re-entrancy depth for event-triggered channel effects (an on-draw draw, an

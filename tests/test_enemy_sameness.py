@@ -208,24 +208,29 @@ def test_generation_repairs_a_pool_of_clones(monkeypatch):
     model with the failure, and the corrected reply persists."""
     from ltg_game_server import content
 
-    def enc(name, enemies):
-        return {"name": name, "scene": "A drowned hall of bells.",
-                "enemies": enemies,
-                "layouts": {"1": ["a", "b"], "2": ["a", "b", "c", "d"],
-                            "3": ["a", "a", "b", "c", "c", "d"],
-                            "4": ["a", "a", "b", "b", "c", "c", "d", "d"]},
-                "tokens": {}}
+    from tests.conftest import gate_clean_pool
+
+    def stamp(enc):
+        for e in enc["enemies"]:
+            e.setdefault("description", "A shape in the dark.")
+            e.setdefault("types", ["undead"])
+            e.setdefault("classes", ["warrior"])
+        return enc
 
     kit = [_comp("smash", "Burst"), _comp("spite", "Punish", "trigger_source",
                                           timing="reactive", trigger="on_hit")]
-    clones = [_enemy(i, [dict(c) for c in kit]) for i in "abcd"]
-    varied = [dict(e, id=i) for i, e in
-              zip("abcd", _good_pool()["enemies"])]
-    replies = [json.dumps(enc("Clone Pool Zzz", clones)),
-               json.dumps(enc("Varied Pool Zzz", varied))]
+    clones = stamp({"name": "Clone Pool Zzz", "scene": "A drowned hall of bells.",
+                    "enemies": [_enemy(i, [dict(c) for c in kit]) for i in "abcdefgh"],
+                    # Layouts are LEGAL (8 distinct) so the rejection is the
+                    # duplicate-kit gate, not the layout floor.
+                    "layouts": {"1": list("ab"), "2": list("abcd"),
+                                "3": list("abcdef"), "4": list("abcdefgh")},
+                    "tokens": {}})
+    varied = stamp(gate_clean_pool(name="Varied Pool Zzz"))
+    replies = [json.dumps(clones), json.dumps(varied)]
     calls = []
 
-    def fake_chat(api_key, model, messages):
+    def fake_chat(api_key, model, messages, **kw):
         calls.append(messages[-1]["content"])
         return replies[len(calls) - 1]
 

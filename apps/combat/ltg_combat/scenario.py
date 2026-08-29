@@ -77,6 +77,18 @@ def _check_ultimate_answer_guardrail(enemy_name: str, is_boss: bool,
             raise ValueError(
                 f"{enemy_name}: a counter on on_ultimate_cast must be "
                 "once_per_encounter (T-70) — one Tyrant's Contempt per boss, ever")
+        # An Ultimate sits on the stack as an ACTIVATED ability, so a filter
+        # outside the ability branch of the lattice (e.g. "spell") can never
+        # match it — the counter would fire and fizzle every time.
+        for v in comp.verbs:
+            if (getattr(v, "kind", None) == "counter"
+                    and getattr(v, "filter", None) not in ("action", "ability",
+                                                           "activated")):
+                raise ValueError(
+                    f"{enemy_name}: a counter on on_ultimate_cast must use "
+                    "filter 'action', 'ability', or 'activated' — an Ultimate "
+                    f"is an activated ability, so filter "
+                    f"{getattr(v, 'filter', None)!r} would never match it")
 
 
 def _component_from_dict(spec: Dict[str, Any]) -> Component:

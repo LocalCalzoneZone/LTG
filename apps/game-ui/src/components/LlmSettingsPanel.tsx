@@ -260,7 +260,8 @@ export function LlmSettingsPanel() {
                 Optionally set width/height inputs to the strings{" "}
                 <code className="text-mist">"%width%"</code> /{" "}
                 <code className="text-mist">"%height%"</code> (no extra quotes inside the value)
-                to get 1344×768 backdrops and 1024×1024 portraits, and a seed input to{" "}
+                to get 1792×1024 backdrops, 1024×1024 NPC portraits, 768×768 enemy
+                portraits and 960×640 item art, and a seed input to{" "}
                 <code className="text-mist">"%seed%"</code> so every repaint rolls a fresh seed.
                 The workflow must end in a SaveImage node.
               </span>
