@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../lib/store";
 import { roman } from "../lib/format";
 import type {
@@ -315,16 +315,62 @@ function InspectSheet({ inspect, onClose, onVisit, onTalk, onShop }: {
   );
 }
 
+/** One line of the conversation transcript: NPC lines carry a brass nameplate,
+ * party lines (and the choices the party took, shown unquoted in italic) a
+ * tide one, and a narration beat sits nameless between hairlines. */
+function TranscriptLine({ line, npcName, party }: {
+  line: NonNullable<ConversationView["lines"]>[number];
+  npcName: string;
+  party: PartySheetRow[];
+}) {
+  if (line.speaker === "narration") {
+    return (
+      <div className="my-0.5 flex items-center gap-2 text-[12px] font-light italic leading-snug text-mist">
+        <span className="h-px w-4 shrink-0 bg-line" aria-hidden />
+        <span className="min-w-0">{line.text}</span>
+        <span className="h-px flex-1 bg-line" aria-hidden />
+      </div>
+    );
+  }
+  const isNpc = line.speaker === "npc";
+  const name = isNpc
+    ? npcName
+    : party.find((p) => p.id === line.attributed)?.name ?? "The party";
+  return (
+    <div className="text-[13px] font-light leading-snug">
+      <span className={`caps-label mr-1.5 text-[9px] tracking-[0.16em] ${isNpc ? "text-brass" : "text-tide"}`}>
+        {name} —
+      </span>
+      <span className={line.speaker === "choice" ? "italic text-mist" : "text-parch"}>
+        {line.speaker === "choice" ? line.text : `“${line.text}”`}
+      </span>
+    </div>
+  );
+}
+
 /** The dialogue modal (§D17-5.4): party portraits left (a zoomed 3:4 crop of
  * each portrait's upper portion, tiled), NPC portrait and text centre, choices
- * as ghost buttons. The initiating player chooses; everyone sees the text.
- * Clicking a party portrait attributes the line to that character. */
+ * as ghost buttons. The initiating player chooses; everyone sees the text —
+ * including the full transcript above the current line, so a player who didn't
+ * pick still sees which option was taken. */
 function DialogueModal({ town, conv }: { town: TownSnapshot; conv: ConversationView }) {
   const sendTown = useGame((s) => s.sendTown);
   const npc = town.location?.npcs.find((n) => n.id === conv.npc_id);
   const busy = !!town.confirm;
   // The featured party portrait: the attributed speaker, else the first.
   const featured = town.party_sheet.find((p) => p.id === conv.attributed) ?? town.party_sheet[0];
+  // The transcript pins to its newest line unless the reader scrolled up —
+  // same idiom as the combat Chronicle.
+  const chatRef = useRef<HTMLDivElement>(null);
+  const chatPinned = useRef(true);
+  const lines = conv.lines ?? [];
+  // The current node is shown large below; the transcript carries what LED here
+  // (once the conversation is over, it carries everything).
+  const past = conv.node_id !== null && lines.length > 0 ? lines.slice(0, -1) : lines;
+  useEffect(() => {
+    const el = chatRef.current;
+    if (el && chatPinned.current) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
   return (
     <div className="absolute inset-0 z-30 flex items-stretch bg-black/85 backdrop-blur-[2px]">
       {/* Left: the party — one portrait featured near full height, the rest as tabs */}
@@ -367,6 +413,23 @@ function DialogueModal({ town, conv }: { town: TownSnapshot; conv: ConversationV
             <IconX size={14} />
           </button>
         </div>
+        {past.length > 0 && (
+          <div
+            ref={chatRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              chatPinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            }}
+            className="scroll-thin mt-5 max-h-[30vh] overflow-y-auto border-b border-line pb-3 pr-2"
+          >
+            <div className="flex flex-col gap-1.5">
+              {past.map((l, i) => (
+                <TranscriptLine key={i} line={l} npcName={npc?.name ?? conv.npc_id}
+                                party={town.party_sheet} />
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-6 max-h-[40vh] overflow-y-auto">
           {/* A narration beat is nobody's line — no nameplate, set in italic so
               stage direction never reads as something the NPC said aloud. */}

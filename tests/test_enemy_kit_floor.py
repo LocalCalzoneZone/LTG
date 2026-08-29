@@ -134,15 +134,24 @@ def test_gate_requires_a_detonation_for_a_charge_gather():
 # Generation: rejected, fed back, repaired
 # --------------------------------------------------------------------------- #
 def test_generation_repairs_a_punching_bag(monkeypatch):
-    bad = _encounter([_enemy("bag", [_pump(cooldown=1)]),
-                      _enemy("pal", [_jab(), _riposte()])])
-    good = _encounter([_enemy("bag", [_pump(cooldown=2), _riposte()]),
-                       _enemy("pal", [_jab(), _riposte()])])
-    good["name"] = "Kit Floor Repaired Zzz"
+    from tests.conftest import gate_clean_pool
+    # Both replies ride full 8-design pools with legal layouts so the ONLY sin
+    # in `bad` is the punching bag (the layout gate raises first otherwise).
+    bad = gate_clean_pool([_enemy("bag", [_pump(cooldown=1)])])
+    # The repaired reply must clear EVERY gate (including the 2x-distinct layout
+    # floor), so the fixed bag rides in a full 8-design pool.
+    good = gate_clean_pool([_enemy("bag", [_pump(cooldown=2), _riposte()])],
+                           name="Kit Floor Repaired Zzz")
+    for enc in (bad, good):
+        for e in enc["enemies"]:
+            e.setdefault("description", "A shape in the dark.")
+            e.setdefault("flavor", "a body")
+            e.setdefault("types", ["undead"])
+            e.setdefault("classes", ["warrior"])
     replies = [json.dumps(bad), json.dumps(good)]
     calls = []
 
-    def fake_chat(api_key, model, messages):
+    def fake_chat(api_key, model, messages, **kw):
         calls.append(messages[-1]["content"])
         return replies[len(calls) - 1]
 

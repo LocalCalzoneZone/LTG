@@ -1,0 +1,353 @@
+{
+  "name": "The Tollhouse Bastion",
+  "scene": "A cavernous octagonal tollhouse interior with soot-blackened timber rafters, massive iron gears hoisting the bridge chains, and merchant ledgers burning in a central hearth.",
+  "scene_image": "/art/the_timber_gate_tollhouse__phase3/scene-752d3a77.png",
+  "enemies": [
+    {
+      "id": "iron_enforcer_vorn",
+      "name": "Commander Vorn",
+      "flavor": "Rook's brutal tollmaster. Cleaves rows, executes the fallen, and turns ferocious when bloodied.",
+      "description": "A hulking warlord in riveted black-iron plate and wolfskin mantle, dragging a notched heavy halberd that throws sparks across the stone pavers.",
+      "hp": 27,
+      "power": 3,
+      "level": 5,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warlord"
+      ],
+      "components": [
+        {
+          "id": "sweeping_halberd",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 30,
+          "cooldown": 2,
+          "target_row": "front",
+          "telegraph": "Sweeping Halberd \u2014 wide arc for 5 damage across the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "executioners_cleave",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Executioner's Cleave \u2014 crushes highest threat for 8 damage",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 8,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "blood_frenzy",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Blood Frenzy \u2014 surges with +2/+2 counters when a hero falls",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "warlords_fury",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "WARLORD'S FURY \u2014 gains +3/+3 counters, trample, and cleaves all heroes for 4",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "grant_keyword",
+              "keywords": [
+                "trample"
+              ],
+              "duration": "encounter",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase3/iron_enforcer_vorn-78b70d99.png"
+    },
+    {
+      "id": "cinnamere_executioner",
+      "name": "Cinnamere Executioner",
+      "flavor": "Chops with heavy cleavers; surges into a frenzy whenever a hero is downed.",
+      "description": "A masked mercenary headsman with blood-spattered leather bracers, hefting a broad square-tipped executioner's blade.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warrior"
+      ],
+      "components": [
+        {
+          "id": "guillotine_chop",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Guillotine Chop \u2014 deal 4 damage to a vulnerable foe",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "pack_surge",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Pack Surge \u2014 gains +1/+1 counter on downed hero",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase3/cinnamere_executioner-ce71f9bf.png"
+    },
+    {
+      "id": "warhorn_chanter",
+      "name": "Warhorn Chanter",
+      "flavor": "Blows an anthem that buffs the mercenary band; sounds a triumph heal when heroes fall.",
+      "description": "A battle-herald in brass chainmail, carrying a massive curved river-drake warhorn wrapped in crimson ribbons.",
+      "hp": 5,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "bard"
+      ],
+      "components": [
+        {
+          "id": "rallying_anthem",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Warhorn Call \u2014 held anthem gives all allies +1/+1 while channeled",
+          "verbs": [
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "triumph_blast",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Triumph Blast \u2014 heals all allies 3 on hero downfall",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase3/warhorn_chanter-4a03aa33.png"
+    },
+    {
+      "id": "flank_hound",
+      "name": "Flank Hound",
+      "flavor": "Bites tendons to lock skills; lunges aggressively if a hero goes down.",
+      "description": "A lean, grey-furred marsh mastiff fitted with an iron-spiked collar and leather flank-guards.",
+      "hp": 4,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "beast"
+      ],
+      "classes": [
+        "hunter"
+      ],
+      "components": [
+        {
+          "id": "hamstring_bite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Hamstring Bite \u2014 deal 3 and lock Skill",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "modify_action",
+              "action": "skill",
+              "modifier": "lock_skill",
+              "duration": "encounter",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "downed_pounce",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 12,
+          "target_rule": "valuation",
+          "telegraph": "Feral Pounce \u2014 free 3 damage strike upon hero knockdown",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_timber_gate_tollhouse__phase3/flank_hound-d1f34e28.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "iron_enforcer_vorn",
+      "cinnamere_executioner"
+    ],
+    "2": [
+      "iron_enforcer_vorn",
+      "warhorn_chanter",
+      "cinnamere_executioner",
+      "flank_hound"
+    ],
+    "3": [
+      "iron_enforcer_vorn",
+      "warhorn_chanter",
+      "cinnamere_executioner",
+      "cinnamere_executioner",
+      "flank_hound",
+      "flank_hound"
+    ],
+    "4": [
+      "iron_enforcer_vorn",
+      "warhorn_chanter",
+      "warhorn_chanter",
+      "cinnamere_executioner",
+      "cinnamere_executioner",
+      "cinnamere_executioner",
+      "flank_hound",
+      "flank_hound",
+      "flank_hound"
+    ]
+  }
+}

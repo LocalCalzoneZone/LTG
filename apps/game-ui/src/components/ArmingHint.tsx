@@ -17,10 +17,15 @@ export function ArmingHint() {
     : armed.numSites > 1
       ? ` — select target ${armed.site + 1} of ${armed.numSites}`
       : " — select a target";
-  const counterHint = armed.kind === "cast" && [...(armed.candidates[0]?.targets ?? [])].length === 0 &&
-    (armed.candidates[0]?.target_id ?? "").startsWith("#")
-    ? " (click an action on the Stack)"
-    : "";
+  const stackFacing = armed.kind === "cast" && [...(armed.candidates[0]?.targets ?? [])].length === 0 &&
+    (armed.candidates[0]?.target_id ?? "").startsWith("#");
+  // A copy re-aims a single-target spell as it resolves; any other copy keeps
+  // the original's targets — say so BEFORE the pick, not after (playtest).
+  const counterHint = !stackFacing
+    ? ""
+    : siteLabel === "copy"
+      ? " (click a spell on the Stack — a single-target copy is re-aimed as it resolves; any other copy keeps the original's targets)"
+      : " (click an action on the Stack)";
 
   return (
     <div className="absolute -top-9 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 border border-brass bg-gradient-to-b from-brass-hi to-brass px-4 py-1 text-sm font-normal text-ink-0 shadow-[0_8px_20px_rgba(0,0,0,0.5)]">

@@ -712,6 +712,14 @@ def test_t70_counter_guardrail():
         state_from_dict({"party": party, "enemies": [
             {"id": "king", "name": "King", "hp": 30, "level": 6, "power": 3,
              "is_boss": True, "components": [counter_comp(once=False)]}]})
+    # An Ultimate is an ACTIVATED ability, so a "spell" filter can never match
+    # it — such a Tyrant's Contempt would fizzle every time. Rejected at load.
+    bad = counter_comp()
+    bad["verbs"] = [{"kind": "counter", "filter": "spell"}]
+    with pytest.raises(ValueError, match="never match"):
+        state_from_dict({"party": party, "enemies": [
+            {"id": "king", "name": "King", "hp": 30, "level": 6, "power": 3,
+             "is_boss": True, "components": [bad]}]})
     # The legal form counters the ultimate on the stack — and the party could
     # have responded to the counter itself before it resolved.
     st = state_from_dict({"party": party, "enemies": [
@@ -725,6 +733,32 @@ def test_t70_counter_guardrail():
         st = apply_action(st, _pick(st, "pass"))[0]
     assert st.enemy("king").hp == 30  # the limit break was cancelled
     assert any(e.type == "countered" and "Doombolt" in e.msg for e in st.log)
+
+
+def test_shipped_ultimate_counters_can_actually_match():
+    """Every Tyrant's Contempt in shipped content must use a filter that can
+    match an Ultimate (kind="activated") — a "spell" filter fizzles forever."""
+    import json as _json
+    from pathlib import Path
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            if node.get("trigger") == "on_ultimate_cast":
+                for v in node.get("verbs", []):
+                    if v.get("kind") == "counter":
+                        assert v.get("filter") in ("action", "ability", "activated"), (
+                            f"{path.name}: component {node.get('id')!r} counters an "
+                            f"Ultimate with filter {v.get('filter')!r}, which can "
+                            "never match an activated ability")
+            for child in node.values():
+                walk(child, path)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child, path)
+
+    content_dir = Path(__file__).resolve().parent.parent / "content"
+    for path in sorted(content_dir.glob("*.json")):
+        walk(_json.loads(path.read_text()), path)
 
 
 # ========================================================================== #

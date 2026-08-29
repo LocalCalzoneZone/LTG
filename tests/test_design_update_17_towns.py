@@ -330,6 +330,27 @@ def test_conversation_walker_filters_on_flags_and_returns_hooks():
     assert conv.over and conv.snapshot({})["over"] is True
 
 
+def test_conversation_transcript_records_every_line_and_choice():
+    """The chat-style transcript (playtest, 2026-08): every node shown plus each
+    choice taken reaches the snapshot, so a player who didn't pick — or joined
+    the conversation late — still sees the whole exchange."""
+    tree = dialogue.validate_dialogue(questgiver_tree())
+    conv = dialogue.Conversation("sister_aud", tree)
+    root_text = conv.node["text"]
+    conv.choose(1, {})
+    go_text = conv.node["text"]
+    lines = conv.snapshot({})["lines"]
+    assert [(l["speaker"], l["text"]) for l in lines] == [
+        (tree["nodes"][tree["root"]]["speaker"], root_text),
+        ("choice", "We'll walk the causeway at first light."),
+        (conv.node["speaker"], go_text),
+    ]
+    conv.choose(0, {})
+    lines = conv.snapshot({})["lines"]
+    assert lines[-1]["speaker"] == "choice"   # the tree ended — the final pick closes it
+    assert len(lines) == 4
+
+
 # --------------------------------------------------------------------------- #
 # Generators (LLM mocked)
 # --------------------------------------------------------------------------- #

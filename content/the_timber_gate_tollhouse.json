@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Timber-Gate Tollhouse",
+  "flavor": "Storm the fortified river-weir where Captain Rook's mercenaries have barricaded Azure's vital northern trade route.",
+  "phases": [
+    {
+      "narration": "You ride north from Azure under a canopy of autumn river-oaks, their russet leaves floating down into the brackish shallows of the Cinnamere. Ahead, the trade road turns to corduroy log tracks, where mercenary scouts and hunting hawks watch the tree-line from rope bridges slung through the branches.",
+      "encounter_id": "the_timber_gate_tollhouse__phase1"
+    },
+    {
+      "narration": "You break through the tree-line onto the Timber-Gate Causeway. Ahead, the massive oak logging weir is choked with iron-spiked timber chevaux-de-frise, boiling cauldrons of black pitch, and heavy winch-arbalests aimed down the narrow bridge approach.",
+      "encounter_id": "the_timber_gate_tollhouse__phase2"
+    },
+    {
+      "narration": "You kick open the splintered doors of the stone-and-timber tollhouse. Inside, Captain Rook's trusted lieutenant, Commander Vorn, stands surrounded by savage river-hounds and executioner veterans, iron halberd raised to crush any who threaten the blockade.",
+      "encounter_id": "the_timber_gate_tollhouse__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

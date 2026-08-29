@@ -69,7 +69,9 @@ Structural chrome (classes in `index.css`):
 ├──────────────────────────────────────────────┬— Splitter (drag) ——┤
 │  Battlefield (.field-scene)                  │  Side panel        │
 │  players 40% | ◆ divider | enemies 60%       │  The Stack         │
-│  rows: rear/mid/front (captions at bottom)   │  Chronicle (log)   │
+│  rows: rear/mid/front (captions at bottom)   │  Intents (scroll)  │
+│                                              ├— Splitter (drag) —┤
+│                                              │  Chronicle (log)   │
 ├───────────────────────— Splitter (drag) —────┴────────────────────┤
 │  Command console: who/zones · Mana · Actions · Hand               │
 └───────────────────────────────────────────────────────────────────┘
@@ -77,8 +79,13 @@ Structural chrome (classes in `index.css`):
 
 - Side panel: default **450px**, console height: default
   `clamp(200px, 27vh, 320px)`. Both are user-resizable via the `Splitter`
-  component in [`src/App.tsx`](src/App.tsx) (drag = resize, double-click =
-  reset, sizes persist in `localStorage` under `ltg_side_w` / `ltg_console_h`).
+  component in [`src/components/Splitter.tsx`](src/components/Splitter.tsx)
+  (drag = resize, double-click = reset, sizes persist in `localStorage` under
+  `ltg_side_w` / `ltg_console_h`).
+- Inside the side panel a third `Splitter` divides **Intents ↔ Chronicle**
+  (key `ltg_intents_h`). Undragged, the Intents panel is content-sized but
+  capped at 40% of the column; both panels scroll internally (`.scroll-thin`),
+  and the Chronicle pins to its newest line unless the player scrolls up.
 - Battlefield cards size against viewport *height* (`clamp(…, Nvh, …)` in
   [`src/lib/layout.ts`](src/lib/layout.ts)) so both axes of resize behave.
 

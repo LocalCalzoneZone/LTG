@@ -1,0 +1,316 @@
+{
+  "name": "The Willow Bend Skiff-Line",
+  "scene": "A claustrophobic river channel shadowed by massive weeping willows: moss-hung branches sweep the dark water, floating logs choke the passage, and three fortified skiffs form a barricade under a cloud of eye-stinging brimstone fog.",
+  "scene_image": "/art/the_ironclad_of_weeping_willow_reach__phase1/scene-26fadb78.png",
+  "enemies": [
+    {
+      "id": "skiff_guard",
+      "name": "Skiff Guard",
+      "flavor": "Locks shields across the narrows; drinks a foul restorative when struck down.",
+      "description": "A stocky river mercenary in riveted bog-iron plate, bracing a notched iron-rimmed pavise in one hand and a spiked boat-hook in the other.",
+      "hp": 6,
+      "power": 1,
+      "level": 2,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "skiff_brace",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Iron Hold \u2014 deal 3 and taunt the hero onto the gunwale",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "iron_tincture",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Bog-Iron Draught \u2014 emergency heal 4 to survive the killing strike",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 4,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase1/skiff_guard-2e649711.png"
+    },
+    {
+      "id": "sulphur_puffer",
+      "name": "Sulphur Smoker",
+      "flavor": "Fills the bend with eye-watering brimstone; drops into the bilges when split open.",
+      "description": "A scrawny goblin artificer wearing stained leather aprons and brass goggles, cranking a bellows attached to a smoldering copper censer.",
+      "hp": 4,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "goblin"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "components": [
+        {
+          "id": "choking_fumes",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "Sulphur Cloud \u2014 a held smoke-bank: reduces party attack power by 1",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "smoke_escape",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Smoke Screen \u2014 negates lethal damage with a flash of powder",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase1/sulphur_puffer-f20a1f1e.png"
+    },
+    {
+      "id": "pike_corsair",
+      "name": "Pike Corsair",
+      "flavor": "Hooks casters into the front rank; springs back with wild spite if cut down.",
+      "description": "A tall, scarred marsh-reaver wielding a fifteen-foot boarding pike barbed with flensing hooks, mud caked up to the knees of their high boots.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warrior",
+        "rogue"
+      ],
+      "components": [
+        {
+          "id": "barbed_drag",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "telegraph": "Boarding Hook \u2014 deal 4 and drag the channeling hero to the front row",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "corsair_grit",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Diehard Surge \u2014 heals 5 to defy death",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase1/pike_corsair-5584d963.png"
+    },
+    {
+      "id": "fen_harpooner",
+      "name": "Fen Harpooner",
+      "flavor": "Snipes from tree roots; dives into the brackish mud to evade a fatal blow.",
+      "description": "A hooded hunter balanced on willow roots, aiming a heavy winch-cocked arbalest fitted with thick hemp-wound bolts.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "archer",
+        "hunter"
+      ],
+      "components": [
+        {
+          "id": "sniping_bolt",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Winch Bolt \u2014 deal 4 to puncture the deadliest threat",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "mud_dive",
+          "archetype": "Ward",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Fen Roll \u2014 dodges lethal combat blow into the silt",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "combat_damage",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_ironclad_of_weeping_willow_reach__phase1/fen_harpooner-15aec418.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "pike_corsair",
+      "pike_corsair",
+      "skiff_guard",
+      "sulphur_puffer"
+    ],
+    "2": [
+      "pike_corsair",
+      "pike_corsair",
+      "skiff_guard",
+      "skiff_guard",
+      "skiff_guard",
+      "sulphur_puffer",
+      "sulphur_puffer",
+      "fen_harpooner"
+    ],
+    "3": [
+      "pike_corsair",
+      "pike_corsair",
+      "pike_corsair",
+      "pike_corsair",
+      "skiff_guard",
+      "skiff_guard",
+      "skiff_guard",
+      "sulphur_puffer",
+      "sulphur_puffer",
+      "sulphur_puffer",
+      "fen_harpooner",
+      "fen_harpooner"
+    ],
+    "4": [
+      "pike_corsair",
+      "pike_corsair",
+      "pike_corsair",
+      "pike_corsair",
+      "pike_corsair",
+      "skiff_guard",
+      "skiff_guard",
+      "skiff_guard",
+      "skiff_guard",
+      "skiff_guard",
+      "sulphur_puffer",
+      "sulphur_puffer",
+      "sulphur_puffer",
+      "sulphur_puffer",
+      "fen_harpooner",
+      "fen_harpooner"
+    ]
+  }
+}

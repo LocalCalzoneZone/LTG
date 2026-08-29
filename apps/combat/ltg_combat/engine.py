@@ -279,6 +279,7 @@ def _begin_turn(st: GameState) -> None:
     st.acted_enemies = []
     st.acted_tokens = []
     st.reacted_window = []  # no window open at turn start
+    st.reacted_episode = []  # last turn's answered episodes are history
     if st.turn == 1 and len(st.party) > 1:
         # Announce the initiative rolled at setup (fixed for the whole encounter).
         names = " → ".join(c.name for c in _party_ordered(st))
@@ -764,6 +765,7 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     double = e.is_boss and (e.enraged or e.double_intent)
     if e.stunned > 0:  # stun: skip one intent, spend one charge (R-11)
         e.stunned -= 1
+        _credit_stun_denial(st, e)
         if double:
             # Fury is never fully silenced by a single stun (§D9-4): the stun
             # suppresses the second slot; the first declares normally below.
@@ -983,7 +985,7 @@ def _condition_met(st: GameState, e: EnemyState, cond: dict) -> bool:
         # §D12-2.2: the highest ultimate gauge in the party — arm the
         # gauge-punisher only when a hero is actually approaching the dread
         # window (spent/absent ultimates read as 0: no threat to punish).
-        gauges = [c.ultimate_gauge for c in st.living_party()
+        gauges = [c.ultimate_gauge_pct for c in st.living_party()
                   if c.ultimate is not None and not c.ultimate_used]
         lhs = max(gauges) if gauges else 0
     elif kind == "hero_primed":
@@ -1115,7 +1117,7 @@ def _primed_score(c) -> int:
     score = 0
     if getattr(c, "amplify_tags", None) or getattr(c, "double_next", None):
         score += 2
-    if (getattr(c, "ultimate_gauge", 0) >= PRIMED_GAUGE
+    if (getattr(c, "ultimate_gauge_pct", 0) >= PRIMED_GAUGE
             and getattr(c, "ultimate", None) is not None
             and not getattr(c, "ultimate_used", False)):
         score += 1
@@ -1130,17 +1132,72 @@ def _swarm_at_cap(st: GameState, e: EnemyState, comp: Component) -> bool:
     return len([o for o in st.living_enemies() if o.created_by == e.id]) >= 2
 
 
-def _filter_control_targets(comp: Component, cands: List) -> List:
+def _pending_control_claims(st: GameState) -> set:
+    """The control already SPOKEN FOR this round: (claim key, hero id) pairs from
+    intents that are declared but not yet executed. Intents declare in canonical
+    order before anything resolves, so without this the landed-state filters below
+    see a clean board for every clone in a horde — six copies of one debilitator
+    would all declare Hamstring on the same hero (playtest, 2026-08: five wasted
+    turns, since `action_mods` is a dict overwrite; same for a second taunt, and
+    a stacked stun the §F-7.2 filter's whole point is to spread). Scanning both
+    slots also lets a fury boss's first pick claim against its second."""
+    claims = set()
+    for o in st.living_enemies():
+        for intent, status in ((o.intent, o.round_intent_status),
+                               (o.intent2, o.round_intent2_status)):
+            if status != "declared" or intent is None or intent.target_id is None:
+                continue
+            for v in intent.effects:
+                kind = getattr(v, "kind", None)
+                if kind in ("stun", "taunt"):
+                    claims.add((kind, intent.target_id))
+                elif kind == "modify_action":
+                    claims.add(("mod:" + str(getattr(v, "modifier", "")),
+                                intent.target_id))
+    return claims
+
+
+def _filter_control_targets(st: GameState, comp: Component, cands: List) -> List:
     """Don't waste control (§F-7.2 refinement): a stun rule skips heroes already
     stunned and a taunt rule skips heroes already taunted, so the debilitator
     spreads its locks across the party instead of stacking one victim. Emptying
     the list makes the rule skip (first-match-wins moves on) — the enemy does
-    something useful instead."""
+    something useful instead.
+
+    Two waste channels are filtered: control that has LANDED (the hero already
+    carries it) and control that is PENDING (an intent declared earlier this
+    round already brings it — see _pending_control_claims). The same rule on the
+    third clone in a horde therefore picks the third hero, and once every hero
+    is claimed the rule empties and the clone falls through to its next
+    component — which also desynchronises the horde's cooldowns from then on."""
     kinds = {getattr(v, "kind", None) for v in comp.verbs}
+    mods = {str(getattr(v, "modifier", "")) for v in comp.verbs
+            if getattr(v, "kind", None) == "modify_action"}
+    claims = None
+
+    def _claims() -> set:
+        nonlocal claims
+        if claims is None:
+            claims = _pending_control_claims(st)
+        return claims
+
     if "stun" in kinds:
-        cands = [c for c in cands if getattr(c, "stunned", 0) <= 0]
+        cands = [c for c in cands if getattr(c, "stunned", 0) <= 0
+                 and ("stun", c.id) not in _claims()]
     if "taunt" in kinds:
-        cands = [c for c in cands if getattr(c, "taunted_to", None) is None]
+        cands = [c for c in cands if getattr(c, "taunted_to", None) is None
+                 and ("taunt", c.id) not in _claims()]
+    for mod in mods:
+        if mod == "drain_ultimate":
+            # Instant, but wasted on an empty gauge — and a pending drain will
+            # usually empty it before this one lands.
+            cands = [c for c in cands if getattr(c, "ultimate_gauge", 0) > 0
+                     and ("mod:drain_ultimate", c.id) not in _claims()]
+        elif mod and mod not in INSTANT_ACTION_MODIFIERS:
+            # A persistent modifier (lock_skill, make_melee, …) is a dict
+            # overwrite: re-applying it to the same hero does nothing.
+            cands = [c for c in cands if mod not in (getattr(c, "action_mods", None) or {})
+                     and ("mod:" + mod, c.id) not in _claims()]
     return cands
 
 
@@ -1161,7 +1218,7 @@ def _pickable(st: GameState, e: EnemyState, comp: Component) -> List:
     cands = list(_reachable_targets(e, st.living_party()))
     if _hexproof_matters(comp):
         cands = [c for c in cands if not _has_kw(c, "hexproof")]
-    return _filter_control_targets(comp, cands)
+    return _filter_control_targets(st, comp, cands)
 
 
 def _valuation_target(st: GameState, e: EnemyState, comp: Component):
@@ -1240,6 +1297,19 @@ def _taunt_with_teeth(e: EnemyState, verbs):
     grab = next(v for v in verbs if getattr(v, "kind", None) == "taunt")
     bite = DealDamage(amount=max(1, e.current_power), target=grab.target)
     return [bite] + list(verbs)
+
+
+def _credit_stun_denial(st: GameState, e: EnemyState) -> None:
+    """Gauge rework: pay the stunner for the enemy action their stun denies, as
+    it is skipped. The denied turn is priced at the enemy's current Power (what
+    the default swing would deal), or its level when it has no swing — the
+    turn a utility enemy loses is still worth its level."""
+    who = st.character(e.stunned_by) if e.stunned_by else None
+    if who is not None:
+        denied = max(0, e.current_power)
+        _gain_gauge(st, who, denied if denied > 0 else max(1, e.level))
+    if e.stunned <= 0:
+        e.stunned_by = None
 
 
 def _basic_swing(st: GameState, e: EnemyState) -> Optional[int]:
@@ -1912,6 +1982,16 @@ def _end_step(st: GameState) -> None:
     drop, turn-scoped keywords lapse. Sustained channel auras are then re-applied
     (they live in the temp layers, which just reset). Finally re-check lethality on
     the refreshed effective_hp: a creature ≤ 0 dies, a PC recovers if back above 0."""
+    # Death is final: reap anything ALREADY at effective_hp ≤ 0 before the temp
+    # layers reset — an expiring −X/−X must not hand its victim back the
+    # toughness that killed it. (PCs are exempt: a downed PC's recovery is
+    # judged on the refreshed layers, in the _reap_dead below.)
+    for e in list(st.enemies):
+        if e.effective_hp <= 0:
+            _kill_enemy(st, e)
+    for t in list(st.tokens):
+        if t.effective_hp <= 0:
+            _remove_token(st, t)
     for c in st.party:
         _reset_temp_layers(c)
         c.prevent_tags = []
@@ -2127,7 +2207,9 @@ def _reactive_rules(e: EnemyState) -> List[Component]:
 def _pre_trigger_ctx(st: GameState) -> dict:
     """The trigger context for reactions evaluated BEFORE the stack top resolves: the
     item under answer is the current top (a player play or an enemy action)."""
-    return {"phase": "pre", "stack_top": st.stack[-1] if st.stack else None,
+    top = st.stack[-1] if st.stack else None
+    return {"phase": "pre", "stack_top": top,
+            "episode": (f"pre:{top.uid}" if top is not None else None),
             "hits": [], "deaths": [], "attacker": None}
 
 
@@ -2142,7 +2224,22 @@ def _post_trigger_ctx(st: GameState, item: Optional[StackItem], events: List[Eve
              if ev.type in ("heal", "wound_mend")]
     return {"phase": "post", "stack_top": None, "hits": hits, "deaths": deaths,
             "downs": downs, "heals": heals,
+            "episode": (f"post:{item.uid}" if item is not None else None),
             "attacker": item.source_id if item is not None else None}
+
+
+def _reaction_signature(comp: Component) -> str:
+    """What a reaction IS from the player's seat: the trigger it answers and the
+    shape of what comes back — verb kinds and their aim, amounts excluded. Two
+    components with the same signature are ONE threat however many bodies carry
+    them (clones share it by construction; so do independent designs that both
+    read "a spell was cast — deal damage to the caster")."""
+    verbs = ";".join(sorted(
+        f"{getattr(v, 'kind', '')}"
+        f"@{getattr(getattr(v, 'target', None), 'mode', 'self')}"
+        f"/{getattr(getattr(v, 'target', None), 'side', '')}"
+        for v in comp.verbs))
+    return f"{comp.trigger}|{comp.action_type or ''}|{verbs}"
 
 
 def _offer_reactions(st: GameState, ctx: dict) -> bool:
@@ -2163,6 +2260,16 @@ def _offer_reactions(st: GameState, ctx: dict) -> bool:
                 continue
             if not _trigger_matches(st, e, comp, ctx):
                 continue
+            # §F-7.4 pile-on rule: this trigger episode has already been
+            # answered by an identical reaction — the threat spoke once. Skip
+            # WITHOUT spending anything: the body keeps its reaction armed, so
+            # the deterrent persists (the next spell meets the next punisher)
+            # instead of the whole horde discharging into one event and
+            # handing the party free rein.
+            episode = ctx.get("episode")
+            if episode is not None and (f"{episode}|{_reaction_signature(comp)}"
+                                        in st.reacted_episode):
+                continue
             cand = (comp.priority, order, e, comp)
             if best is None or cand[:2] < best[:2]:
                 best = cand
@@ -2170,6 +2277,9 @@ def _offer_reactions(st: GameState, ctx: dict) -> bool:
     if best is None:
         return False
     _, _, e, comp = best
+    episode = ctx.get("episode")
+    if episode is not None:
+        st.reacted_episode.append(f"{episode}|{_reaction_signature(comp)}")
     _fire_reaction(st, e, comp, ctx)
     return True
 
@@ -2379,7 +2489,7 @@ def _spend_proactive(st: GameState, actor: CharacterState, mode: str,
     actions pass `gauge=False` — they charge on their own terms (the Skill +5, the
     Ultimate spending the gauge as its cost), never the generic action credit."""
     if gauge and actor.acted_mode is None:
-        _gain_gauge(st, actor, 2)  # taking your proactive action (D8-3.3)
+        _gain_gauge_pct(st, actor, 2)  # taking your proactive action (D8-3.3)
     actor.acted_mode = mode
     if mode not in actor.proactive_modes:
         actor.proactive_modes.append(mode)
@@ -2566,6 +2676,11 @@ def _apply_mitigation(st: GameState, item: StackItem, target, amount: int):
     x = _mitigate_value(mitigator)
     landing = mitigator if item.mitigate_for != item.mitigate_by else target  # ally → redirect
     residual = max(0, amount - x)
+    # Gauge rework: the guard is paid for what it actually turns — +1 gauge per
+    # point mitigated (never for guard rating beyond the blow). What still lands
+    # pays the victim's usual +1/HP-lost, so the hero who steps in is credited
+    # for the blow's full weight: (mitigated) + (taken).
+    _gain_gauge(st, mitigator, amount - residual)
     # Accumulated across every mitigated hit this action deals: a two-hit ability
     # blunted to nothing on both hits carries no rider, but one that leaks a
     # single point does.
@@ -2661,7 +2776,7 @@ def _do_use_skill(st: GameState, action: Action) -> None:
          + (f" on {tgt.name}" if tgt else "") + ".",
          character=actor.id, card=card.id, target=action.target_id)
     _announce_combat_ability(st, pushed)  # §M-A.7: a damaging Skill swings
-    _gain_gauge(st, actor, 5)  # using your Skill charges the gauge (D8-3.3)
+    _gain_gauge_pct(st, actor, 5)  # using your Skill charges the gauge (D8-3.3)
 
 
 def _do_use_ultimate(st: GameState, action: Action) -> None:
@@ -3246,6 +3361,9 @@ def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None
              enemy=enemy.id, component=ch.component_id, label=ch.name, reason=reason)
     ended = list(enemy.channels)
     enemy.channels = []
+    # Lifting a pump aura can drop its beneficiaries to ≤ 0 — they die now,
+    # permanently, exactly as an applied wound aura kills at channel start.
+    _reap_aura_kills(st)
     for ch in ended:
         _fire_channel_break(st, enemy.id, "enemy", ch.name, ch.effects, ch.target_id)
 
@@ -3429,7 +3547,14 @@ def _apply_static(st: GameState, target, effect, sign: int, log_it: bool = True,
         power = _value(effect.power, ctx)
         toughness = _value(effect.toughness, ctx)
         target.power_bonus += sign * polarity * power
-        target.temp_mod += sign * polarity * toughness  # re-applied every end step
+        delta = sign * polarity * toughness  # re-applied every end step
+        if sign < 0 and delta < 0:
+            # Lifting a pump aura consumes only what remains of the buffer:
+            # damage already spends `temp_mod` (`_apply_damage` absorbs into
+            # it), so a full-value lift would double-charge the spent share and
+            # dig a phantom wound into a creature that already paid for it.
+            delta = -min(-delta, max(0, target.temp_mod))
+        target.temp_mod += delta
         if log_it:
             verb = "gains" if sign > 0 else "loses"
             sgn = "-" if polarity < 0 else "+"
@@ -3533,6 +3658,9 @@ def _end_channels(st: GameState, char: CharacterState, channels: List[Channel],
         _log(st, "channel_end", f"{channel.card.name}'s channel ends (the card is "
              f"already in the graveyard).", character=char.id, card=channel.card.id, reason=reason)
     char.channels = [ch for ch in char.channels if ch not in channels]
+    # Lifting a pump aura can drop its beneficiaries to ≤ 0 — they die now,
+    # permanently, exactly as an applied wound aura kills at channel start.
+    _reap_aura_kills(st)
     # The reserved mana returns to the pool immediately — no stack, no trigger.
     char.pool.extend(released)
     _log(st, "mana_released",
@@ -3591,6 +3719,11 @@ def _trigger_pick_effect(item: StackItem):
     `item.target_id` (`_site_target`) — so one pick aims the whole branch, exactly
     as it does for a conditional cast at spell speed."""
     for e in _iter_leaf(_pending_trigger_effects(item)):
+        # A stack-facing effect (counter/redirect/copy_spell) with no bound aim
+        # owes a STACK pick — a copied Negate re-aims at the stack, so you can
+        # copy a counter to counter the counter.
+        if getattr(e, "kind", None) in _STACK_FACING and item.target_id is None:
+            return e
         desc = getattr(e, "target", None)
         if isinstance(desc, str):
             if item.target_id is None:
@@ -3713,8 +3846,14 @@ def _do_choose_target(st: GameState, action: Action) -> None:
     pc.item.needs_target = False
     st.pending_choice = None
     tgt = st.combatant(action.target_id)
+    name = tgt.name if tgt is not None else action.target_id
+    uid = _parse_uid(action.target_id)
+    if uid is not None:  # a stack pick (a copied counter re-aiming)
+        picked = next((s for s in st.stack if s.uid == uid), None)
+        if picked is not None:
+            name = picked.label
     _log(st, "target_chosen",
-         f"{pc.item.label} targets {tgt.name if tgt is not None else action.target_id}.",
+         f"{pc.item.label} targets {name}.",
          source=pc.item.source_id, target=action.target_id)
     if not _raise_next_trigger_pick(st):
         st.passes = 0
@@ -4366,6 +4505,7 @@ def _r_destroy(st, item, effect, target, ctx):
         if _boss_shrugs_removal(st, item.label, target):
             return
         ctx["destroyed_target"] = {"level": target.level}
+        _control_credit(st, item, target.level)  # removal pays its level (gauge rework)
         _log(st, "destroyed", f"{target.name} is destroyed (Level {target.level}).",
              target=target.id, level=target.level)
         _kill_enemy(st, target)
@@ -4391,6 +4531,10 @@ def _r_pump(st, item, effect, target, ctx):
     _log(st, "pump", f"{target.name} gets +{power}/+{toughness} "
          f"(eff HP {target.effective_hp}).", target=_tid(target),
          power=power, toughness=toughness)
+    # A negative pump (authored directly, or a ref that resolved negative) is a
+    # wound by another name — lethal on the same rule (`_r_wound`), right now.
+    if target.effective_hp <= 0:
+        _after_damage(st, target)
 
 
 def _r_draw(st, item, effect, target, ctx):
@@ -4639,6 +4783,8 @@ def _r_exile(st, item, effect, target, ctx):
     if isinstance(target, Corpse):
         st.corpses.remove(target)
         if target.stirring > 0:
+            # Defeating a rising enemy on the spot is removal (gauge rework).
+            _control_credit(st, item, target.level)
             _log(st, "exiled", f"{target.name}'s stirring corpse is exiled — "
                  f"it is defeated on the spot.", target=target.id, corpse=True)
         else:
@@ -4648,6 +4794,7 @@ def _r_exile(st, item, effect, target, ctx):
     if isinstance(target, EnemyState):
         if _boss_shrugs_removal(st, item.label, target):
             return
+        _control_credit(st, item, target.level)  # removal pays its level (gauge rework)
         _log(st, "exiled", f"{target.name} is exiled.", target=target.id, level=target.level)
         ctx["destroyed_target"] = {"level": target.level}
         _kill_enemy(st, target, leaves_corpse=False, death_event=False)
@@ -4665,6 +4812,7 @@ def _r_bounce(st, item, effect, target, ctx):
     if isinstance(target, EnemyState):
         if _boss_shrugs_removal(st, item.label, target):
             return
+        _control_credit(st, item, target.level)  # tempo removal pays its level too
         _bounce_enemy(st, target)
     elif isinstance(target, TokenState):
         _remove_token(st, target)
@@ -4752,6 +4900,10 @@ def _r_counter(st, item, effect, target, ctx):
     st.stack.remove(victim)
     _log(st, "countered", f"{item.label} cancels {victim.label}.",
          label=victim.label, source=victim.source_id)
+    # Gauge rework: the counterer banks the damage the cancelled enemy action
+    # would have dealt (its source's level when it dealt none).
+    if victim.source_side == "enemy":
+        _control_credit(st, item, _denied_value(st, victim))
 
 
 def _intent_reveal(intent: Intent, enemy: EnemyState) -> str:
@@ -4787,6 +4939,17 @@ def _strip_slot(st: GameState, target: EnemyState, slot2: bool) -> None:
          f"*{reveal}*.", enemy=target.id, reveal=reveal, slot=2 if slot2 else 1)
 
 
+def _credit_strip(st: GameState, item: StackItem, target: EnemyState,
+                  intent: Optional[Intent]) -> None:
+    """Gauge rework: a stripped intent pays its denier the damage it would have
+    dealt — a non-damage (or not-yet-declared, for a lingering strip) intent
+    pays the enemy's level instead."""
+    denied = intent.attack_damage(target.power_bonus) if intent is not None else None
+    if not denied and intent is not None:
+        denied = _effects_damage(getattr(intent, "effects", None))
+    _control_credit(st, item, denied if denied else max(1, target.level))
+
+
 def _strips_every_slot(effect) -> bool:
     """Does this strip unravel EVERY declared intent rather than one chosen line?
     A side-wide target ("remove the telegraphed intent of all enemies") offers no
@@ -4809,6 +4972,7 @@ def _r_strip_intent(st, item, effect, target, ctx):
         slots = [s for s in (False, True)
                  if (target.intent2 if s else target.intent) is not None]
         for slot2 in slots:
+            _credit_strip(st, item, target, target.intent2 if slot2 else target.intent)
             _strip_slot(st, target, slot2)
         if slots:
             return
@@ -4827,10 +4991,12 @@ def _r_strip_intent(st, item, effect, target, ctx):
         # The strip LINGERS instead: the enemy's next intent is smothered as it
         # is declared.
         target.strip_pending += 1
+        _credit_strip(st, item, target, None)  # tempo bought either way (gauge rework)
         _log(st, "strip_intent_pending",
              f"The unravelling clings to {target.name} — its next intent will be "
              f"smothered as it forms.", enemy=target.id)
         return
+    _credit_strip(st, item, target, intent)
     _strip_slot(st, target, slot2)
 
 
@@ -4852,12 +5018,17 @@ def _r_break_channel(st, item, effect, target, ctx):
             _log(st, "no_channel", f"{target.name} is holding no channel.",
                  target=_tid(target), label=item.label)
             return
+        _control_credit(st, item, target.level)  # a broken ritual is denial too
         _break_enemy_channels(st, target, reason=reason)
 
 
 def _r_stun(st, item, effect, target, ctx):
     if isinstance(target, EnemyState):
         target.stunned += int(getattr(effect, "intents", 1))
+        # Gauge rework: remember the stunner — they are paid denial gauge as
+        # each stunned intent is actually skipped (last applier wins).
+        if item.source_side == "party" and st.character(item.source_id) is not None:
+            target.stunned_by = item.source_id
         _log(st, "stun", f"{target.name} is stunned (skips {target.stunned} intent(s)).",
              enemy=target.id, intents=target.stunned)
     elif isinstance(target, CharacterState):
@@ -4952,25 +5123,30 @@ def _r_modify_action(st, item, effect, target, ctx):
              target=_tid(target), modifier=mod)
         return
     if mod == "charge_ultimate":
+        # Authored in PERCENT of the bar (gauge rework): "+30" means 30% of a
+        # full charge at any level, converted to raw points as it lands.
         amount = max(0, _value(effect.amount, ctx))
-        _gain_gauge(st, target, amount)
+        _gain_gauge_pct(st, target, amount)
         _log(st, "action_mod",
              f"{target.name}'s ultimate gauge surges +{amount} "
-             f"({target.ultimate_gauge}/100).",
+             f"({target.ultimate_gauge_pct}/100).",
              target=_tid(target), modifier=mod, amount=amount)
         return
     if mod == "drain_ultimate":
-        # Drain Ult: the enemy-side mirror of charge_ultimate. Takes what is
-        # actually there (a gauge already at 0 loses nothing) and never goes
-        # negative, so the log reports the real loss rather than the attempt.
+        # Drain Ult: the enemy-side mirror of charge_ultimate — also authored in
+        # percent. Takes what is actually there (a gauge already at 0 loses
+        # nothing) and never goes negative, so the log reports the real loss
+        # rather than the attempt.
         want = max(0, _value(effect.amount, ctx))
-        taken = min(want, target.ultimate_gauge)
+        want_pts = round(want * target.ultimate_charge_cost / 100)
+        taken = min(want_pts, target.ultimate_gauge)
         target.ultimate_gauge -= taken
+        taken_pct = round(taken * 100 / target.ultimate_charge_cost)
         _log(st, "action_mod",
-             f"{target.name}'s ultimate gauge is drained −{taken} "
-             f"({target.ultimate_gauge}/100)." if taken
+             f"{target.name}'s ultimate gauge is drained −{taken_pct} "
+             f"({target.ultimate_gauge_pct}/100)." if taken
              else f"{target.name}'s ultimate gauge is already empty.",
-             target=_tid(target), modifier=mod, amount=taken)
+             target=_tid(target), modifier=mod, amount=taken_pct)
         return
     duration = getattr(getattr(effect, "duration", None), "value", "this_turn")
     target.action_mods[mod] = duration
@@ -5034,6 +5210,9 @@ def _r_counters(st, item, effect, target, ctx):
     target.counters = getattr(target, "counters", 0) + max(power, toughness)
     _log(st, "counters", f"{target.name} gains +{power}/+{toughness} "
          f"counters (HP {target.hp}/{target.max_hp}).", target=_tid(target))
+    # Negative counters can be lethal — judged immediately, like a wound.
+    if target.effective_hp <= 0:
+        _after_damage(st, target)
 
 
 def _r_prevent_only(st, item, effect, target, ctx):
@@ -5068,6 +5247,26 @@ def _r_amplify(st, item, effect, target, ctx):
          multiplier=effect.multiplier, bonus=effect.bonus)
 
 
+def _flip_effect_sides(effects) -> None:
+    """The copy belongs to the COPIER (the CopySpell contract, schema.py): flip
+    the ally/enemy language of every target descriptor so a copied enemy spell
+    turns on the enemy side, not back onto the party (and vice versa). `any`,
+    self and slot refs stand. Descends into conditional/modal nests."""
+    for e in effects:
+        if getattr(e, "kind", None) == "modal":
+            for mode in e.modes:
+                _flip_effect_sides(mode.effects)
+        nested = getattr(e, "effects", None)
+        if isinstance(nested, list):
+            _flip_effect_sides(nested)
+        desc = getattr(e, "target", None)
+        side = getattr(desc, "side", None)
+        if side == Side.ally:
+            desc.side = Side.enemy
+        elif side == Side.enemy:
+            desc.side = Side.ally
+
+
 def _r_copy_spell(st, item, effect, target, ctx):
     # Copy a spell on the stack (a spell multiplier). The copy belongs to the
     # COPIER: it resolves from their side (ally/enemy language flips with
@@ -5080,7 +5279,7 @@ def _r_copy_spell(st, item, effect, target, ctx):
     if victim is None or not _filter_matches("spell", victim):
         _log(st, "copy_fizzle", f"{item.label} has no spell to copy.", kind="copy_spell")
         return
-    if victim.card is not None and victim.card.timing == Timing.channeled:
+    if not _stack_copyable(victim):
         _log(st, "copy_fizzle",
              f"{item.label} can't copy {victim.label} — a channel is a held card, "
              f"not a one-shot.", kind="copy_spell")
@@ -5093,22 +5292,41 @@ def _r_copy_spell(st, item, effect, target, ctx):
                      card=victim.card, card_id=victim.card_id,
                      mode=victim.mode, x=victim.x, cast_mode=item.cast_mode,
                      is_copy=True)
+    if victim.source_side != item.source_side:
+        _flip_effect_sides(echo.effects)
     copier = st.character(item.source_id)
-    single_site = len(_target_sites(_pending_trigger_effects(echo), echo.card)) == 1
-    if copier is not None and single_site:
+    sites = _target_sites(_pending_trigger_effects(echo), echo.card)
+    single_site = len(sites) == 1
+    # A stack-facing copy (a copied Negate/redirect) re-aims at the STACK — so
+    # you can copy a counter to counter the counter. With nothing legal to name
+    # it keeps the original's #uid aim instead of resolving unaimed.
+    stack_site = single_site and str(sites[0][1]).startswith("stack")
+    retarget = copier is not None and single_site
+    if retarget:
         # A single-target copy: the copier assigns the target fresh (multi-site
         # copies keep the original bindings — one pick can't rebind them all).
         echo.target_id = None
         echo.targets = ()
-        echo.needs_target = _trigger_pick_effect(echo) is not None
+        pick = _trigger_pick_effect(echo)
+        echo.needs_target = pick is not None and (
+            not stack_site or bool(_effect_target_options(st, pick, echo.card, echo)))
+        if not echo.needs_target:
+            # No raisable pick for this shape — keep the original aim rather
+            # than resolving unaimed (which reads as a fizzle).
+            echo.target_id, echo.targets = victim.target_id, victim.targets
+        retarget = echo.needs_target
     elif copier is None and single_site and item.source_side == "enemy":
         # An enemy copier makes no interactive pick: its copy MIRRORS — the
         # chosen target becomes the original caster ("your own fire returns").
         echo.target_id = victim.source_id
         echo.targets = ()
     _push(st, echo)
+    # Say up front whether the copy re-aims: a locked copy resolving on the
+    # original's targets otherwise reads as a misplay (playtest, 2026-08).
+    note = " — pick its target" if retarget else \
+        ("" if copier is None else " (the copy keeps the original's targets)")
     _log(st, "copy_spell", f"{item.label} copies {victim.label} — the copy is "
-         f"{getattr(st.combatant(item.source_id), 'name', item.source_id)}'s.",
+         f"{getattr(st.combatant(item.source_id), 'name', item.source_id)}'s{note}.",
          source=item.source_id, copied=victim.label, uid=victim.uid)
     if echo.needs_target:
         _raise_next_trigger_pick(st)
@@ -5192,6 +5410,7 @@ def _r_taunt(st, item, effect, target, ctx):
                 target.intent.target_id = item.source_id
             if target.intent2 is not None:  # boss fury: both declared swings
                 target.intent2.target_id = item.source_id
+            _control_credit(st, item, target.level)  # soft control (gauge rework)
             _log(st, "taunt", f"{target.name} is taunted into targeting {who.name}.",
                  enemy=target.id, by=item.source_id)
     elif isinstance(target, CharacterState) and item.source_side == "enemy":
@@ -5760,19 +5979,73 @@ def _check_charge_full(st: GameState, e: EnemyState) -> None:
 # The ultimate gauge (Design Update 08 §D8-3.3)
 # --------------------------------------------------------------------------- #
 def _gain_gauge(st: GameState, char, n: int) -> None:
-    """Fill a character's public 0–100 ultimate gauge (clamped). Quiet except at
-    the moment it fills — the bar is the display; the log marks only the drama.
-    The gauge persists through incapacitation (a revived character keeps it)."""
+    """Fill a character's ultimate gauge by `n` RAW POINTS, clamped at the
+    level-scaled charge cost (gauge rework — clients see the 0–100
+    `ultimate_gauge_pct`). Quiet except at the moment it fills — the bar is the
+    display; the log marks only the drama. The gauge persists through
+    incapacitation (a revived character keeps it)."""
     if n <= 0 or not isinstance(char, CharacterState):
         return
+    char.gauge_earned += n  # pre-clamp income — soak/tuning telemetry
+    cost = char.ultimate_charge_cost
     before = char.ultimate_gauge
-    char.ultimate_gauge = min(100, before + n)
-    if (before < 100 <= char.ultimate_gauge
+    char.ultimate_gauge = min(cost, before + n)
+    if (before < cost <= char.ultimate_gauge
             and char.ultimate is not None and not char.ultimate_used):
         _log(st, "gauge_full",
              f"{char.name}'s ultimate gauge is full — "
              f"{char.ultimate.name} is ready.",
              character=char.id, ultimate=char.ultimate.name)
+
+
+def _gain_gauge_pct(st: GameState, char, pct: int) -> None:
+    """Tempo-denominated gauge credit: `pct` PERCENT of the bar, whatever the
+    level. The flat payouts (+2 action, +5 Skill, +25 ally down, authored
+    charge/drain verbs) mean "a share of a full bar", not a magnitude, and must
+    not erode as the charge cost grows with level (gauge rework)."""
+    if pct <= 0 or not isinstance(char, CharacterState):
+        return
+    _gain_gauge(st, char, max(1, round(pct * char.ultimate_charge_cost / 100)))
+
+
+def _effects_damage(effects) -> int:
+    """Total authored damage in an effect list: int `deal_damage` amounts, through
+    conditional containers; a modal counts its most damaging mode (the threat a
+    denial removed). Refs ("all", per-X) price as 0 — the fallback covers them."""
+    total = 0
+    for e in effects or []:
+        kind = getattr(e, "kind", None)
+        if kind == "deal_damage" and isinstance(getattr(e, "amount", None), int):
+            total += max(0, e.amount)
+        elif kind == "conditional":
+            total += _effects_damage(e.effects)
+        elif kind == "modal":
+            total += max((_effects_damage(m.effects) for m in e.modes), default=0)
+    return total
+
+
+def _denied_value(st: GameState, victim: StackItem) -> int:
+    """What a cancelled enemy stack item was worth in gauge (gauge rework):
+    the damage it would have dealt, or its source's level when it dealt none —
+    control is paid in the enemy's own numbers."""
+    denied = 0
+    src = st.combatant(victim.source_id)
+    if victim.attack_power is not None:
+        denied += max(0, victim.attack_power + getattr(src, "power_bonus", 0))
+    denied += _effects_damage(victim.effects)
+    if denied <= 0:
+        denied = max(1, getattr(src, "level", 1))
+    return denied
+
+
+def _control_credit(st: GameState, item: StackItem, n: int) -> None:
+    """Pay a party-side character `n` gauge for a control play (counter, strip,
+    stun, removal, taunt, channel break — gauge rework). Token and enemy sources
+    earn nothing, mirroring the dealing-damage rule. `item` may be None (a mass
+    strip resolving from a channel's upkeep tick carries no stack item)."""
+    if item is None or item.source_side != "party":
+        return
+    _gain_gauge(st, st.character(item.source_id), n)
 
 
 # --------------------------------------------------------------------------- #
@@ -6121,6 +6394,8 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
             and isinstance(target, EnemyState) and target.alive
             and not (target.is_boss and not target.in_execute_window)):
         _log(st, "deathtouch", f"{target.name} is executed by deathtouch.", target=target.id)
+        if isinstance(source_obj, CharacterState):
+            _gain_gauge(st, source_obj, target.level)  # removal credit (gauge rework)
         target.hp = 0
         target.temp_mod = min(target.temp_mod, 0)
         _sync_enc_temp(target)
@@ -6195,6 +6470,7 @@ def _after_damage(st: GameState, target) -> None:
         # encounter firings stay spent — the drama doesn't repeat.
         shaken = target.stunned > 0 or target.taunted_by is not None
         target.stunned = 0
+        target.stunned_by = None
         target.taunted_by = None
         target.cooldowns = {k: v for k, v in target.cooldowns.items() if v >= 10 ** 9}
         _log(st, "enrage", f"{target.name} ENRAGES ({target.effective_hp}/"
@@ -6221,7 +6497,7 @@ def _after_damage(st: GameState, target) -> None:
             target.down_credited = True
             for other in st.party:
                 if other.id != target.id and other.alive:
-                    _gain_gauge(st, other, 25)
+                    _gain_gauge_pct(st, other, 25)
         _note_break(st, target, "incapacitated")
         _purge_stack_from(st, target.id, "incapacitated")  # its pending spells/attacks drop
         # On-death channel triggers hear an incapacitation too. The downed
@@ -6800,7 +7076,8 @@ def _heroic_actions(st: GameState, actor: CharacterState,
         if not (_card_has_stance(skill) and _active_stance(actor) is not None):
             out += _hero_ability_actions(st, actor, skill, "use_skill", "Skill")
     if (actor.ultimate is not None and not actor.ultimate_used
-            and actor.ultimate_gauge >= 100 and not actor.proactive_modes):
+            and actor.ultimate_gauge >= actor.ultimate_charge_cost
+            and not actor.proactive_modes):
         out += _hero_ability_actions(st, actor, actor.ultimate, "use_ultimate", "Ultimate")
     return out
 
@@ -6922,6 +7199,17 @@ def _stack_redirectable(st: GameState, s) -> bool:
             and not _has_kw(st.enemy(s.source_id), "relentless"))
 
 
+def _stack_copyable(s) -> bool:
+    """True when a stack item may be duplicated by a `copy_spell`. A channelled
+    cast can't be — a channel is a held card, not a one-shot — and neither can
+    an enemy channel-start intent, its card-less mirror (`starts_channel`).
+    Checked at target enumeration AND at resolution, so an uncopyable spell is
+    never offered as a target only to fizzle (and waste the copy card)."""
+    if getattr(s, "starts_channel", False):
+        return False
+    return not (s.card is not None and s.card.timing == Timing.channeled)
+
+
 def _counter_filter(effects) -> Optional[str]:
     for e in _iter_leaf(effects):
         if e.kind == "counter":
@@ -6943,7 +7231,8 @@ def _site_options(st: GameState, side, targeted: bool, kind: Optional[str],
         return [(f"#{s.uid}", s.label) for s in st.stack
                 if (any_side or s.source_side == "enemy")
                 and _filter_matches(filt, s)
-                and (kind != "redirect" or _stack_redirectable(st, s))]
+                and (kind != "redirect" or _stack_redirectable(st, s))
+                and (kind != "copy_spell" or _stack_copyable(s))]
     return _pick_options(st, side, targeted, kind, state)
 
 
@@ -7028,6 +7317,17 @@ def _effect_target_options(st: GameState, effect, card=None, item=None):
     A "$slot" target resolves its descriptor through the card's slot table. An
     `exclude_self` ("another …") pick offers neither the item's source nor any
     creature the item's cast-time picks already name."""
+    if getattr(effect, "kind", None) in _STACK_FACING:
+        # A stack-facing pick (a copied counter/redirect/copy_spell re-aiming):
+        # offer stack items under the verb's own legality rules — enemy actions
+        # only for a counter, either side's for the rest — minus the picking
+        # item itself.
+        filt = "spell" if effect.kind == "copy_spell" else effect.filter
+        prefix = "stack:" if effect.kind == "counter" else "stack_any:"
+        opts = _site_options(st, prefix + filt, True, effect.kind)
+        if item is not None:
+            opts = [(tid, tl) for tid, tl in opts if tid != f"#{item.uid}"]
+        return opts
     desc = getattr(effect, "target", None)
     if isinstance(desc, str) and card is not None:
         desc = card.targets.get(slot_name(desc) or "")
@@ -7111,7 +7411,7 @@ def _target_options_for(st: GameState, effects, card: Card = None, actor_id=None
     # ally's Fireball or the enemy ritual's shape).
     if any(e.kind == "copy_spell" for e in _iter_leaf(live)):
         return [(f"#{s.uid}", s.label) for s in st.stack
-                if _filter_matches("spell", s)]
+                if _filter_matches("spell", s) and _stack_copyable(s)]
     # A redirect with an UNCHOSEN new target (e.g. "to yourself" — the Bodyguard
     # shape) has one site: the stack action to turn. A chosen new target makes
     # it a two-site card, handled by the multi-site path above this one.

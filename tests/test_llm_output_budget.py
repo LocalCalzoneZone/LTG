@@ -124,12 +124,13 @@ def test_a_truncation_does_not_burn_a_repair_attempt(capture, monkeypatch):
 # --------------------------------------------------------------------------- #
 # The model roster
 # --------------------------------------------------------------------------- #
-def test_glm_flash_is_selectable():
+def test_retired_glm_slugs_alias_to_a_live_model():
+    # Pruned 2026-08: GLM removed for latency. Saved settings files that still
+    # name the old slugs must keep working via the alias map.
     ids = [m["id"] for m in llm.MODELS]
-    assert "z-ai/glm-5.3-flash" in ids
-    assert llm._valid_model("z-ai/glm-5.3-flash") == "z-ai/glm-5.3-flash"
-    # …and it is a distinct choice, not a rename of the standard model.
-    assert "z-ai/glm-5.3" in ids
+    assert "z-ai/glm-5.3-flash" not in ids
+    for old in ("z-ai/glm-5.2", "z-ai/glm-5.3", "z-ai/glm-5.3-flash"):
+        assert llm._valid_model(old) == "google/gemini-3.7-flash"
 
 
 def test_every_model_choice_has_a_label_and_is_valid():
@@ -139,6 +140,7 @@ def test_every_model_choice_has_a_label_and_is_valid():
     assert len({m["id"] for m in llm.MODELS}) == len(llm.MODELS)
 
 
-def test_the_new_model_reaches_the_ui_settings(monkeypatch, tmp_path):
+def test_the_model_roster_reaches_the_ui_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(llm, "SETTINGS_PATH", tmp_path / "llm_settings.json")
-    assert any(m["id"] == "z-ai/glm-5.3-flash" for m in llm.public_settings()["models"])
+    ui_ids = {m["id"] for m in llm.public_settings()["models"]}
+    assert ui_ids == {m["id"] for m in llm.MODELS}

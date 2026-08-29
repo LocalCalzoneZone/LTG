@@ -485,6 +485,11 @@ class ScenarioRun:
         if character_id not in self.character_ids:
             raise ValueError("unknown character")
         self.conversation.attributed = character_id
+        # The transcript's current "party" line was recorded before the
+        # attribution — keep it in step.
+        lines = self.conversation.lines
+        if lines and lines[-1]["speaker"] == "party":
+            lines[-1]["attributed"] = character_id
 
     def choice_is_party_wide(self, index: int) -> bool:
         if self.conversation is None:

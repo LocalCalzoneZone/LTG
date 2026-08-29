@@ -25,10 +25,12 @@ _ROLES = {
          "telegraph": "Jab — deal 3",
          "verbs": [{"kind": "deal_damage", "amount": 3,
                     "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
+        # Wound, not damage, so the kit stays distinct from the shared
+        # factory's brute (the sameness gate compares verb SHAPES).
         {"id": "riposte", "archetype": "Punish", "timing": "reactive",
          "trigger": "on_hit", "cooldown": 2, "priority": 25,
-         "target_rule": "trigger_source", "telegraph": "Riposte — deal 2",
-         "verbs": [{"kind": "deal_damage", "amount": 2,
+         "target_rule": "trigger_source", "telegraph": "Riposte — wound -1/-1",
+         "verbs": [{"kind": "wound", "power": 1, "toughness": 1,
                     "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
     ]),
     "archivist": ("rear", "ranged", [
@@ -80,21 +82,19 @@ def _enemy(eid, desc="A drowned scholar in rotted robes, lantern-eyed."):
 
 
 def _encounter(name="Scene Test Zzz", scene=_SCENE, desc=True):
-    return {"name": name, "scene": scene,
-            "enemies": [_enemy("wader", desc and "A brine-bloated hulk trailing nets." or ""),
-                        _enemy("archivist"),
-                        _enemy("pale_eel"),
-                        _enemy("tomekeeper")],
-            # Generation requires per-party-size layouts (2x bodies per size).
-            "layouts": {
-                "1": ["wader", "archivist"],
-                "2": ["wader", "archivist", "pale_eel", "tomekeeper"],
-                "3": ["wader", "wader", "archivist", "pale_eel", "pale_eel",
-                      "tomekeeper"],
-                "4": ["wader", "wader", "archivist", "archivist", "pale_eel",
-                      "pale_eel", "tomekeeper", "tomekeeper"],
-            },
-            "tokens": {}}
+    # Rounded out to 8 designs by the shared factory: generation now demands
+    # 2x-distinct layouts (the beta-playtest variety floor), not just 2x bodies.
+    from tests.conftest import gate_clean_pool
+    enc = gate_clean_pool(
+        [_enemy("wader", desc and "A brine-bloated hulk trailing nets." or ""),
+         _enemy("archivist"), _enemy("pale_eel"), _enemy("tomekeeper")],
+        name=name)
+    enc["scene"] = scene
+    for e in enc["enemies"]:
+        e.setdefault("description", "A drowned scholar in rotted robes, lantern-eyed.")
+        e.setdefault("types", ["undead"])
+        e.setdefault("classes", ["wizard"])
+    return enc
 
 
 # --------------------------------------------------------------------------- #
@@ -148,7 +148,7 @@ def test_generation_repairs_missing_scene_and_descriptions(monkeypatch):
     replies = [json.dumps(incomplete), json.dumps(complete)]
     calls = []
 
-    def fake_chat(api_key, model, messages):
+    def fake_chat(api_key, model, messages, **kw):
         calls.append(messages[-1]["content"])
         return replies[len(calls) - 1]
 

@@ -442,6 +442,11 @@ def _collect_metrics(st: GameState, spec: Dict[str, Any],
         m["mana_wasted"] = max(0, m["mana_granted"] - m["mana_spent"])
         m["end_hp"] = c.hp
         m["alive"] = c.alive
+        # Gauge-rework tuning telemetry: raw pre-clamp income, the level-scaled
+        # cost, and income per turn — the archetype charge-rate comparison feed.
+        m["gauge_earned"] = c.gauge_earned
+        m["gauge_cost"] = c.ultimate_charge_cost
+        m["gauge_per_turn"] = round(c.gauge_earned / max(1, st.turn), 2)
     for e in st.enemies:
         enemies.setdefault(e.id, {}).setdefault("died_round", None)
     objective = None

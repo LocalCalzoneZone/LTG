@@ -479,10 +479,11 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "stance": _stance_block(char),
         "evergreen": _evergreen_block(char),
         # Heroic actions (D8-3): the once-per-encounter Skill/Ultimate and the
-        # public 0–100 ultimate gauge.
+        # public 0–100 ultimate gauge — served as a PERCENTAGE of the level-
+        # scaled charge cost (gauge rework), so the client bar stays /100.
         "skill": _heroic_block(char.skill, char.skill_used),
         "ultimate": _heroic_block(char.ultimate, char.ultimate_used),
-        "ultimate_gauge": getattr(char, "ultimate_gauge", 0),
+        "ultimate_gauge": getattr(char, "ultimate_gauge_pct", 0),
         "poison_counters": getattr(char, "poison_counters", 0),
         "regen_counters": getattr(char, "regen_counters", 0),
         "poisoned": bool(getattr(char, "poison_effects", None)),
