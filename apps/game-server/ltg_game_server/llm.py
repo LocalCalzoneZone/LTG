@@ -36,6 +36,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # these if a slug 404s (OpenRouter slugs drift). `label` is the dropdown display.
 MODELS: List[Dict[str, str]] = [
     {"id": "z-ai/glm-5.3", "label": "GLM 5.3 (z-ai)"},
+    {"id": "z-ai/glm-5.3-flash", "label": "GLM 5.3 Flash (z-ai)"},
     {"id": "google/gemini-3.7-flash", "label": "Gemini 3.7 Flash (Google)"},
     {"id": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5 (Anthropic)"},
     {"id": "anthropic/claude-opus-5", "label": "Claude Opus 5 (Anthropic)"},
@@ -1740,9 +1741,21 @@ def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
         raise ValueError(f"OpenRouter error {resp.status_code}: {detail}")
     try:
         data = resp.json()
-        return data["choices"][0]["message"]["content"] or ""
+        choice = data["choices"][0]
+        content = choice["message"]["content"] or ""
     except (KeyError, IndexError, ValueError) as exc:
         raise ValueError(f"unexpected OpenRouter response: {exc}") from exc
+    # A reply cut off at the ceiling is NOT a malformed reply, and the repair
+    # loops must not treat it as one: re-prompting cannot make the output
+    # shorter, so "fix this JSON" just burns another full-price attempt against
+    # the same wall. Say what happened instead — the budget is the fix.
+    if choice.get("finish_reason") == "length":
+        cap = payload.get("max_tokens")
+        raise ValueError(
+            "the model ran out of room and its reply was cut off mid-answer"
+            + (f" (max_tokens={cap})" if cap else " (no max_tokens was set)")
+            + " — raise the budget for this call, or ask for less in one request.")
+    return content
 
 
 # --------------------------------------------------------------------------- #
@@ -2154,8 +2167,16 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
 # VERBATIM (the town's persona prose, the arc) so the innkeeper is the same
 # person across acts and scenarios. All three are small text calls; the
 # adventure itself is the existing generator with the context block above.
-SCENARIO_MAX_TOKENS = 12000
-SCENARIO_TIMEOUT = 300.0
+# A town is the biggest single artifact the game generates — a full cast with
+# persona prose, locations and standing topics runs past 11k output tokens, and
+# at the old 12k ceiling those replies were being cut off mid-JSON (the model
+# reported finish_reason "length"; see `_chat`). The budget is a CEILING, not a
+# target: a town that needs 11k still costs 11k, so the headroom is free until
+# something actually uses it. The timeout has to cover the ceiling or a long
+# reply just fails a different way — 64k at the ~75 tok/s these models sustain
+# is a little under 15 minutes, so the wait is sized to match, not to 300s.
+SCENARIO_MAX_TOKENS = 64000
+SCENARIO_TIMEOUT = 1200.0
 
 # The editable TONE brief for Scenario Mode's writers (towns, arcs, acts) —
 # Options → LLM → Scenario tone. Classic high fantasy by default; a saved
