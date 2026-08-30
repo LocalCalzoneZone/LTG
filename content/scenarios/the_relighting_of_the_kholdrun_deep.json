@@ -1,0 +1,847 @@
+{
+  "kind": "scenario",
+  "title": "The Relighting of the Kholdrun Deep",
+  "town_id": "karzum",
+  "town_name": "Karzum",
+  "arc": {
+    "title": "The Relighting of the Kholdrun Deep",
+    "villain": "Ordokar Slagvein, delve-master of the Ninth Slag Company — a broad grey dwarf in felted grey wool and boots whose nails are filed flat for silence on stone, an iron eye-shade lowered against lamplight, a brass tally-rod in his fist. He has come up the deep roads to relight the Kholdrun Deep Forge under Karzum, bore a cart-adit out through the Wyrmthroat cliff, and run the northern ore past the Ironjaw Gate without paying a copper of toll to anyone who lives in daylight.",
+    "stakes": "If Ordokar lights the Deep Forge and finishes his adit, the Greatway stops at Karzum's gate while the ore goes under it — the caravans go elsewhere, the market empties, and forty chimney-vents fill with slag-smoke that kills Aeliru's cellar garden and starves Durnkal's four-hundred-year coal-bed to ash. Worse, his sappers will have four floors of Deep Barracks and a cistern the size of the square, and Karzum will be a fortress with strangers living in its foundations.",
+    "acts": [
+      {
+        "title": "Lights in the Sootfall",
+        "hook": "Yorrin Dagg's diggers came down for the winter with two stories: the ground under the Sootfall Adit shakes at night, and lamps burn a mile inside a mine that has been dead since the wars — which every miner in the Rope Loft has decided means somebody has found the old garrison's silver. At the same hour, Mokk Barrelfoot's four hired mules walked back through the Ironjaw Gate with their loads cut and no drivers, having come down from the Kholdrun cairn-shelter on the bridge road. The party can climb to the Sootfall Adit and find out who is digging, or ride out to the cairn-shelter and find out what happened to three men whose names are in Vance's ledger and who have not come back down.",
+        "questgiver_location": "the_rope_loft",
+        "questgiver_npc": "yorrin_dagg",
+        "handoff": "mokk_barrelfoot",
+        "adventure_theme": "Either the Sootfall Adit — a war-abandoned iron mine above the third switchback, now a lamp-lit sapper camp of Ordokar's grey dwarves in felted wool and flat-filed boot-nails — or the Kholdrun cairn-shelter on the gorge road, where those same sappers keep a stone-roofed pen of pressed caravan drivers and a tunnel-hound on a chain.",
+        "tone_notes": "Cold blue daylight outside, warm orange lamp-glow bleeding out of the rock; wonder first, alarm second — treasure-hunt energy that curdles when the first grey cloak steps out of the dark."
+      },
+      {
+        "title": "Grey Wool in the Vents",
+        "hook": "Torgrim Sleetbeard has been saying it for forty years and now has an audience: the chimney-vents are packed with grey felted wool, the cistern is dropping a hand's width a night, and the frozen waterfall above town has gone quiet because someone has dammed the meltwater at the Rimefall Pumphouse to drain the flooded lower galleries. Vasla Grimhelt, meanwhile, has pulled a strange chisel out of her scrap barrel — grey-dwarf work, sold to her by an Aldmere mule-boy — and can name the Guild depot at the bridge-head where Halven Orrick weighs his coin at midnight. Break the dam and flood Ordokar's diggings, or take the depot and seize the charts and the traitor who sold them.",
+        "questgiver_location": "the_ironjaw_gate",
+        "questgiver_npc": "torgrim_sleetbeard",
+        "handoff": "vasla_grimhelt",
+        "adventure_theme": "Either the Rimefall Pumphouse — a dwarf-built pump-hall behind the frozen waterfall, its wheels re-geared by Ordokar's engineers and guarded by a sluice-troll — or the Aldmere bridge-head depot at Kholdrun's cairns, a snow-buried warehouse of crates, tally-boards and Orrick's hired knives.",
+        "tone_notes": "Green ice and black iron, torchlight through a frozen fall; or lamplit crates and betrayal by a man who bought the party a drink. Cold, tightening, still human-scaled."
+      },
+      {
+        "title": "The Kholdrun Deep Forge",
+        "hook": "The coal-bed in the Ember Shrine burned down to a handful of red at dawn for the first time since the barge sank — the vents are drawing the wrong way, because something below has opened a bigger throat, and the rubble seal at the Cistern Stair has been pushed out from underneath. Kesk Ninefingers, hunched over his mug in the watch-room, says Ordokar Slagvein means to light the Kholdrun Deep Forge before Frostmoon and haul his boring-engine, the Grindmother, across Kholdrun's Bridge to cut the last of his adit from the gorge side. Go down the Cistern Stair to the forge-hall under the town, or up into the blizzard to meet the engine and its column on the black arch — Ordokar leads from the front and will be at whichever end you choose, and the other end will be his.",
+        "questgiver_location": "the_ember_shrine_of_durnkal",
+        "questgiver_npc": "hedda_emberkeep",
+        "handoff": "kesk_ninefingers",
+        "adventure_theme": "Either the Kholdrun Deep Forge — the garrison's four-hundred-year-cold furnace hall beneath the Deep Barracks, hung with ore-cages and Ordokar's forge-guard — or Kholdrun's Bridge in a blizzard, where the iron auger Grindmother is dragged over the single black arch by blind cave-oxen and chained drivers.",
+        "tone_notes": "Furnace-red on wet black stone, or white-out snow and a single arch over the Wyrmthroat; heroic, loud, hammers and horns — Karzum's bells (Nabi's fourth) ringing at the end."
+      }
+    ],
+    "cast": [
+      {
+        "id": "yorrin_dagg",
+        "name": "Yorrin Dagg",
+        "role": "wintering mine-captain of the Sootfall crew",
+        "persona": "A stocky human mine-captain who brought eleven diggers down to winter in Karzum and has been feeding them out of his own purse ever since. He is cheerful, loud, and constitutionally unable to stop talking about ore — he will draw a seam on the table in spilled tea to explain why the old workings were never emptied. His left arm is splinted from a fall in the Sootfall Adit, which he blames on the ground shaking under him, and he badly wants it to have been treasure-hunters and not something worse.",
+        "portrait_desc": "Broad human man of forty, soot in the creases of his face, sheepskin coat over a mine-lamp harness, left forearm splinted with two pass-pick handles and cord, holding a chalk stub in his good hand.",
+        "art_url": "",
+        "location": "the_rope_loft",
+        "acts": [
+          1,
+          2,
+          3
+        ],
+        "secret": "He already sold two of the old garrison's gallery-charts to Halven Orrick for winter bread money and does not yet know who Orrick sold them on to.",
+        "topics": []
+      },
+      {
+        "id": "halven_orrick",
+        "name": "Halven Orrick",
+        "role": "Aldmere Caravan Guild factor",
+        "persona": "A trim, silver-tongued human factor in a good lowland coat, three pillars from the door of the Long Hall, who buys drinks for strangers and remembers their names a week later. He is genuinely helpful — he will find you a mule, a bed, a guide — and genuinely convinced that everyone in Karzum overcharges the Guild. He pays in bright new coin and keeps a strongbox of very old coin he never opens in company.",
+        "portrait_desc": "Lean human man in his fifties, close-trimmed grey beard, fur-collared blue coat with Guild brass at the shoulder, warm smile, one hand resting on a small iron-bound strongbox.",
+        "art_url": "",
+        "location": "the_long_hall_market",
+        "acts": [
+          1,
+          2
+        ],
+        "secret": "He has been selling the garrison's gallery-charts to Ordokar's agents for antique dwarf-silver, and has promised to have the Ironjaw Gate's ledger copied so the delve-master knows who is in town.",
+        "topics": []
+      },
+      {
+        "id": "kesk_ninefingers",
+        "name": "Kesk Ninefingers",
+        "role": "deserter surveyor of the Ninth Slag Company",
+        "persona": "A grey dwarf with frost-cracked lips who walked out of the dark and collapsed at the Ironjaw Gate, and now sits in the watch-room wrapped in three of Poppy's blankets with Captain Vance's eye on him. He speaks in short, exact sentences about depths, gradients and air, and finds daylight physically painful. He deserted when Ordokar ordered his survey crew to work a gallery he knew was holding water, and he will draw you a map of anything you ask about if you give him something hot to hold.",
+        "portrait_desc": "Squat grey-skinned dwarf, white beard cropped short, two fingers missing from the left hand, snow-goggles pushed up on his brow, felted grey cloak, cradling a tin mug in both hands.",
+        "art_url": "",
+        "location": "the_ironjaw_gate",
+        "acts": [
+          2,
+          3
+        ],
+        "secret": "His family cast the Kholdrun forge-key three centuries ago; he intends to take it off Ordokar's belt for himself and will make a grab for it at the worst possible moment.",
+        "topics": []
+      }
+    ],
+    "places": [
+      {
+        "id": "the_rope_loft",
+        "name": "The Rope Loft",
+        "function": "flavor",
+        "description": "The mule-stable's upper floor above the Ironjaw yard, where the wintering mine crews sleep four to a bunk until the passes open. Every working in the Frostcaps is chalked on the roof-beams, argued over, and rubbed out again.",
+        "interior_scene": "A long timber loft under a snow-heavy roof, coiled ropes and pass-picks hung on pegs, two rows of straw bunks, a brazier in a stone box at the centre with wet socks steaming on a wire above it, and the great roof-beam covered end to end in chalked shaft-diagrams and tally marks.",
+        "exterior_scene": "A steep-stepped stone stair up the outside of the stable wall to a plank door with a horn lantern over it, mule-breath fogging out of the vents below, snow shovelled into a hard grey ridge along the yard.",
+        "interior_art_url": "",
+        "exterior_art_url": "",
+        "acts": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "id": "the_cistern_stair",
+        "name": "The Cistern Stair",
+        "function": "flavor",
+        "description": "Below the town cistern, a flight of dwarf-cut steps ends in the rubble seal that closed the Deep Barracks the year Torgrim turned sixty. It is boarded, forbidden, and visited weekly by Dilla Grimhelt.",
+        "interior_scene": "Wide shallow steps slick with meltwater, descending to a wall of packed rubble and old mortar behind crossed planks; a black water-mirror of cistern surface to one side reflecting a single lamp-charm; grey felted wool caught in the crack at the bottom of the seal, and a draught that keeps the lamp leaning.",
+        "exterior_scene": "A low arched doorway in the terrace wall beside the cistern-house, chained shut, a faded garrison rune above it and a snowdrift that never quite covers the warm stone of the threshold.",
+        "interior_art_url": "",
+        "exterior_art_url": "",
+        "acts": [
+          1,
+          2,
+          3
+        ]
+      }
+    ],
+    "loot_lexicon": {
+      "theme": "iron",
+      "second": "frost",
+      "materials": [
+        "Pig-Lead",
+        "Chainwork",
+        "Rivet-Brass",
+        "Black Iron",
+        "Slagsteel",
+        "Anvil-Steel",
+        "Frostbone",
+        "Hoar-Silver"
+      ],
+      "epithets": [
+        "Cold-Forged",
+        "Pitted",
+        "Rust-Marked",
+        "Rivet-Bound",
+        "Hammer-Set",
+        "Anvil-True",
+        "Rime-Furred",
+        "Snow-Blind"
+      ],
+      "suffixes": [
+        "the Blackworks",
+        "Bell-Metal",
+        "the Ninth Forge",
+        "the Cold Anvil",
+        "the Frozen March",
+        "the Standing Cold"
+      ],
+      "details": [
+        "hammer marks still standing proud on it",
+        "rust bloomed and scrubbed back a dozen times",
+        "banded twice in riveted strap",
+        "furred with frost even indoors"
+      ],
+      "flavor": [
+        "It rings when you set it down.",
+        "Honest weight, honestly balanced.",
+        "Somebody good made this, and nobody remembers them.",
+        "It has been rehafted three times.",
+        "It takes the warmth out of the room.",
+        "Snow does not settle on it. It settles under it."
+      ],
+      "forms": {
+        "melee": [
+          "cleaver",
+          "greatblade",
+          "sabre",
+          "glaive",
+          "falchion",
+          "maul"
+        ],
+        "ranged": [
+          "crossbow",
+          "javelins",
+          "boarsling",
+          "harpoon",
+          "hookshot"
+        ],
+        "accessory": [
+          "bracer",
+          "brooch",
+          "charm",
+          "mantle",
+          "amulet",
+          "girdle"
+        ],
+        "consumable": [
+          "ash",
+          "poultice",
+          "oil",
+          "water",
+          "flask",
+          "powder",
+          "draught",
+          "cordial"
+        ]
+      }
+    }
+  },
+  "act1": {
+    "adventure_id": "",
+    "quest_id": "",
+    "materialization": {
+      "quests": [
+        {
+          "id": "sootfall_adit",
+          "title": "Lights in the Sootfall",
+          "text": "Yorrin Dagg's diggers swear the ground under the Sootfall Adit — a war-abandoned iron mine above the third switchback — shakes after dark, and that lamps burn a mile inside a working nobody has touched since the wars. Yorrin fell in that adit and broke his arm on ground that moved under him. Climb the switchback, go in past the fallen timbering, and find out who is digging and why.",
+          "adventure_theme": "The Sootfall Adit — a war-abandoned iron mine above the third switchback, its rusted ore-carts and fallen timbering now a lamp-lit sapper camp of grey dwarves in felted wool who fight with pass-picks and shore up the tunnel behind them as they go."
+        },
+        {
+          "id": "kholdrun_cairn_shelter",
+          "title": "The Cairn-Shelter Drivers",
+          "text": "Four of Mokk Barrelfoot's mules came back down through the Ironjaw Gate with their girths cut and no drivers on them, off the bridge road from the Kholdrun cairn-shelter. Three names are in Captain Vance's ledger going up and no names coming down. Ride the gorge road to the stone-roofed shelter at the cairns and bring the drivers home.",
+          "adventure_theme": "The Kholdrun cairn-shelter on the gorge road above the Wyrmthroat — a snow-banked stone-roofed refuge where grey-cloaked sappers keep pressed caravan drivers in a walled mule-pen and a tunnel-hound chained at the door."
+        }
+      ],
+      "quest": {
+        "title": "Lights in the Sootfall",
+        "text": "Yorrin Dagg's diggers swear the ground under the Sootfall Adit — a war-abandoned iron mine above the third switchback — shakes after dark, and that lamps burn a mile inside a working nobody has touched since the wars. Yorrin fell in that adit and broke his arm on ground that moved under him. Climb the switchback, go in past the fallen timbering, and find out who is digging and why."
+      },
+      "arrival": "You come up the last switchback at the blue hour, when the Frostcaps have gone the colour of old iron and the Ironjaw Gate is a warm yellow mouth in the cliff below forty chimney-vents all breathing straight up. A watch-captain has your names in her ledger before you have finished stamping the snow off your boots; somewhere above, a kettle-sign bangs on a loose bracket. Bread-smell rolls down the stair from the Kettle and Anvil, lamp-charms swing amber along the rail, and up in the mule-stable's loft above the yard eleven wintering diggers are arguing loud enough to hear from the cobbles — something about lights, and silver, and a mine that has been dead for four hundred years.",
+      "dialogues": {
+        "yorrin_dagg": {
+          "root": "greet",
+          "nodes": {
+            "greet": {
+              "speaker": "npc",
+              "text": "Mind the ladder, it's a stable roof and it knows it. Yorrin Dagg, mine-captain, Sootfall crew — eleven diggers wintering in this loft on my purse until the passes open. Sit. Are you the sort who can be talked to about ore, or the sort who leaves?",
+              "choices": [
+                {
+                  "label": "Talk to us about ore, then.",
+                  "next": "ore",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "You look like a man with a problem, and a splint.",
+                  "next": "problem",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "We came back down bloodied from your errand.",
+                  "next": "failed",
+                  "requires": [
+                    "defeated_once"
+                  ],
+                  "effects": []
+                }
+              ]
+            },
+            "ore": {
+              "speaker": "npc",
+              "text": "The Sootfall Adit is an iron working two hours up, above the third switchback, abandoned since the wars — and abandoned rich, that's the thing, they walked out mid-seam when the garrison marched. My crew was scratching the upper drifts all autumn for scraps. Then the ground started moving at night.",
+              "choices": [
+                {
+                  "label": "Moving how? Be exact.",
+                  "next": "problem",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "problem": {
+              "speaker": "npc",
+              "text": "Three nights running the floor of that adit shook like a drum-skin under the boots, and the fourth night it dropped a foot under me and gave me this arm. And every man of mine who's stood at the mouth after dark says the same: lamps burning a mile in, orange, steady, moving. Somebody is digging in there and it is not me.",
+              "choices": [
+                {
+                  "label": "Your crew thinks it's treasure-hunters.",
+                  "next": "offer",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_sootfall_lights",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "Why not go and look yourself?",
+                  "next": "offer",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_sootfall_lights",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "offer": {
+              "speaker": "npc",
+              "text": "Every man up here has decided it's chancers after the old garrison's silver, and I want it to be that, I want it badly. But treasure-hunters don't shake a mountain. Go up and see who holds my adit — and if you'd rather a job with a face on it, go across the yard to Mokk Barrelfoot in the Long Hall. Four of his hired mules came back through the gate this week with cut girths and no drivers.",
+              "choices": [
+                {
+                  "label": "We'll climb to the Sootfall. Whoever's in there, we'll put a name on them.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "sootfall_adit"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Mules first. Men before ore — where's Barrelfoot?",
+                  "next": "point_mokk",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_lost_drivers",
+                      "value": true
+                    },
+                    {
+                      "kind": "direct_to",
+                      "npc": "mokk_barrelfoot",
+                      "location": null
+                    }
+                  ]
+                },
+                {
+                  "label": "Let us get back to you; we've business to see to.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "point_mokk": {
+              "speaker": "npc",
+              "text": "Long Hall Market, three pillars from the door, mending harness beside Sadiya Vell's tea brazier — hill-dwarf, wide as a door, never sells anything. Tell him I sent you and he'll pour you tea he didn't pay for. The drivers went up the bridge road to the Kholdrun cairn-shelter and their names are in Vance's ledger going up and nowhere coming down.",
+              "choices": [
+                {
+                  "label": "Then we'll ride the gorge road and fetch them back.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "kholdrun_cairn_shelter"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll speak to Barrelfoot ourselves before we swear to anything.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            },
+            "failed": {
+              "speaker": "npc",
+              "text": "Sit down before you fall down. That's the same look my lads came off the mountain with, and I'll tell you what I told them: nobody's ashamed of walking back out of a hole. Poppy will feed you and Aeliru will do your fingers. Then, when you're able — the lamps are still burning up there and Mokk's drivers are still not home.",
+              "choices": [
+                {
+                  "label": "The Sootfall again. This time we go in properly.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "sootfall_adit"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Leave the mine. We'll ride for the cairn-shelter and the drivers.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "kholdrun_cairn_shelter"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Give us a day to mend first.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "mokk_barrelfoot": {
+          "root": "greet",
+          "nodes": {
+            "greet": {
+              "speaker": "npc",
+              "text": "Sit, drink Sadiya's tea, I'll hold your strap-work if it's fraying. Mokk Barrelfoot — I sell nothing, I judge mules, and this week the mules have judged me back.",
+              "choices": [
+                {
+                  "label": "What have the mules told you?",
+                  "next": "mules",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Yorrin Dagg sent us about your drivers.",
+                  "next": "mules",
+                  "requires": [
+                    "knows_lost_drivers"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "Just the tea, thanks.",
+                  "next": "tea",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "tea": {
+              "speaker": "npc",
+              "text": "Wisest words in the hall. Warm your hands, and if you hear a man with a splinted arm shouting about seams up in the Rope Loft, that's Yorrin and he's not wrong, he's only loud.",
+              "choices": []
+            },
+            "mules": {
+              "speaker": "narration",
+              "text": "He turns a cut girth-strap over in his hands. The leather has not frayed or snapped — it has been opened in one clean line, the way a man cuts a load off an animal in a hurry.",
+              "choices": [
+                {
+                  "label": "Somebody cut these on purpose.",
+                  "next": "detail",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "detail": {
+              "speaker": "npc",
+              "text": "Four of mine came down through the Ironjaw Gate on their own at dusk, loads cut away, coats iced, and every one of them came off the bridge road from the Kholdrun cairn-shelter — that's the stone-roofed refuge at the cairns above the Wyrmthroat, four hours out. Three drivers took them up. Vance has the three names in ink going up and no ink coming down. Cargo I can lose. Not Hesta's boy.",
+              "choices": [
+                {
+                  "label": "Who would take three drivers and leave four mules?",
+                  "next": "offer",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_lost_drivers",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "What do you want us to do?",
+                  "next": "offer",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_lost_drivers",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "offer": {
+              "speaker": "npc",
+              "text": "Somebody wanting hands, not haulage. Ride out and open that shelter and bring the three of them down, and I'll pay you out of the harness money and never mention it again. If nobody goes, they'll be a line Vance reads aloud at the turn of the month, and I'd sooner eat my own boots.",
+              "choices": [
+                {
+                  "label": "We'll ride the gorge road. Your drivers come home.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "kholdrun_cairn_shelter"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Dagg's mine first — the Sootfall lights.",
+                  "next": null,
+                  "requires": [
+                    "knows_sootfall_lights"
+                  ],
+                  "effects": [
+                    {
+                      "kind": "grant_quest",
+                      "quest": "sootfall_adit"
+                    },
+                    {
+                      "kind": "unlock_adventure"
+                    }
+                  ]
+                },
+                {
+                  "label": "Let us think on it; we've business to see to.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "defer_quest"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "poppy_bramblecask": {
+          "root": "greet",
+          "nodes": {
+            "greet": {
+              "speaker": "npc",
+              "text": "There you are, late as everything — bread's out, pot's on, and nook nine has been empty since the Aldmere wool-men left. Write your names and where you're bound on the slate by the door, that's the rule and it's a kind one.",
+              "choices": [
+                {
+                  "label": "Take a room. We're done for the day.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "Who's the shouting up in the mule-loft?",
+                  "next": "loft",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Why the slate?",
+                  "next": "slate",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "loft": {
+              "speaker": "npc",
+              "text": "Yorrin Dagg and eleven diggers who came down for the winter and have talked of nothing but lights in a dead mine for nine days. He feeds them out of his own purse, which is why he takes his soup standing up and pretends he isn't hungry. Go up and let him talk; it does him good.",
+              "choices": [
+                {
+                  "label": "Take a room, then.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    }
+                  ]
+                },
+                {
+                  "label": "We'll go up.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "slate": {
+              "speaker": "npc",
+              "text": "Because Serel Vance keeps a ledger at the gate and I keep one at the door, and between us nobody vanishes out of Karzum unremarked. Three of Mokk's drivers went up the bridge road last week and their chalk is still on my slate, dear, and I have not rubbed it out.",
+              "choices": [
+                {
+                  "label": "Take a room. We'll ask about the drivers in the morning.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "rest"
+                    },
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_lost_drivers",
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "label": "Leave the chalk where it is.",
+                  "next": null,
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_lost_drivers",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "serel_vance": {
+          "root": "greet",
+          "nodes": {
+            "greet": {
+              "speaker": "npc",
+              "text": "Names, trades, and where you're bound — all three, and then you may stand by the brazier as long as you like. Serel Vance, watch-captain. Karzum is a doorway, and I am the one who counts what goes through it.",
+              "choices": [
+                {
+                  "label": "And does everything that goes up come back down?",
+                  "next": "count",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "What about Mokk Barrelfoot's drivers?",
+                  "next": "drivers",
+                  "requires": [
+                    "knows_lost_drivers"
+                  ],
+                  "effects": []
+                },
+                {
+                  "label": "Any trouble on the road we should know of?",
+                  "next": "count",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "count": {
+              "speaker": "npc",
+              "text": "Not this month, and it sits badly with me. Four mules came in on their own two nights ago with their girths cut. Three names went up the bridge road ahead of them and I have no line for their coming down.",
+              "choices": [
+                {
+                  "label": "Whose names?",
+                  "next": "drivers",
+                  "requires": [],
+                  "effects": [
+                    {
+                      "kind": "set_flag",
+                      "flag": "knows_lost_drivers",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            },
+            "drivers": {
+              "speaker": "narration",
+              "text": "She turns the ledger and sets one gloved finger under three lines of the same neat hand: Habbon Reeve, drover. Til Shanks, drover. Kettil Barrow, drover's boy, aged fifteen. Beside each, in the outbound column, the Kholdrun cairn-shelter.",
+              "choices": [
+                {
+                  "label": "We may go up after them.",
+                  "next": "blessing",
+                  "requires": [],
+                  "effects": []
+                },
+                {
+                  "label": "Send your watch, then.",
+                  "next": "cant",
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "cant": {
+              "speaker": "npc",
+              "text": "I have nine on the gate and one gate to hold, and if I strip it for a search the Greatway is open all winter to whoever likes. I'll not do it. But I will give a rope, a lamp-charm and the road-count to anyone who will.",
+              "choices": [
+                {
+                  "label": "Then we'll consider it.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            },
+            "blessing": {
+              "speaker": "npc",
+              "text": "Then go before Frostmoon and go with rope. Four hours out, the cairns stand above the Wyrmthroat and the shelter is stone-roofed and windowless — you'll smell the smoke before you see it. Bring me three lines to write and I'll stand you honey buns for a month.",
+              "choices": [
+                {
+                  "label": "Three lines. We'll get them.",
+                  "next": null,
+                  "requires": [],
+                  "effects": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "flavor": {
+        "grukka_ashpot": "Two hundred loaves before the gate opens, and if you stand there the oven-draught will warm you through — though the vent has been pulling shy these last few mornings, and I do not care for shy.",
+        "vasla_grimhelt": "Boots first. Smooth soles, southern nails — the Sky Stair will teach you humility before noon. Come in, I have picks that will hold on ice and opinions you did not ask for.",
+        "nabi_ashpot": "Sorry about the noise! Fourth bell's cooling in the sand out back and if it rings true I'm hanging it at the shrine — what would you want a weapon to do, if you could pick?",
+        "nib_tallowmar": "Hand-warmers, four to one over everything else, and yours are size middling — no, don't take the glove off, I can see it. Ninety-two of my lamp-charms are out on the road this season and I know where every one of them ought to be.",
+        "dilla_grimhelt": "You're new. Do you want to see my tin? There's a tooth in it as long as my thumb and Auntie Vasla says I'm a liar, which is what people say when they haven't looked.",
+        "aeliru_frostfern": "Goose-fat salve and grey moss for the tea, and stop climbing when your ears stop hurting. That is the sign. It is always the sign, and nobody southern believes me.",
+        "dunna_ketch": "Nine hours to the Kholdrun cairns if you leave at the gate-horn, and your cloak is a summer cloak with pretensions. Sit down, the stove's mine but the warmth spreads.",
+        "torgrim_sleetbeard": "Sit on the cold end of my stool, lad, and I'll tell you what stone you're leaning on. Four hundred years old and it has outlasted every man who called this place a ruin.",
+        "sadiya_vell": "Three pillars from the door, best pitch in the hall — tea's free, news is the price, and I can already tell you've come up the switchbacks today by the way you're holding your cup.",
+        "mokk_barrelfoot": "Sit. I mend straps, I judge mules, and just now I am doing more mending than a man should have to.",
+        "hedda_emberkeep": "Four hundred and eleven years this coal-bed has burned and I have had it sixty of them. Take the shovel, bank the near side, and talk while you work — that is how counsel is done here.",
+        "halven_orrick": "Halven Orrick, Aldmere Caravan Guild — and I'll have your names in my head by morning, it's a vice. Let me stand you something hot; the Guild's purse can bear it, whatever Vasla Grimhelt tells you."
+      },
+      "topics": {
+        "torgrim_sleetbeard": [
+          {
+            "ask": "Could anyone still be working the old mines up here?",
+            "reply": "The Sootfall was cut by the garrison's own engineers and it joins the ore-galleries under this mountain if you go deep enough — I have said so for forty years and been called a bore for it. If there are lamps burning in the Sootfall, ask yourself which door they came in by, because it need not have been the mouth.",
+            "requires": [
+              "knows_sootfall_lights"
+            ]
+          },
+          {
+            "ask": "The vents seem to be pulling oddly.",
+            "reply": "Grey wool in the vent-mouths, half a sack of it out of the third flue this week, and it is not sheep. Something has been drinking at the cistern too. Every captain since I turned sixty has told me it is bears, and I have never met a bear that felts wool."
+          }
+        ],
+        "dilla_grimhelt": [
+          {
+            "ask": "You've been down the Cistern Stair, haven't you?",
+            "reply": "Weekly. The rubble seal at the bottom is still shut, but there's a draught coming through it that smells of lamp-oil and it did not last autumn. I got a nail out of there filed flat on the head — flat, like somebody sanded it so it wouldn't click on stone. Nobody files a nail flat by accident."
+          },
+          {
+            "ask": "Lamps in the Sootfall Adit — what do you make of that?",
+            "reply": "I make of it that whoever's up there came in from underneath. The old galleries all join, Master Nib says so, and my draught smells of the same oil. I'd go and prove it but Auntie Vasla has taken my boots.",
+            "requires": [
+              "knows_sootfall_lights"
+            ]
+          }
+        ],
+        "dunna_ketch": [
+          {
+            "ask": "What's the bridge road to the Kholdrun cairns like?",
+            "reply": "Four hours out with a mule, five in this snow, and the cairn-shelter sits at the last of them with the Wyrmthroat dropping away on your left the whole way. Stone roof, one door, no window — built so three men and a fire could outlast a storm. Which means three men and a fire could also be kept in it.",
+            "requires": [
+              "knows_lost_drivers"
+            ]
+          },
+          {
+            "ask": "Would mules come home alone off that road?",
+            "reply": "A good mule will walk itself home from anywhere it has been twice. Coming home with a cut girth means a man took the load off in a hurry and turned the animal loose rather than feed it. That is not banditry. Bandits keep the mule."
+          }
+        ],
+        "halven_orrick": [
+          {
+            "ask": "You buy and sell up here — heard anything of the lights in the Sootfall Adit?",
+            "reply": "Miners' talk, friend, and I'd not spend a copper on it. Every winter the Rope Loft decides the garrison's silver is still down a hole, and every spring they go back to hauling iron. Though if you do go up — and I see you might — do tell me what you find. The Guild pays honestly for good information and I pay in bright coin.",
+            "requires": [
+              "knows_sootfall_lights"
+            ]
+          },
+          {
+            "ask": "Three drovers are missing off the bridge road.",
+            "reply": "Barrelfoot's men, yes, and I am sorry for it. Between us, the Guild has lost two mule-loads on that same stretch this season and I have written both off. My advice is the road, not the mountain — but then I always advise the road. It's where my money lives.",
+            "requires": [
+              "knows_lost_drivers"
+            ]
+          }
+        ],
+        "sadiya_vell": [
+          {
+            "ask": "What's the hall saying about Dagg's mine?",
+            "reply": "Silver, silver and silver, three pillars deep. Though I'll give you the thing nobody's saying: whoever's up there is buying nothing. No flour, no lamp-oil, no rope through this market, and I would know — I am three pillars from the door. Men who dig have to eat, so they're eating from somewhere that isn't Karzum.",
+            "requires": [
+              "knows_sootfall_lights"
+            ]
+          }
+        ],
+        "vasla_grimhelt": [
+          {
+            "ask": "Could old mine-workings still hold anything worth digging for?",
+            "reply": "The Sootfall's iron, not silver, and the seam was good when they walked out of it. But mark this — a pass-pick came into my scrap barrel last month off an Aldmere mule-boy, grey steel, quenched hard, and it was not made in any forge I know of between here and the lakes. I've kept it. It bothers me."
+          }
+        ],
+        "hedda_emberkeep": [
+          {
+            "ask": "Does the shrine hear much of the mines?",
+            "reply": "Durnkal was a smith, so the mines are half his business. I'll say only this: the coal-bed has burned low twice in sixty years and both times the vents were at fault, and this week the draught over the coals has been coming the wrong way of an evening. I am watching it. Take a shovel and bank the near side while you're here."
+          }
+        ],
+        "aeliru_frostfern": [
+          {
+            "ask": "Anything strange in the town lately?",
+            "reply": "My cellar beds are warmed by the old forge-vents, and for nine days the heat has come in fits instead of steadily. My lemon tree noticed before I did. Something is opening and closing a flue somewhere below this mountain, and I did not put it there."
+          }
+        ],
+        "serel_vance": [
+          {
+            "ask": "Do many go up and not come down?",
+            "reply": "Three this month, which is three more than I permit. Their names are in the ledger and the ledger does not forget, which is the only comfort I can offer their people and it is a thin one."
+          }
+        ]
+      },
+      "reask": {
+        "yorrin_dagg": "Back again — good. Nothing's changed but the weather: the lamps are still burning up the Sootfall and Mokk's drivers are still not home. Have you thought on which?",
+        "mokk_barrelfoot": "Tea's still hot and the strap's still cut. Have you had time to think on my three lads?"
+      },
+      "accepted": {
+        "yorrin_dagg": "Right. Rope at the mouth, don't trust the timbering past the second drift, and if the floor starts drumming under you, you get out — I didn't and I've a splint to show for it. Bring me a name to put on this, that's all I ask.",
+        "mokk_barrelfoot": "Then I'll not sleep till you're back, and I'll have four mules saddled and warm at the gate. Habbon, Til, and the boy Kettil. Say the names on the way up so you don't forget who you're for."
+      },
+      "declined": {
+        "yorrin_dagg": "Fair enough — a man who thinks before he climbs generally climbs again. I'll be here. I'm here all winter, feeding eleven diggers on soup and stories.",
+        "mokk_barrelfoot": "No harm in thinking. But think fast, friend — it's cold in a stone shelter and colder in the accounting."
+      },
+      "committed": {
+        "yorrin_dagg": "Mokk's men before my ore — aye, that's the right order, and I'd have said so myself if I weren't so fond of ore. Go on. The Sootfall's waited four hundred years, it'll wait a week.",
+        "mokk_barrelfoot": "You're Dagg's, then. Good — he needs someone, and my lads are stone-roofed and out of the wind at least. But come and find me the moment you're free of him."
+      },
+      "stock": {}
+    }
+  },
+  "difficulty": "standard"
+}

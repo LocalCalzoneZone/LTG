@@ -1,0 +1,766 @@
+{
+  "name": "The Intake and the Sluice-Gates",
+  "scene": "The last chamber is a stone race walled in dripping black iron, ending at the double sluice-gates the grey dwarves have winched shut and pinned with drift-spikes. Green ice grows down the walls in ribbed columns, the lamplight stops a few feet short of the standing water, and a slack chain runs from a ring in the floor into the dark behind the intake grate. Every so often the chain comes tight and the whole grate groans.",
+  "scene_image": "/art/the_rimefall_pumphouse__phase3/scene-8c47a7e8.png",
+  "enemies": [
+    {
+      "id": "grennok_sluice_troll",
+      "name": "Grennok, the Sluice-Troll",
+      "flavor": "Hooks the backline into his reach and sweeps whatever stands in front of him.",
+      "description": "A grey slab of a troll, twelve feet of water-slick hide the colour of wet slate, ribs and shoulders scarred white where the collar-chain has worn in; his arms hang past his knees and end in webbed hands, one of them wrapped around a barbed gaff-hook of dwarven iron, and river-weed and pale intake-slime drip from his jaw.",
+      "hp": 27,
+      "power": 4,
+      "level": 5,
+      "row": "front",
+      "attack_mode": "melee",
+      "is_boss": true,
+      "types": [
+        "troll"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [
+        "reach",
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "gaff_hook_pull",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "valuation",
+          "telegraph": "Gaff-Hook Pull \u2014 deal 6 and haul a hero to the front, into the water",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "grate_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "cooldown": 2,
+          "priority": 28,
+          "target_row": "front",
+          "target_rule": "valuation",
+          "telegraph": "Sweep the Grate \u2014 5 across everything in the front rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "swallow_the_draught",
+          "archetype": "Drain",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Swallow the Draught \u2014 deal 4 and gulp 4 back",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 4,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "backwash",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "telegraph": "Backwash \u2014 the race floods: 4 to every hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "chew_the_chain",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Chew the Chain \u2014 deal 7 to whoever struck him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 7,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "the_grate_gives",
+          "archetype": "Enrage",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "THE GRATE GIVES \u2014 +3/+3 permanently, the flood hits for 5, and the troll gorges",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/grennok_sluice_troll-9766e9b7.png"
+    },
+    {
+      "id": "winch_warden",
+      "name": "Winch-Warden",
+      "flavor": "No damage \u2014 she keeps the troll on its feet and the crew standing.",
+      "description": "A dwarf woman braced at the capstan in an oilskin over grey wool, a spanner-ring of gate keys at her hip and a coil of chain over one shoulder, watching the water more than you.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "chain_the_grate",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "grennok_sluice_troll",
+          "telegraph": "Chain the Grate \u2014 shield Grennok from the next blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "haul_him_up",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "cooldown": 2,
+          "priority": 14,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Haul Him Up \u2014 heal the worst-hurt of the crew 6",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/winch_warden-15a6b191.png"
+    },
+    {
+      "id": "sump_chanter",
+      "name": "Sump-Chanter",
+      "flavor": "Holds the gates shut with a rite that drives the crew \u2014 and drowns your own concentration.",
+      "description": "A hollow-cheeked dwarf kneeling in ankle-deep water, palms flat on the iron gate, chanting into it while frost creeps out from under his hands.",
+      "hp": 9,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "ritualist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "keep_the_gates_shut",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Keep the Gates Shut \u2014 held: 3 a turn to a hero and the whole crew fights at +1/+1",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "drown_the_word",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "action_type": "spell",
+          "cooldown": 2,
+          "priority": 24,
+          "condition": {
+            "kind": "hero_channeling",
+            "op": ">=",
+            "value": 1
+          },
+          "target_rule": "channeling_player",
+          "telegraph": "Drown the Word \u2014 deal 5 and shatter the hero's concentration",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "break_channel",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/sump_chanter-984cfbdb.png"
+    },
+    {
+      "id": "intake_eel",
+      "name": "Intake Eel",
+      "flavor": "Thrashes along the front rank and bites back at anything that touches it.",
+      "description": "A black eel as long as a man is tall, kept in the intake to keep the grate clear, jaw ringed with backward-hooked teeth and a fin-crest that stands up like a saw when it surges out of the water.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "serpent"
+      ],
+      "classes": [
+        "hunter"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "thresh_the_rail",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 26,
+          "target_row": "front",
+          "target_rule": "valuation",
+          "telegraph": "Thresh the Rail \u2014 4 to everything along the front",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "coil_and_snap",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 24,
+          "target_rule": "trigger_source",
+          "telegraph": "Coil and Snap \u2014 deal 6 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/intake_eel-b15b18d5.png"
+    },
+    {
+      "id": "pipe_crawler",
+      "name": "Pipe-Crawler",
+      "flavor": "Reaches over the fight to scald the back rank.",
+      "description": "A long-bodied iron machine clamped to the ceiling pipes, hauling itself hand-over-hand on hooked grips, a nozzle-head swivelling under a plume of white steam.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "steam_jet",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 28,
+          "condition": {
+            "kind": "turn",
+            "op": ">=",
+            "value": 2
+          },
+          "target_row": "rear",
+          "target_rule": "valuation",
+          "telegraph": "Steam-Jet \u2014 4 to everyone hiding in the rear rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "rear"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "vent_scald",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Vent-Scald \u2014 deal 6 to the caster",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/pipe_crawler-f9623a49.png"
+    },
+    {
+      "id": "sump_ooze",
+      "name": "Sump-Ooze",
+      "flavor": "Its bite rots on and on until somebody heals it off.",
+      "description": "A knee-deep sheet of grey-green sludge dredged out of the intake, lifting itself into a lumpy mound studded with bone chips and rusted grate-teeth.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "ooze"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "filth_bite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Filth-Bite \u2014 deal 5 and leave the rot working",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "knit_the_slime",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 14,
+          "target_rule": "self",
+          "telegraph": "Knit the Slime \u2014 it closes over and keeps closing",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/sump_ooze-3147d00c.png"
+    },
+    {
+      "id": "gate_marshal",
+      "name": "Gate-Marshal Hesk Dorn",
+      "flavor": "Freezes the deadliest hero in place with the ratchet-bell.",
+      "description": "A rangy dwarf with a hand-bell of cracked brass and a signal-hook, grey wool coat belted tight, eye-shade up and eyes flicking between the gate and the troll.",
+      "hp": 6,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "ring_the_ratchet",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 26,
+          "target_rule": "highest_threat",
+          "telegraph": "Ring the Ratchet \u2014 the deadliest hero loses a turn",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "the_line_holds",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 16,
+          "target_rule": "self",
+          "telegraph": "The Line Holds \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/gate_marshal-2df05852.png"
+    },
+    {
+      "id": "slag_hauler",
+      "name": "Slag-Hauler",
+      "flavor": "Cheap muscle that gets meaner and avenges the fallen.",
+      "description": "A young grey dwarf in a barrow-harness, shoulders raw from the straps, swinging a shovel with a filed-flat edge.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "shoulder_the_load",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 40,
+          "target_rule": "self",
+          "telegraph": "Shoulder the Load \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "drop_the_barrow",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 18,
+          "target_rule": "trigger_source",
+          "telegraph": "Drop the Barrow \u2014 deal 5 to the killer",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/slag_hauler-db6560d7.png"
+    },
+    {
+      "id": "gate_crank_hand",
+      "name": "Gate-Crank Hand",
+      "flavor": "Blocks the way to the gates and makes you swing at him.",
+      "description": "A thickset dwarf gripping a crank-bar at the sluice capstan, one boot up on the housing, hood back to show a bald grey scalp scarred by lamp burns.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "lever_check",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Lever-Check \u2014 deal 5 and drag the hero's blade onto him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "brace_the_rail",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Brace the Rail \u2014 deal 5 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase3/gate_crank_hand-0c9ba03e.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "grennok_sluice_troll",
+      "slag_hauler"
+    ],
+    "2": [
+      "grennok_sluice_troll",
+      "winch_warden",
+      "gate_crank_hand",
+      "sump_ooze",
+      "slag_hauler"
+    ],
+    "3": [
+      "grennok_sluice_troll",
+      "winch_warden",
+      "sump_chanter",
+      "intake_eel",
+      "pipe_crawler",
+      "gate_marshal",
+      "gate_crank_hand"
+    ],
+    "4": [
+      "grennok_sluice_troll",
+      "winch_warden",
+      "sump_chanter",
+      "intake_eel",
+      "intake_eel",
+      "pipe_crawler",
+      "gate_marshal",
+      "sump_ooze",
+      "gate_crank_hand",
+      "slag_hauler"
+    ]
+  }
+}

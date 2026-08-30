@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Rimefall Pumphouse",
+  "flavor": "Climb to the silenced waterfall above Karzum, take the re-geared pump-hall from Ordokar's sappers, and wrench the sluice-gates open.",
+  "phases": [
+    {
+      "narration": "You leave Karzum by the north switchbacks with Torgrim Sleetbeard's cursing still in your ears and the fresh chalk-mark he scratched on the well-stone behind you. An hour up, the great fall stands silent \u2014 a wall of green ice where there should be thunder \u2014 and the iron stair beside it has been swept, gritted and guarded. Grey figures in felted wool rise off the landings, hoods down over iron eye-shades, picks and slings coming up as you climb into the light of their coal braziers.",
+      "encounter_id": "the_rimefall_pumphouse__phase1"
+    },
+    {
+      "narration": "You duck under the frozen lip and the noise takes you \u2014 iron teeth eating iron teeth, water swallowed somewhere below your boots. The gear-floor is lit low and worked hard: a wright with a wrench half-buried in the pressure governor, overseers pacing the catwalk with brass tally-rods, chalk sums on slate for every barrel stolen out of Karzum's well. One of them lifts his rod, looks at you the way a man looks at a debt, and starts counting. Stop the wright before she finishes the draining, or the galleries below run dry and the whole crew turns on you at once.",
+      "encounter_id": "the_rimefall_pumphouse__phase2"
+    },
+    {
+      "narration": "Past the wheels the hall narrows and the floor turns to wet stone. The winch-crew is already at the capstan when you come through, and the water beyond the grate stands up. It comes out shoulder-first \u2014 a grey slab of a troll, chain-galled at the neck, arms long enough to reach the back of any room it has ever been kept in \u2014 and the dwarves make space for it the way men make space for weather. The sluice-gates are ten feet behind it, pinned with drift-spikes. Break them and Karzum drinks tonight.",
+      "encounter_id": "the_rimefall_pumphouse__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

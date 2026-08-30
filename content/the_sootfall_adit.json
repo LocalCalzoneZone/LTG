@@ -1,0 +1,21 @@
+{
+  "kind": "adventure",
+  "name": "The Sootfall Adit",
+  "flavor": "Follow the orange lamps into the war-abandoned mine and stop Ordokar Slagvein's silent diggers before Kholdrun's forge wakes.",
+  "phases": [
+    {
+      "narration": "You leave Karzum beneath cold blue daylight, climbing the third switchback while pine smoke fades behind you. Above the frozen falls, the black mouth of the Sootfall Adit leaks warm orange light through fallen timbers, and pick-blades ring somewhere beyond the dark.",
+      "encounter_id": "the_sootfall_adit__phase1"
+    },
+    {
+      "narration": "You squeeze through the broken adit and enter the old garrison's barracks, where orange lamps hang above rows of abandoned bunks. Grey dwarves turn from their ledgers and whetstones as fresh braces slam into place behind you, sealing the way back to the snow.",
+      "encounter_id": "the_sootfall_adit__phase2"
+    },
+    {
+      "narration": "You break into the deepest chamber, where the old forge squats beneath a ceiling lost in smoke and red light. Ordokar Slagvein stands on the iron dais with his brass tally-rod raised, while every surviving sapper turns toward you and waits for the first body to fall.",
+      "encounter_id": "the_sootfall_adit__phase3"
+    }
+  ],
+  "difficulty": "standard",
+  "run_only": true
+}

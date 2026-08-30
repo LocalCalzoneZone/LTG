@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CreatureView, GameSnapshot, Row, TokenView } from "../lib/types";
 import { DEPART_MS, type DepartKind, type FxEvent } from "../lib/fx";
 import { useFieldView, type FieldView } from "../lib/fieldView";
+import { CARD_WIDTH } from "../lib/layout";
 import { lungeVars, useFlip } from "../lib/motion";
 import { useSceneTint } from "../lib/sceneTint";
 import { armedTargetIdSet, useGame } from "../lib/store";
@@ -15,6 +16,79 @@ import { ProjectileLayer } from "./ProjectileLayer";
 const PLAYER_ROWS: Row[] = ["rear", "mid", "front"]; // left → right
 const CREATURE_ROWS: Row[] = ["front", "mid", "rear"]; // mirror: front faces centre
 const ROW_IDS = ["front", "mid", "rear"];
+
+// Enemy cascade (the proposal's mockup, taken literally): each type group is
+// ONE continuous downward flow at a constant vertical rhythm. The horizontal
+// lean steps down-left, and after CASCADE_LEAN_STEPS it carriage-returns to
+// the right edge and keeps flowing DOWN — never a second column beside the
+// first; the return only stops the leftward drift so the group stays inside
+// its row. Vertical overlap is MTG-style (the front card covers the bottom of
+// the one behind, so intent chips / level / keywords stay visible), applies
+// only in a crowded row (4+ enemies), and only ever between same-type cards —
+// an uncrowded row or a type boundary keeps a small gap. Bosses stand alone,
+// never overlapped. The spacing is fixed — no relaxing while targeting; it is
+// airy enough that every card is a real click surface at all times.
+const CASCADE_LEAN_STEPS = 3; // lean steps before the carriage-return
+const CASCADE_DY = 0.08; // fraction of card height the front card covers
+const CASCADE_GAP = 0.08; // vertical gap (card fraction) where cards do NOT overlap
+const CASCADE_DX = 0.12; // leftward lean per step, fraction of card width
+const PARTY_DX = 0.12; // the party's stagger — gentle, must not cross row bounds
+const cardFrac = (f: number) => `calc(${CARD_WIDTH} * ${f})`;
+
+// How long a card stays surfaced after its last stack/fx involvement — covers
+// the choreography tail (deferred impacts, recoils) so a card never sinks
+// back into the cascade mid-animation.
+const SURFACE_LINGER_MS = 1200;
+
+/** Ids that should ride above the cascade right now: everyone involved in a
+ * live stack row (as its source OR its target) or in a playing fx event,
+ * held for a linger after their last involvement. */
+function useSurfaced(snapshot: GameSnapshot | null, fx: FxEvent[]): Set<string> {
+  const timers = useRef<Map<string, number>>(new Map());
+  const surfacedRef = useRef<Set<string>>(new Set());
+  const [surfaced, setSurfaced] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const involved = new Set<string>();
+    for (const r of snapshot?.stack ?? []) {
+      involved.add(r.source_id);
+      if (r.target_id) involved.add(r.target_id);
+    }
+    for (const e of fx) {
+      involved.add(e.entityId);
+      if (e.targetId) involved.add(e.targetId);
+      if (e.sourceId) involved.add(e.sourceId);
+    }
+    const next = new Set(surfacedRef.current);
+    for (const id of involved) {
+      const t = timers.current.get(id);
+      if (t != null) {
+        window.clearTimeout(t);
+        timers.current.delete(id);
+      }
+      next.add(id);
+    }
+    for (const id of next) {
+      if (involved.has(id) || timers.current.has(id)) continue;
+      timers.current.set(
+        id,
+        window.setTimeout(() => {
+          timers.current.delete(id);
+          const n = new Set(surfacedRef.current);
+          n.delete(id);
+          surfacedRef.current = n;
+          setSurfaced(n);
+        }, SURFACE_LINGER_MS),
+      );
+    }
+    if (next.size !== surfacedRef.current.size) {
+      surfacedRef.current = next;
+      setSurfaced(next);
+    }
+  }, [snapshot, fx]);
+
+  return surfaced;
+}
 
 type Dying =
   | { kind: "creature"; view: CreatureView; depart: DepartKind; grand?: boolean }
@@ -218,9 +292,14 @@ export function Battlefield() {
   const pickTargetId = useGame((s) => s.pickTargetId);
   const fx = useGame((s) => s.fx);
   const dying = useDeparting(snapshot);
+  const surfaced = useSurfaced(snapshot, fx);
   const shaking = useScreenShake();
   const viewRef = useRef<HTMLDivElement>(null);   // the pane (fixed): backdrop + chrome
   const fieldRef = useRef<HTMLDivElement>(null);  // the stage (zoomed/panned): the board
+  // Arrival order per enemy, assigned on first sight and never reassigned —
+  // cascade slots must not reshuffle if the server reorders its arrays, and a
+  // slain card's ghost keeps the slot it died in until the send-off ends.
+  const arrivalRef = useRef<Map<string, number>>(new Map());
   const view = useFieldView(viewRef, fieldRef);
   // FLIP pass: any card whose layout position changed with this snapshot
   // glides from where it stood — movement is a slide, never a teleport.
@@ -275,6 +354,11 @@ export function Battlefield() {
   // A live melee strike gives the whole field a 2px directional kick toward
   // the blow — the small cousin of the big screen shake. Enemy blows win.
   const creatureIds = new Set(snapshot.creatures.map((c) => c.id));
+
+  const arrival = arrivalRef.current;
+  for (const c of snapshot.creatures) {
+    if (!arrival.has(c.id)) arrival.set(c.id, arrival.size);
+  }
   const kick = [...strikes.keys()].some((id) => creatureIds.has(id))
     ? "fx-kick-w"
     : strikes.size
@@ -336,8 +420,10 @@ export function Battlefield() {
           transformOrigin: "50% 50%",
         }}
       >
-        {/* Player area (~40%) */}
-        <div className="flex min-w-0 basis-2/5 gap-1.5">
+        {/* Player area (~45% — the party's three columns get close to the
+            enemy columns' width, so portrait cards + stagger fit without
+            crossing their bounds) */}
+        <div className="flex min-w-0 basis-[45%] gap-1.5">
           {PLAYER_ROWS.map((row) => {
             const chars = snapshot.characters.filter((c) => c.row === row);
             const toks = snapshot.tokens.filter((t) => t.row === row);
@@ -359,16 +445,27 @@ export function Battlefield() {
                     </span>
                   </>
                 )}
-                {chars.map((c) => (
-                  <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
-                    <CharacterCard
-                      char={c}
-                      focused={focusedId === c.id}
-                      isHolder={holder === c.id && controlled.has(c.id)}
-                      waiting={holder === c.id && !controlled.has(c.id)}
-                      isTarget={targetIds.has(c.id)}
-                    />
-                  </MotionWrap>
+                {chars.map((c, i) => (
+                  // The party shares the enemies' down-left stagger (centred
+                  // around the column) but never overlaps — portraits keep
+                  // their full face and a real gap.
+                  <div
+                    key={c.id}
+                    className="relative transition-[left] duration-[460ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    style={{
+                      left: cardFrac(((chars.length - 1) / 2 - i) * PARTY_DX),
+                    }}
+                  >
+                    <MotionWrap id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
+                      <CharacterCard
+                        char={c}
+                        focused={focusedId === c.id}
+                        isHolder={holder === c.id && controlled.has(c.id)}
+                        waiting={holder === c.id && !controlled.has(c.id)}
+                        isTarget={targetIds.has(c.id)}
+                      />
+                    </MotionWrap>
+                  </div>
                 ))}
                 <div className="flex flex-wrap justify-center gap-1.5">
                   {toks.map((t) => (
@@ -401,32 +498,107 @@ export function Battlefield() {
           <div className="z-[1] h-[7px] w-[7px] rotate-45 border border-brass bg-ink-1" />
         </div>
 
-        {/* Creature area (~60%) */}
-        <div className="flex min-w-0 basis-3/5 gap-1.5">
+        {/* Creature area (~55%) — enemies cascade (see CASCADE_* above): live
+            cards and dying ghosts share one arrival-ordered list so a send-off
+            plays in the slot the enemy died in, and the survivors' re-pack
+            rides the FLIP pass as a slide. */}
+        <div className="flex min-w-0 basis-[55%] gap-1.5">
           {CREATURE_ROWS.map((row) => {
-            const creatures = snapshot.creatures.filter((c) => c.row === row);
             const corpses = (snapshot.corpses ?? []).filter(
               (c) => c.row === row && !dyingIds.has(c.id));
+            const entries = [
+              ...snapshot.creatures
+                .filter((c) => c.row === row)
+                .map((c) => ({
+                  id: c.id,
+                  boss: !!c.is_boss,
+                  type: c.base_id,
+                  node: (
+                    <MotionWrap id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy">
+                      <CreatureCard creature={c} isTarget={targetIds.has(c.id)} />
+                    </MotionWrap>
+                  ),
+                })),
+              ...dying
+                .filter((d) => d.kind === "creature" && d.view.row === row)
+                .map((d) => ({
+                  id: d.view.id,
+                  boss: !!(d.view as CreatureView).is_boss,
+                  type: (d.view as CreatureView).base_id,
+                  node: (
+                    <div className={`${departClass(d)} pointer-events-none`}>
+                      <CreatureCard creature={d.view as CreatureView} />
+                    </div>
+                  ),
+                })),
+            ].sort((a, b) => (arrival.get(a.id) ?? 0) - (arrival.get(b.id) ?? 0));
+
+            // Each type group is its own vertical BLOCK (groups ordered by
+            // first arrival, a boss standing alone). Blocks stack vertically
+            // within the row — different types, and the boss, never sit
+            // beside each other, so nothing ever overlaps horizontally across
+            // groups or into a neighbouring row. Only a true horde of one
+            // type wraps into side-by-side chains of CASCADE_LEN.
+            const groupKey = (e: (typeof entries)[number]) =>
+              e.boss ? `boss:${e.id}` : e.type;
+            const groups: (typeof entries)[] = [];
+            {
+              const byKey = new Map<string, typeof entries>();
+              for (const e of entries) {
+                const k = groupKey(e);
+                const g = byKey.get(k);
+                if (g) g.push(e);
+                else {
+                  const ng = [e];
+                  byKey.set(k, ng);
+                  groups.push(ng);
+                }
+              }
+            }
+
+            const crowded = entries.filter((e) => !e.boss).length > 3;
+            const dy = CASCADE_DY;
+            const dx = CASCADE_DX;
+            let z = 0;
             return (
               <div
                 key={row}
                 className="relative flex flex-1 flex-col items-center justify-center gap-3"
               >
-                {creatures.map((c) => (
-                  <MotionWrap key={c.id} id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy">
-                    <CreatureCard creature={c} isTarget={targetIds.has(c.id)} />
-                  </MotionWrap>
+                {groups.map((group) => (
+                  <div
+                    key={group[0].id}
+                    className="relative flex flex-col items-center"
+                    // The lean is pure visual offset (layout width stays one
+                    // card), so pre-shift the flow right by half its widest
+                    // lean to centre the envelope in the row column.
+                    style={{
+                      left: cardFrac(
+                        ((Math.min(group.length, CASCADE_LEAN_STEPS) - 1) * dx) / 2,
+                      ),
+                    }}
+                  >
+                    {group.map((e, i) => {
+                      z += 1;
+                      const overlaps = i > 0 && crowded && !e.boss;
+                      return (
+                        <div
+                          key={e.id}
+                          className="relative transition-[left,margin-top] duration-[460ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:!z-40"
+                          style={{
+                            zIndex: surfaced.has(e.id) ? 30 : z,
+                            marginTop: i > 0
+                              ? cardFrac(overlaps ? -dy : CASCADE_GAP)
+                              : undefined,
+                            left: cardFrac(-(i % CASCADE_LEAN_STEPS) * dx),
+                          }}
+                        >
+                          {e.node}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
-                {dying
-                  .filter((d) => d.kind === "creature" && d.view.row === row)
-                  .map((d) => (
-                    <div
-                      key={`dying-${d.view.id}`}
-                      className={`${departClass(d)} pointer-events-none`}
-                    >
-                      <CreatureCard creature={d.view as CreatureView} />
-                    </div>
-                  ))}
                 {corpses.length > 0 && (
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {corpses.map((c) => (

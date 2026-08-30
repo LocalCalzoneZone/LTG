@@ -1,0 +1,519 @@
+{
+  "name": "Sootfall Adit \u2014 The Shored Barracks",
+  "scene": "The mine widens into a war-abandoned barracks lined with iron bunks, cracked mess tables, and pillars wrapped in new pine supports. Hundreds of small lamps burn along the walls, their orange reflections trembling in puddles of black meltwater.",
+  "scene_image": "/art/the_sootfall_adit__phase2/scene-240e7f72.png",
+  "enemies": [
+    {
+      "id": "regen_sapper",
+      "name": "Ironvein Sapper",
+      "flavor": "Regenerates behind fresh bracing until a clean hit breaks the warding grit.",
+      "description": "A thick-necked dwarf in layered felt and riveted leather, iron filings glittering across his beard as he hefts a toothed pickaxe.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "components": [
+        {
+          "id": "vein_regrowth",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Vein-Regrowth \u2014 iron grit knits the sapper's wounds",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "toothed_rend",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Toothed Rend \u2014 the pick tears through a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/regen_sapper-b5078523.png"
+    },
+    {
+      "id": "mortar_smith",
+      "name": "Mortar Smith",
+      "flavor": "Throws a force shield over the wounded while hurling heavy masonry.",
+      "description": "A square dwarf in a leather smith's apron, arms dusted white with mortar, carrying a brick hammer and lime bucket.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer",
+        "healer"
+      ],
+      "components": [
+        {
+          "id": "lime_bulwark",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "wounded_ally",
+          "telegraph": "Lime Bulwark \u2014 seal a wounded digger behind a hard shell",
+          "verbs": [
+            {
+              "kind": "prevent",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "brick_hurl",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Brick-Hurl \u2014 smash a hero with a wet block of mortar",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/mortar_smith-695c4050.png"
+    },
+    {
+      "id": "shoring_guard",
+      "name": "Shoring Guard",
+      "flavor": "Parries a blow, then poisons the attacker with iron dust.",
+      "description": "A dwarf in dark iron lamellar and a rectangular mine-plate shield, with a red scarf tied around his helmet crest.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "components": [
+        {
+          "id": "dust_parry",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "priority": 15,
+          "cooldown": 3,
+          "target_rule": "trigger_source",
+          "telegraph": "Dust Parry \u2014 turn aside the incoming attack",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "attack"
+            }
+          ]
+        },
+        {
+          "id": "iron_dust",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Iron Dust \u2014 poison the hand that struck",
+          "verbs": [
+            {
+              "kind": "poison",
+              "amount": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/shoring_guard-dcb7c045.png"
+    },
+    {
+      "id": "ledger_healer",
+      "name": "Ledger Healer",
+      "flavor": "The kill-priority medic restores the most damaged company member.",
+      "description": "A narrow dwarf in a grey robe stitched with tally marks, carrying a brass cup and bandages darkened by iron dust.",
+      "hp": 5,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "cleric",
+        "healer"
+      ],
+      "components": [
+        {
+          "id": "close_the_account",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "priority": 18,
+          "cooldown": 2,
+          "target_rule": "lowest_hp_ally",
+          "telegraph": "Close the Account \u2014 restore five wounds to a fellow digger",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "last_chance",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "priority": 12,
+          "cooldown": 3,
+          "target_rule": "wounded_ally",
+          "telegraph": "Last Chance \u2014 pull a wounded digger back from collapse",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/ledger_healer-cf1ea240.png"
+    },
+    {
+      "id": "lamp_mason",
+      "name": "Lamp Mason",
+      "flavor": "Channels the lamps into a company-wide regeneration rite.",
+      "description": "A hunched dwarf with a clay-spattered beard, balancing blue-white lampstones whose light shines through his gloves.",
+      "hp": 8,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf",
+        "elemental"
+      ],
+      "classes": [
+        "ritualist",
+        "wizard"
+      ],
+      "components": [
+        {
+          "id": "lampstone_anthem",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Lampstone Anthem \u2014 every digger begins to mend while the lights burn",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "blue_lamp",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "action_type": "spell",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "channeling_player",
+          "telegraph": "Blue Lamp \u2014 scorch the hero holding a spell",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/lamp_mason-32bf39b4.png"
+    },
+    {
+      "id": "drill_sergeant",
+      "name": "Drill Sergeant",
+      "flavor": "Stuns the deadliest hand and grows stronger when the barracks empties.",
+      "description": "A barrel-chested dwarf with a shaved crown, iron whistle, and two blunt drilling hammers on his belt.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "warlord"
+      ],
+      "components": [
+        {
+          "id": "commanding_blow",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "highest_threat",
+          "telegraph": "Commanding Blow \u2014 stun the strongest hero",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "company_morale",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "priority": 15,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Company Morale \u2014 permanent strength answers the fallen",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/drill_sergeant-6d19e286.png"
+    },
+    {
+      "id": "powder_adept",
+      "name": "Powder Adept",
+      "flavor": "A careful sapper whose middle-rank blast makes the party move.",
+      "description": "A young dwarf in a copper mask and quilted coat, carrying clay charges with braided green fuses.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "components": [
+        {
+          "id": "rooffall_charge",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "self",
+          "target_row": "mid",
+          "telegraph": "Roof-Fall Charge \u2014 stones crash across the middle rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "mid"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "powder_screen",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Powder Screen \u2014 vanish behind a cloud of lime"
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/powder_adept-680ee4a3.png"
+    },
+    {
+      "id": "counterforeman",
+      "name": "Counterforeman",
+      "flavor": "A patient sentinel shuts down one spell every few turns.",
+      "description": "A square dwarf in a brass-rimmed eye-shade, holding a tally rod and a rune-scored pick.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "soldier",
+        "wizard"
+      ],
+      "components": [
+        {
+          "id": "tally_counter",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "priority": 15,
+          "cooldown": 3,
+          "target_rule": "trigger_source",
+          "telegraph": "Tally Counter \u2014 cancel the spell and mark its caster",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "spell"
+            }
+          ]
+        },
+        {
+          "id": "foremans_crack",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Foreman's Crack \u2014 drive the tally rod into a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase2/counterforeman-18646c14.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "regen_sapper",
+      "ledger_healer"
+    ],
+    "2": [
+      "regen_sapper",
+      "ledger_healer",
+      "shoring_guard",
+      "powder_adept"
+    ],
+    "3": [
+      "regen_sapper",
+      "ledger_healer",
+      "shoring_guard",
+      "powder_adept",
+      "lamp_mason",
+      "drill_sergeant"
+    ],
+    "4": [
+      "regen_sapper",
+      "ledger_healer",
+      "shoring_guard",
+      "powder_adept",
+      "lamp_mason",
+      "drill_sergeant",
+      "mortar_smith",
+      "counterforeman"
+    ]
+  }
+}

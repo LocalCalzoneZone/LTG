@@ -1,0 +1,526 @@
+{
+  "name": "Sootfall Adit \u2014 The Lamp-Lit Camp",
+  "scene": "The Sootfall Adit opens above a snow-packed switchback, its rusted ore carts half-buried beneath windblown powder. Warm lamp-glow spills from gaps in collapsed timbering, painting grey felt cloaks and hanging chains against the blue mountain dusk.",
+  "scene_image": "/art/the_sootfall_adit__phase1/scene-a2fd81b9.png",
+  "enemies": [
+    {
+      "id": "silent_pickman",
+      "name": "Silent Pickman",
+      "flavor": "A cheap front-line digger whose hooked pick punishes anyone who strikes him.",
+      "description": "A short, broad grey dwarf in felted wool, iron knee guards, and a soot-black hood, carrying a long hooked pass-pick.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "components": [
+        {
+          "id": "pick_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Pick-Hook \u2014 deal 3 and drag a hero into the timber line",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "iron_flint",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Iron Flint \u2014 strike the hand that hits him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/silent_pickman-c7c4bb6b.png"
+    },
+    {
+      "id": "lamp_runner",
+      "name": "Lamp Runner",
+      "flavor": "A skittering scout slips back toward the tunnel mouth.",
+      "description": "A wiry grey dwarf in patched leather and a copper lamp cage, wearing crampons and carrying throwing spikes.",
+      "hp": 3,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "scout"
+      ],
+      "keywords": [
+        "reach"
+      ],
+      "components": [
+        {
+          "id": "lamp_step",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Lamp-Step \u2014 vanish behind the nearest ore cart"
+        },
+        {
+          "id": "spike_volley",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Spike Volley \u2014 three iron spikes find a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/lamp_runner-6be0be45.png"
+    },
+    {
+      "id": "timber_shorer",
+      "name": "Timber Shorer",
+      "flavor": "Keeps the diggers alive with a one-use brace of planks.",
+      "description": "A stocky dwarf in a bark-brown apron, carrying a mallet and fresh pine braces strapped across his back.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "warrior"
+      ],
+      "components": [
+        {
+          "id": "brace_the_line",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Brace the Line \u2014 raise a timber shield against the next blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "combat_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mallet_crack",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Mallet-Crack \u2014 break a hero's guard",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/timber_shorer-bb4821d2.png"
+    },
+    {
+      "id": "ore_hooker",
+      "name": "Ore Hooker",
+      "flavor": "Drags a back-row hero into the waiting picks.",
+      "description": "A long-armed dwarf in a sleeveless wool vest, with a chain hook coiled around one forearm and red lamp goggles.",
+      "hp": 5,
+      "power": 2,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "rogue"
+      ],
+      "components": [
+        {
+          "id": "adit_hook",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Adit Hook \u2014 deal 3 and haul a hero to the front",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "chain_recoil",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 45,
+          "cooldown": 3,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Chain-Recoil \u2014 spring back behind the carts"
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/ore_hooker-bfb66132.png"
+    },
+    {
+      "id": "brass_lantern_bearer",
+      "name": "Brass Lantern-Bearer",
+      "flavor": "A warded lamp carries the camp's real threat.",
+      "description": "A broad dwarf wrapped in layered grey wool, bearing a tall brass lantern and a black iron shield stamped with a mine sigil.",
+      "hp": 5,
+      "power": 1,
+      "level": 1,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "components": [
+        {
+          "id": "lantern_ward",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 15,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Lantern Ward \u2014 the brass cage turns aside the next attack",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "shield_bash",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Shield-Bash \u2014 stun a hero beneath the lamp",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/brass_lantern_bearer-45b5c2d9.png"
+    },
+    {
+      "id": "coal_muleteer",
+      "name": "Coal Muleteer",
+      "flavor": "A ranged slag-slinger attacks whoever looks ready to lead.",
+      "description": "A small dwarf in a soot-streaked cap, carrying a bucket of coal chunks and a short sling.",
+      "hp": 3,
+      "power": 2,
+      "level": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "archer"
+      ],
+      "components": [
+        {
+          "id": "slag_shot",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Slag Shot \u2014 hurl a red-hot stone at the strongest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "coal_cough",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Coal-Cough \u2014 choke the hunter with soot",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/coal_muleteer-9062b8fc.png"
+    },
+    {
+      "id": "powder_sapper",
+      "name": "Powder Sapper",
+      "flavor": "Plants a blast beneath the most dangerous row.",
+      "description": "A narrow dwarf in quilted wool and a leather mask, carrying clay powder pots and a brass-handled drill.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "components": [
+        {
+          "id": "powder_line",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 3,
+          "target_rule": "self",
+          "target_row": "front",
+          "telegraph": "Powder Line \u2014 the front of the tunnel shakes",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "fuse_dodge",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Fuse-Dodge \u2014 slip behind a fresh timber brace"
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/powder_sapper-4b3602db.png"
+    },
+    {
+      "id": "ore_whisperer",
+      "name": "Ore Whisperer",
+      "flavor": "Channels a mining litany while the lantern-bearer shields the camp.",
+      "description": "An elderly dwarf kneels beside black iron, beard braided with copper wire and one palm pressed to the stone.",
+      "hp": 4,
+      "power": 1,
+      "level": 2,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf",
+        "spirit"
+      ],
+      "classes": [
+        "ritualist",
+        "shaman"
+      ],
+      "components": [
+        {
+          "id": "ore_listening",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "channel": true,
+          "telegraph": "Ore Listening \u2014 a held chant makes the tunnel bite",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "iron_thought",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "trigger_source",
+          "telegraph": "Iron Thought \u2014 answer the spellcaster with a shard of ore",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase1/ore_whisperer-b882286a.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "brass_lantern_bearer",
+      "silent_pickman"
+    ],
+    "2": [
+      "brass_lantern_bearer",
+      "silent_pickman",
+      "lamp_runner",
+      "timber_shorer"
+    ],
+    "3": [
+      "brass_lantern_bearer",
+      "silent_pickman",
+      "lamp_runner",
+      "timber_shorer",
+      "ore_hooker",
+      "coal_muleteer"
+    ],
+    "4": [
+      "brass_lantern_bearer",
+      "silent_pickman",
+      "lamp_runner",
+      "timber_shorer",
+      "ore_hooker",
+      "coal_muleteer",
+      "powder_sapper",
+      "ore_whisperer"
+    ]
+  }
+}

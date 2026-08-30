@@ -1,0 +1,687 @@
+{
+  "name": "The Gear-Floor of the Ninth Slag Company",
+  "scene": "Behind the ice curtain the pump-hall opens out: a dwarf-cut chamber of black iron flywheels tall as cart-wheels, re-toothed with bright new brass by hands that were not Karzum's. Hooded lamps swing on chains, steam hisses along the sluice troughs, and the floor shudders in time with the drainage emptying the town's cistern into Ordokar's galleries. Tally-slates hang from nails beside the pressure governor, chalked over and over with the night's count.",
+  "scene_image": "/art/the_rimefall_pumphouse__phase2/scene-624633e2.png",
+  "enemies": [
+    {
+      "id": "pump_wright",
+      "name": "Pump-Wright Halla Skeg",
+      "flavor": "Her drain-rite bites every turn and drives the whole crew \u2014 kill her fast.",
+      "description": "A grease-black dwarf woman half inside the governor housing, brass-rimmed goggles pushed up on a soot-streaked brow, one arm buried to the shoulder in turning gears.",
+      "hp": 10,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer",
+        "ritualist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "run_the_drain_rite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 18,
+          "target_rule": "valuation",
+          "telegraph": "Run the Drain-Rite \u2014 held: the wheels bite a hero for 3 a turn and the whole crew works at +1/+0",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "pump",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "enemy"
+              }
+            }
+          ]
+        },
+        {
+          "id": "shutter_the_lamp",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "once_per_encounter": true,
+          "priority": 12,
+          "target_rule": "self",
+          "telegraph": "Shutter the Lamp \u2014 the next blow finds only iron",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/pump_wright-c561de20.png"
+    },
+    {
+      "id": "ratchet_warder",
+      "name": "Ratchet Warder",
+      "flavor": "No damage \u2014 a shield for the wright and a bar across your swing.",
+      "description": "A broad dwarf planted at the governor's foot with a crossed pair of iron pawl-bars, coat of grey wool over a smith's leather apron scarred with sparks.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "set_the_pawl",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "pump_wright",
+          "telegraph": "Set the Pawl \u2014 shield the Pump-Wright from the next blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "crossed_bars",
+          "archetype": "Counter",
+          "timing": "reactive",
+          "trigger": "on_attack",
+          "cooldown": 3,
+          "priority": 15,
+          "target_rule": "trigger_source",
+          "telegraph": "Crossed Bars \u2014 turn the blow aside",
+          "verbs": [
+            {
+              "kind": "counter",
+              "filter": "attack"
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/ratchet_warder-f7107d86.png"
+    },
+    {
+      "id": "tally_master",
+      "name": "Tally-Master Vurn Kolgat",
+      "flavor": "Taxes your big moment: drains the gauge, and bills you when you spend it.",
+      "description": "A trim grey dwarf on the catwalk in a clean felted coat, brass tally-rod tapping his palm, an iron eye-shade tipped back over neatly oiled iron-coloured braids.",
+      "hp": 9,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "noble",
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "toll_of_the_rod",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "primed_hero",
+          "telegraph": "Toll of the Rod \u2014 deal 5 and strike 15 off the hero's gauge",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "modify_action",
+              "action": "ultimate",
+              "modifier": "drain_ultimate",
+              "amount": 15,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "strike_the_tally",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ultimate_cast",
+          "cooldown": 2,
+          "priority": 12,
+          "target_rule": "trigger_source",
+          "telegraph": "Strike the Tally \u2014 deal 6 to the hero who spent their moment",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/tally_master-fab40786.png"
+    },
+    {
+      "id": "gear_turner",
+      "name": "Gear-Turner",
+      "flavor": "Sweeps the front rank with a spanner the length of an arm.",
+      "description": "A soot-grimed dwarf swinging a four-foot brass spanner two-handed, sleeves burned off at the elbow, hair singed back from a wide flat face.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "wheel_wrench",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_row": "front",
+          "target_rule": "valuation",
+          "telegraph": "Wheel-Wrench \u2014 4 across the whole front rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "answer_the_wrench",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Answer the Wrench \u2014 deal 6 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/gear_turner-e49cd9db.png"
+    },
+    {
+      "id": "lamp_hooder",
+      "name": "Lamp-Hooder",
+      "flavor": "Smothers a hero mid-wind-up when they are setting something up.",
+      "description": "A slight dwarf slipping along the chain-rail with a hooked pole, snuffing lamp-hoods one by one, face wrapped in grey felt to the eyes.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "rogue"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "hood_the_lamp",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 26,
+          "condition": {
+            "kind": "hero_primed",
+            "op": ">=",
+            "value": 1
+          },
+          "target_rule": "primed_hero",
+          "telegraph": "Hood the Lamp \u2014 deal 5 and smother the hero's casting",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "prevent",
+              "parameter": "cast",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "snuff_and_slip",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 16,
+          "target_rule": "self",
+          "telegraph": "Snuff and Slip \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/lamp_hooder-e6fe471d.png"
+    },
+    {
+      "id": "chain_hauler",
+      "name": "Chain-Hauler",
+      "flavor": "Winds a chain around whoever it can reach \u2014 and grows while it does.",
+      "description": "An enormous-shouldered dwarf with a hauling chain wrapped three times up one arm, grey wool worn to grease-black at the shoulder, jaw set under a flattened nose.",
+      "hp": 8,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "take_up_the_slack",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 40,
+          "target_rule": "self",
+          "telegraph": "Take Up the Slack \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "wrap_the_chain",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 28,
+          "target_rule": "valuation",
+          "telegraph": "Wrap the Chain \u2014 deal 6 and drag the hero's blade onto him",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/chain_hauler-7e7f01e5.png"
+    },
+    {
+      "id": "governor_walker",
+      "name": "Governor-Walker",
+      "flavor": "Hunts the deadliest hero and scalds anyone who aims at it.",
+      "description": "A waist-high brass frame that stalks on three jointed legs, a pressure-bell for a body, spitting a thin white lance of steam from a swivelling nozzle.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "pressure_lance",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "highest_threat",
+          "telegraph": "Pressure Lance \u2014 deal 6 to the deadliest hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "scald_the_hand",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_targeted",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Scald the Hand \u2014 wound the one taking aim -2/-2",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/governor_walker-fcfdabae.png"
+    },
+    {
+      "id": "splint_wright",
+      "name": "Splint-Wright",
+      "flavor": "Patches the crew \u2014 and resents every wound you mend.",
+      "description": "An older dwarf with a roll of splint-tin and waxed thread on his belt, spectacles of smoked crystal, hands quick and stained with pitch.",
+      "hp": 8,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "healer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "splint_and_solder",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "wounded_ally",
+          "telegraph": "Splint and Solder \u2014 heal the worst-hurt crewmate 5",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "grudge_the_wound",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_healed",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Grudge the Wound \u2014 deal 5 to the one who mended",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/splint_wright-422dc931.png"
+    },
+    {
+      "id": "rat_wrangler",
+      "name": "Sump-Rat Wrangler",
+      "flavor": "Empties a wicker basket of biting sump-rats onto the floor.",
+      "description": "A grinning dwarf with a wicker basket lashed to her back and thick leather gauntlets to the elbow, wool coat stitched all over with bite-patches.",
+      "hp": 5,
+      "power": 2,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "hunter"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "loose_the_basket",
+          "archetype": "Swarm",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "self",
+          "telegraph": "Loose the Basket \u2014 two sump-rats onto the gear-floor",
+          "verbs": [
+            {
+              "kind": "create_token",
+              "token_id": "sump_rat",
+              "count": 2,
+              "hp": 3,
+              "power": 1
+            }
+          ]
+        },
+        {
+          "id": "kick_the_cage",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Kick the Cage \u2014 deal 6 to the attacker",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase2/rat_wrangler-47c2dd20.png"
+    }
+  ],
+  "tokens": {
+    "sump_rat": {
+      "name": "Sump-Rat",
+      "hp": 3,
+      "power": 1,
+      "row": "front",
+      "attack_mode": "melee",
+      "image": "/art/the_rimefall_pumphouse__phase2/sump_rat-d0a164d4.png"
+    }
+  },
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "pump_wright",
+      "ratchet_warder",
+      "lamp_hooder"
+    ],
+    "2": [
+      "pump_wright",
+      "ratchet_warder",
+      "tally_master",
+      "lamp_hooder",
+      "splint_wright"
+    ],
+    "3": [
+      "pump_wright",
+      "ratchet_warder",
+      "tally_master",
+      "gear_turner",
+      "governor_walker",
+      "chain_hauler",
+      "splint_wright",
+      "lamp_hooder"
+    ],
+    "4": [
+      "pump_wright",
+      "ratchet_warder",
+      "tally_master",
+      "gear_turner",
+      "gear_turner",
+      "governor_walker",
+      "chain_hauler",
+      "splint_wright",
+      "lamp_hooder",
+      "rat_wrangler"
+    ]
+  },
+  "objective": {
+    "kind": "race",
+    "turns": 5,
+    "reinforcements": [],
+    "target": "pump_wright",
+    "fail": "escalate",
+    "escalation": {
+      "telegraph": "The Lower Galleries Run Dry",
+      "verbs": [
+        {
+          "kind": "counters",
+          "power": 2,
+          "toughness": 2,
+          "target": {
+            "mode": "all",
+            "side": "enemy",
+            "exclude_self": false,
+            "targeted": false
+          },
+          "duration": "encounter"
+        },
+        {
+          "kind": "deal_damage",
+          "amount": 4,
+          "target": {
+            "mode": "all",
+            "side": "ally",
+            "exclude_self": false,
+            "targeted": false
+          }
+        }
+      ]
+    },
+    "resolved": false
+  }
+}
