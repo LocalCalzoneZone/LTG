@@ -675,3 +675,44 @@ def test_a_reload_inside_the_act_wrapup_resumes_it(runs):
         session2.seats[live] = "c1"
         session2.confirm_level_up("c1", live, {})
     assert scen2.mode == "town" and scen2.act_index == 1
+
+
+# --------------------------------------------------------------------------- #
+# Beta 2026-08-30: the speaker defaults to the initiator's own character
+# --------------------------------------------------------------------------- #
+def test_talk_attributes_the_initiators_claimed_character(runs):
+    session, scen, _ = _start(runs)
+    session.clients["c1"] = object()
+    session.claim("c1", ["loadout_ys"])            # c1 controls the second seat
+    session.town_verb("c1", "visit", {"location_id": scen.outline["questgiver_location"]})
+    session.town_verb("c1", "talk", {"npc_id": scen.outline["questgiver_npc"]})
+    assert scen.conversation.attributed == "loadout_ys"
+
+
+def test_talk_prefers_roster_order_when_a_client_holds_two_seats(runs):
+    session, scen, _ = _start(runs)
+    session.clients["c1"] = object()
+    session.claim("c1", ["loadout_ys", "loadout_soren"])
+    session.town_verb("c1", "visit", {"location_id": scen.outline["questgiver_location"]})
+    session.town_verb("c1", "talk", {"npc_id": scen.outline["questgiver_npc"]})
+    assert scen.conversation.attributed == "loadout_soren"   # first in roster order
+
+
+def test_talk_with_no_claimed_seat_leaves_attribution_open(runs):
+    session, scen, _ = _start(runs)
+    session.clients["c1"] = object()
+    session.town_verb("c1", "visit", {"location_id": scen.outline["questgiver_location"]})
+    session.town_verb("c1", "talk", {"npc_id": scen.outline["questgiver_npc"]})
+    assert scen.conversation.attributed is None
+    # …and explicit attribution still works afterwards.
+    session.town_verb("c1", "attribute", {"character_id": "loadout_ys"})
+    assert scen.conversation.attributed == "loadout_ys"
+
+
+def test_town_seats_are_claimable_from_the_first_snapshot(runs):
+    """The seats map exists (and accepts claims) the moment the scenario opens
+    in town — no combat snapshot required. The ribbon reads the same roster."""
+    session, scen, _ = _start(runs)
+    assert set(session.seats) == {"loadout_soren", "loadout_ys"}
+    session.claim("c9", ["loadout_soren"])
+    assert session.seats_payload("c9")["you"] == ["loadout_soren"]

@@ -39,9 +39,12 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   const [copied, setCopied] = useState(false);
 
   const youSet = new Set(you);
-  const unclaimed = (snapshot?.characters ?? [])
-    .map((c) => c.id)
-    .filter((id) => seats[id] == null);
+  // The seat roster: the combat snapshot's characters in a fight, the party
+  // sheet in town — claiming works from the moment the scenario opens, not
+  // only once the first encounter starts.
+  const seatRoster: { id: string; name: string }[] =
+    snapshot?.characters ?? town?.party_sheet ?? [];
+  const unclaimed = seatRoster.map((c) => c.id).filter((id) => seats[id] == null);
 
   const stepNow = snapshot ? (STEP_OF[snapshot.phase] ?? null) : null;
   const nowIdx = stepNow ? STEPS.indexOf(stepNow) : -1;
@@ -252,8 +255,7 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
 
       {/* seats + session controls */}
       <div className="ml-auto flex items-center gap-0.5">
-        {snapshot &&
-          snapshot.characters.map((c) => {
+        {seatRoster.map((c) => {
             const owner = seats[c.id];
             const mine = youSet.has(c.id);
             const taken = owner != null && owner !== clientId;
@@ -274,7 +276,7 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
                 {c.name}
               </button>
             );
-          })}
+        })}
         {unclaimed.length > 0 && (
           <button
             onClick={() => claim(unclaimed)}
@@ -284,7 +286,7 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
             Claim all
           </button>
         )}
-        {snapshot && <div className="mx-2 h-4 w-px bg-line" />}
+        {seatRoster.length > 0 && <div className="mx-2 h-4 w-px bg-line" />}
         {sessionId && (
           <button
             onClick={copyInvite}

@@ -500,6 +500,14 @@ class Session:
         if verb == "talk":
             sc.talk(str(payload.get("npc_id") or ""))
             sc.conversation.initiator = client_id  # type: ignore[union-attr]
+            # The speaker defaults to the initiator's OWN character (first of
+            # their claimed seats in roster order) — beta playtest: nobody
+            # remembered to attribute, so party lines read as spoken by no one.
+            # Explicit "attribute" still re-aims it at any roster character.
+            mine = self.controlled_by(client_id)
+            default = next((cid for cid in sc.character_ids if cid in mine), None)
+            if default is not None:
+                sc.attribute(default)
             return []
         if verb == "attribute":
             self._require_initiator(client_id)
