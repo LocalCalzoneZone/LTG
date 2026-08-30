@@ -142,7 +142,7 @@ function NarrativeSplash({ adventure, sceneImage, onContinue }: {
           </div>
           <span className="h-px w-14 bg-gradient-to-l from-transparent to-brass" />
         </div>
-        <p className="font-display text-lg font-light leading-relaxed text-parch">
+        <p className="max-h-[55vh] overflow-y-auto whitespace-pre-line text-left font-display text-base font-light leading-relaxed text-parch">
           {adventure.narration}
         </p>
         <button

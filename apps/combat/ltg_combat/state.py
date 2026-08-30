@@ -102,7 +102,7 @@ class Objective:
     marked enemy defeated in time — the clock vanishes) or 'failed' (expired;
     with fail 'escalate' the fight continues under standard victory)."""
 
-    kind: str                     # "survive" | "waves" | "race"
+    kind: str                     # "survive" | "waves" | "race" | "deadline"
     turns: int = 0                # survive/race clock length, in rounds
     rounds_done: int = 0          # End Steps completed (ticks at each)
     status: str = "active"        # active | complete | failed  (race clock)
@@ -113,6 +113,11 @@ class Objective:
     wave_index: int = 0           # how many LATER waves have deployed
     # race: the marked enemy and the failure shape
     target_id: Optional[str] = None
+    # race guards (CONCRETE ids, clones expanded at build): while any stands
+    # undefeated, the party cannot TARGET the marked enemy. `guards_down` logs
+    # the shield-break moment exactly once.
+    guards: List[str] = field(default_factory=list)
+    guards_down: bool = False
     fail: str = "escalate"        # "defeat" | "escalate"
     escalation_telegraph: str = ""
     escalation_verbs: List[Effect] = field(default_factory=list)
@@ -277,6 +282,10 @@ class CharacterState:
     regen_effects: List[Affliction] = field(default_factory=list)
     poison_counters: int = 0
     regen_counters: int = 0
+    # Charge counters (§D22-1): heroes may hold the windup gauge too — a plain
+    # resource added/drained by the `charge` verb, read via caster/target_charge.
+    # Distinct from the ultimate gauge.
+    charge: int = 0
 
     # Heroic actions (D8-3): the authored once-per-encounter Skill/Ultimate (core
     # Card models with forced timing), their used flags, the ultimate gauge, and
@@ -603,6 +612,15 @@ class EnemyState:
     # difficulty dial for boss fights (Standard and Hard set it; Easy does not).
     # Enrage still applies on top: it is the same two-slot machinery (§D9-4).
     double_intent: bool = False
+    # Boss pressure (beta playtest 2026-08-30: "we burn the minions, leave the
+    # boss to last, and its enrage is laughable"). `enrage_round`: fury boils
+    # over UNBIDDEN at the start of this round if the 25%-HP enrage hasn't fired
+    # yet — the boss will not wait politely. `neglect`: at the End Step of any
+    # round (from round 2) in which the boss took NO damage, it gains this many
+    # permanent +1/+1 counters — ignoring the centerpiece has a price.
+    enrage_round: Optional[int] = None
+    neglect: int = 0
+    hurt_this_round: bool = False   # damage bookkeeping for `neglect`; reset each turn
     created_by: Optional[str] = None  # the enemy that spawned this token (§F-4 per-creator cap)
     # The `rises` trait (§D9-1.5): on death the corpse STIRS and the enemy revives
     # after this many Upkeeps at half max HP (T-52), once per encounter. Cleared

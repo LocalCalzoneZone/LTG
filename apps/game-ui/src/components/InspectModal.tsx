@@ -52,30 +52,16 @@ function commonLines(v: {
     out.push({
       key: "poison",
       tone: POISON,
-      main: `−0/−${v.poison_counters} — ${v.poison_counters} poison counter${v.poison_counters > 1 ? "s" : ""}`,
-      note: "already in the stats shown; any healing cures the ticking, the counters remain",
-    });
-  }
-  if (v.poisoned) {
-    out.push({
-      key: "poisoned",
-      tone: POISON,
-      main: "Poisoned — an active poison effect is ticking",
+      main: `Poisoned — ${v.poison_counters} poison counter${v.poison_counters > 1 ? "s" : ""}`,
+      note: "loses 1 life per counter at each Upkeep; any healing removes all poison counters",
     });
   }
   if (v.regen_counters > 0) {
     out.push({
       key: "regen",
       tone: "text-vigor",
-      main: `+0/+${v.regen_counters} — ${v.regen_counters} regen counter${v.regen_counters > 1 ? "s" : ""}`,
-      note: "already in the stats shown; broken by damage that connects",
-    });
-  }
-  if (v.regenerating) {
-    out.push({
-      key: "regenerating",
-      tone: "text-vigor",
-      main: "Regenerating — an active regeneration effect",
+      main: `Regenerating — ${v.regen_counters} regen counter${v.regen_counters > 1 ? "s" : ""}`,
+      note: "heals 1 per counter at each Upkeep; damage that connects removes all regen counters",
     });
   }
   if (v.power.modifier !== 0) {
@@ -115,6 +101,14 @@ function extraCharacterTags(char: CharacterView): string[] {
 
 function characterLines(char: CharacterView): Line[] {
   const out = commonLines(char);
+  if (char.charge > 0) {
+    out.push({
+      key: "charge",
+      tone: "text-brass",
+      main: `Charge — ${char.charge} charge counter${char.charge > 1 ? "s" : ""}`,
+      note: 'stored power — cards can spend it or scale by it ("equal to your charge counters")',
+    });
+  }
   if (char.incapacitated) {
     out.unshift({
       key: "downed",

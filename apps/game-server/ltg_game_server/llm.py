@@ -115,30 +115,55 @@ def _min_enemies(size: int) -> int:
 # (_min_enemies), not from HP bloat, which only makes a fight longer.
 ENEMY_HP_MULT: Dict[str, float] = {"easy": 1.0, "standard": 1.2, "hard": 1.5}
 
+# Beta playtest (2026-08-30): on top of the difficulty dial, every generated
+# enemy runs a flat stat buff — HP and Power alike — because the fights were
+# landing consistently under the party's curve. Bosses get more: the endgame
+# problem was never the minions. Applied at generation (like the HP mult), so
+# authored content and already-saved adventures are untouched; the difficulty
+# RESCALE in adventure.py works on mult ratios and is unaffected.
+ENEMY_STAT_BUFF = 1.2
+BOSS_STAT_BUFF = 1.3
+
 
 def _scale_hp(encounter: Dict[str, Any], difficulty: str) -> None:
-    """Multiply enemy (and spawned-token) HP in place by the difficulty's factor."""
+    """Scale enemy (and spawned-token) stats in place: HP by the difficulty's
+    factor times the flat stat buff, Power by the buff alone (difficulty already
+    scales offence through the Level budget). Bosses take the bigger buff."""
     mult = ENEMY_HP_MULT.get(difficulty, 1.2)
 
-    def bump(v: Any) -> Any:
+    def bump_hp(v: Any, buff: float) -> Any:
         try:
-            return max(1, ceil(int(v) * mult))
+            return max(1, ceil(int(v) * mult * buff))
+        except (TypeError, ValueError):
+            return v
+
+    def bump_power(v: Any, buff: float) -> Any:
+        try:
+            return max(1, int(int(v) * buff + 0.5))   # round half up, floor 1
         except (TypeError, ValueError):
             return v
 
     for e in encounter.get("enemies", []):
-        if isinstance(e, dict) and "hp" in e:
-            e["hp"] = bump(e["hp"])
+        if not isinstance(e, dict):
+            continue
+        buff = BOSS_STAT_BUFF if e.get("is_boss") else ENEMY_STAT_BUFF
+        if "hp" in e:
+            e["hp"] = bump_hp(e["hp"], buff)
+        if "power" in e:
+            e["power"] = bump_power(e["power"], buff)
         # Tokens a Swarm spawns are bodies too — beef them so they aren't free kills.
-        for c in (e.get("components") or []) if isinstance(e, dict) else []:
+        for c in (e.get("components") or []):
             for verb in (c.get("verbs") or []) if isinstance(c, dict) else []:
                 if isinstance(verb, dict) and verb.get("kind") == "create_token" and "hp" in verb:
-                    verb["hp"] = bump(verb["hp"])
+                    verb["hp"] = bump_hp(verb["hp"], ENEMY_STAT_BUFF)
     toks = encounter.get("tokens")
     if isinstance(toks, dict):
         for t in toks.values():
-            if isinstance(t, dict) and "hp" in t:
-                t["hp"] = bump(t["hp"])
+            if isinstance(t, dict):
+                if "hp" in t:
+                    t["hp"] = bump_hp(t["hp"], ENEMY_STAT_BUFF)
+                if "power" in t:
+                    t["power"] = bump_power(t["power"], ENEMY_STAT_BUFF)
 
 # The editable, reviewable system prompt shown in Options → LLM. It teaches the
 # Update 04 enemy framework and pins the exact JSON contract, anchored on two
@@ -279,19 +304,23 @@ them positionally is still correct and reads better.)
 Because a row shape is dodgeable, it may hit HARDER than a single-target ability
 of the same level — that is the trade the player is being offered.
 
-## Typed counters: poison, regen, and charge (Design Update 08)
-- POISON `{"kind": "poison", "amount": 1, "target": {chosen hero}}` — the victim
-  gains 1 counter per amount NOW and again at each Upkeep (each counter is a
-  permanent −0/−1) until ANY healing on them cures it. Magnitude: amount 1 per
-  tick at any level (an optional `"turns": N` bounds it). Poison is NOT damage —
-  it ignores shields and never breaks a channel. It is the anti-turtle,
-  anti-channeler pressure: one poisoner per encounter reads as a clock the
-  enemy healer forces the party's healer to answer.
-- REGEN `{"kind": "regen", "amount": 1, "target": {self or ally}}` (Fortify) —
-  the mirror: +0/+1 per tick until the creature is dealt damage that CONNECTS.
-  A regen'd elite must be *hit* to be whittled, making chip damage a real
-  assignment. Regen ticks count as healing (they cure poison).
-- CHARGE — the WINDUP pattern (see its own section below).
+## Typed counters: poison, regen, and charge (Design Update 08, reworked D22)
+- POISON `{"kind": "poison", "amount": N, "target": {chosen hero}}` — places N
+  poison counters; the victim LOSES 1 life per counter at each Upkeep until ANY
+  healing on them removes ALL the counters. The counters are the clock — they
+  neither grow nor expire on their own. Poison is NOT damage — it ignores
+  shields and never breaks a channel. It is the anti-turtle, anti-channeler
+  pressure: one poisoner per encounter reads as a clock the enemy forces the
+  party's healer to answer. Magnitude: 1–2 counters per application.
+- REGEN `{"kind": "regen", "amount": N, "target": {self or ally}}` (Fortify) —
+  the mirror: places N regen counters; the creature HEALS 1 per counter at each
+  Upkeep until damage that CONNECTS removes ALL the counters. A regen'd elite
+  must be *hit* to be whittled, making chip damage a real assignment. Poison
+  and regen counters annihilate 1:1.
+- CHARGE — the WINDUP pattern (see its own section below). The count is
+  readable by effects via the `{"ref": "caster_charge"}` / `{"ref":
+  "target_charge"}` value references — e.g. an ability that deals damage equal
+  to the gauge.
 
 ## Resource attacks — hurting the PLAN, not the hit points
 Three verbs attack what the party can DO rather than how much HP they have.
@@ -512,8 +541,10 @@ The party watches the pips rise without knowing what they feed — eat it, count
 it on the stack, or stop it from ever filling (kill, stun, strip the gather).
 Build it as TWO components on one enemy:
 - The gather: proactive, priced as Escalate (4), verbs
-  `[{"kind": "charge", "amount": 1}]`, target_rule "self" (charge is enemy-only
-  and always self). Its intent reads as "gathering" to the players.
+  `[{"kind": "charge", "amount": 1}]`, target_rule "self" (omit the target
+  field — it defaults to self). Its intent reads as "gathering" to the players.
+  Note heroes can now drain the gauge (§D22-1: the charge verb also takes
+  `"op": "remove"`, amount "all" for a full defuse) — a windup is answerable.
 - The detonation: `"timing": "reactive"`, `"trigger": "on_charge_full"`,
   `"charge_threshold": <Y>` — it fires onto the stack the moment charge reaches
   Y and the charge resets. Priced at its archetype base + the reactive +2, no
@@ -573,8 +604,8 @@ so write them freely — but write them as what they are.
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
 deathtouch (3/4) · hexproof (5/6) · indestructible (6/6).
 Infect: any damage the creature deals that CONNECTS also poisons the victim
-(one unbounded poison effect per connecting hit, first counter at the next
-Upkeep). An infected biter turns every landed hit into a healer assignment —
+(one poison counter per connecting hit — it drains 1 life at each Upkeep until
+healing removes the counters). An infected biter turns every landed hit into a healer assignment —
 pair it with pressure that punishes healing (on_hero_healed) for a genuinely
 nasty knot, and use AT MOST ONE infect creature per encounter.
 Hexproof wards off targeted SPELLS and ABILITIES only — basic attacks still land
@@ -682,16 +713,16 @@ is fine; overspending is impossible. Complexity self-prices into level.
   count: vary them across rows and roles rather than cloning one statline.
 
 # Party-size layouts (REQUIRED — the encounter must scale 1–4 heroes)
-Design ONE thematic enemy pool of 8–10 designs in `"enemies"`, then assign a
+Design ONE thematic enemy pool of 5–8 designs in `"enemies"`, then assign a
 roster per party size in a top-level `"layouts"` object: keys "1"–"4", each a
 list of enemy ids drawn from the pool. The engine fields the layout matching the
 party that starts the game. Rules:
-- VARIETY SCALES WITH THE PARTY: each layout needs at least 2 DISTINCT designs
-  per hero — size "1" fields 2+ different enemies, "2" fields 4+, "3" fields 6+,
-  "4" fields 8+. This is why the pool is 8–10 designs deep. A roster that hits
-  its body count by cloning one statline fights as ONE enemy telegraphed five
-  times — every clone declares the same intent and fires the same reaction, and
-  the party reads the whole round off the first body.
+- VARIETY SCALES WITH THE PARTY: each layout needs at least PARTY SIZE + 1
+  DISTINCT designs — size "1" fields 2+ different enemies, "2" fields 3+, "3"
+  fields 4+, "4" fields 5+. This is why the pool is 5–8 designs deep. A roster
+  that hits its body count by cloning one statline fights as ONE enemy
+  telegraphed five times — every clone declares the same intent and fires the
+  same reaction, and the party reads the whole round off the first body.
 - An id may REPEAT in a layout — the engine clones it ("wolf", "wolf 2") — but
   at most 3 copies of any design, and clones never count toward the distinct
   minimum. Duplicates count toward the body minimum and the budget (a repeated
@@ -718,6 +749,15 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
   cooldowns and conditions, so the pair it shows each round keeps changing.
   Budget the per-turn output accordingly — two medium threats a round, not two
   copies of one alpha strike.
+- CANNOT BE SHELVED (both REQUIRED on every boss; they are checked):
+    * `"enrage_round": <3-5>` — a TIMED FUSE: if the 25%-HP enrage hasn't fired
+      by the start of that round, fury boils over anyway (same hard reset, the
+      Enrage component fires). The party cannot burn the minions at leisure and
+      meet a polite, waiting boss. Pick the round to fit the kit: 3 for a
+      berserker, 5 for a slow ritualist.
+    * `"neglect": <1-2>` — at the end of any round (from round 2) in which the
+      boss took NO damage, it gains that many permanent +1/+1 counters. Leaving
+      the centerpiece for last now compounds against the party.
 - ENRAGES at 25% HP: give it one component with `"archetype": "Enrage"` — it costs
   no budget and auto-fires ONCE, going on the stack when the boss first drops below
   25%. Enraging is a HARD TURN: the engine also shakes off any stun/taunt on the
@@ -789,6 +829,8 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
       "types": ["undead"],              // REQUIRED, 1–2 from the TYPE list (what it IS)
       "classes": ["warrior"],           // REQUIRED, 1–2 from the CLASS list (what it DOES)
       "is_boss": true,                  // AT MOST ONE enemy, only when asked for
+      "enrage_round": 4,                // boss only, REQUIRED: timed enrage fuse (3-5)
+      "neglect": 1,                     // boss only, REQUIRED: +N/+N per unhurt round (1-2)
       "rises": 2,                       // optional undead trait (min level 2, cost 3): revives after 2 Upkeeps, once
       "keywords": ["flying", ...],      // may be []
       "components": [                   // REQUIRED: at least TWO per enemy (the two-component rule)
@@ -839,9 +881,9 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "deal_damage", "amount": {"ref": "caster_base_power", "mult": 2}, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // a scaled reference: twice this enemy's printed Power; mult is an integer ≥ 1
             {"kind": "protection", "parameter": "all_damage", "combat_kind": "all", "target": {"mode": "self"}},   // a one-shot CHARGE (no clock): negates the next matching damaging spell/attack/ability, whenever it comes (Ward); parameter ∈ all_damage|combat_damage|spell_damage
             {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; "ability" filter for on_ultimate_cast (an Ultimate is an activated ability, NOT a spell); NO target field
-            {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: −0/−1 per Upkeep until healed
-            {"kind": "regen",  "amount": 1, "target": {"mode": "self"}},   // Fortify: +0/+1 per Upkeep until damaged
-            {"kind": "charge", "amount": 1},                      // gather (windup); enemy-only, always self, NO target field
+            {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: loses 1 life per counter each Upkeep; healing removes all counters
+            {"kind": "regen",  "amount": 1, "target": {"mode": "self"}},   // Fortify: heals 1 per counter each Upkeep; connecting damage removes all counters
+            {"kind": "charge", "amount": 1},                      // gather (windup); omit target (defaults to self); op "remove" drains ("all" = defuse)
             {"kind": "grant_keyword", "keywords": ["flying"], "duration": "encounter", "target": {"mode": "chosen", "side": "ally", "targeted": true}},
             {"kind": "create_token", "token_id": "<id in tokens>", "count": <int>, "hp": <int>, "power": <int>},
             {"kind": "wound", "power": 1, "toughness": 1, "duration": "while_channeled", "target": {"mode": "all", "side": "ally"}},   // CHANNEL aura: holds until broken
@@ -905,7 +947,7 @@ EXAMPLE C — a BOSS encounter: phase gates, enrage, a healer, an escalate clock
 action-economy control (total weight: boss 6×2=12 + 3 + 3 + 3 = 21). Note the
 Emberling's escalate clock: the pump is cooldown 2, so every off-turn it SWINGS
 with everything it has stacked — never a cooldown-1 self-pump (punching-bag rule):
-{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","types":["dragon","human"],"classes":["warlord"],"name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","types":["human"],"classes":["cleric","cultist"],"name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","types":["elemental"],"classes":["brute"],"name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","types":["human"],"classes":["warrior","cultist"],"name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"obsidian_sentinel","types":["construct"],"classes":["warrior"],"name":"Obsidian Sentinel","flavor":"The tyrant's bodyguard. It mends the throne, not itself.","description":"A statue of volcanic glass in the shape of a kneeling knight, seams glowing forge-orange, moving only when the throne is threatened.","hp":6,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"mend_throne","archetype":"Fortify","timing":"proactive","priority":25,"cooldown":3,"target_rule":"ashen_tyrant","telegraph":"Mend the Tyrant — heal Ashen Tyrant 4","verbs":[{"kind":"heal","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"glass_fists","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Glass Fists — deal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"forge_imp","types":["demon"],"classes":["scout"],"name":"Forge-Imp","flavor":"Spits sparks at medics: healing here costs.","description":"A cat-sized imp of soot and cinders perched on a broken pillar, tail tipped with a white-hot rivet, grinning with bellows-blast teeth.","hp":2,"power":1,"level":2,"row":"mid","attack_mode":"ranged","keywords":["flying"],"components":[{"id":"spark_spit","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Spark-Spit — deal 2","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"scald_the_medic","archetype":"Punish","timing":"reactive","trigger":"on_hero_healed","cooldown":2,"priority":22,"target_rule":"trigger_source","telegraph":"Scald the Medic — deal 3 to the mended","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"slag_hound","types":["beast"],"classes":["warrior"],"name":"Slag-Hound","flavor":"Hunts the biggest sword and bites back when hunted.","description":"A mastiff-shaped mass of cooling slag, cracks of magma for veins, dripping molten slobber that hisses on the obsidian floor.","hp":4,"power":2,"level":2,"row":"front","attack_mode":"melee","components":[{"id":"hunt_the_blade","archetype":"Burst","timing":"proactive","priority":35,"cooldown":2,"target_rule":"highest_threat","telegraph":"Hunt the Blade — deal 3 to the deadliest hero","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"molten_snap","archetype":"Punish","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Molten Snap — wound the hunter -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ash_cantor","types":["human"],"classes":["cleric"],"name":"Ash-Cantor","flavor":"Sings your cards out of your hand.","description":"A blindfolded singer in charred ceremonial robes, throat tattooed with a column of flame script, voice carrying like heat over a pyre.","hp":3,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"dirge_of_cinders","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","action_type":"spell","telegraph":"Dirge of Cinders — deal 2 and a hero discards a card","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"move_card","count":1,"source":"hand","destination":"graveyard","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"last_verse","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","cooldown":3,"priority":18,"target_rule":"wounded_ally","telegraph":"The Last Verse — heal the most wounded 3","verbs":[{"kind":"heal","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["ashen_tyrant","cinderpriest"],"2":["ashen_tyrant","cinderpriest","slag_hound","forge_imp"],"3":["ashen_tyrant","cinderpriest","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot"],"4":["ashen_tyrant","cinderpriest","slag_hound","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot","emberling","emberling","ash_cantor"]},"tokens":{}}
+{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","types":["dragon","human"],"classes":["warlord"],"name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"enrage_round":4,"neglect":1,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","types":["human"],"classes":["cleric","cultist"],"name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","types":["elemental"],"classes":["brute"],"name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","types":["human"],"classes":["warrior","cultist"],"name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"obsidian_sentinel","types":["construct"],"classes":["warrior"],"name":"Obsidian Sentinel","flavor":"The tyrant's bodyguard. It mends the throne, not itself.","description":"A statue of volcanic glass in the shape of a kneeling knight, seams glowing forge-orange, moving only when the throne is threatened.","hp":6,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"mend_throne","archetype":"Fortify","timing":"proactive","priority":25,"cooldown":3,"target_rule":"ashen_tyrant","telegraph":"Mend the Tyrant — heal Ashen Tyrant 4","verbs":[{"kind":"heal","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"glass_fists","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Glass Fists — deal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"forge_imp","types":["demon"],"classes":["scout"],"name":"Forge-Imp","flavor":"Spits sparks at medics: healing here costs.","description":"A cat-sized imp of soot and cinders perched on a broken pillar, tail tipped with a white-hot rivet, grinning with bellows-blast teeth.","hp":2,"power":1,"level":2,"row":"mid","attack_mode":"ranged","keywords":["flying"],"components":[{"id":"spark_spit","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Spark-Spit — deal 2","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"scald_the_medic","archetype":"Punish","timing":"reactive","trigger":"on_hero_healed","cooldown":2,"priority":22,"target_rule":"trigger_source","telegraph":"Scald the Medic — deal 3 to the mended","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"slag_hound","types":["beast"],"classes":["warrior"],"name":"Slag-Hound","flavor":"Hunts the biggest sword and bites back when hunted.","description":"A mastiff-shaped mass of cooling slag, cracks of magma for veins, dripping molten slobber that hisses on the obsidian floor.","hp":4,"power":2,"level":2,"row":"front","attack_mode":"melee","components":[{"id":"hunt_the_blade","archetype":"Burst","timing":"proactive","priority":35,"cooldown":2,"target_rule":"highest_threat","telegraph":"Hunt the Blade — deal 3 to the deadliest hero","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"molten_snap","archetype":"Punish","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Molten Snap — wound the hunter -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ash_cantor","types":["human"],"classes":["cleric"],"name":"Ash-Cantor","flavor":"Sings your cards out of your hand.","description":"A blindfolded singer in charred ceremonial robes, throat tattooed with a column of flame script, voice carrying like heat over a pyre.","hp":3,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"dirge_of_cinders","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","action_type":"spell","telegraph":"Dirge of Cinders — deal 2 and a hero discards a card","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"move_card","count":1,"source":"hand","destination":"graveyard","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"last_verse","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","cooldown":3,"priority":18,"target_rule":"wounded_ally","telegraph":"The Last Verse — heal the most wounded 3","verbs":[{"kind":"heal","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["ashen_tyrant","cinderpriest"],"2":["ashen_tyrant","cinderpriest","slag_hound","forge_imp"],"3":["ashen_tyrant","cinderpriest","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot"],"4":["ashen_tyrant","cinderpriest","slag_hound","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot","emberling","emberling","ash_cantor"]},"tokens":{}}
 
 Design a brand-new encounter (do not copy the examples' theme). Return ONLY the JSON."""
 
@@ -1380,17 +1422,18 @@ def _check_layouts(encounter: Dict[str, Any]) -> None:
                 "clone more bodies).")
         # Beta playtest (2026-08): a roster that outnumbers via CLONES fights as
         # one enemy telegraphed five times — every clone's intent and reaction
-        # mirrors the others'. The variety floor matches the body floor: as many
-        # distinct DESIGNS as the outnumbering rule demands bodies.
+        # mirrors the others'. The variety floor is party size + 1 (a first cut
+        # at 2x per hero made size-3 fights "too strange" — eight unique kits vs
+        # three heroes reads as noise, not variety).
         distinct = len(set(map(str, roster)))
-        if distinct < need:
+        want = size + 1
+        if distinct < want:
             raise ValueError(
                 f'layouts["{size}"] fields only {distinct} distinct enemy '
                 f"design(s) across its {len(roster)} bodies — a party of {size} "
-                f"needs at least {need} DIFFERENT designs (2 per hero), not "
-                "clones. Add new enemies to the pool rather than repeating ids: "
-                "each design is a different threat to read, so the fight stays "
-                "varied at every count.")
+                f"needs at least {want} DIFFERENT designs (one per hero, plus "
+                "one), not clones. Add new enemies to the pool rather than "
+                "repeating ids: each design is a different threat to read.")
         worst = max(((roster.count(i), str(i)) for i in set(roster)), default=(0, ""))
         if worst[0] > 3:
             raise ValueError(
@@ -1580,6 +1623,64 @@ def _kit_signature(comp: Dict[str, Any]) -> tuple:
             str(comp.get("timing") or "proactive"),
             str(comp.get("trigger") or ""),
             verbs)
+
+
+def _objective_problems(encounter: Dict[str, Any]) -> List[str]:
+    """Generation-side teeth for objectives (beta playtest 2026-08-30): a race
+    without guards is a checkbox (the party one-shots the marked minion turn 1),
+    and a survive without mounting reinforcements is five rounds of standing
+    still. Authored content is free to break these; generated content is not."""
+    obj = encounter.get("objective")
+    if not isinstance(obj, dict):
+        return []
+    problems: List[str] = []
+    kind = str(obj.get("kind") or "")
+    turns = obj.get("turns")
+    if kind == "race":
+        guards = [g for g in (obj.get("guards") or []) if str(g).strip()]
+        if not 1 <= len(guards) <= 2:
+            problems.append(
+                'a "race" objective needs 1-2 "guards" (pool ids): while any '
+                "guard stands, the marked target cannot be TARGETED, so the "
+                "race is break-the-shield-then-beat-the-clock instead of an "
+                "instant kill")
+        if not isinstance(turns, int) or not 3 <= turns <= 5:
+            problems.append('a "race" objective needs "turns" of 3-5')
+    elif kind == "survive":
+        if len(obj.get("reinforcements") or []) < 2:
+            problems.append(
+                'a "survive" objective needs at least TWO reinforcement '
+                "entries (one every 1-2 rounds) — the pressure must MOUNT, "
+                "or surviving is standing still")
+    elif kind == "deadline":
+        if not isinstance(turns, int) or not 4 <= turns <= 6:
+            problems.append('a "deadline" objective needs "turns" of 4-6')
+    return problems
+
+
+def _boss_pressure_problems(encounter: Dict[str, Any]) -> List[str]:
+    """Every generated boss must carry the two pressure dials (beta playtest
+    2026-08-30): a timed `enrage_round` fuse and a `neglect` growth rate.
+    Without them the dominant line is "burn the minions, shelve the boss" and
+    the enrage fires onto an empty board."""
+    problems: List[str] = []
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict) or not e.get("is_boss"):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        rnd = e.get("enrage_round")
+        if not isinstance(rnd, int) or not 2 <= rnd <= 6:
+            problems.append(
+                f'{name} is a boss without a legal "enrage_round" (an integer '
+                "3-5): the timed fuse that makes fury arrive even if nobody "
+                "bloodies it. Pick the round to fit the kit's tempo")
+        neg = e.get("neglect")
+        if not isinstance(neg, int) or not 1 <= neg <= 2:
+            problems.append(
+                f'{name} is a boss without a legal "neglect" (1 or 2): the '
+                "permanent +N/+N it gains at the end of any round it went "
+                "unhurt, so shelving it compounds against the party")
+    return problems
 
 
 def _sameness_problems(encounter: Dict[str, Any]) -> List[str]:
@@ -1792,6 +1893,8 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
             problems.extend(_corpse_problems(encounter))  # §D19-1: corpse fuel
             problems.extend(_type_problems(encounter))    # §D21: types required
             problems.extend(_sameness_problems(encounter))  # anti-monotony
+            problems.extend(_boss_pressure_problems(encounter))  # boss dials
+            problems.extend(_objective_problems(encounter))  # objectives with teeth
             if problems:
                 raise ValueError("; ".join(problems))
             if not persist:
@@ -1847,17 +1950,44 @@ descriptions). This block adds the arc-level rules:
 - PHASE III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Phase III —
   the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
   Enrage, phase gates, real HP). No enemy anywhere may exceed its level.
-- ACTS I AND II MAY each field ONE MINI-BOSS — never an obligation, use it for
-  variety. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
-  2.5× budget, counts double), thematically distinct (the gate-captain, not the
-  king), and STRICTLY lower level than Phase III's boss.
-- NARRATION: each phase carries a `narration` — one short paragraph, SECOND
-  PERSON, PRESENT TENSE, describing the party arriving into that phase's scene
-  ("You push through the splintered gate. Beyond, the courtyard…"). Phase I's
-  narration is the adventure's opening. No mechanics, no numbers — atmosphere
-  and forward motion. Name what the party can SEE and what is about to fight
-  them; the concreteness rule above binds here hardest, because this paragraph
-  is the only thing the player reads before the board appears.
+- PHASES I AND II MAY each field ONE MINI-BOSS, and Phase II usually SHOULD —
+  playtest: a mini-boss mid-adventure is the more fun act, a rising beat before
+  the finale. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
+  the enrage_round/neglect dials, 2.5× budget, counts double), thematically
+  distinct (the gate-captain, not the king), and STRICTLY lower level than
+  Phase III's boss.
+- NARRATION: each phase carries a `narration` — 2 to 4 PARAGRAPHS (roughly
+  120–250 words; it is checked, a single thin paragraph is rejected), SECOND
+  PERSON, PRESENT TENSE, separated by blank lines. This is the story the player
+  reads before the board appears — the ONLY story they get — so it does a
+  scene's work, not a caption's:
+    * THE ROAD IN. How the party got here from the last beat: Phase I picks up
+      the ride out of town (the quest's own journey — hours on the wooded path,
+      the weather turning, the first wrong sign); Phases II and III open on the
+      AFTERMATH of the previous fight (the wounds, the loot-glance, the door
+      the survivors fled through) and the push deeper.
+    * THE DISCOVERY. What the party sees, rounding the bend: the scene, and the
+      enemies IN it, mid-act — not waiting on a mark. Name the bodies the
+      player is about to fight (the same designs as this phase's pool) doing
+      something: picking over an upturned wagon, hauling a chest, arguing over
+      a map, feeding something in a pit.
+    * THE REASON. Why this fight, right now: what the enemies are doing here,
+      what they want, and what tips it into violence — they spot you, you spot
+      the hostages, the ground gives way. The player should finish reading
+      knowing exactly why swords are out on both sides.
+    * A VOICE, when it earns it. Enemy dialogue in quotes brings the moment to
+      life — the lead goblin looking up first: "We got company!" he shouts.
+      "Get 'em quick before the big boss comes back!" One or two lines, in
+      character, never exposition dumped into a mouth.
+  No mechanics, no numbers. The concreteness rule binds here hardest: name what
+  the party can SEE and who is about to fight them. Like so (Phase I shape):
+  "You begin up the wooded path toward the foothills, and for a few hours the
+  only sound is your own boots. Then, past a bend, voices — harsh, quarrelling.
+  A wagon lies on its side across the track, wheels still turning, and goblins
+  are picking over it: sacks slit, crates pried, the wagon-riders sprawled
+  where they fell. The biggest of them, a snarling brute with dull green skin
+  and a leather eyepatch, looks up first. 'We got company!' he bellows. 'Get
+  'em quick, before the big boss comes back!'"
 - `flavor` is the adventure's one-line pitch, shown in the New Game list.
 
 # Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
@@ -1869,14 +1999,24 @@ turns the phase into a set piece. The standing rules are HARD validation:
 - Objectives are fully public (the party sees the goal and its countdown from
   turn 1). Defeat by party wipe is unchanged.
 Use one in roughly two adventures out of three, when the fiction asks for it;
-let the phase's `narration` reference the objective. The three kinds:
+let the phase's `narration` reference the objective — ESPECIALLY a shield or a
+clock, or the party learns the rule by bafflement. An objective must DO
+something (beta playtest: "Destroy X in 4 turns" where X is a minion the party
+one-shots on turn 1 is not a set piece, it is a checkbox). A fight where the
+party must kill the boss FIRST is not an objective at all — build it as a boss
+whose kit refills the field (Necromancy over corpse-leaving minions, a Swarm,
+a battlefield heal) plus the enrage_round/neglect dials. The four kinds:
 
 1. SURVIVE — hold out N rounds; the party wins the phase when round N's End Step
    completes (survivors withdraw). Timer 4–6 rounds. Survival must not be
-   passive: schedule reinforcements and pick a defensible theme (a gate, a
-   bridge, a shrinking camp).
+   passive: the pressure must MOUNT — schedule a reinforcement entry every 1–2
+   rounds (at least two entries; it is checked) so fresh bodies keep arriving,
+   and pick a defensible theme (a gate, a bridge, a shrinking camp).
    {"kind": "survive", "turns": 5, "reinforcements": [
-     {"turn": 3, "layouts": {"1": ["raider"], "2": ["raider","raider"],
+     {"turn": 2, "layouts": {"1": ["raider"], "2": ["raider","raider"],
+                             "3": ["raider","raider","howler"],
+                             "4": ["raider","raider","howler","howler"]}},
+     {"turn": 4, "layouts": {"1": ["howler"], "2": ["raider","howler"],
                              "3": ["raider","raider","howler"],
                              "4": ["raider","raider","howler","howler"]}}]}
    Reinforcement ids reference the phase's enemy pool; repeats clone. Each entry
@@ -1899,19 +2039,31 @@ let the phase's `narration` reference the objective. The three kinds:
       "4": ["pit_captain","cutthroat","cutthroat","archer"]}]}
 
 3. RACE — the doom clock: one marked enemy (the ritualist, the summoner) must
-   be DEFEATED within N rounds (3–5), or the failure fires. Give the marked
-   target real HP, a Ward bodyguard, and field it in EVERY layout. Prefer
-   `"fail": "escalate"` — the escalation is an enrage-shaped, budget-free
+   be DEFEATED within N rounds (3–5), or the failure fires. The marked target
+   REQUIRES `"guards"` (1–2 pool ids; it is checked): while any guard body
+   stands undefeated, the party CANNOT TARGET the marked enemy — the engine
+   refuses the pick; area damage still clips it. So the race is a real puzzle:
+   break the shield, then race the clock. Give the target real HP anyway, field
+   it AND its guards in EVERY layout, and make the guards worth killing in
+   their own right. Prefer `"fail": "escalate"` — an enrage-shaped, budget-free
    eruption of 2–3 verbs (permanent counters on the enemy side, an AoE, a token
    wave, a granted keyword) that transforms the fight but leaves it winnable;
-   `"fail": "defeat"` ends the run on the spot and is for hand-authored set
-   pieces only.
-   {"kind": "race", "target": "bonechanter", "turns": 4, "fail": "escalate",
+   `"fail": "defeat"` ends the run on the spot: use it ONLY when the narration
+   sells an unsurvivable stake (the ritual completes and the crypt comes down).
+   {"kind": "race", "target": "bonechanter", "turns": 4,
+    "guards": ["gravewarden", "husk"], "fail": "escalate",
     "escalation": {"telegraph": "The Rite Completes",
       "verbs": [{"kind": "counters", "power": 2, "toughness": 2,
                  "target": {"mode": "all", "side": "enemy"}},
                 {"kind": "deal_damage", "amount": 3,
                  "target": {"mode": "all", "side": "ally"}}]}}
+
+4. DEADLINE — the hard clock: defeat EVERY enemy within N rounds (4–6) or the
+   phase is LOST. No target, no payload, no interaction — the clock simply
+   runs, and the party plays fast or dies slow. Use when the fiction is a
+   collapsing mine, a rising tide, a gate grinding shut; the narration MUST
+   name what the clock is, because the UI shows only the count.
+   {"kind": "deadline", "turns": 5}
 
 # Adventure output contract (return EXACTLY this shape, nothing else)
 {
@@ -2042,6 +2194,27 @@ def _adventure_context_lines(context: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+NARRATION_MIN_WORDS = 100
+
+
+def _narration_problems(narration: Any) -> List[str]:
+    """The phase-narration gate (beta playtest): a caption-sized paragraph drops
+    the player into a fight with no road in, no reason, and no idea who these
+    enemies are. The floor forces a scene's worth of story; the prompt's
+    NARRATION section teaches what the words must carry."""
+    text = str(narration or "").strip()
+    if not text:
+        return ['missing its "narration" (2–4 second-person paragraphs '
+                "— see NARRATION)"]
+    words = len(text.split())
+    if words < NARRATION_MIN_WORDS:
+        return [f'its "narration" is {words} words — too thin to carry the '
+                "story. Write 2–4 paragraphs (120–250 words): the road in from "
+                "the last beat, what the party sees the enemies DOING, why the "
+                "fight starts, and a line of enemy dialogue if it earns one"]
+    return []
+
+
 def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                        note: str = "", attempts: int = 3,
                        loadouts: Optional[List[Dict[str, Any]]] = None,
@@ -2110,9 +2283,9 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                     problems.extend(_corpse_problems(enc))  # §D19-1: corpse fuel
                     problems.extend(_type_problems(enc))    # §D21: types required
                     problems.extend(_sameness_problems(enc))  # anti-monotony
-                    if not str(phase.get("narration") or "").strip():
-                        problems.append('missing its "narration" (one short '
-                                        "second-person paragraph)")
+                    problems.extend(_boss_pressure_problems(enc))  # boss dials
+                    problems.extend(_objective_problems(enc))  # objectives with teeth
+                    problems.extend(_narration_problems(phase.get("narration")))
                     if problems:
                         raise ValueError("; ".join(problems))
                 except ValueError as exc:
@@ -2366,7 +2539,17 @@ Write:
 1. "quests": TWO to FOUR QUEST OPTIONS — what the party may agree to this act.
    THIS IS THE ACT'S ONE REAL CHOICE, so make it a real one: the options must be
    MATERIALLY DIFFERENT. Each option: {"id": short_snake_case,
-   "title": "...", "text": the quest as the journal shows it (2–4 sentences),
+   "title": "...", "text": the quest AS THE PARTY'S OWN JOURNAL ENTRY (2–4
+   sentences) — written in the party's voice, first person plural ("we", "us"),
+   as if one of them set it down that evening. It must carry, in that voice:
+   WHO asked and where they hold court, WHAT we are being asked to do, WHERE,
+   and WHY it matters (the stakes, and what the asker believes is behind it).
+   Facts alone kill it; a ledger line is not a journal. Like so: "Yorrin Dagg
+   at The Rope Loft, mine-captain of the Sootfall crew, has asked us to
+   investigate the Sootfall Adit — three nights of tremors and lamps burning a
+   mile in where no one should be digging. His men hope it is treasure-hunters.
+   He is feeding eleven idle diggers out of his own purse and fears something
+   worse." NO second person, no "you",
    "adventure_theme": one line naming the PLACE that option's ride-out happens
    in and what the party does there — REQUIRED, DISTINCT per option (it is
    rejected otherwise), because the dungeon is generated from it}.
@@ -2426,10 +2609,26 @@ Write:
          happened last time in one clear sentence.
    - "speaker": "narration" is an unvoiced beat — stage direction, not a line
      anyone speaks: what the NPC does with their hands, what the party notices
-     on the wall, what a name the NPC just used actually refers to. Use it
-     freely (roughly one per tree) to carry the context that would be clumsy in
-     someone's mouth. It renders in italic with no nameplate, so never write
-     narration as though it were dialogue and never put quotation marks in it.
+     on the wall, what a name the NPC just used actually refers to. It renders
+     in italic with no nameplate, so never write narration as though it were
+     dialogue and never put quotation marks in it.
+     NARRATION IS REQUIRED, not seasoning (it is checked): the questgiver's
+     tree needs at least TWO narration nodes, every other tree of four or more
+     nodes at least ONE. Write the scene like a novel, not a transcript:
+     whenever a line refers to something physical, the narration beat SHOWS it —
+     if the mine-captain says "…and it gave me this arm", the next node is
+     narration: "He raises the splinted arm, and grimaces at the motion. The
+     injury is clearly still fresh." Reveals earn a beat too: the room reacting,
+     the speaker's hands stopping, the thing on the table the party now notices.
+   - THE DIALOGUE STANDS ALONE. The persona sheet you were given is YOUR
+     briefing, not the player's — assume the player never read it and cannot
+     see it. Any persona fact the conversation leans on (an injury, a debt, the
+     eleven diggers wintering upstairs) must be INTRODUCED inside the tree —
+     spoken plainly or shown in a narration beat — before anything refers to
+     it. The same goes for party choices: a choice label may only reference
+     what THIS conversation (or the quest journal) has already established.
+     "Your crew thinks it's treasure-hunters" is illegal until someone in the
+     tree has said what the crew thinks.
    - HOOKS are a CLOSED vocabulary — use ONLY these shapes, nothing else:
        {"kind": "set_flag", "flag": "<name>"}
        {"kind": "grant_quest", "quest": "<quest id>"}   (accepts THAT option)

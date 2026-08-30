@@ -380,11 +380,19 @@ def _objective_state(spec: Dict[str, Any]) -> "tuple[Optional[Objective], set]":
     verbs = list(_VERBS.validate_python(esc.get("verbs", [])))
     _check_enemy_verbs(verbs)
     target = str(obj.get("target") or "") or None
+    guards: List[str] = []
     if obj.get("kind") == "race":
         fielded = {e.get("id", _slug(e.get("name", ""))) for e in spec.get("enemies", [])}
         if target not in fielded:
             raise ValueError(f"race objective: marked target '{target}' is not "
                              "fielded in this encounter")
+        # Guards are authored as POOL ids; the shield covers every fielded body
+        # of those designs (clones carry a `_<n>` suffix — see _clone_into).
+        for gid in obj.get("guards", []) or []:
+            gid = str(gid)
+            guards.extend(sorted(
+                fid for fid in fielded
+                if fid == gid or fid.startswith(gid + "_")))
     return Objective(
         kind=str(obj["kind"]),
         turns=int(obj.get("turns") or 0),
@@ -393,6 +401,7 @@ def _objective_state(spec: Dict[str, Any]) -> "tuple[Optional[Objective], set]":
                         for r in obj.get("reinforcements", []) or []],
         waves=[[str(i) for i in w] for w in obj.get("waves", []) or []],
         target_id=target,
+        guards=guards,
         fail=str(obj.get("fail") or "escalate"),
         escalation_telegraph=str(esc.get("telegraph") or ""),
         escalation_verbs=verbs,
@@ -505,6 +514,9 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             is_boss=bool(e.get("is_boss", False)),
             # A boss that acts twice a round from the opening bell (difficulty).
             double_intent=bool(e.get("double_intent", False)),
+            # Boss pressure dials (beta 2026-08-30): timed enrage + neglect.
+            enrage_round=(int(e["enrage_round"]) if e.get("enrage_round") else None),
+            neglect=max(0, int(e.get("neglect") or 0)),
             # The `rises` trait (§D9-1.5): the corpse stirs and the enemy revives
             # after this many Upkeeps (T-56: 2), once per encounter.
             rises=(int(e["rises"]) if e.get("rises") else None),

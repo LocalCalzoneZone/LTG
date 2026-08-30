@@ -60,6 +60,8 @@ export interface ChannelSummary {
   text: string;
   // What ending this channel fires (the channel_break trigger), "" when none.
   break_text: string;
+  // §D22-4: Upkeeps until the soonest after_turns trigger fires; null when none.
+  countdown?: number | null;
 }
 
 // A Skill/Ultimate as the client sees it (D8-3). For a seat you don't control
@@ -148,6 +150,9 @@ export interface CharacterView {
   regen_counters: number;
   poisoned: boolean;
   regenerating: boolean;
+  // Charge counters (§D22-1): heroes hold the windup gauge too — a plain
+  // resource cards add, spend, and read ("equal to your charge counters").
+  charge: number;
   // Heroic actions (D8-3): the public 0–100 gauge; the full card faces ship only
   // to the controlling client (others see just the used flag).
   ultimate_gauge: number;
@@ -742,7 +747,7 @@ export interface ConversationView {
   lines: { speaker: "npc" | "party" | "narration" | "choice"; text: string; attributed: string | null }[];
 }
 export interface JournalEntry {
-  act: number; scenario: number; kind: "intro" | "heard" | "quest" | "event"; text: string; speaker: string; where: string;
+  act: number; scenario: number; kind: "intro" | "heard" | "met" | "quest" | "quest_offered" | "event"; text: string; speaker: string; where: string;
 }
 export interface QuestLogView {
   arc_title: string;

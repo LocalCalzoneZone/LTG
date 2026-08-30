@@ -10,13 +10,14 @@ const BADGE =
  * Presentation only: names and glosses arrive pre-labelled from the server.
  * Unknown or future keywords fall back to a small-caps initial, so nothing
  * renders blank. */
-export function KeywordBadges({ keywords, counters, poison = 0, regen = 0 }: {
+export function KeywordBadges({ keywords, counters, poison = 0, regen = 0, charge = 0 }: {
   keywords: KeywordInfo[];
   counters: number;
   poison?: number;
   regen?: number;
+  charge?: number;
 }) {
-  if (keywords.length === 0 && counters <= 0 && poison <= 0 && regen <= 0) return null;
+  if (keywords.length === 0 && counters <= 0 && poison <= 0 && regen <= 0 && charge <= 0) return null;
   return (
     <div className="flex flex-col items-center gap-0.5">
       {keywords.map((kw) => {
@@ -47,7 +48,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0 }: {
       )}
       {poison > 0 && (
         <span
-          title={`${poison} poison counter(s): −0/−${poison} (already in the stats shown). Any healing cures the ticking; the counters remain.`}
+          title={`${poison} poison counter(s): loses ${poison} life at each Upkeep. Any healing removes all poison counters.`}
           className={`${BADGE} border-[#a9bf5e]/60 font-display text-[clamp(7px,1.1vh,10px)] text-[#a9bf5e]`}
         >
           −{poison}
@@ -55,10 +56,18 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0 }: {
       )}
       {regen > 0 && (
         <span
-          title={`${regen} regen counter(s): +0/+${regen} (already in the stats shown). Broken by damage that connects.`}
+          title={`${regen} regen counter(s): heals ${regen} at each Upkeep. Damage that connects removes all regen counters.`}
           className={`${BADGE} border-vigor/60 font-display text-[clamp(7px,1.1vh,10px)] text-vigor`}
         >
           ~{regen}
+        </span>
+      )}
+      {charge > 0 && (
+        <span
+          title={`${charge} charge counter(s): stored power — cards can spend it or scale by it ("equal to your charge counters").`}
+          className={`${BADGE} border-brass/50 font-display text-[clamp(7px,1.1vh,10px)] text-brass`}
+        >
+          ◆{charge}
         </span>
       )}
     </div>

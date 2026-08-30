@@ -93,6 +93,18 @@ def _pip_str(colors: List[str]) -> str:
     return "".join(("{" + c + "}") * counts[c] for c in _WUBRG if counts[c]) or "{0}"
 
 
+def _channel_countdown(state: GameState, ch) -> Optional[int]:
+    """Upkeeps until the channel's soonest `after_turns` trigger fires (§D22-4)
+    — the visible count that goes down each Upkeep. None when no countdown is
+    pending (no after_turns effects, or every one has already fired)."""
+    elapsed = state.turn - getattr(ch, "started_turn", state.turn)
+    pending = [t.after_turns - elapsed
+               for t in (getattr(e, "trigger", None) for e in ch.effects)
+               if getattr(t, "after_turns", None) is not None
+               and t.after_turns - elapsed > 0]
+    return min(pending) if pending else None
+
+
 # --------------------------------------------------------------------------- #
 # Veiled intents (Design Update 08 §D8-1): the category is DERIVED
 # deterministically from the declared intent — verbs, action_type, target
@@ -397,10 +409,6 @@ def _status_tags(char) -> List[str]:
         tags.append(f"poison ×{char.poison_counters}")
     if getattr(char, "regen_counters", 0):
         tags.append(f"regen ×{char.regen_counters}")
-    if getattr(char, "poison_effects", None):
-        tags.append("poisoned")
-    if getattr(char, "regen_effects", None):
-        tags.append("regenerating")
     if getattr(char, "charge", 0):
         tags.append(f"charge ×{char.charge}")
     for kw in getattr(char, "keywords", {}):
@@ -473,6 +481,9 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
             # What ending this channel will fire ("" when it has no break trigger)
             # — the Channels modal shows it as a warning note next to Drop.
             "break_text": channel_break_clause(ch.effects, ch.card.targets),
+            # §D22-4: the live after_turns countdown — Upkeeps until the
+            # soonest countdown trigger fires (None when the card has none).
+            "countdown": _channel_countdown(state, ch),
         } for ch in char.channels],
         "hand": [card_dict(c) for c in char.hand],
         "library": [card_dict(c) for c in char.library],
@@ -486,8 +497,10 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "ultimate_gauge": getattr(char, "ultimate_gauge_pct", 0),
         "poison_counters": getattr(char, "poison_counters", 0),
         "regen_counters": getattr(char, "regen_counters", 0),
-        "poisoned": bool(getattr(char, "poison_effects", None)),
-        "regenerating": bool(getattr(char, "regen_effects", None)),
+        # Charge counters (§D22-1): heroes hold the windup gauge too.
+        "charge": getattr(char, "charge", 0),
+        "poisoned": getattr(char, "poison_counters", 0) > 0,
+        "regenerating": getattr(char, "regen_counters", 0) > 0,
         "raw": to_jsonable(char),
     }
 
@@ -594,8 +607,8 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "rises": getattr(enemy, "rises", None),
         "poison_counters": getattr(enemy, "poison_counters", 0),
         "regen_counters": getattr(enemy, "regen_counters", 0),
-        "poisoned": bool(getattr(enemy, "poison_effects", None)),
-        "regenerating": bool(getattr(enemy, "regen_effects", None)),
+        "poisoned": getattr(enemy, "poison_counters", 0) > 0,
+        "regenerating": getattr(enemy, "regen_counters", 0) > 0,
         # The charge gauge (D8-2.4): count and threshold pips are public; the
         # triggered component's content is not (the cockpit's raw dump has it).
         "charge": getattr(enemy, "charge", 0),
@@ -790,6 +803,8 @@ def objective_block(state: GameState) -> Optional[Dict[str, Any]]:
         line = f"Survive: {remaining} round{plural} remain"
     elif obj.kind == "waves":
         line = f"Wave {obj.wave_index + 1} of {waves_total}"
+    elif obj.kind == "deadline":
+        line = f"Defeat every enemy — {remaining} round{plural} remain"
     else:  # race
         target = state.enemy(obj.target_id) if obj.target_id else None
         name = target.name if target is not None else "the marked enemy"
@@ -797,13 +812,19 @@ def objective_block(state: GameState) -> Optional[Dict[str, Any]]:
             line = "The doom clock is shattered."
         elif obj.status == "failed":
             line = "The clock has run out."
+        elif obj.guards and not obj.guards_down:
+            standing = sum(1 for g in obj.guards if state.enemy(g) is not None)
+            line = (f"Defeat {name} — warded by {standing} guard"
+                    f"{'' if standing == 1 else 's'} — "
+                    f"{remaining} round{plural} remain")
         else:
             line = f"Defeat {name} — {remaining} round{plural} remain"
     return {
         "kind": obj.kind,
         "status": obj.status,
         "line": line,
-        "rounds_remaining": remaining if obj.kind in ("survive", "race") else None,
+        "rounds_remaining": (remaining if obj.kind in ("survive", "race", "deadline")
+                             else None),
         "wave": obj.wave_index + 1 if obj.kind == "waves" else None,
         "waves_total": waves_total if obj.kind == "waves" else None,
         "target_id": obj.target_id,
@@ -833,6 +854,11 @@ def objective_outcome_line(state: GameState) -> Optional[str]:
         return f"All {len(obj.waves) + 1} waves broken."
     if obj.kind == "race" and state.result == "defeat" and obj.status == "failed":
         return "The doom clock ran out."
+    if obj.kind == "deadline" and state.result == "defeat" \
+            and obj.rounds_done >= obj.turns:
+        return "The clock ran out with enemies still standing."
+    if obj.kind == "deadline" and state.result == "victory":
+        return "The field cleared with rounds to spare."
     return None
 
 

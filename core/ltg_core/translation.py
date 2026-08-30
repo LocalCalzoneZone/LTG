@@ -436,6 +436,10 @@ def _ref_phrase(v: Ref) -> str:
         return "the last damage you took"
     if v.ref == "target_last_damage":
         return "the last damage it took"
+    if v.ref == "caster_charge":
+        return "your charge counters"
+    if v.ref == "target_charge":
+        return "its charge counters"
     if v.ref.endswith(".level"):
         return "its Level"
     return v.ref
@@ -913,20 +917,16 @@ def _render_counters(e) -> str:
     return f"{subj.capitalize()} {verb} {_slash_pair(e.power, e.toughness, 'attack', 'HP')}{_duration_suffix(e) or ' for the encounter'}."
 
 
-def _affliction_suffix(e) -> str:
-    return f" for {e.turns} turn(s)" if getattr(e, "turns", None) else ""
-
-
 def _render_poison(e) -> str:
     n = _value(e.amount)
-    return (f"Poison {_tgt(e.target)}: {n} −0/−1 counter(s) now and at each "
-            f"Upkeep{_affliction_suffix(e)} (any healing cures it).")
+    return (f"Poison {_tgt(e.target)}: {n} poison counter(s) — it loses 1 life "
+            f"per counter at each Upkeep; any healing removes them all.")
 
 
 def _render_regen(e) -> str:
     n = _value(e.amount)
-    return (f"{_tgt(e.target).capitalize()} regenerates: {n} +0/+1 counter(s) now "
-            f"and at each Upkeep{_affliction_suffix(e)} (broken by damage).")
+    return (f"{_tgt(e.target).capitalize()} regenerates: {n} regen counter(s) — "
+            f"it heals 1 per counter at each Upkeep; damage removes them all.")
 
 
 def _control_span(e) -> str:
@@ -942,6 +942,19 @@ def _render_control(e) -> str:
     # Control takes the living and the dead alike (§D9-1.4) — say so on the card.
     return (f"Gain control of {_tgt(e.target)} or a corpse {_control_span(e)} — a "
             f"living enemy fights for you; a corpse rises as an undead ally at half HP.")
+
+
+def _render_channel_drop(e) -> str:
+    return "This enchantment drops."
+
+
+def _render_charge(e) -> str:
+    tgt = _tgt(e.target)
+    if getattr(e, "op", "add") == "remove":
+        if e.amount == "all":
+            return f"Remove all charge counters from {tgt}."
+        return f"Remove {_value(e.amount)} charge counter(s) from {tgt}."
+    return f"Add {_value(e.amount)} charge counter(s) to {tgt}."
 
 
 def _render_break_channel(e) -> str:
@@ -1074,7 +1087,7 @@ RENDERERS = {
     "lose_life": lambda e: _render_lose_life(e),
     "poison": _render_poison,
     "regen": _render_regen,
-    "charge": lambda e: f"Gather {e.amount} charge.",
+    "charge": lambda e: _render_charge(e),
     "destroy": lambda e: f"Destroy {_tgt(e.target)}.",
     "exile": lambda e: f"Exile {_tgt(e.target)}.",
     # §D19-1: the cost reads as a cost — and it always happens last, so the
@@ -1084,6 +1097,7 @@ RENDERERS = {
     "fight": lambda e: f"{_tgt(e.target).capitalize()} fights {_tgt(e.other)}.",
     "counter": lambda e: f"Cancel {_FILTER_PHRASE.get(e.filter, 'an enemy ' + str(e.filter))}.",
     "break_channel": _render_break_channel,
+    "channel_drop": _render_channel_drop,
     "strip_intent": _render_strip_intent,
     "stun": _render_stun,
     "pump": _render_pump,
@@ -1148,10 +1162,10 @@ _CLAUSE = {
     "wound": lambda e: f"suffer {_slash_pair(e.power, e.toughness, 'attack', 'HP', sign='-')} this turn",
     "sap": lambda e: f"lose {e.amount} mana capacity",
     "modify_action": _action_mod_phrase,
-    "poison": lambda e: (f"are poisoned: {_value(e.amount)} −0/−1 counter(s) now and "
-                         f"at each Upkeep{_affliction_suffix(e)} (any healing cures it)"),
-    "regen": lambda e: (f"regenerate: {_value(e.amount)} +0/+1 counter(s) now and "
-                        f"at each Upkeep{_affliction_suffix(e)} (broken by damage)"),
+    "poison": lambda e: (f"are poisoned: {_value(e.amount)} poison counter(s) — "
+                         f"lose 1 life per counter at each Upkeep (any healing removes them)"),
+    "regen": lambda e: (f"regenerate: {_value(e.amount)} regen counter(s) — "
+                        f"heal 1 per counter at each Upkeep (damage removes them)"),
     "destroy": lambda e: "are destroyed",
     "exile": lambda e: "are exiled",
     "set_reference": _set_reference_clause,
@@ -1169,6 +1183,10 @@ _CLAUSE = {
     "move": lambda e: f"are moved {_MOVE_DIR_PHRASE.get(e.direction, e.direction)}",
     "strip_intent": lambda e: "lose their telegraphed intent",
     "break_channel": lambda e: "have their channels broken",
+    "channel_drop": lambda e: "this enchantment drops",
+    "charge": lambda e: (f"lose {'all their' if e.amount == 'all' else _value(e.amount)} charge counter(s)"
+                         if getattr(e, "op", "add") == "remove"
+                         else f"gain {_value(e.amount)} charge counter(s)"),
     "taunt": lambda e: "must target you this turn",
     "revive": lambda e: f"are revived at {int(e.to_fraction * 100)}% HP",
     "protection": lambda e: f"gain protection ({_protection_phrase(e)} against them is negated)",
@@ -1392,6 +1410,18 @@ def _render_channeled(effects, targets) -> str:
         group = [e for e in effects if getattr(e, "trigger", None) == trigger]
         if group:
             parts.append(lead + _join_and([_upkeep_clause(e, targets) for e in group]) + ".")
+    # after_turns countdowns group by their N (§D22-4): "After 3 turns: …".
+    seen_turns: List[int] = []
+    for e in effects:
+        t = getattr(e, "trigger", None)
+        n = getattr(t, "after_turns", None)
+        if n is None or n in seen_turns:
+            continue
+        seen_turns.append(n)
+        group = [x for x in effects
+                 if getattr(getattr(x, "trigger", None), "after_turns", None) == n]
+        parts.append(f"After {n} turn{'s' if n != 1 else ''}: "
+                     + _join_and([_upkeep_clause(x, targets) for x in group]) + ".")
     # Event triggers group by their (event, who, spell type) signature.
     seen: List[tuple] = []
     for e in effects:

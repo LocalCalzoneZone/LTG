@@ -303,8 +303,18 @@ class EventTrigger(BaseModel):
         return self
 
 
-# A trigger is either one of the fixed channel-lifecycle triggers or an event watch.
-Trigger = Union[TriggerType, EventTrigger]
+class AfterTurnsTrigger(BaseModel):
+    """A countdown trigger: fires once, at the Upkeep `after_turns` turns after
+    the channel began (the count goes down each Upkeep). The natural fuse for a
+    channel_drop — "after 3 turns, this enchantment drops" — but any channeled
+    effect may carry it."""
+
+    after_turns: int = Field(ge=1)
+
+
+# A trigger is one of the fixed channel-lifecycle triggers, an event watch, or
+# a turn countdown.
+Trigger = Union[TriggerType, EventTrigger, AfterTurnsTrigger]
 
 
 class Ref(BaseModel):
@@ -328,37 +338,57 @@ class Ref(BaseModel):
 # The value references the engine can resolve, with display labels. The editor
 # builds its "reference" dropdown from this registry — no free-text refs.
 # (mana_capacity also has its own shortcut in the editor's value control.)
+# Labels follow one convention — "<Stat> (target)" / "<Stat> (caster)" — and
+# the target/caster pair of each stat sits together; REF_GROUPS below carries
+# the dropdown's section headings.
 REF_VALUES = {
     "mana_capacity": "your mana capacity",
-    "destroyed_target.level": "the destroyed target's level",
-    "casting_cost": "this card's casting cost (mana paid, X included)",
+    # This cast: X and the mana paid.
     "x": "X (chosen at cast)",
-    # The number of player characters in the encounter (downed members still
-    # count — incapacitation is recoverable, the seat remains).
-    "party_size": "the party size (number of players)",
+    "casting_cost": "Casting cost (mana paid, X included)",
     # Live combat stats, read at RESOLUTION (a pump landing first changes them).
     # "caster" is the card's controller; "target" is the creature the effect is
     # landing on (per-creature for a mode:all effect — each reads its own stats).
-    "caster_power": "your Power (the caster's, at resolution)",
-    "caster_hp": "your current HP (the caster's, at resolution)",
-    "target_power": "the target's Power",
-    "target_hp": "the target's current HP",
+    "target_power": "Power (target)",
+    "caster_power": "Power (caster)",
     # BASE stats (§D19-5): the printed numbers — Power before bonuses/counters,
     # max HP before wounds — for effects keyed to what a creature IS rather than
     # its battle-worn state.
-    "caster_base_power": "your base Power (printed, no bonuses)",
-    "caster_base_hp": "your maximum HP (base toughness)",
-    "target_base_power": "the target's base Power (printed, no bonuses)",
-    "target_base_hp": "the target's maximum HP (base toughness)",
-    # The number of living enemy creatures on the battlefield, read at
-    # RESOLUTION (a kill earlier in the same card changes what later effects see).
-    "enemy_count": "the number of enemies on the battlefield",
+    "target_base_power": "Base Power (target)",
+    "caster_base_power": "Base Power (caster)",
+    "target_hp": "Current HP (target)",
+    "caster_hp": "Current HP (caster)",
+    "target_base_hp": "Max HP (target)",
+    "caster_base_hp": "Max HP (caster)",
+    # Charge counters (§D8-2.4 / §D22-1): the windup gauge — on an enemy it
+    # arms on_charge_full; on a hero it is a plain resource. Granted and
+    # drained by the `charge` verb; these refs make the count READABLE.
+    "target_charge": "Charge counters (target)",
+    "caster_charge": "Charge counters (caster)",
     # Retroactive combo refs: the size of the last blow that CONNECTED with the
     # named combatant (post-prevention/mitigation), 0 if never hit. "Heal an
     # amount equal to the last damage you took."
-    "caster_last_damage": "the last damage taken by you (the caster)",
-    "target_last_damage": "the last damage taken by the target",
+    "target_last_damage": "Last damage taken (target)",
+    "caster_last_damage": "Last damage taken (caster)",
+    # Battlefield counts, read at RESOLUTION (a kill earlier in the same card
+    # changes what later effects see). Downed party members still count —
+    # incapacitation is recoverable, the seat remains.
+    "party_size": "Party size (number of players)",
+    "enemy_count": "Enemy count (living enemies)",
+    "destroyed_target.level": "Destroyed target's level",
 }
+
+# Dropdown sections for the editor, in display order. Every non-shortcut ref
+# must appear in exactly one group (checked by tests); stored values ($R1…)
+# get their own group client-side.
+REF_GROUPS = [
+    ("This cast", ["x", "casting_cost"]),
+    ("Stats", ["target_power", "caster_power", "target_base_power", "caster_base_power",
+               "target_hp", "caster_hp", "target_base_hp", "caster_base_hp"]),
+    ("Counters", ["target_charge", "caster_charge"]),
+    ("Damage taken", ["target_last_damage", "caster_last_damage"]),
+    ("Battlefield", ["party_size", "enemy_count", "destroyed_target.level"]),
+]
 
 
 # Value = int | "all" | {"ref": str}
@@ -513,39 +543,52 @@ class LoseLife(EffectBase):
 
 
 class Poison(EffectBase):
-    """A poison effect (Design Update 08 §D8-2.1): places `amount` poison counters
-    (each a persistent −0/−1) on resolution and again at the start of each Upkeep,
-    until it concludes — the creature dies, receives any healing (an antidote is an
-    antidote), or the optional `turns` bound expires. Not damage: it cannot be
-    prevented or mitigated and never breaks a channel."""
+    """Places `amount` poison counters (§D8-2.1, reworked §D22-2): each counter
+    makes the creature LOSE 1 life at every Upkeep — the counters are the clock;
+    they neither tick up on their own nor expire. Any healing removes ALL poison
+    counters (an antidote is an antidote). The upkeep tick is life loss, not
+    damage: it cannot be prevented or mitigated, never breaks a channel, and
+    never sheds regen counters. Distinct from a temporary/cumulative −X."""
 
     kind: Literal["poison"] = "poison"
     amount: Value = 1
-    turns: Optional[int] = None  # absent = until concluded by rule
     target: TargetOrSlot
 
 
 class Regen(EffectBase):
-    """The mirror of poison (§D8-2.2): places `amount` regen counters (each a
-    persistent +0/+1) on resolution and at each Upkeep until it concludes — the
-    creature is dealt damage that connects, or the `turns` bound expires. A regen
-    tick counts as healing (it cures poison). Poison and regen counters on the
-    same creature annihilate 1:1 as a state-based action."""
+    """The mirror of poison (§D8-2.2, reworked §D22-2): places `amount` regen
+    counters; each counter HEALS the creature 1 at every Upkeep (real healing —
+    it can trigger life_gain, and being healing it removes poison counters,
+    though annihilation makes that moot). Damage that connects removes ALL regen
+    counters. Poison and regen counters on the same creature annihilate 1:1 as
+    a state-based action."""
 
     kind: Literal["regen"] = "regen"
     amount: Value = 1
-    turns: Optional[int] = None
     target: TargetOrSlot
 
 
 class Charge(EffectBase):
-    """The windup verb (§D8-2.4): the source places `amount` charge counters on
-    ITSELF — a visible gauge that detonates a hidden `on_charge_full` component at
-    its threshold. Enemy-only: validation rejects it in a loadout (like `draw` on
-    an enemy); the player analogue is the ultimate gauge (§D8-3.3)."""
+    """Charge counters (§D8-2.4, opened to players §D22-1): add or remove the
+    windup gauge on any combatant. `op:"add"` places `amount` counters;
+    `op:"remove"` drains `amount` ("all" empties the gauge — a defuse). The
+    target defaults to the source itself, so enemy components keep authoring it
+    targetless; player cards may aim it anywhere. On an enemy, reaching its
+    threshold still detonates the hidden `on_charge_full` component; on a hero
+    the counters are a plain resource, readable via `caster_charge` /
+    `target_charge`."""
 
     kind: Literal["charge"] = "charge"
-    amount: int = 1
+    op: Literal["add", "remove"] = "add"
+    amount: Value = 1
+    target: TargetOrSlot = Field(
+        default_factory=lambda: TargetDescriptor(mode="self"))
+
+    @model_validator(mode="after")
+    def _sane(self) -> "Charge":
+        if self.amount == "all" and self.op != "remove":
+            raise ValueError('charge amount "all" is only valid with op "remove"')
+        return self
 
 
 class Destroy(EffectBase):
@@ -673,6 +716,18 @@ class BreakChannel(EffectBase):
 
     kind: Literal["break_channel"] = "break_channel"
     target: TargetOrSlot
+
+
+class ChannelDrop(EffectBase):
+    """End THIS enchantment (§D22-3): the channel the effect rides drops —
+    reserved mana returns to the pool and the channel's `channel_break` trigger
+    still fires. Targetless and self-referential: it only ever drops its own
+    channel, never a sibling. Channeled cards only, and it must carry a trigger
+    (the fuse) — "after 3 turns", "when an ally dies", "at each upkeep" with a
+    conditional, and so on. An untriggered channel_drop would end the channel
+    the moment it began, so validation rejects it."""
+
+    kind: Literal["channel_drop"] = "channel_drop"
 
 
 class Stun(EffectBase):
@@ -1215,6 +1270,7 @@ LEAF_EFFECT_CLASSES = [
     Counter,
     StripIntent,
     BreakChannel,
+    ChannelDrop,
     Stun,
     Pump,
     Wound,
@@ -1546,6 +1602,7 @@ def effect_specs() -> dict:
                     "options": list(_t.get_args(TriggerType)),
                     "events": list(TRIGGER_EVENTS), "whos": list(TRIGGER_WHO),
                     "spell_types": [t.value for t in Timing],
+                    "after_turns": True,  # the "after N turns…" countdown option
                 })
                 continue
             spec = {"name": fname, **_control_for(finfo.annotation)}
@@ -1701,10 +1758,8 @@ class Card(BaseModel):
                     raise ValueError(
                         "sap cannot target an enemy (enemies have no mana capacity)"
                     )
-            if effect.kind == "charge":
-                # Charge is the enemy windup verb (D8-2.4); the player analogue is
-                # the ultimate gauge. Rejected in a loadout like `draw` on an enemy.
-                raise ValueError("charge is enemy-only and cannot appear on a card")
+            # (§D22-1 lifts the old charge-is-enemy-only ban: player cards may
+            # now add, spend, and defuse charge counters.)
             # Corpse axis (§D9-1.3): only corpse-legal verbs may aim at a corpse
             # — with ONE exception (§D19-6): a `deal_damage` carrying a splash
             # scope may anchor on a body. The corpse is the blast point, never a
@@ -1745,6 +1800,13 @@ class Card(BaseModel):
                     raise ValueError(f"trigger '{effect.trigger}' is only valid on channeled cards")
                 if getattr(effect, "duration", None) == Duration.while_channeled:
                     raise ValueError("a triggered effect must not also be 'while_channeled'")
+            if effect.kind == "channel_drop":
+                # §D22-3: drops ITS OWN channel — enchantments only, and always
+                # on a fuse (untriggered it would end the channel at its start).
+                if not is_channeled:
+                    raise ValueError("channel_drop is only valid on a channeled card")
+                if effect.trigger is None:
+                    raise ValueError("channel_drop needs a trigger — the fuse that drops the enchantment")
         return self
 
     def resolved_target(self, effect) -> Optional[TargetDescriptor]:
@@ -2538,16 +2600,22 @@ class EncounterObjective(BaseModel):
       later waves (reserve-zone enemies block victory by construction).
     - `race`: defeat the marked `target` (graveyard or exile — nothing else
       counts) within `turns` rounds, or the `fail` shape fires (`escalation`
-      required iff fail == "escalate").
+      required iff fail == "escalate"). Optional `guards`: pool ids that shield
+      the target — while any guard body stands undefeated, the party cannot
+      TARGET the marked enemy (area damage still clips it).
+    - `deadline`: the hard clock — defeat EVERY enemy within `turns` rounds or
+      the encounter is lost. No target, no payload, no interaction: the clock
+      simply runs.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["survive", "waves", "race"]
+    kind: Literal["survive", "waves", "race", "deadline"]
     turns: Optional[int] = None
     reinforcements: List[Reinforcement] = Field(default_factory=list)
     waves: Optional[List[ObjectiveRoster]] = None
     target: Optional[str] = None
+    guards: List[str] = Field(default_factory=list)   # race only
     fail: Optional[Literal["defeat", "escalate"]] = None
     escalation: Optional[Escalation] = None
     resolved: bool = False  # set by the combat loader once rosters are concrete
@@ -2563,7 +2631,14 @@ class EncounterObjective(BaseModel):
         if self.kind == "survive":
             if not self.turns or self.turns < 1:
                 raise ValueError("a 'survive' objective needs 'turns' >= 1")
-            forbid("waves", "target", "fail", "escalation")
+            forbid("waves", "target", "fail", "escalation", "guards")
+        elif self.kind == "deadline":
+            if not self.turns or self.turns < 1:
+                raise ValueError("a 'deadline' objective needs 'turns' >= 1")
+            forbid("waves", "target", "fail", "escalation", "guards")
+            if self.reinforcements:
+                raise ValueError("a 'deadline' objective must not carry "
+                                 "'reinforcements'")
         elif self.kind == "waves":
             if not self.waves:
                 raise ValueError("a 'waves' objective needs at least one later "
@@ -2572,7 +2647,7 @@ class EncounterObjective(BaseModel):
                 empty = (not any(w.values())) if isinstance(w, dict) else (not w)
                 if empty:
                     raise ValueError(f"wave {i} fields no enemies")
-            forbid("turns", "target", "fail", "escalation")
+            forbid("turns", "target", "fail", "escalation", "guards")
             if self.reinforcements:
                 raise ValueError("a 'waves' objective must not carry 'reinforcements'")
         else:  # race

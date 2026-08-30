@@ -810,6 +810,27 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
     qnpc = act_outline.get("questgiver_npc")
     if qnpc not in dialogues:
         raise ValueError(f"the questgiver ({qnpc}) has no dialogue tree")
+    # The narration floor (beta playtest): dialogue that only ever SPEAKS reads
+    # as a chat log — every physical fact (the splinted arm, the drawn seam)
+    # stays invisible, and the player can't follow who is doing what. A tree of
+    # any real size must carry unvoiced beats; the questgiver's — the act's
+    # storytelling spine — must carry at least two.
+    for npc_id, tree in dialogues.items():
+        nodes = tree["nodes"]
+        if len(nodes) < 4:
+            continue  # a greeting tree may be all voice
+        beats = sum(1 for n in nodes.values() if n.get("speaker") == "narration")
+        need = 2 if npc_id == qnpc else 1
+        if beats < need:
+            found = _resolve_npc(town, npc_id)
+            name = found[1]["name"] if found else npc_id
+            raise ValueError(
+                f"dialogue for {name} has {beats} narration node(s) across "
+                f"{len(nodes)} nodes — it needs at least {need}. Narration "
+                'nodes ({"speaker": "narration"}) are stage directions: what '
+                "the NPC does with their hands, what the party notices, what a "
+                "name just used refers to. Put one after each major reveal so "
+                "the scene reads like a novel, not a transcript")
     _bind_quest_hooks(dialogues, quests)
     flavor: Dict[str, str] = {}
     for npc_id, line in (raw.get("flavor") or {}).items():

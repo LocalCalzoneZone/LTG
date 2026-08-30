@@ -188,6 +188,7 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         # Typed counters (D8-2) — public information on both sides.
         "poison_counters": cd["poison_counters"],
         "regen_counters": cd["regen_counters"],
+        "charge": cd.get("charge", 0),
         "poisoned": cd["poisoned"],
         "regenerating": cd["regenerating"],
         # Heroic actions (D8-3): the gauge and used-flags are public; the

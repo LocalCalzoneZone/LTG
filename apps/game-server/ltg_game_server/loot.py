@@ -300,7 +300,7 @@ CONSUMABLE_RECIPES: List[Dict[str, Any]] = [
      "points": lambda t: 10 + 2 * min(t, 4), "effects": _big_heal},
     {"id": "regen", "family": "restorative", "timing": "instant", "level_min": 2,
      "points": lambda t: 10 + 2 * min(t, 3),
-     "effects": lambda t: [{"kind": "regen", "amount": 1 if t < 4 else 2, "turns": 3,
+     "effects": lambda t: [{"kind": "regen", "amount": 2 if t < 4 else 3,
                             "target": ALLY}]},
     {"id": "ward", "family": "restorative", "timing": "instant", "level_min": 1,
      "points": lambda t: 12,

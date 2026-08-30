@@ -518,8 +518,8 @@ export function JournalEntries({ log, full }: { log: QuestLogView; full?: boolea
         <div className="text-[10px] font-light italic text-dimmed">… {entries.length - shown.length} earlier entries in the Journal</div>
       )}
       {shown.map((e, i) => (
-        <div key={i} className={`text-xs font-light leading-relaxed ${e.kind === "intro" ? "italic text-parch" : e.kind === "quest" ? "text-brass" : "text-mist"}`}>
-          {e.kind === "heard" && (
+        <div key={i} className={`text-xs font-light leading-relaxed ${e.kind === "intro" ? "italic text-parch" : e.kind === "quest" || e.kind === "quest_offered" ? "text-brass" : "text-mist"}`}>
+          {(e.kind === "heard" || e.kind === "met") && (
             <span className="caps-label mr-1 text-[9px] tracking-[0.14em] text-parch">{e.speaker}{e.where ? `, ${e.where}` : ""} —</span>
           )}
           {e.kind === "heard" ? <span>“{e.text}”</span> : e.text}
