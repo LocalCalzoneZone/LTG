@@ -335,8 +335,31 @@ def api_save(body: LoadoutBody) -> dict:
     LOADOUT_DIR.mkdir(exist_ok=True)
     name = _slug(loadout.character.name) or "untitled"
     path = _safe_path(name)
-    path.write_text(json.dumps(loadout.model_dump(), indent=2))
+    path.write_text(json.dumps(_prune_loadout_dict(loadout.model_dump()), indent=2))
     return {"saved": name}
+
+
+# Legacy MTG-lineage fields: still accepted on load (the schema defaults them)
+# but no longer written to saved / exported files.
+_LEGACY_CARD_FIELDS = ("source_name", "ignore_source", "original_text", "needs_translation")
+
+
+def _prune_card_dict(card: dict) -> dict:
+    for k in _LEGACY_CARD_FIELDS:
+        card.pop(k, None)
+    return card
+
+
+def _prune_loadout_dict(data: dict) -> dict:
+    for c in data.get("cards") or []:
+        if isinstance(c, dict):
+            _prune_card_dict(c)
+    ch = data.get("character")
+    if isinstance(ch, dict):
+        for slot in ("skill", "ultimate"):
+            if isinstance(ch.get(slot), dict):
+                _prune_card_dict(ch[slot])
+    return data
 
 
 def _build_engine_loadout(raw: dict):
@@ -366,7 +389,7 @@ def _build_engine_loadout(raw: dict):
             card.translated_text = render_effects(
                 card.effects, card.targets, channeled=card.timing.value == "channeled"
             )
-        exported.append(card.model_dump())
+        exported.append(_prune_card_dict(card.model_dump()))
 
     # Include the resolved stats for the engine's convenience (they match the table).
     engine_loadout = {
@@ -374,6 +397,7 @@ def _build_engine_loadout(raw: dict):
         "character": {**character.model_dump(), "stats": character.stats},
         "cards": exported,
     }
+    _prune_loadout_dict(engine_loadout)
     return engine_loadout, omitted
 
 

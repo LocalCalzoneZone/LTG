@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LTG — Deck Builder</title>
-  <link rel="stylesheet" href="/styles.css?v=16" />
+  <link rel="stylesheet" href="/styles.css?v=18" />
 </head>
 <body>
   <header class="topbar">
@@ -13,8 +13,9 @@
       <button id="btn-new">Create New</button>
       <button id="btn-load">Load</button>
       <input type="file" id="file-load" accept="application/json,.json" hidden />
-      <button id="btn-import">Import</button>
-      <button id="btn-import-custom">Import Custom Cards</button>
+      <button id="btn-update" title="Merge a newer JSON export of this character — keeps your portrait, animation clips, and clip assignments">Update from JSON</button>
+      <input type="file" id="file-update" accept="application/json,.json" hidden />
+      <button id="btn-import-custom">Import Deck</button>
       <button id="btn-save">Save</button>
       <button id="btn-export-engine" class="primary">Export engine loadout</button>
       <button id="btn-quit" title="Stop the deckbuilder and close">Quit</button>
@@ -81,11 +82,11 @@
         <section class="panel" id="heroics-panel">
           <h2>Heroic actions</h2>
           <div class="field">
-            <span>Skill &amp; Ultimate — once per encounter (D8-3)</span>
+            <span>Skill &amp; Ultimate</span>
             <div id="heroic-pick" class="buy-list"></div>
           </div>
           <div class="field">
-            <span>Ability flavour — evergreen display names</span>
+            <span>Ability flavour</span>
             <div id="flavor-pick" class="archetype-row"></div>
           </div>
         </section>
@@ -96,25 +97,18 @@
             <div id="status-body" class="status">No cards yet.</div>
           </section>
 
-          <section class="panel" id="search-panel">
-            <h2>Add cards</h2>
-            <div class="search-row">
-              <input id="search-input" type="text" placeholder="Search MTG card name…" />
-              <button id="btn-search">Search</button>
-              <button id="btn-new-card" title="Author a blank card from scratch — no MTG source">+ New Card</button>
-            </div>
-            <ul id="search-results" class="results"></ul>
-          </section>
         </div>
       </div>
 
       <section class="panel" id="deck-panel">
-        <h2>Deck (<span id="deck-count">0</span>)</h2>
+        <div class="deck-head">
+          <h2>Deck (<span id="deck-count">0</span>)</h2>
+          <button id="btn-new-card" title="Author a blank card from scratch">+ New Card</button>
+        </div>
         <table id="deck-table">
         <thead>
           <tr>
             <th class="sortable" data-sort="name">Name<span class="sort-ind"></span></th>
-            <th class="sortable" data-sort="source_name">Source<span class="sort-ind"></span></th>
             <th class="sortable" data-sort="cost">Cost<span class="sort-ind"></span></th>
             <th class="sortable" data-sort="type">Type<span class="sort-ind"></span></th>
             <th class="sortable" data-sort="rarity">Rarity<span class="sort-ind"></span></th>
@@ -132,31 +126,14 @@
     <div class="detail-card" id="detail-card"></div>
   </div>
 
-  <div id="import-overlay" class="overlay hidden">
-    <div class="detail-card">
-      <h3>Import deck list</h3>
-      <div class="meta">Paste one card per line. Quantity, set code in (parens), and
-        collector number are ignored — only the card name is used. Anything that
-        can't be added cleanly (wrong type, off-colour, over quota) still imports and
-        is flagged in the list.</div>
-      <textarea id="import-text" rows="12" spellcheck="false"
-        placeholder="1 Akroma's Will (CMR) 3&#10;1 Apostle's Blessing (MM2) 8&#10;1 Banishing Light (CM2) 18"></textarea>
-      <div id="import-status" class="meta"></div>
-      <div class="detail-actions">
-        <button id="import-cancel">Cancel</button>
-        <button class="primary" id="import-go">Import</button>
-      </div>
-    </div>
-  </div>
-
   <div id="anim-overlay" class="overlay hidden">
     <div class="detail-card anim-card">
       <h3>Panel animations</h3>
-      <div class="sub">Clips played over the portrait in game when the matching action resolves. Each clip has a title and the action it plays on by default; an <b>alternate</b> is kept out of the defaults and offered as a pick on cards and stance attacks instead.</div>
+      <div class="sub">Clips played over the portrait in game when the matching action resolves. Set a clip on each action you want animated. An <b>alternate</b> never plays automatically — it is offered as a pick on cards and stance abilities instead.</div>
       <div id="anim-list" class="anim-list"></div>
       <div class="detail-actions">
         <div class="anim-add">
-          <button id="anim-add" class="primary">+ Add clip</button>
+          <button id="anim-add" class="primary">+ Add alternate animation</button>
           <span id="anim-status" class="chip" hidden></span>
           <input type="file" id="anim-file" accept=".webm,.mp4,.webp,.gif,video/webm,video/mp4,image/webp,image/gif" hidden />
         </div>
@@ -167,20 +144,34 @@
 
   <div id="import-custom-overlay" class="overlay hidden">
     <div class="detail-card">
-      <h3>Import custom cards</h3>
+      <h3>Import deck</h3>
       <div class="meta">Paste JSON — an array of cards (or <code>{"cards": [...]}</code>),
         each with <code>name</code>, <code>type</code> (instant / sorcery / enchantment),
         <code>mana_cost</code>, <code>effect</code>, and optional <code>flavour</code>
         (an in-character description of how the effect works — the card editor's Flavour field).
         Cards are added to the current deck; nothing is replaced. Effect text is run
-        through the same translation pass as MTG imports — anything it can't parse is
-        flagged for hand-authoring. See <code>CUSTOM_CARD_SCHEMA.md</code> for the full format.</div>
+        through the translation pass — anything it can't parse is flagged for
+        hand-authoring. See <code>CUSTOM_CARD_SCHEMA.md</code> for the full format.</div>
       <textarea id="import-custom-text" rows="14" spellcheck="false"
         placeholder='[&#10;  {&#10;    "name": "Crystal Lance",&#10;    "type": "instant",&#10;    "mana_cost": "{1}{W}",&#10;    "effect": "Crystal Lance deals 3 damage to any target.",&#10;    "flavour": "A shard of razor-sharp crystal, summoned and directed — deadly as a spear strike."&#10;  }&#10;]'></textarea>
       <div id="import-custom-status" class="meta" style="white-space: pre-line;"></div>
       <div class="detail-actions">
         <button id="import-custom-cancel">Cancel</button>
         <button class="primary" id="import-custom-go">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="update-overlay" class="overlay hidden">
+    <div class="detail-card">
+      <h3>Update from JSON</h3>
+      <div class="sub">Changes found in <b id="update-src"></b> against the current
+        loadout. The character build and cards come from the new file; this
+        loadout's portrait, animation clips, and clip assignments are kept.</div>
+      <div id="update-body" class="update-body"></div>
+      <div class="detail-actions">
+        <button id="update-cancel">Cancel</button>
+        <button class="primary" id="update-go">Apply update</button>
       </div>
     </div>
   </div>
@@ -204,6 +195,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/app.js?v=26"></script>
+  <script src="/app.js?v=28"></script>
 </body>
 </html>

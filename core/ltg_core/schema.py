@@ -1605,11 +1605,10 @@ class Cost(BaseModel):
 class Card(BaseModel):
     id: str
     name: str
-    source_name: str
-    # "Custom card — ignore source": the card was authored from scratch (or has
-    # drifted far enough from its MTG source that the lineage is noise). The
-    # deckbuilder shows the source as " - " and the singleton rule keys on the
-    # card's own name instead of `source_name`.
+    # Legacy MTG lineage: the name of the source card a translated import came
+    # from. New cards are authored from scratch and carry no source; the
+    # deckbuilder strips these fields on save. Kept so old loadouts still load.
+    source_name: str = ""
     ignore_source: bool = False
     rarity: Rarity
     level: int
@@ -2432,7 +2431,7 @@ def deck_status(loadout: Loadout) -> dict:
 
     seen: Dict[str, int] = {}
     for c in cards:
-        key = c.name if c.ignore_source else c.source_name
+        key = c.name if (c.ignore_source or not c.source_name) else c.source_name
         seen[key] = seen.get(key, 0) + 1
     duplicates = sorted(name for name, n in seen.items() if n > 1)
 

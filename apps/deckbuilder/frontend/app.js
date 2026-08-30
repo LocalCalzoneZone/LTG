@@ -59,14 +59,16 @@ const blankLoadout = () => ({
 });
 
 // The action types a panel animation can be wired to by default (schema
-// AnimTrigger). Order = display order in the trigger select.
+// AnimTrigger). Order = display order in the Animations modal.
 const ANIM_TRIGGERS = [
-  ["attack", "Attack"], ["cast", "Cast (spell)"], ["channel", "Channel (channeled spell)"],
+  ["attack", "Attack"], ["cast", "Cast"], ["channel", "Channel"],
   ["defend", "Defend"], ["mitigate", "Mitigate"], ["skill", "Skill"],
-  ["ultimate", "Ultimate"], ["hit", "Hit (takes damage)"], ["death", "Death"],
-  ["revive", "Revive (stands back up — author it from the death clip's last frame to the portrait pose)"],
-  ["victory", "Victory (party wins the fight)"],
+  ["ultimate", "Ultimate"], ["hit", "Hit"], ["death", "Death"],
+  ["revive", "Revive"], ["victory", "Victory"],
 ];
+// Triggers where the clip leads the board's hit / damage effects — the only
+// ones whose impact timing matters.
+const IMPACT_TRIGGERS = new Set(["attack", "cast", "channel", "skill", "ultimate"]);
 const ANIM_TRIGGER_LABEL = Object.fromEntries(ANIM_TRIGGERS);
 const animList = () => (state.character.animations ||= []);
 const animIsVideo = (a) => /\.(webm|mp4)(\?|$)/i.test(a.file || "");
@@ -107,16 +109,6 @@ function manaIcon(c) {
   return `<img class="mana-icon" src="/assets/mana/${c}.svg" alt="${c}" title="${c}" />`;
 }
 
-// Render a Scryfall mana cost ("{1}{G}{G}") as small icons + generic-number pips.
-function manaCostHtml(manaCost) {
-  const tokens = (manaCost || "").match(/\{([^}]+)\}/g) || [];
-  if (!tokens.length) return "";
-  return `<span class="res-cost">${tokens.map((t) => {
-    const sym = t.slice(1, -1);
-    return /^[WUBRG]$/.test(sym) ? manaIcon(sym) : `<span class="mc-generic">${escapeHtml(sym)}</span>`;
-  }).join("")}</span>`;
-}
-
 function makePip(color, on, onClick) {
   const pip = document.createElement("button");
   pip.type = "button";
@@ -143,58 +135,72 @@ function renderPortrait() {
 // Panel animations (Update 16): the clip list on the character sheet. Files
 // upload to the server (loadouts/anim/<char>/) and the loadout keeps only the
 // URL path + metadata; the game plays a clip over the portrait when its
-// trigger action resolves. An "alternate" is never picked by its trigger — it
-// is offered on cards / stance attacks as an explicit choice.
+// trigger action resolves. The modal shows one slot per action type — set a
+// file on each you want animated. An "alternate" is never picked by its
+// trigger — it is offered on cards / stance abilities as an explicit choice.
 // --------------------------------------------------------------------------
+function animRowHtml(a, i, isAlt) {
+  const video = animIsVideo(a);
+  const thumb = video
+    ? `<video src="${escapeAttr(a.file)}" muted playsinline preload="metadata"></video>`
+    : `<img src="${escapeAttr(a.file)}" alt="" />`;
+  return `<div class="anim-row${isAlt ? " alt" : ""}" data-i="${i}">
+    <div class="anim-thumb" data-i="${i}" title="${video ? "Click to preview" : "Animated image"}">
+      ${thumb}${video ? `<div class="anim-play">▶</div>` : ""}
+    </div>
+    <div class="anim-body">
+      ${isAlt ? `<input type="text" class="anim-title" data-i="${i}" value="${escapeAttr(a.title || "")}" placeholder="Title (e.g. Crystal blade slash)" />` : ""}
+      <div class="anim-line">
+        ${isAlt ? `<label class="inline">for <select class="anim-trigger" data-i="${i}">
+            ${ANIM_TRIGGERS.map(([v, l]) => `<option value="${v}" ${a.trigger === v ? "selected" : ""}>${l}</option>`).join("")}
+          </select></label>` : ""}
+        ${video
+          ? `<label class="inline" title="Playback rate — leave at 1 to play the clip as authored">speed ×<input type="number" class="anim-speed" data-i="${i}" min="0.25" max="4" step="0.25" value="${a.speed ?? 1}" /></label>`
+          : `<label class="inline" title="Animated images can't be retimed by the browser — how long to show the clip">shows for <input type="number" class="anim-dur" data-i="${i}" min="0.5" max="30" step="0.5" value="${a.duration_s ?? 5}" /> s</label>`}
+        ${IMPACT_TRIGGERS.has(a.trigger) ? `<label class="inline" title="When the action lands in the clip (seconds from its start) — the board's hit / damage effects wait for this moment so the clip leads">impact at <input type="number" class="anim-impact" data-i="${i}" min="0" max="10" step="0.1" value="${a.impact_s ?? 1.5}" /> s</label>` : ""}
+        <span class="anim-file" title="${escapeAttr(a.file)}">${escapeHtml((a.file || "").split("/").pop())}</span>
+        <button class="small danger anim-remove" data-i="${i}" title="Remove this clip (deletes the file)">×</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderAnimations() {
   const anims = animList();
   const count = $("#anim-count");
   if (count) count.textContent = anims.length ? `(${anims.length})` : "";
   const host = $("#anim-list");
   if (!host) return;
-  if (!anims.length) {
-    host.innerHTML = `<div class="anim-empty">No clips yet. Add a WebM (recommended), MP4, animated WebP or GIF generated from this portrait.</div>`;
-    return;
-  }
-  host.innerHTML = anims.map((a, i) => {
-    const video = animIsVideo(a);
-    const thumb = video
-      ? `<video src="${escapeAttr(a.file)}" muted playsinline preload="metadata"></video>`
-      : `<img src="${escapeAttr(a.file)}" alt="" />`;
-    return `<div class="anim-row${a.alternate ? " alt" : ""}" data-i="${i}">
-      <div class="anim-thumb" data-i="${i}" title="${video ? "Click to preview" : "Animated image"}">
-        ${thumb}${video ? `<div class="anim-play">▶</div>` : ""}
+  const indexed = anims.map((a, i) => [a, i]);
+  // One slot per action type; legacy loadouts may hold several defaults on the
+  // same trigger — all are shown, but a filled slot only offers remove.
+  const slots = ANIM_TRIGGERS.map(([trig, label]) => {
+    const rows = indexed.filter(([a]) => !a.alternate && a.trigger === trig);
+    return `<div class="anim-slot">
+      <div class="anim-slot-head">
+        <span class="anim-slot-name">${label}</span>
+        ${rows.length ? "" : `<button class="small anim-slot-add" data-trigger="${trig}">+ Set clip</button>`}
       </div>
-      <div class="anim-body">
-        <input type="text" class="anim-title" data-i="${i}" value="${escapeAttr(a.title || "")}" placeholder="Title (e.g. Crystal blade slash)" />
-        <div class="anim-line">
-          <label class="inline">plays on
-            <select class="anim-trigger" data-i="${i}">
-              ${ANIM_TRIGGERS.map(([v, l]) => `<option value="${v}" ${a.trigger === v ? "selected" : ""}>${l}</option>`).join("")}
-            </select></label>
-          <label class="inline" title="An alternate is not used automatically — pick it on a card or a stance attack instead">
-            <input type="checkbox" class="anim-alt" data-i="${i}" ${a.alternate ? "checked" : ""}/> alternate</label>
-        </div>
-        <div class="anim-line">
-          ${video
-            ? `<label class="inline" title="Playback rate — leave at 1 to play the clip as authored">speed ×<input type="number" class="anim-speed" data-i="${i}" min="0.25" max="4" step="0.25" value="${a.speed ?? 1}" /></label>`
-            : `<label class="inline" title="Animated images can't be retimed by the browser — how long to show the clip">shows for <input type="number" class="anim-dur" data-i="${i}" min="0.5" max="30" step="0.5" value="${a.duration_s ?? 5}" /> s</label>`}
-          <label class="inline" title="When the action lands in the clip (seconds from its start) — the board's hit / damage effects wait for this moment so the clip leads. Only used for attack / cast / channel / skill / ultimate clips.">impact at <input type="number" class="anim-impact" data-i="${i}" min="0" max="10" step="0.1" value="${a.impact_s ?? 1.5}" /> s</label>
-          <span class="anim-file" title="${escapeAttr(a.file)}">${escapeHtml((a.file || "").split("/").pop())}</span>
-          <button class="small danger anim-remove" data-i="${i}" title="Remove this clip (deletes the file)">×</button>
-        </div>
-      </div>
+      ${rows.map(([a, i]) => animRowHtml(a, i, false)).join("")}
     </div>`;
   }).join("");
+  const alts = indexed.filter(([a]) => a.alternate);
+  const altSection = alts.length
+    ? `<div class="anim-slot anim-alts">
+        <div class="anim-slot-head"><span class="anim-slot-name">Alternates</span></div>
+        ${alts.map(([a, i]) => animRowHtml(a, i, true)).join("")}
+      </div>`
+    : "";
+  host.innerHTML = slots + altSection;
 
+  host.querySelectorAll(".anim-slot-add").forEach((btn) => {
+    btn.onclick = () => startAnimUpload({ trigger: btn.dataset.trigger, alternate: false });
+  });
   host.querySelectorAll(".anim-title").forEach((inp) => {
     inp.oninput = () => { anims[+inp.dataset.i].title = inp.value; };
   });
   host.querySelectorAll(".anim-trigger").forEach((sel) => {
     sel.onchange = () => { anims[+sel.dataset.i].trigger = sel.value; };
-  });
-  host.querySelectorAll(".anim-alt").forEach((cb) => {
-    cb.onchange = () => { anims[+cb.dataset.i].alternate = cb.checked; renderAnimations(); };
   });
   host.querySelectorAll(".anim-speed").forEach((inp) => {
     inp.onchange = () => { anims[+inp.dataset.i].speed = Math.max(0.25, +inp.value || 1); };
@@ -249,6 +255,21 @@ function closeAnimations() {
   $("#anim-overlay").classList.add("hidden");
 }
 
+// The slot the file picker was opened for: {trigger, alternate}.
+let pendingAnim = null;
+
+function startAnimUpload(slot) {
+  const status = $("#anim-status");
+  // Clips are filed under the character's name — it needs one first.
+  if (!state.character.name || state.character.name === "New Character") {
+    status.hidden = false; status.textContent = "Name the character first — clips are filed under its name.";
+    return;
+  }
+  status.hidden = true;
+  pendingAnim = slot;
+  $("#anim-file").click();
+}
+
 function bindAnimationUpload() {
   const input = $("#anim-file");
   const status = $("#anim-status");
@@ -256,18 +277,12 @@ function bindAnimationUpload() {
   $("#btn-animations").onclick = openAnimations;
   $("#anim-close").onclick = closeAnimations;
   $("#anim-overlay").onclick = (e) => { if (e.target.id === "anim-overlay") closeAnimations(); };
-  $("#anim-add").onclick = () => {
-    // Clips are filed under the character's name — it needs one first.
-    if (!state.character.name || state.character.name === "New Character") {
-      status.hidden = false; status.textContent = "Name the character first — clips are filed under its name.";
-      return;
-    }
-    status.hidden = true;
-    input.click();
-  };
+  $("#anim-add").onclick = () => startAnimUpload({ trigger: "attack", alternate: true });
   input.onchange = () => {
     const file = input.files[0];
     input.value = "";
+    const slot = pendingAnim || { trigger: "cast", alternate: true };
+    pendingAnim = null;
     if (!file) return;
     status.hidden = false; status.textContent = `Uploading ${file.name}…`;
     const reader = new FileReader();
@@ -275,11 +290,13 @@ function bindAnimationUpload() {
       try {
         const res = await api("POST", "/api/anim/upload",
           { character: state.character.name, filename: file.name, data: reader.result });
-        const isVideo = res.kind === "video";
         animList().push({
           id: "anim_" + Math.random().toString(36).slice(2, 10),
-          title: file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "),
-          file: res.file, trigger: "cast", alternate: false,
+          // A slotted default is named by its action; an alternate by its file.
+          title: slot.alternate
+            ? file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ")
+            : (ANIM_TRIGGER_LABEL[slot.trigger] || slot.trigger),
+          file: res.file, trigger: slot.trigger, alternate: slot.alternate,
           speed: 1.0, duration_s: 5.0, impact_s: 1.5,
         });
         status.hidden = true;
@@ -558,7 +575,6 @@ function newHeroicCard(slot) {
   return {
     id: `${slot}_${Date.now().toString(36)}`,
     name: isSkill ? "New Skill" : "New Ultimate",
-    source_name: isSkill ? "Skill" : "Ultimate",
     rarity: "common", level: 1,
     type: isSkill ? "Skill" : "Ultimate",
     // A Skill is an activated ability: an action (sorcery) or a channeled
@@ -566,9 +582,9 @@ function newHeroicCard(slot) {
     // to sorcery (and it may never carry a mana cost).
     timing: "sorcery",
     cost: { generic: 0, colors: {}, x: false },
-    original_text: "", translated_text: "", flavor_text: "",
+    translated_text: "", flavor_text: "",
     effects: [], targets: {},
-    needs_translation: false, text_override: false, validated: false,
+    text_override: false, validated: false,
   };
 }
 
@@ -770,67 +786,23 @@ function toggleColor(c) {
 }
 
 // --------------------------------------------------------------------------
-// Search + add
+// Add cards
 // --------------------------------------------------------------------------
-async function doSearch() {
-  const q = $("#search-input").value.trim();
-  const ul = $("#search-results");
-  ul.innerHTML = "<li class='meta'>Searching…</li>";
-  if (!q) { ul.innerHTML = ""; return; }
-  try {
-    const { matches } = await api("GET", `/api/scryfall/search?q=${encodeURIComponent(q)}`);
-    ul.innerHTML = "";
-    if (!matches.length) { ul.innerHTML = "<li class='meta'>No matches.</li>"; return; }
-    matches.forEach((m) => {
-      const li = document.createElement("li");
-      li.innerHTML = `
-        <span class="res-main">
-          <span class="res-name">${escapeHtml(m.name)}</span>
-          <span class="meta">${manaCostHtml(m.mana_cost)}${escapeHtml(m.type_line)} · ${m.rarity}</span>
-        </span>
-        <button class="quick-add" title="Quick add to deck">+</button>`;
-      li.querySelector(".res-main").onclick = () => openPreview(m);
-      li.querySelector(".quick-add").onclick = (e) => { e.stopPropagation(); addCard(m.name); };
-      ul.appendChild(li);
-    });
-  } catch (e) {
-    ul.innerHTML = `<li class='meta'>Error: ${e.message}</li>`;
-  }
-}
-
-async function addCard(name) {
-  try {
-    const card = await api("POST", "/api/cards/add", { source_name: name });
-    state.cards.push(card);
-    renderDeck();
-    scheduleValidate();
-    await recheckCard(state.cards.length - 1, false); // populate lints on add
-    toast(`Added ${card.source_name}${card.needs_translation ? " (needs translation)" : ""}`);
-  } catch (e) {
-    toast(`Add failed: ${e.message}`);
-  }
-}
-
-// "+ New Card": author a card from scratch — no MTG source, no translation
-// pass. A blank sorcery opens straight in the editor; the type is switchable
-// there (instant / sorcery / enchantment).
+// "+ New Card": author a card from scratch. A blank sorcery opens straight in
+// the editor; the type is switchable there (instant / sorcery / enchantment).
 function newBlankCard() {
   const card = {
     id: `custom_${Date.now()}`,
     name: "New Card",
-    source_name: "New Card",
-    ignore_source: true,   // authored from scratch — no MTG lineage to show
     rarity: "common",
     level: 0,
     type: "Sorcery",
     timing: "sorcery",
     cost: { generic: 0, colors: {}, x: false },
-    original_text: "",
     translated_text: "",
     flavor_text: "",
     effects: [],
     targets: {},
-    needs_translation: false,
     text_override: false,
     validated: false,
   };
@@ -838,34 +810,6 @@ function newBlankCard() {
   renderDeck();
   scheduleValidate();
   openDetail(state.cards.length - 1);
-}
-
-// Preview a search result (full MTG card) before committing it to the deck.
-function searchCostString(m) {
-  return (m.mana_cost || "").replace(/[{}]/g, "") || "—";
-}
-
-function openPreview(m) {
-  const el = $("#detail-card");
-  el.innerHTML = `
-    <h3>${escapeHtml(m.name)}</h3>
-    <div class="sub">${escapeHtml(m.type_line)} · ${m.rarity} · ${searchCostString(m)}
-      · Level ${Math.round(m.cmc || 0)}</div>
-
-    <div class="block">
-      <div class="label">MTG card text</div>
-      <div class="readonly-text">${escapeHtml(m.oracle_text) || "(no rules text)"}</div>
-    </div>
-    <div class="block meta">This is the original MTG card. Adding it runs the LTG
-      translation registry and drops it into your deck.</div>
-
-    <div class="detail-actions">
-      <button id="preview-cancel">Cancel</button>
-      <button class="primary" id="preview-add">Add to deck</button>
-    </div>`;
-  $("#preview-add").onclick = async () => { closeDetail(); await addCard(m.name); };
-  $("#preview-cancel").onclick = closeDetail;
-  $("#detail-overlay").classList.remove("hidden");
 }
 
 // --------------------------------------------------------------------------
@@ -876,16 +820,13 @@ let sortState = { key: null, dir: 1 };
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, mythic: 3 };
 const RARITIES = Object.keys(RARITY_RANK);
 
-// "Custom card — ignore source": the table shows " - " instead of the MTG
-// source, and duplicate detection keys on the card's own name instead.
-function sourceLabel(card) { return card.ignore_source ? "<span class='meta'> - </span>" : escapeHtml(card.source_name); }
-function sourceKey(card) { return card.ignore_source ? `name:${card.name}` : `src:${card.source_name}`; }
+// The singleton rule keys on the card's name.
+function dupeKey(card) { return (card.name || "").toLowerCase(); }
 
 function cardSortValue(card, key) {
   switch (key) {
     case "cost": return card.level;
     case "rarity": return RARITY_RANK[card.rarity] ?? -1;
-    case "source_name": return card.ignore_source ? "" : card.source_name.toLowerCase();
     case "type": return card.type.toLowerCase();
     default: return (card.name || "").toLowerCase();
   }
@@ -950,9 +891,8 @@ function cardIssues(card) {
   const identity = new Set(state.character.colors);
   const offColors = Object.keys(card.cost.colors || {}).filter((c) => !identity.has(c));
   if (offColors.length) issues.push({ cls: "bad", text: `⛔ off-colour (${offColors.join("")})` });
-  const dupes = state.cards.filter((c) => sourceKey(c) === sourceKey(card)).length;
+  const dupes = state.cards.filter((c) => dupeKey(c) === dupeKey(card)).length;
   if (dupes > 1) issues.push({ cls: "warn", text: "duplicate" });
-  if (card.needs_translation) issues.push({ cls: "flag", text: "⚑ needs translation" });
   if ((card._lints || []).length) issues.push({ cls: "warn", text: `${card._lints.length} lint${card._lints.length > 1 ? "s" : ""}` });
   return issues;
 }
@@ -968,7 +908,6 @@ function renderDeck() {
     if (issues.some((i) => i.cls === "bad")) tr.classList.add("row-illegal");
     tr.innerHTML = `
       <td class="deck-name">${escapeHtml(card.name)}</td>
-      <td>${sourceLabel(card)}</td>
       <td>${costIconsHtml(card.cost)}</td>
       <td>${card.type}</td>
       <td>${card.rarity}</td>
@@ -1763,7 +1702,7 @@ function openDetail(idx) {
     ? (idx === "skill"
         ? "Skill — an activated ability · once per encounter · consumes your action (vigilance lifts) · may cost mana (D8-3.1)"
         : "Ultimate — an action · once per encounter · needs a full gauge · never costs mana (D8-3.2)")
-    : `<span id="detail-source">${sourceLabel(card)}</span> · ${typeSel} · ${raritySel} · Level ${card.level}`;
+    : `${typeSel} · ${raritySel} · Level ${card.level}`;
 
   // The Skill's form is its own prominent control (not buried in the subtitle):
   // an Action (resolves once) or a Channeled effect (held — enables stances).
@@ -1804,11 +1743,7 @@ function openDetail(idx) {
     ${skillFormBlock}
 
     <div class="block">
-      <div class="label-row">
-        <div class="label">Flavour name — editable</div>
-        ${heroic ? "" : `<label class="inline small" title="Authored from scratch (or drifted far from its MTG source): the deck table shows the source as ' - ' and the singleton rule keys on this card's own name">
-          <input type="checkbox" id="detail-ignore-source" ${card.ignore_source ? "checked" : ""}/> Custom card — ignore source</label>`}
-      </div>
+      <div class="label">Name</div>
       <input id="detail-name" type="text" value="${escapeAttr(card.name)}" />
       <div class="label" style="margin-top:8px">Flavour — how the effect works "in character" (optional)</div>
       <textarea id="detail-flavor" rows="3" placeholder="Optional in-character description of how this effect works…">${escapeHtml(card.flavor_text || "")}</textarea>
@@ -1822,11 +1757,6 @@ function openDetail(idx) {
         `Default (${idx === "skill" ? "Skill" : idx === "ultimate" ? "Ultimate"
           : card.timing === "channeled" ? "Channel" : "Cast"} clip)`)}
     </div>` : ""}
-
-    ${heroic ? "" : `<div class="block">
-      <div class="label">Original MTG text (read-only)</div>
-      <div class="readonly-text">${escapeHtml(card.original_text) || "—"}</div>
-    </div>`}
 
     <div class="block">
       <div class="label-row">
@@ -1896,15 +1826,6 @@ function wireDetail(idx) {
       card.rarity = e.target.value;
       renderDeck();
       scheduleValidate();  // the rarity quotas in Deck Status move
-    };
-  }
-  if ($("#detail-ignore-source")) {
-    $("#detail-ignore-source").onchange = (e) => {
-      card.ignore_source = e.target.checked;
-      const src = $("#detail-source");
-      if (src) src.innerHTML = sourceLabel(card);
-      renderDeck();
-      scheduleValidate();  // duplicate detection keys change
     };
   }
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
@@ -2289,7 +2210,6 @@ function toggleValidated(idx) {
   } else {
     if ((card._error || "").length) { toast("Fix structural errors first."); return; }
     card.validated = true;
-    card.needs_translation = false;
   }
   renderDeck();
   scheduleValidate();
@@ -2345,7 +2265,6 @@ function renderStatus(s) {
     s.duplicates.length ? "dupes — " + s.duplicates.join(", ") : "ok"}</div>`;
   html += `<div class="${s.off_color.length ? "warn" : "ok"}">Off-colour: ${
     s.off_color.length ? s.off_color.join(", ") : "none"}</div>`;
-  html += `<div class="${s.untranslated ? "warn" : "ok"}">Untranslated: ${s.untranslated}</div>`;
   if (s.starting_mana_outside_identity.length) {
     html += `<div class="warn">Starting mana outside identity: ${s.starting_mana_outside_identity.join(", ")}</div>`;
   }
@@ -2353,12 +2272,28 @@ function renderStatus(s) {
 }
 
 // --------------------------------------------------------------------------
-// Top bar: new / load / save / import deck list / export engine loadout
+// Top bar: new / load / save / import deck / export engine loadout
 // --------------------------------------------------------------------------
 let currentFileHandle = null;   // File System Access handle for the open savegame
 let currentFileName = null;
 const HAS_FS = typeof window.showOpenFilePicker === "function";
 const JSON_TYPES = [{ description: "LTG loadout", accept: { "application/json": [".json"] } }];
+
+// Older loadouts still LOAD, but Save / Export / Update Game Character write
+// the pruned format: the MTG-lineage fields and the editor's runtime keys
+// (_lints, _error) are dropped from every card.
+const LEGACY_CARD_FIELDS = ["source_name", "ignore_source", "original_text", "needs_translation"];
+function pruneCard(card) {
+  if (!card) return;
+  LEGACY_CARD_FIELDS.forEach((k) => delete card[k]);
+  Object.keys(card).forEach((k) => { if (k.startsWith("_")) delete card[k]; });
+}
+function pruneLoadout(loadout) {
+  const lo = JSON.parse(JSON.stringify(loadout));
+  (lo.cards || []).forEach(pruneCard);
+  if (lo.character) { pruneCard(lo.character.skill); pruneCard(lo.character.ultimate); }
+  return lo;
+}
 
 function syncCharacterFromInputs() {
   state.character.name = $("#char-name").value;
@@ -2405,7 +2340,7 @@ async function writeHandle(handle, text) {
 // Save — overwrite the open file, else prompt for a location (Save As).
 async function saveLoadout() {
   syncCharacterFromInputs();
-  const text = JSON.stringify(state, null, 2);
+  const text = JSON.stringify(pruneLoadout(state), null, 2);
   if (currentFileHandle) {
     try { await writeHandle(currentFileHandle, text); toast(`Saved ${currentFileName || ""}`.trim()); }
     catch (e) { toast(`Save failed: ${e.message}`); }
@@ -2434,59 +2369,7 @@ function downloadText(text, filename) {
   URL.revokeObjectURL(url);
 }
 
-// --- Deck-list import ------------------------------------------------------
-function openImport() {
-  $("#import-text").value = "";
-  $("#import-status").textContent = "";
-  $("#import-overlay").classList.remove("hidden");
-  $("#import-text").focus();
-}
-function closeImport() { $("#import-overlay").classList.add("hidden"); }
-
-// "1 Akroma's Will (CMR) 3" -> "Akroma's Will" (drop qty, set code, collector #).
-function parseDeckList(text) {
-  return text.split(/\r?\n/).map((line) => {
-    let s = line.trim();
-    if (!s || s.startsWith("//") || s.startsWith("#")) return null;
-    if (/^(deck|sideboard|commander|maybeboard)\b/i.test(s)) return null; // section headers
-    s = s.replace(/^\s*\d+\s*x?\s+/i, "");          // leading quantity ("1 ", "2x ")
-    // Moxfield/Archidekt/Goldfish glue export metadata onto the end in varying
-    // order: "(SET) 123", foil markers "*F*"/"*E*", category tags "[...]"/"<...>".
-    // Strip trailing metadata tokens repeatedly until the name is clean.
-    let prev;
-    do {
-      prev = s;
-      s = s.replace(/\s*\*[^*]*\*\s*$/, "");                 // *F*, *E* foil/etch markers
-      s = s.replace(/\s*\[[^\]]*\]\s*$/, "");                // [Maybeboard], [Foil] tags
-      s = s.replace(/\s*<[^>]*>\s*$/, "");                   // <tag>
-      s = s.replace(/\s*\([^)]*\)\s*[\w-]*\s*$/i, "");      // (SET) 123 / (PLST) MH1-48
-    } while (s !== prev);
-    return s.trim();
-  }).filter(Boolean);
-}
-
-async function doImport() {
-  const names = parseDeckList($("#import-text").value);
-  if (!names.length) { $("#import-status").textContent = "No card names found."; return; }
-  $("#import-status").textContent = `Importing ${names.length} card(s)…`;
-  $("#import-go").disabled = true;
-  try {
-    const res = await api("POST", "/api/cards/import", { names });
-    res.cards.forEach(({ card, lints }) => state.cards.push({ ...card, _lints: lints }));
-    renderDeck();
-    scheduleValidate();
-    closeImport();
-    const nf = res.not_found.length;
-    toast(`Imported ${res.cards.length} card(s)${nf ? ` — ${nf} not found` : ""}.`);
-    if (nf) console.warn("Not found on import:", res.not_found);
-  } catch (e) {
-    $("#import-status").textContent = `Import failed: ${e.message}`;
-  } finally {
-    $("#import-go").disabled = false;
-  }
-}
-
-// --- Custom-card JSON import (adds to the deck, never replaces) ------------
+// --- Deck JSON import (adds to the deck, never replaces) -------------------
 function openImportCustom() {
   $("#import-custom-text").value = "";
   $("#import-custom-status").textContent = "";
@@ -2518,15 +2401,227 @@ async function doImportCustom() {
       const lines = res.errors.map((e) => `• ${e.name}: ${e.reason}`).join("\n");
       status.textContent = `Imported ${res.cards.length} card(s); ${res.errors.length} rejected:\n${lines}`;
       console.warn("Rejected on custom import:", res.errors);
-      if (res.cards.length) toast(`Imported ${res.cards.length} custom card(s) — ${res.errors.length} rejected.`);
+      if (res.cards.length) toast(`Imported ${res.cards.length} card(s) — ${res.errors.length} rejected.`);
     } else {
       closeImportCustom();
-      toast(`Imported ${res.cards.length} custom card(s).`);
+      toast(`Imported ${res.cards.length} card(s).`);
     }
   } catch (e) {
     status.textContent = `Import failed: ${e.message}`;
   } finally {
     $("#import-custom-go").disabled = false;
+  }
+}
+
+// --- Update from JSON ------------------------------------------------------
+// Merge a newer export of the SAME character over the current loadout: the
+// build and cards come from the new file; this install's portrait, animation
+// clips (the files under loadouts/anim/ that the sender doesn't have), and
+// per-card clip picks are kept and re-linked onto the matching new cards.
+// Replaces the old delete → import → re-set portrait → re-assign clips loop
+// when a co-author sends an updated character.
+
+let pendingUpdate = null; // { merged, summary } while the preview is open
+
+// Canonical JSON so key order never counts as a change.
+function stableStringify(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
+  if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  return "{" + Object.keys(v).sort()
+    .filter((k) => v[k] !== undefined)
+    .map((k) => JSON.stringify(k) + ":" + stableStringify(v[k])).join(",") + "}";
+}
+
+// A card's content identity: clip picks, editor lints, and legacy MTG-lineage
+// fields (present in old files, pruned from new ones) are not authored changes.
+function cardFingerprint(card) {
+  if (!card) return "null";
+  const c = JSON.parse(JSON.stringify(card));
+  delete c.animation;
+  pruneCard(c);
+  (c.effects || []).forEach((e) => {
+    if (e && e.kind === "stance") {
+      for (const slot of ["attack", "defend", "mitigate", "move"]) {
+        if (e[slot] && typeof e[slot] === "object") delete e[slot].animation;
+      }
+    }
+  });
+  return stableStringify(c);
+}
+
+// Keep a clip pick that still points at a clip we have; otherwise fall back to
+// the current loadout's pick for the same card / stance slot.
+function pickAnim(newPick, oldPick, validIds, tally) {
+  if (newPick && validIds.has(newPick)) return newPick;
+  if (oldPick && validIds.has(oldPick)) { tally.relinked++; return oldPick; }
+  if (newPick || oldPick) tally.cleared++;
+  return null;
+}
+
+function relinkCardAnims(nc, oc, validIds, tally) {
+  if (!nc) return;
+  nc.animation = pickAnim(nc.animation, oc && oc.animation, validIds, tally);
+  const stances = (c) => ((c && c.effects) || []).filter((e) => e && e.kind === "stance");
+  const olds = stances(oc);
+  stances(nc).forEach((eff, i) => {
+    const old = olds[i];
+    for (const slot of ["attack", "defend", "mitigate", "move"]) {
+      if (!eff[slot] || typeof eff[slot] !== "object") continue;
+      const oldPick = old && old[slot] && typeof old[slot] === "object" ? old[slot].animation : null;
+      eff[slot].animation = pickAnim(eff[slot].animation, oldPick, validIds, tally);
+    }
+  });
+}
+
+const CHAR_DIFF_FIELDS = [
+  ["name", "Name"], ["description", "Description"], ["level", "Level"],
+  ["types", "Type"], ["classes", "Class"], ["colors", "Colours"],
+  ["starting_mana", "Starting mana"], ["hp", "HP"],
+  ["starting_cards", "Starting cards"], ["power_bought", "Power bought"],
+  ["attack_mode", "Attack"], ["keyword", "Keyword"], ["row", "Row"],
+  ["ability_flavor", "Ability flavour"],
+  ["earned_points", "Earned points"], ["spent_points", "Spent points"],
+];
+
+function buildUpdate(incoming, srcName) {
+  const merged = JSON.parse(JSON.stringify(incoming));
+  merged.ltg_version ||= state.ltg_version || "0.1";
+  merged.cards ||= [];
+  const oldCh = state.character, mc = merged.character;
+
+  // Local keeps: portrait + the clip list (those files live on this install).
+  if (oldCh.portrait) mc.portrait = oldCh.portrait;
+  if ((oldCh.animations || []).length) mc.animations = JSON.parse(JSON.stringify(oldCh.animations));
+  mc.animations ||= [];
+  const validIds = new Set(mc.animations.map((a) => a.id));
+
+  // Match incoming cards to current ones: by id first (ids are name-derived
+  // slugs, stable across exports), then by name for re-authored customs.
+  const byId = new Map(), byName = new Map();
+  state.cards.forEach((c) => {
+    if (c.id) byId.set(c.id, c);
+    const k = (c.name || "").toLowerCase();
+    if (k) { if (!byName.has(k)) byName.set(k, []); byName.get(k).push(c); }
+  });
+  const claimed = new Set();
+  const matchOld = (nc) => {
+    let oc = (nc.id && byId.get(nc.id)) || null;
+    if (!oc || claimed.has(oc)) {
+      oc = (byName.get((nc.name || "").toLowerCase()) || []).find((c) => !claimed.has(c)) || null;
+    }
+    if (oc) claimed.add(oc);
+    return oc;
+  };
+
+  const tally = { relinked: 0, cleared: 0 };
+  const added = [], changed = [];
+  let unchanged = 0;
+  merged.cards.forEach((nc) => {
+    const oc = matchOld(nc);
+    if (!oc) added.push(nc.name || nc.id || "(unnamed)");
+    else if (cardFingerprint(nc) !== cardFingerprint(oc)) changed.push(nc.name || oc.name);
+    else unchanged++;
+    relinkCardAnims(nc, oc, validIds, tally);
+  });
+  const removed = state.cards.filter((c) => !claimed.has(c)).map((c) => c.name || c.id || "(unnamed)");
+
+  relinkCardAnims(mc.skill, oldCh.skill, validIds, tally);
+  relinkCardAnims(mc.ultimate, oldCh.ultimate, validIds, tally);
+
+  // Character-sheet changes. Portrait and animations are excluded — kept local;
+  // skill / ultimate compare below via fingerprints so re-linked clips don't count.
+  const charChanges = [];
+  const scalar = (v) => v === null || v === undefined || typeof v !== "object";
+  for (const [key, label] of CHAR_DIFF_FIELDS) {
+    const a = oldCh[key], b = mc[key];
+    if (stableStringify(a ?? null) === stableStringify(b ?? null)) continue;
+    const sa = JSON.stringify(a ?? null), sb = JSON.stringify(b ?? null);
+    charChanges.push(scalar(a) && scalar(b) && sa.length + sb.length <= 60
+      ? `${label}: ${sa} → ${sb}` : `${label} changed`);
+  }
+  if (cardFingerprint(mc.skill) !== cardFingerprint(oldCh.skill))
+    charChanges.push(mc.skill ? `Skill changed: ${mc.skill.name}` : "Skill removed");
+  if (cardFingerprint(mc.ultimate) !== cardFingerprint(oldCh.ultimate))
+    charChanges.push(mc.ultimate ? `Ultimate changed: ${mc.ultimate.name}` : "Ultimate removed");
+
+  return {
+    merged,
+    summary: {
+      src: srcName || "file", charChanges, added, removed, changed, unchanged, tally,
+      portraitKept: !!oldCh.portrait,
+      portraitDiffers: !!oldCh.portrait && !!(incoming.character || {}).portrait
+        && incoming.character.portrait !== oldCh.portrait,
+      animsKept: (oldCh.animations || []).length,
+      // No local clips: the file's own entries were carried over as-is.
+      animsForeign: (oldCh.animations || []).length ? 0 : mc.animations.length,
+    },
+  };
+}
+
+function openUpdatePreview(text, srcName) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { toast("Update failed: invalid JSON"); return; }
+  if (!data || typeof data !== "object" || !data.character || typeof data.character !== "object") {
+    toast('Update failed: not a character loadout (no "character" block)');
+    return;
+  }
+  pendingUpdate = buildUpdate(data, srcName);
+  const s = pendingUpdate.summary;
+  const li = (arr, cls) => `<ul>${arr.map((n) => `<li class="${cls}">${escapeHtml(n)}</li>`).join("")}</ul>`;
+  const sections = [];
+  if (s.charChanges.length) sections.push(`<h4>Character</h4>${li(s.charChanges, "tag-mod")}`);
+  if (s.added.length) sections.push(`<h4>Cards added (${s.added.length})</h4>${li(s.added, "tag-add")}`);
+  if (s.removed.length) sections.push(`<h4>Cards removed (${s.removed.length})</h4>${li(s.removed, "tag-del")}`);
+  if (s.changed.length) sections.push(`<h4>Cards changed (${s.changed.length})</h4>${li(s.changed, "tag-mod")}`);
+  const notes = [`${s.unchanged} card${s.unchanged === 1 ? "" : "s"} unchanged.`];
+  const kept = [];
+  if (s.portraitKept) kept.push("portrait");
+  if (s.animsKept) kept.push(`${s.animsKept} animation clip${s.animsKept === 1 ? "" : "s"}`);
+  if (kept.length) notes.push(`Keeping this loadout's ${kept.join(" and ")}.`);
+  if (s.portraitDiffers) notes.push("The file carries a different portrait — yours is kept. To take theirs, clear the portrait first, then update again.");
+  if (s.tally.relinked) notes.push(`${s.tally.relinked} clip assignment${s.tally.relinked === 1 ? "" : "s"} re-linked onto the new cards.`);
+  if (s.tally.cleared) notes.push(`${s.tally.cleared} clip assignment${s.tally.cleared === 1 ? "" : "s"} cleared — the clip no longer exists here.`);
+  if (s.animsForeign) notes.push(`${s.animsForeign} clip entr${s.animsForeign === 1 ? "y" : "ies"} taken from the file — this install may not have the clip files.`);
+  sections.push(`<h4>Summary</h4><div class="note">${notes.map(escapeHtml).join("<br/>")}</div>`);
+  const hasChanges = s.charChanges.length || s.added.length || s.removed.length || s.changed.length;
+  $("#update-src").textContent = s.src;
+  $("#update-body").innerHTML = hasChanges ? sections.join("")
+    : '<div class="note">No differences found — the file matches the current loadout.</div>';
+  $("#update-go").disabled = !hasChanges;
+  $("#update-overlay").classList.remove("hidden");
+}
+
+function closeUpdate() {
+  $("#update-overlay").classList.add("hidden");
+  pendingUpdate = null;
+}
+
+function applyUpdate() {
+  if (!pendingUpdate) return;
+  const { merged, summary } = pendingUpdate;
+  state = merged;
+  if (!state.character.row) state.character.row = "front";
+  normalizeCharacter(state.character);
+  reconcileStartingMana();
+  renderAll();
+  scheduleValidate();
+  closeUpdate();
+  // Save still targets the previously-loaded file; in edit mode the export
+  // button still updates the same game character.
+  toast(`Updated from ${summary.src} — Save${editTarget ? " or Update Game Character" : ""} to keep it.`);
+}
+
+async function updateFromJson() {
+  const blank = !state.cards.length && (!state.character.name || state.character.name === "New Character");
+  if (blank) { toast("Nothing to update — Load the character (or open it from the game's Edit) first."); return; }
+  if (HAS_FS) {
+    let handle;
+    try { [handle] = await window.showOpenFilePicker({ types: JSON_TYPES, multiple: false }); }
+    catch (e) { return; } // user cancelled
+    const file = await handle.getFile();
+    openUpdatePreview(await file.text(), file.name);
+  } else {
+    $("#file-update").click(); // fallback: <input type=file>
   }
 }
 
@@ -2540,7 +2635,7 @@ async function updateGameCharacter() {
   syncCharacterFromInputs();
   try {
     const res = await api("POST", "/api/loadout/update-game",
-                          { name: editTarget, loadout: state });
+                          { name: editTarget, loadout: pruneLoadout(state) });
     if (res.omitted.length) {
       toast(`Updated ${res.updated}: ${res.exported_count} cards live; ` +
             `${res.omitted.length} omitted (not validated).`);
@@ -2577,7 +2672,7 @@ async function exportEngineLoadout() {
   if (editTarget) return updateGameCharacter();
   syncCharacterFromInputs();
   try {
-    const res = await api("POST", "/api/loadout/export", { loadout: state });
+    const res = await api("POST", "/api/loadout/export", { loadout: pruneLoadout(state) });
     if (res.exported_count === 0) {
       const reasons = res.omitted.map((o) => `• ${o.name}: ${o.reason}`).join("\n");
       alert(`Nothing exported — no validated cards.\n\nOmitted:\n${reasons || "(deck is empty)"}`);
@@ -2620,12 +2715,9 @@ function renderAll() {
 function init() {
   $("#btn-new").onclick = () => { if (confirm("Discard current loadout and start new?")) { state = blankLoadout(); currentFileHandle = null; currentFileName = null; renderAll(); } };
   $("#btn-load").onclick = loadLoadout;
-  $("#btn-import").onclick = openImport;
   $("#btn-save").onclick = saveLoadout;
   $("#btn-export-engine").onclick = exportEngineLoadout;
-  $("#btn-search").onclick = doSearch;
   $("#btn-new-card").onclick = newBlankCard;
-  $("#search-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   $("#char-name").oninput = () => { state.character.name = $("#char-name").value; scheduleValidate(); };
   $("#char-desc").oninput = () => { state.character.description = $("#char-desc").value; };
   $("#file-load").onchange = (e) => {
@@ -2633,9 +2725,15 @@ function init() {
     if (file) file.text().then((t) => applyLoadedText(t, null, file.name));
     e.target.value = "";
   };
-  $("#import-cancel").onclick = closeImport;
-  $("#import-go").onclick = doImport;
-  $("#import-overlay").onclick = (e) => { if (e.target.id === "import-overlay") closeImport(); };
+  $("#btn-update").onclick = updateFromJson;
+  $("#file-update").onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) file.text().then((t) => openUpdatePreview(t, file.name));
+    e.target.value = "";
+  };
+  $("#update-cancel").onclick = closeUpdate;
+  $("#update-go").onclick = applyUpdate;
+  $("#update-overlay").onclick = (e) => { if (e.target.id === "update-overlay") closeUpdate(); };
   $("#btn-import-custom").onclick = openImportCustom;
   $("#import-custom-cancel").onclick = closeImportCustom;
   $("#import-custom-go").onclick = doImportCustom;
