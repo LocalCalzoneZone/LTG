@@ -8,9 +8,38 @@ it here instead of hand-rolling a pool that silently rots as the gates grow."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _one_suite_at_a_time():
+    """The adventure/town/deckbuilder tests read and write the repo's REAL
+    content/ and loadouts/ dirs, and their cleanup fixtures delete any file
+    that appears during a test. Two pytest processes therefore stomp each
+    other — the fixtures race on same-named artifacts (test_keep.json …) and
+    delete each other's fresh writes; every observed "flaky" adventure-test
+    failure traced to a concurrent run. An exclusive lock makes a second
+    concurrent suite WAIT instead of interleaving. (Same caveat applies to a
+    live game/deckbuilder server saving into loadouts/ mid-suite — avoid.)"""
+    lock_path = Path(__file__).resolve().parent / ".suite.lock"
+    fh = open(lock_path, "w")
+    try:
+        import fcntl
+        fcntl.flock(fh, fcntl.LOCK_EX)
+    except ImportError:  # Windows: no fcntl — concurrent local runs are on you
+        pass
+    try:
+        yield
+    finally:
+        try:
+            import fcntl
+            fcntl.flock(fh, fcntl.LOCK_UN)
+        except ImportError:
+            pass
+        fh.close()
 
 
 def _v_hit(n: int) -> Dict[str, Any]:

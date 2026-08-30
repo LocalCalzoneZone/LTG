@@ -55,7 +55,6 @@ from ltg_core.schema import (
 
 from .state import (
     Action,
-    Affliction,
     AmplifyTag,
     Channel,
     CharacterState,
@@ -324,6 +323,8 @@ def _tick_stirring(st: GameState) -> None:
         e.protection_tags = []
         e.poison_effects = []
         e.regen_effects = []
+        e.poison_counters = 0  # the risen body is a fresh clock (§D22-2)
+        e.regen_counters = 0
         e.stunned = 0
         e.taunted_by = None
         e.intent = e.intent2 = None
@@ -393,7 +394,10 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
     item = _push(st, StackItem(kind="triggered", source_id=holder.id, source_side=side,
                                label=f"{name} — trigger", effects=list(fired),
                                target_id=ch.target_id, card=card,
-                               x=getattr(ch, "x", 0)))
+                               x=getattr(ch, "x", 0),
+                               # Which channel fired: a channel_drop riding the
+                               # trigger uses this to end ITS channel (§D22-3).
+                               component_id=getattr(ch, "component_id", None)))
     if side == "party":
         item.needs_mode = any(getattr(e, "kind", None) == "modal" for e in fired)
         item.needs_target = _trigger_pick_effect(item) is not None
@@ -559,20 +563,35 @@ def _refreshed_pool(char: CharacterState) -> List[str]:
     return pool
 
 
+def _due_channel_triggers(st: GameState, ch) -> list:
+    """The effects a channel fires this Upkeep: every `trigger: upkeep`, plus
+    any `after_turns` countdown that just expired — the count runs down one per
+    Upkeep and the effect fires exactly once, at the Upkeep `after_turns` turns
+    after the channel began (§D22-4)."""
+    elapsed = st.turn - getattr(ch, "started_turn", st.turn)
+    fired = []
+    for e in ch.effects:
+        trig = getattr(e, "trigger", None)
+        if trig == "upkeep":
+            fired.append(e)
+        elif getattr(trig, "after_turns", None) is not None and trig.after_turns == elapsed:
+            fired.append(e)
+    return fired
+
+
 def _fire_recurring(st: GameState) -> None:
-    """Recurring channel effects (`trigger: upkeep`) fire once at the start of
-    each holder's turn, in hold order (GDD §8) — party channels first, then
-    enemy channels (the ritual ticks players must decide to interrupt)."""
+    """Recurring channel effects (`trigger: upkeep`, and `after_turns`
+    countdowns falling due) fire once at the start of each holder's turn, in
+    hold order (GDD §8) — party channels first, then enemy channels (the ritual
+    ticks players must decide to interrupt)."""
     for holder in st.living_party():
         for ch in list(holder.channels):
-            fired = [e for e in ch.effects
-                     if getattr(e, "trigger", None) == "upkeep"]
+            fired = _due_channel_triggers(st, ch)
             if fired:
                 _fire_channel_effects(st, holder, "party", ch, fired)
     for e in _ordered(st.living_enemies()):
         for ch in list(e.channels):
-            fired = [eff for eff in ch.effects
-                     if getattr(eff, "trigger", None) == "upkeep"]
+            fired = _due_channel_triggers(st, ch)
             if fired:
                 _fire_channel_effects(st, e, "enemy", ch, fired)
 
@@ -3341,14 +3360,18 @@ def _enemy_channel_targets(st: GameState, ch: EnemyChannel, effect) -> List:
     return out + _channel_splash_targets(st, ch, effect)
 
 
-def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None:
-    """End ALL of an enemy's channels (all-or-nothing, like a player break §8):
-    lift their continuous effects and log what the party just turned off. A
-    `channel_break` verb fires as a respondable stack trigger, same as the party
-    side — breaking the ritual can spring its dying sting."""
-    if not enemy.channels:
+def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str,
+                          channels: Optional[list] = None) -> None:
+    """End an enemy's channels — ALL of them by default (all-or-nothing, like a
+    player break §8), or just the given subset (a channel_drop ends only its
+    own — §D22-3): lift their continuous effects and log what just turned off.
+    A `channel_break` verb fires as a respondable stack trigger, same as the
+    party side — breaking the ritual can spring its dying sting."""
+    channels = list(enemy.channels) if channels is None \
+        else [ch for ch in channels if ch in enemy.channels]
+    if not channels:
         return
-    for ch in list(enemy.channels):
+    for ch in channels:
         lift = [e for e in ch.effects if _is_continuous(e)]
         # …plus the while_channeled tags the component granted from a nested
         # position (see _nested_channel_effects) — the mirror of the party side.
@@ -3359,8 +3382,8 @@ def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str) -> None
                               holder_id=enemy.id)
         _log(st, "channel_end", f"{enemy.name}'s {ch.name} is broken ({reason}).",
              enemy=enemy.id, component=ch.component_id, label=ch.name, reason=reason)
-    ended = list(enemy.channels)
-    enemy.channels = []
+    ended = channels
+    enemy.channels = [ch for ch in enemy.channels if ch not in channels]
     # Lifting a pump aura can drop its beneficiaries to ≤ 0 — they die now,
     # permanently, exactly as an applied wound aura kills at channel start.
     _reap_aura_kills(st)
@@ -3863,6 +3886,7 @@ def _do_choose_target(st: GameState, action: Action) -> None:
 # Effects that act on the source or a stack item, not on the resolved `target`
 # (a None target is legitimate for them); every other effect needs a target to land on.
 _TARGETLESS = frozenset({"counter", "create_token", "ramp", "add_mana", "charge",
+                         "channel_drop",
                          "copy_spell", "redirect"})
 
 # Card-logistics verbs: they read and write a target's zones, so they only mean
@@ -3906,7 +3930,9 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict,
         return
 
     # A `mana_capacity`/"all" value with no runtime meaning here: surface, skip.
-    if isinstance(getattr(effect, "amount", None), str) and effect.amount == "all":
+    # (charge models "all" itself — op:"remove" empties the gauge, §D22-1.)
+    if (isinstance(getattr(effect, "amount", None), str) and effect.amount == "all"
+            and effect.kind != "charge"):
         _log(st, "unhandled", f"(value 'all' on {effect.kind} not modelled)", kind=effect.kind)
         return
 
@@ -4329,6 +4355,12 @@ def _ref_value(amount: Ref, ctx: dict) -> int:
         return max(0, int(getattr(ctx.get("caster_obj"), "last_damage_taken", 0) or 0))
     if amount.ref == "target_last_damage":
         return max(0, int(getattr(ctx.get("target_obj"), "last_damage_taken", 0) or 0))
+    # Charge counters (§D22-1): the windup gauge, readable at last. Only an
+    # enemy holds charge — anyone else reads 0.
+    if amount.ref == "caster_charge":
+        return max(0, int(getattr(ctx.get("caster_obj"), "charge", 0) or 0))
+    if amount.ref == "target_charge":
+        return max(0, int(getattr(ctx.get("target_obj"), "charge", 0) or 0))
     raise ValueError(f"unsupported value reference '{amount.ref}'")
 
 
@@ -4429,50 +4461,68 @@ def _r_heal(st, item, effect, target, ctx):
 
 
 def _r_poison(st, item, effect, target, ctx):
-    # A poison effect (D8-2.1): counters now, and again at each Upkeep until it
-    # concludes (death, any received healing, or its optional turn bound).
+    # Poison (D8-2.1, reworked D22-2): place the counters — each drains 1 life
+    # at every Upkeep until healing removes them all.
     amount = _value(effect.amount, ctx)
     if amount <= 0:
         return
-    target.poison_effects.append(Affliction(amount=amount, turns_left=effect.turns,
-                                            source_id=item.source_id))
-    bound = f" for {effect.turns} turn(s)" if effect.turns else ""
     _log(st, "poison",
-         f"{target.name} is poisoned — {amount} counter(s) now and at each "
-         f"Upkeep{bound}; any healing cures it.",
-         target=_tid(target), amount=amount, turns=effect.turns)
+         f"{target.name} is poisoned — loses 1 life per counter at each Upkeep; "
+         f"any healing removes all poison counters.",
+         target=_tid(target), amount=amount)
     _place_poison_counters(st, target, amount)
 
 
 def _r_regen(st, item, effect, target, ctx):
-    # The mirror (D8-2.2): counters now and per Upkeep until damage connects
-    # (or the turn bound expires). Each placement counts as healing.
+    # The mirror (D8-2.2, reworked D22-2): place the counters — each heals 1 at
+    # every Upkeep until damage that connects removes them all.
     amount = _value(effect.amount, ctx)
     if amount <= 0:
         return
-    target.regen_effects.append(Affliction(amount=amount, turns_left=effect.turns,
-                                           source_id=item.source_id))
-    bound = f" for {effect.turns} turn(s)" if effect.turns else ""
     _log(st, "regen",
-         f"{target.name} regenerates — {amount} counter(s) now and at each "
-         f"Upkeep{bound}; broken by damage that connects.",
-         target=_tid(target), amount=amount, turns=effect.turns)
+         f"{target.name} regenerates — heals 1 per counter at each Upkeep; "
+         f"damage that connects removes all regen counters.",
+         target=_tid(target), amount=amount)
     _place_regen_counters(st, target, amount, source_id=item.source_id)
 
 
 def _r_charge(st, item, effect, target, ctx):
-    # The windup verb (D8-2.4): enemy-only, always self — fills the visible gauge
-    # and detonates the hidden on_charge_full component at its threshold.
-    enemy = st.enemy(item.source_id)
-    if enemy is None or not enemy.alive:
+    # Charge counters (D8-2.4, opened to players §D22-1): add or drain the
+    # windup gauge on any combatant. Target defaults to the source (enemy
+    # components author it targetless; legacy items resolve target=None here).
+    # Only creatures hold a gauge — a token caught by a sweep is passed over.
+    holder = target if target is not None else st.combatant(item.source_id)
+    if holder is None or not getattr(holder, "alive", False):
         return
-    gained = max(0, int(effect.amount))
-    enemy.charge += gained
-    threshold = _charge_threshold(enemy)
-    pips = f"{enemy.charge}/{threshold}" if threshold else str(enemy.charge)
-    _log(st, "charge", f"{enemy.name} gathers its power — charge {pips}.",
-         enemy=enemy.id, charge=enemy.charge, threshold=threshold, gained=gained)
-    _check_charge_full(st, enemy)
+    if not isinstance(holder, (CharacterState, EnemyState)):
+        return
+    current = int(getattr(holder, "charge", 0) or 0)
+    op = getattr(effect, "op", "add")
+    if op == "remove":
+        wanted = current if effect.amount == "all" else max(0, _value(effect.amount, ctx))
+        removed = min(current, wanted)
+        if removed <= 0:
+            return
+        holder.charge = current - removed
+        _log(st, "charge_drained",
+             f"{holder.name} loses {removed} charge counter(s) "
+             f"(charge {holder.charge}).",
+             target=_tid(holder), charge=holder.charge, removed=removed)
+        return
+    gained = max(0, _value(effect.amount, ctx))
+    if gained <= 0:
+        return
+    holder.charge = current + gained
+    if isinstance(holder, EnemyState):
+        threshold = _charge_threshold(holder)
+        pips = f"{holder.charge}/{threshold}" if threshold else str(holder.charge)
+        _log(st, "charge", f"{holder.name} gathers its power — charge {pips}.",
+             enemy=holder.id, charge=holder.charge, threshold=threshold, gained=gained)
+        _check_charge_full(st, holder)
+    else:
+        _log(st, "charge", f"{holder.name} gathers power — {gained} charge "
+             f"counter(s) (charge {holder.charge}).",
+             target=_tid(holder), charge=holder.charge, gained=gained)
 
 
 def _r_lose_life(st, item, effect, target, ctx):
@@ -5020,6 +5070,38 @@ def _r_break_channel(st, item, effect, target, ctx):
             return
         _control_credit(st, item, target.level)  # a broken ritual is denial too
         _break_enemy_channels(st, target, reason=reason)
+
+
+def _r_channel_drop(st, item, effect, target, ctx):
+    """§D22-3: the enchantment ends ITSELF. Find the channel this triggered
+    effect fired from — never a sibling — and drop only it: reserved mana
+    returns to the pool and its `channel_break` trigger still fires. If the
+    channel is already gone (broken while the trigger sat on the stack), the
+    drop simply fizzles."""
+    if item.source_side == "enemy":
+        enemy = st.enemy(item.source_id)
+        if enemy is None:
+            return
+        ch = next((c for c in enemy.channels
+                   if item.component_id is not None
+                   and c.component_id == item.component_id), None)
+        if ch is not None:
+            _log(st, "channel_drop", f"{enemy.name}'s {ch.name} drops itself.",
+                 enemy=enemy.id, component=ch.component_id, label=ch.name)
+            _break_enemy_channels(st, enemy, reason="channel drop", channels=[ch])
+        return
+    holder = st.character(item.source_id)
+    if holder is None or item.card is None:
+        return
+    # Identity first (Channel.card IS the cast card object); id as the fallback
+    # for a rebuilt state.
+    ch = next((c for c in holder.channels if c.card is item.card), None) \
+        or next((c for c in holder.channels if c.card.id == item.card.id), None)
+    if ch is None:
+        return
+    _log(st, "channel_drop", f"{holder.name}'s {ch.card.name} drops itself.",
+         character=holder.id, card=ch.card.id, label=ch.card.name)
+    _end_channels(st, holder, [ch], reason="channel drop")
 
 
 def _r_stun(st, item, effect, target, ctx):
@@ -5742,6 +5824,7 @@ RESOLVERS = {
     "counter": _r_counter,
     "strip_intent": _r_strip_intent,
     "break_channel": _r_break_channel,
+    "channel_drop": _r_channel_drop,
     "stun": _r_stun,
     "pump": _r_pump,
     "wound": _r_wound,
@@ -5802,12 +5885,15 @@ def _duration_value(effect) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Typed counters: poison / regen / charge (Design Update 08 §D8-2)
+# Typed counters: poison / regen / charge (§D8-2, poison/regen reworked §D22-2:
+# the COUNTER is the clock — no stat fold, no per-Upkeep re-placement, no turn
+# bound. Each poison counter drains 1 life at Upkeep until healing removes them
+# all; each regen counter heals 1 at Upkeep until connecting damage removes
+# them all. The legacy Affliction lists linger only in old saves.)
 # --------------------------------------------------------------------------- #
 def _annihilate_typed_counters(st: GameState, target) -> None:
-    """A poison counter and a regen counter on the same creature annihilate 1:1 as
-    a state-based action (§D8-2.2). The folded stat changes cancel exactly (−0/−1
-    against +0/+1), so only the tallies move."""
+    """A poison counter and a regen counter on the same creature annihilate 1:1
+    as a state-based action (§D8-2.2), so a creature never holds both."""
     n = min(getattr(target, "poison_counters", 0), getattr(target, "regen_counters", 0))
     if n <= 0:
         return
@@ -5819,120 +5905,96 @@ def _annihilate_typed_counters(st: GameState, target) -> None:
 
 
 def _place_poison_counters(st: GameState, target, n: int) -> None:
-    """Land `n` poison counters: each a persistent −0/−1 (−1 max HP and −1 current
-    HP as it lands). Not damage — no prevention, no temp-HP soak, no on-hit
-    triggers, never breaks a channel — but lethality is checked as always on
-    effective HP: poison kills (§D8-2.1)."""
+    """Land `n` poison counters. Placement moves no stats (§D22-2 — this is not
+    a temporary/cumulative −X); the drain happens at each Upkeep."""
     if target is None or n <= 0:
         return
     target.poison_counters += n
-    target.max_hp = max(0, target.max_hp - n)
-    lost = target.hp - max(0, target.hp - n)
-    target.hp = max(0, target.hp - n)
     _annihilate_typed_counters(st, target)
-    _log(st, "poison_counters",
-         f"{target.name} gains {n} poison counter(s) (−0/−{n}; "
-         f"HP {target.hp}/{target.max_hp}).",
-         target=_tid(target), amount=n, hp=target.hp, max_hp=target.max_hp)
-    if isinstance(target, CharacterState):
-        _gain_gauge(st, target, lost)  # +1 gauge per point of current HP lost (T-49)
-    _after_damage(st, target)
+    if target.poison_counters > 0:
+        _log(st, "poison_counters",
+             f"{target.name} has {target.poison_counters} poison counter(s) — "
+             f"loses that much life at each Upkeep.",
+             target=_tid(target), amount=n, counters=target.poison_counters)
 
 
 def _place_regen_counters(st: GameState, target, n: int,
                           source_id: Optional[str] = None) -> None:
-    """Land `n` regen counters: each a persistent +0/+1. A regen tick counts as
-    healing (§D8-2.2): it cures poison, fires life-gain triggers, and credits the
-    applier's ultimate gauge as restored HP."""
+    """Land `n` regen counters. Placement is not itself healing (§D22-2); the
+    mending happens at each Upkeep."""
     if target is None or n <= 0:
         return
     target.regen_counters += n
-    target.max_hp += n
-    target.hp += n
     _annihilate_typed_counters(st, target)
-    _log(st, "regen_counters",
-         f"{target.name} gains {n} regen counter(s) (+0/+{n}; "
-         f"HP {target.hp}/{target.max_hp}).",
-         target=_tid(target), amount=n, hp=target.hp, max_hp=target.max_hp)
-    _cure_poison(st, target, reason="regeneration", shed_counters=False)
-    if source_id is not None:
-        _gain_gauge(st, st.character(source_id), n)  # +1 per HP restored as source
-    _fire_event(st, "life_gain", target)
+    if target.regen_counters > 0:
+        _log(st, "regen_counters",
+             f"{target.name} has {target.regen_counters} regen counter(s) — "
+             f"heals that much at each Upkeep.",
+             target=_tid(target), amount=n, counters=target.regen_counters)
 
 
-def _cure_poison(st: GameState, target, reason: str = "healing",
-                 shed_counters: bool = True) -> None:
-    """Any received healing cures poison — an antidote is an antidote (§D8-2.1).
-
-    Playtest ruling (overrides the doc's "the counters persist"): a cure from
-    actual HEALING also SHEDS the accumulated poison counters, reversing each
-    one's −0/−1 (+1 max HP and +1 current HP, current clamped to the restored
-    max) — the exact inverse of how they landed. A healed creature is rid of the
-    venom entirely, counters and all.
-
-    A regen tick passes `shed_counters=False`: regen's counter interaction is the
-    separate 1:1 annihilation rule (§D8-2.2), so its "cure" only stops the
-    ticking — it must not also shed the poison counters on top."""
-    effects = getattr(target, "poison_effects", None) or []
-    counters = getattr(target, "poison_counters", 0) if shed_counters else 0
-    if not effects and counters <= 0:
+def _cure_poison(st: GameState, target, reason: str = "healing") -> None:
+    """Any received healing removes ALL poison counters — an antidote is an
+    antidote (§D8-2.1 / §D22-2). Even a 0-restore heal cures."""
+    counters = getattr(target, "poison_counters", 0)
+    legacy = getattr(target, "poison_effects", None) or []  # pre-D22 saves
+    if not legacy and counters <= 0:
         return
     target.poison_effects = []
-    if counters > 0:
-        target.max_hp += counters
-        target.hp = min(target.max_hp, target.hp + counters)
-        target.poison_counters = 0
+    target.poison_counters = 0
     _log(st, "poison_cured",
          f"{target.name}'s poison is cured ({reason}) — "
-         f"{len(effects)} effect(s) end"
-         + (f", {counters} counter(s) shed (HP {target.hp}/{target.max_hp})" if counters else "")
-         + ".",
-         target=_tid(target), reason=reason, ended=len(effects), counters=counters)
+         f"{counters} counter(s) removed.",
+         target=_tid(target), reason=reason, counters=counters)
 
 
 def _break_regen(st: GameState, target) -> None:
-    """Damage that connects (≥1 after mitigation/prevention) concludes every regen
-    effect on the victim (§D8-2.2). Counters remain."""
-    if getattr(target, "regen_effects", None):
-        target.regen_effects = []
-        _log(st, "regen_broken", f"{target.name}'s regeneration is broken.",
-             target=_tid(target))
+    """Damage that connects (≥1 after mitigation/prevention) removes ALL regen
+    counters (§D8-2.2 / §D22-2)."""
+    counters = getattr(target, "regen_counters", 0)
+    legacy = getattr(target, "regen_effects", None) or []  # pre-D22 saves
+    if not legacy and counters <= 0:
+        return
+    target.regen_effects = []
+    target.regen_counters = 0
+    _log(st, "regen_broken",
+         f"{target.name}'s regeneration is broken — "
+         f"{counters} counter(s) removed.",
+         target=_tid(target), counters=counters)
 
 
 def _tick_afflictions(st: GameState) -> None:
-    """The Upkeep tick (§D8-2.3): every active poison/regen effect places its
-    counters again. State-based, not stack events — no reaction windows open (the
-    counters are the drama; the tick is bookkeeping). Order is deterministic:
-    party side then enemy side, each in board order; poison before regen on a
-    creature. Deaths from a poison tick fire death triggers normally."""
+    """The Upkeep tick (§D8-2.3 / §D22-2): each poison counter drains 1 life
+    (life loss, not damage — no prevention, no channel break, and it never
+    sheds regen); each regen counter heals 1 (real healing). State-based, no
+    reaction windows. Order is deterministic: party side then enemy side, each
+    in board order; poison before regen on a creature (annihilation means the
+    two never coexist anyway). Deaths from a poison tick fire death triggers
+    normally."""
     for c in list(st.party) + _ordered(st.living_tokens()) + _ordered(st.living_enemies()):
         _tick_afflictions_one(st, c)
 
 
 def _tick_afflictions_one(st: GameState, c) -> None:
-    for eff in list(getattr(c, "poison_effects", [])):
-        if eff not in c.poison_effects:  # concluded mid-tick (e.g. death)
-            continue
-        eff.pending = False
-        _place_poison_counters(st, c, eff.amount)
-        if eff in c.poison_effects and eff.turns_left is not None:
-            eff.turns_left -= 1
-            if eff.turns_left <= 0:
-                c.poison_effects.remove(eff)
-                _log(st, "poison_expired",
-                     f"The poison on {c.name} runs its course.", target=_tid(c))
+    poison = getattr(c, "poison_counters", 0)
+    if poison > 0 and getattr(c, "alive", isinstance(c, CharacterState)):
+        lost = c.hp - max(0, c.hp - poison)
+        c.hp = max(0, c.hp - poison)
+        _log(st, "poison_tick",
+             f"{c.name} loses {lost} life to poison ({poison} counter(s); "
+             f"HP {c.hp}/{c.max_hp}).",
+             target=_tid(c), amount=lost, counters=poison, hp=c.hp)
+        if isinstance(c, CharacterState):
+            _gain_gauge(st, c, lost)  # +1 gauge per point of current HP lost (T-49)
+        _after_damage(st, c)
     if not getattr(c, "alive", False) and not isinstance(c, CharacterState):
         return  # died to its own poison — nothing left to regenerate
-    for eff in list(getattr(c, "regen_effects", [])):
-        if eff not in c.regen_effects:
-            continue
-        _place_regen_counters(st, c, eff.amount, source_id=eff.source_id)
-        if eff in c.regen_effects and eff.turns_left is not None:
-            eff.turns_left -= 1
-            if eff.turns_left <= 0:
-                c.regen_effects.remove(eff)
-                _log(st, "regen_expired",
-                     f"The regeneration on {c.name} fades.", target=_tid(c))
+    regen = getattr(c, "regen_counters", 0)
+    if regen > 0:
+        _log(st, "regen_tick",
+             f"{c.name} regenerates {regen} ({regen} counter(s)).",
+             target=_tid(c), amount=regen, counters=regen)
+        _heal(st, c, regen)
 
 
 def _charge_threshold(e: EnemyState) -> Optional[int]:
@@ -6382,12 +6444,10 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
         # the next Upkeep — a venomed blade wounds now and sickens later.
         _break_regen(st, target)
         if source_obj is not None and _has_kw(source_obj, "infect"):
-            target.poison_effects.append(
-                Affliction(amount=1, turns_left=None, pending=True,
-                           source_id=getattr(source_obj, "id", None)))
             _log(st, "infect",
-                 f"{target.name} is infected — the poison sets in at the next Upkeep.",
+                 f"{target.name} is infected — a poison counter sets in at the next Upkeep.",
                  target=_tid(target), source=getattr(source_obj, "id", None))
+            _place_poison_counters(st, target, 1)
     if source_obj is not None and connected > 0 and _has_kw(source_obj, "lifelink"):
         _heal(st, source_obj, connected, reason="lifelink", source_obj=source_obj)
     if (source_obj is not None and connected > 0 and _has_kw(source_obj, "deathtouch")

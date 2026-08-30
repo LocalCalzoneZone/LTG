@@ -277,6 +277,10 @@ class CharacterState:
     regen_effects: List[Affliction] = field(default_factory=list)
     poison_counters: int = 0
     regen_counters: int = 0
+    # Charge counters (§D22-1): heroes may hold the windup gauge too — a plain
+    # resource added/drained by the `charge` verb, read via caster/target_charge.
+    # Distinct from the ultimate gauge.
+    charge: int = 0
 
     # Heroic actions (D8-3): the authored once-per-encounter Skill/Ultimate (core
     # Card models with forced timing), their used flags, the ultimate gauge, and

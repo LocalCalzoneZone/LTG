@@ -69,6 +69,10 @@ Notes for the translation pass:
   `"Sacrifice <name>: …"` wording becomes a **channel-break trigger**: the
   effect goes on the stack (respondable) when the channel ends — dropped or
   broken, for any reason.
+- Enchantments may also carry an **after-turns countdown trigger** (§D22-4) —
+  `"trigger": {"after_turns": N}` — which counts down one per Upkeep and fires
+  the effect once when it expires; pair it with the enchantment-only
+  `channel_drop` verb (§D22-3) for "after N turns, this enchantment drops".
 - All imported cards start **unvalidated**; a human must ratify each card's
   effects in the Deckbuilder before it can be exported to the game engine.
 

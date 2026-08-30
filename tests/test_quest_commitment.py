@@ -125,9 +125,11 @@ def test_the_questgiver_you_swore_to_hears_a_reminder_not_a_refusal():
     assert DEFAULT_COMMITTED_LABEL not in labels
     assert not any(c["party_wide"] for c in run.conversation.visible_choices(run.flags))
     assert "Tell us more." in labels             # flavour choices survive
-    # The same-quest accept deeper in the tree is rewritten too.
+    # The same-quest accept deeper in the tree is rewritten too (the
+    # narration-beat flavour choice survives, like every flavour choice).
     _pick(run, "Tell us more.")
-    assert _labels(run) == [DEFAULT_SWORN_LABEL]
+    assert DEFAULT_SWORN_LABEL in _labels(run)
+    assert "We'll look." not in _labels(run)
     assert _pick(run, DEFAULT_SWORN_LABEL) == []
 
 

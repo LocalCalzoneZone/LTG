@@ -19,3 +19,4 @@ apps/autoplay-tester/data/runs/
 apps/autoplay-tester/data/verdicts/
 # Update 17 runs & saves (runtime data — the branching save tree + content store)
 saves/
+tests/.suite.lock

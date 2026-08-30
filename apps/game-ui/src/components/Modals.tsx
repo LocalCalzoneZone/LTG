@@ -115,6 +115,11 @@ export function ZoneModal() {
                   <div className="font-normal text-parch">{ch.card_name}</div>
                   {ch.target_name && <div className="text-xs text-mist">on {ch.target_name}</div>}
                   <div className="text-xs font-light text-mist">{ch.text}</div>
+                  {ch.countdown != null && (
+                    <div className="mt-0.5 text-xs font-light text-brass">
+                      {ch.countdown} upkeep{ch.countdown === 1 ? "" : "s"} until its countdown fires.
+                    </div>
+                  )}
                   {ch.break_text && (
                     <div className="mt-0.5 text-xs font-light text-brass">
                       When this channel ends: {ch.break_text}.

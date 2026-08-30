@@ -929,6 +929,9 @@ let SIDES = ["ally", "enemy", "any"];
 // Resolvable value references (name → display label) for the reference dropdown.
 let REFS = { "mana_capacity": "your mana capacity",
              "destroyed_target.level": "the destroyed target's level" };
+// Dropdown sections for the reference select (§D22-1): [label, [names]] pairs
+// from the server; null falls back to a flat list.
+let REF_GROUPS_UI = null;
 // Verbs whose chosen target may be CORPSE-exclusive (§D9-1.3 / §D19-5).
 let CORPSE_KINDS = ["control", "exile", "consume_corpse"];
 // §D21: creature type (race) / class (role) vocabularies, from the server.
@@ -944,6 +947,7 @@ async function loadSpecs() {
     MODES = r.modes;
     SIDES = r.sides;
     if (r.refs) REFS = r.refs;
+    if (r.ref_groups) REF_GROUPS_UI = r.ref_groups;
     if (r.corpse_kinds) CORPSE_KINDS = r.corpse_kinds;
     if (r.creature_types) CREATURE_TYPES = r.creature_types;
     if (r.creature_classes) CREATURE_CLASSES = r.creature_classes;
@@ -1193,6 +1197,28 @@ function refLabel(r) {
   return REFS[r] || r;
 }
 
+// The reference dropdown's options: sectioned by the server's REF_GROUPS
+// (stats together, target/caster pairs adjacent), stored values in their own
+// group, and anything ungrouped (a legacy ref on the card) kept visible.
+function refOptionsHtml(current) {
+  const opt = (r) => `<option value="${escapeAttr(r)}" ${current === r ? "selected" : ""}>${escapeHtml(refLabel(r))}</option>`;
+  if (!REF_GROUPS_UI) return refNames(current).map(opt).join("");
+  const listed = new Set();
+  let html = REF_GROUPS_UI.map(([label, names]) => {
+    const here = names.filter((n) => n in REFS && n !== "mana_capacity");
+    here.forEach((n) => listed.add(n));
+    return here.length ? `<optgroup label="${escapeAttr(label)}">${here.map(opt).join("")}</optgroup>` : "";
+  }).join("");
+  const stored = storedNames().map((n) => "$" + n);
+  if (stored.length) {
+    stored.forEach((n) => listed.add(n));
+    html += `<optgroup label="Stored values">${stored.map(opt).join("")}</optgroup>`;
+  }
+  const extra = refNames(current).filter((r) => !listed.has(r));
+  if (extra.length) html += `<optgroup label="Other">${extra.map(opt).join("")}</optgroup>`;
+  return html;
+}
+
 function valueControlHtml(i, spec, val) {
   const p = spec.name;
   let type = "number", num = 1, ref = "", mult = 1;
@@ -1204,8 +1230,7 @@ function valueControlHtml(i, spec, val) {
   } else num = val;
   // A reference may be scaled — "twice your base Power" is {ref, mult: 2}.
   const multCtl = `<label class="inline mini" title="Multiplier applied to the referenced value (e.g. 2 = twice your base Power)">×<input class="val-mult" type="number" min="1" data-i="${i}" data-p="${p}" value="${mult}" style="width:48px"/></label>`;
-  const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refNames(ref).map((r) =>
-    `<option value="${escapeAttr(r)}" ${ref === r ? "selected" : ""}>${escapeHtml(refLabel(r))}</option>`).join("")}</select>`;
+  const refSel = `<select class="val-input" data-i="${i}" data-p="${p}">${refOptionsHtml(ref)}</select>`;
   // Stat values (pump/wound/counters power & toughness) admit no "all" — the
   // spec flags it (no_all) and the option is simply not offered.
   const allOpt = spec.no_all ? "" :
@@ -1236,12 +1261,18 @@ const SPELL_TYPE_LABEL = { instant: "an instant", sorcery: "a sorcery",
                            channeled: "a channeled spell" };
 
 function triggerControlHtml(i, p, val) {
-  const isEvt = val && typeof val === "object";
+  const isAfter = !!(val && typeof val === "object" && "after_turns" in val);
+  const isEvt = !!(val && typeof val === "object" && !isAfter);
   const base = `<select class="trg-base" data-i="${i}">
       <option value="" ${val == null ? "selected" : ""}>(none)</option>
       ${(p.options || []).map((o) => `<option value="${o}" ${val === o ? "selected" : ""}>${TRIGGER_LABEL[o] || o}</option>`).join("")}
       <option value="__event__" ${isEvt ? "selected" : ""}>on event…</option>
+      ${p.after_turns ? `<option value="__after__" ${isAfter ? "selected" : ""}>after N turns…</option>` : ""}
     </select>`;
+  if (isAfter) return `<label class="inline">trigger ${base} after
+      <input type="number" class="trg-turns" data-i="${i}" min="1" value="${val.after_turns}" style="width:56px"
+        title="Fires once, at the Upkeep this many turns after the channel began — the count goes down each Upkeep" />
+      turn(s)</label>`;
   if (!isEvt) return `<label class="inline">trigger ${base}</label>`;
   const who = `<select class="trg-who" data-i="${i}">${(p.whos || []).map((w) =>
     `<option value="${w}" ${val.who === w ? "selected" : ""}>${WHO_LABEL[w] || w}</option>`).join("")}</select>`;
@@ -2052,11 +2083,18 @@ function wireDetail(idx) {
     };
   });
 
-  // Trigger control (lifecycle literal or event trigger object).
+  // Trigger control (lifecycle literal, event trigger, or after-N-turns countdown).
   document.querySelectorAll(".trg-base").forEach((sel) => {
     sel.onchange = () => {
       editorItems[+sel.dataset.i].trigger = sel.value === "" ? null
-        : sel.value === "__event__" ? { event: "attack", who: "you" } : sel.value;
+        : sel.value === "__event__" ? { event: "attack", who: "you" }
+        : sel.value === "__after__" ? { after_turns: 3 } : sel.value;
+      commitEffects(idx, true);
+    };
+  });
+  document.querySelectorAll(".trg-turns").forEach((inp) => {
+    inp.onchange = () => {
+      editorItems[+inp.dataset.i].trigger.after_turns = Math.max(1, parseInt(inp.value) || 1);
       commitEffects(idx, true);
     };
   });

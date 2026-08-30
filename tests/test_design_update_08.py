@@ -88,18 +88,19 @@ def _venom_card(amount=2, turns=None):
     return _card("venom", "Venom", "sorcery", {"colors": {"U": 1}}, [eff])
 
 
-def test_poison_places_now_and_ticks_at_upkeep():
+def test_poison_counters_drain_life_at_upkeep():
+    # §D22-2: the counters are the clock — placement moves no stats; each
+    # counter drains 1 life at every Upkeep, and the tally never grows on its own.
     st = _state([_char("p", hand=1, library=[_venom_card(2)])], [_enemy("e", hp=12)])
     st = _do(st, "cast", card_id="venom")
     st = _do(st, "pass")  # own window — resolve
     e = st.enemy("e")
     assert e.poison_counters == 2
-    assert e.hp == 10 and e.max_hp == 10        # −0/−1 each, now
-    assert len(e.poison_effects) == 1
+    assert e.hp == 12 and e.max_hp == 12        # no −0/−X fold — not a stat change
     st = _drive_turn(st)                        # to turn 2's upkeep tick
     e = st.enemy("e")
-    assert e.poison_counters == 4               # ticked again
-    assert e.max_hp == 8
+    assert e.poison_counters == 2               # the tally holds…
+    assert e.hp == 10 and e.max_hp == 12        # …and drains 1 life per counter
 
 
 def test_poison_is_not_damage_and_ignores_prevention():
@@ -114,11 +115,13 @@ def test_poison_is_not_damage_and_ignores_prevention():
     assert st.enemy("e").poison_counters == 1   # a clock that ignores the shield wall
 
 
-def test_poison_kills_on_effective_hp():
+def test_poison_kills_at_the_upkeep_tick():
     st = _state([_char("p", hand=1, library=[_venom_card(2)])], [_enemy("e", hp=2)])
     st = _do(st, "cast", card_id="venom")
     st = _do(st, "pass")
-    assert st.enemy("e") is None                # poison kills
+    assert st.enemy("e") is not None            # placement alone doesn't kill (§D22-2)
+    st = _drive_turn(st)                        # the tick drains 2 — lethal
+    assert st.enemy("e") is None
     assert any(ev.type == "enemy_died" for ev in st.log)
 
 
@@ -132,29 +135,29 @@ def test_any_healing_cures_poison_and_sheds_the_counters():
                 tweak=lambda s: s.enemy("e").components.append(poisoner))
     st = _drive_turn(st)                        # enemy poisons; turn-2 upkeep ticks
     p = st.character("p")
-    assert p.poison_effects and p.poison_counters == 2  # 1 on landing + 1 tick
-    assert p.max_hp == 18                        # −0/−2 folded into max
+    assert p.poison_counters == 1               # placed once — the tally never grows
+    assert p.max_hp == 20 and p.hp == 19        # the tick is life loss, not a stat fold
     st = _do(st, "cast", card_id="mend")
     st = _do(st, "pass")
     p = st.character("p")
-    # Playtest ruling: healing cures the ticking AND sheds the counters, reversing
-    # each one's −0/−1 (max HP restored, then the heal fills on top).
-    assert p.poison_effects == []
+    # §D22-2: any healing removes ALL poison counters, then restores HP as normal.
     assert p.poison_counters == 0
-    assert p.max_hp == 20                        # the −0/−2 is fully reversed
+    assert p.max_hp == 20 and p.hp == 20
 
 
-def test_bounded_poison_concludes_after_its_turns():
+def test_legacy_turns_field_still_loads_and_is_ignored():
+    # Pre-D22 cards authored `"turns": N`; the field is accepted on load and
+    # dropped — counters never expire on their own, only healing removes them.
     st = _state([_char("p", hand=1, library=[_venom_card(1, turns=1)])],
                 [_enemy("e", hp=12)])
     st = _do(st, "cast", card_id="venom")
     st = _do(st, "pass")
-    st = _drive_turn(st)                        # the one bounded tick
-    e = st.enemy("e")
-    assert e.poison_counters == 2
-    assert e.poison_effects == []               # concluded on its own
+    assert st.enemy("e").poison_counters == 1
     st = _drive_turn(st)
-    assert st.enemy("e").poison_counters == 2   # no further ticking
+    st = _drive_turn(st)
+    e = st.enemy("e")
+    assert e.poison_counters == 1               # still ticking — no turn bound
+    assert e.hp == 10                           # two upkeep drains of 1
 
 
 # ========================================================================== #
@@ -168,47 +171,56 @@ def test_regen_ticks_cure_poison_and_annihilate():
                          target_rule="valuation", telegraph="Venom Spit")
     st = _state([_char("p", hand=1, library=[tonic])], [_enemy("e")],
                 tweak=lambda s: s.enemy("e").components.append(poisoner))
-    st = _drive_turn(st)                        # 2 on landing + 2 at the next tick
-    assert st.character("p").poison_counters == 4
+    st = _drive_turn(st)                        # 2 placed on landing; tick drains 2
+    assert st.character("p").poison_counters == 2
     st = _do(st, "cast", card_id="tonic")
     st = _do(st, "pass")
     p = st.character("p")
-    assert p.poison_effects == []               # a regen tick counts as healing
-    assert p.poison_counters == 3 and p.regen_counters == 0  # 1:1 annihilation
+    assert p.poison_counters == 1 and p.regen_counters == 0  # 1:1 annihilation
 
 
 def test_regen_broken_by_damage_that_connects():
     tonic = _card("tonic", "Tonic", "sorcery", {"colors": {"U": 1}},
-                  [{"kind": "regen", "amount": 1, "target": SELF}])
+                  [{"kind": "regen", "amount": 2, "target": SELF}])
     st = _state([_char("p", hand=1, library=[tonic], hp=20)], [_enemy("e", amount=3)])
     st = _do(st, "cast", card_id="tonic")
     st = _do(st, "pass")
-    assert st.character("p").regen_effects
+    assert st.character("p").regen_counters == 2
     st = _drive_turn(st)                        # the enemy's 3-damage hit connects
     p = st.character("p")
-    assert p.regen_effects == []                # broken
-    assert p.regen_counters == 1                # counters remain
+    assert p.regen_counters == 0                # §D22-2: ALL regen counters removed
+
+
+def test_regen_counters_heal_at_upkeep():
+    from ltg_combat import engine
+    st = _state([_char("p", hp=20)], [_enemy("e")])
+    p = st.character("p")
+    p.hp = 15
+    engine._place_regen_counters(st, p, 2)
+    assert p.regen_counters == 2 and p.hp == 15  # placement is not itself healing
+    engine._tick_afflictions_one(st, p)
+    p = st.character("p")
+    assert p.hp == 17                            # 1 per counter, real healing
+    assert p.regen_counters == 2                 # the tally holds until damaged
 
 
 # ========================================================================== #
 # §D8-2.5 infect
 # ========================================================================== #
-def test_infect_poisons_on_connect_first_counter_at_next_upkeep():
+def test_infect_places_a_counter_per_connecting_hit():
     from ltg_combat import engine
     st = _state([_char("p", hp=20)], [_enemy("e", amount=2)],
                 tweak=lambda s: s.enemy("e").keywords.update({"infect": "encounter"}))
-    # Unit-level: the connecting hit applies the effect but places NO counter now
-    # — a venomed blade wounds now and sickens later (D8-2.5).
+    # Unit-level: the connecting hit places one poison counter — the drain
+    # starts at the next Upkeep (§D8-2.5 / §D22-2).
     engine._deal_damage(st, st.character("p"), 2, source="Claw",
                         source_obj=st.enemy("e"), damage_kind="attack")
     p = st.character("p")
-    assert len(p.poison_effects) == 1 and p.poison_effects[0].pending
-    assert p.poison_counters == 0
-    # Integration: each further connecting hit stacks its own effect; ticks land.
+    assert p.poison_counters == 1
+    # Integration: each further connecting hit stacks another counter.
     st = _drive_turn(st)                        # enemy hit + the next upkeep tick
     p = st.character("p")
-    assert len(p.poison_effects) == 2
-    assert p.poison_counters >= 1
+    assert p.poison_counters == 2
 
 
 def test_infect_banned_at_creation_but_grantable():
@@ -267,10 +279,11 @@ def test_gather_intent_is_veiled_as_gathering():
     assert intent_category(view.enemy("e").intent) == "gathering"
 
 
-def test_charge_rejected_on_player_cards():
-    with pytest.raises(ValidationError):
-        Card.model_validate(_card("z", "Windup", "sorcery", {},
-                                  [{"kind": "charge", "amount": 2}]))
+def test_charge_is_authorable_on_player_cards():
+    # §D22-1 lifts the old enemy-only ban: heroes build and spend charge too.
+    card = Card.model_validate(_card("z", "Windup", "sorcery", {},
+                                     [{"kind": "charge", "amount": 2}]))
+    assert card.effects[0].op == "add"
 
 
 # ========================================================================== #

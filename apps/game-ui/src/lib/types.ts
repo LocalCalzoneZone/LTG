@@ -60,6 +60,8 @@ export interface ChannelSummary {
   text: string;
   // What ending this channel fires (the channel_break trigger), "" when none.
   break_text: string;
+  // §D22-4: Upkeeps until the soonest after_turns trigger fires; null when none.
+  countdown?: number | null;
 }
 
 // A Skill/Ultimate as the client sees it (D8-3). For a seat you don't control

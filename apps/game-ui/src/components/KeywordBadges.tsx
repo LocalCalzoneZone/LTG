@@ -47,7 +47,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0 }: {
       )}
       {poison > 0 && (
         <span
-          title={`${poison} poison counter(s): −0/−${poison} (already in the stats shown). Any healing cures the ticking; the counters remain.`}
+          title={`${poison} poison counter(s): loses ${poison} life at each Upkeep. Any healing removes all poison counters.`}
           className={`${BADGE} border-[#a9bf5e]/60 font-display text-[clamp(7px,1.1vh,10px)] text-[#a9bf5e]`}
         >
           −{poison}
@@ -55,7 +55,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0 }: {
       )}
       {regen > 0 && (
         <span
-          title={`${regen} regen counter(s): +0/+${regen} (already in the stats shown). Broken by damage that connects.`}
+          title={`${regen} regen counter(s): heals ${regen} at each Upkeep. Damage that connects removes all regen counters.`}
           className={`${BADGE} border-vigor/60 font-display text-[clamp(7px,1.1vh,10px)] text-vigor`}
         >
           ~{regen}

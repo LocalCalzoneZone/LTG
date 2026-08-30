@@ -89,8 +89,14 @@ def questgiver_tree():
                      "choices": [{"label": "We'll look.", "next": "go",
                                   "effects": [{"kind": "grant_quest", "quest": "the_lantern_goes_out"},
                                               {"kind": "unlock_adventure"}]},
+                                 {"label": "Say nothing.", "next": "aud_waits"},
                                  {"label": "Later — we've business first.",
                                   "effects": [{"kind": "defer_quest"}]}]},
+            # Two narration beats on side branches: the beta-playtest floor for
+            # a questgiver tree (the scene must SHOW, not only speak).
+            "aud_waits": {"speaker": "narration",
+                          "text": "Sister Aud watches the water and lets the silence sit.",
+                          "choices": [{"label": "Leave her to it."}]},
             "bloodied": {"speaker": "npc", "text": "Then you know what waits. Will you go again?",
                          "choices": [{"label": "Again.", "next": "go",
                                       "effects": [{"kind": "grant_quest", "quest": "the_lantern_goes_out"},
@@ -99,7 +105,11 @@ def questgiver_tree():
                                       "effects": [{"kind": "defer_quest"}]}]},
             "go": {"speaker": "npc", "text": "Take this for the road.",
                    "choices": [{"label": "Farewell.", "effects": [{"kind": "give_gold", "amount": 10},
-                                                                   {"kind": "set_flag", "flag": "aud_blessed"}]}]},
+                                                                   {"kind": "set_flag", "flag": "aud_blessed"}]},
+                               {"label": "(linger a moment)", "next": "aud_turns"}]},
+            "aud_turns": {"speaker": "narration",
+                          "text": "She presses a small purse into your hands and turns back to the lake.",
+                          "choices": [{"label": "Farewell."}]},
         },
     }
 
@@ -196,7 +206,7 @@ def test_arc_validation_resolves_npcs_and_locations():
 
 def test_dialogue_validation_closed_hooks_depth_and_refs():
     tree = dialogue.validate_dialogue(questgiver_tree())
-    assert tree["root"] == "greet" and len(tree["nodes"]) == 4
+    assert tree["root"] == "greet" and len(tree["nodes"]) == 6
     bad = questgiver_tree()
     bad["nodes"]["greet"]["choices"][0]["effects"] = [{"kind": "summon_dragon"}]
     with pytest.raises(ValueError, match="unknown hook"):

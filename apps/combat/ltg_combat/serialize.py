@@ -93,6 +93,18 @@ def _pip_str(colors: List[str]) -> str:
     return "".join(("{" + c + "}") * counts[c] for c in _WUBRG if counts[c]) or "{0}"
 
 
+def _channel_countdown(state: GameState, ch) -> Optional[int]:
+    """Upkeeps until the channel's soonest `after_turns` trigger fires (§D22-4)
+    — the visible count that goes down each Upkeep. None when no countdown is
+    pending (no after_turns effects, or every one has already fired)."""
+    elapsed = state.turn - getattr(ch, "started_turn", state.turn)
+    pending = [t.after_turns - elapsed
+               for t in (getattr(e, "trigger", None) for e in ch.effects)
+               if getattr(t, "after_turns", None) is not None
+               and t.after_turns - elapsed > 0]
+    return min(pending) if pending else None
+
+
 # --------------------------------------------------------------------------- #
 # Veiled intents (Design Update 08 §D8-1): the category is DERIVED
 # deterministically from the declared intent — verbs, action_type, target
@@ -397,10 +409,6 @@ def _status_tags(char) -> List[str]:
         tags.append(f"poison ×{char.poison_counters}")
     if getattr(char, "regen_counters", 0):
         tags.append(f"regen ×{char.regen_counters}")
-    if getattr(char, "poison_effects", None):
-        tags.append("poisoned")
-    if getattr(char, "regen_effects", None):
-        tags.append("regenerating")
     if getattr(char, "charge", 0):
         tags.append(f"charge ×{char.charge}")
     for kw in getattr(char, "keywords", {}):
@@ -473,6 +481,9 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
             # What ending this channel will fire ("" when it has no break trigger)
             # — the Channels modal shows it as a warning note next to Drop.
             "break_text": channel_break_clause(ch.effects, ch.card.targets),
+            # §D22-4: the live after_turns countdown — Upkeeps until the
+            # soonest countdown trigger fires (None when the card has none).
+            "countdown": _channel_countdown(state, ch),
         } for ch in char.channels],
         "hand": [card_dict(c) for c in char.hand],
         "library": [card_dict(c) for c in char.library],
@@ -486,8 +497,8 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "ultimate_gauge": getattr(char, "ultimate_gauge_pct", 0),
         "poison_counters": getattr(char, "poison_counters", 0),
         "regen_counters": getattr(char, "regen_counters", 0),
-        "poisoned": bool(getattr(char, "poison_effects", None)),
-        "regenerating": bool(getattr(char, "regen_effects", None)),
+        "poisoned": getattr(char, "poison_counters", 0) > 0,
+        "regenerating": getattr(char, "regen_counters", 0) > 0,
         "raw": to_jsonable(char),
     }
 
@@ -594,8 +605,8 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "rises": getattr(enemy, "rises", None),
         "poison_counters": getattr(enemy, "poison_counters", 0),
         "regen_counters": getattr(enemy, "regen_counters", 0),
-        "poisoned": bool(getattr(enemy, "poison_effects", None)),
-        "regenerating": bool(getattr(enemy, "regen_effects", None)),
+        "poisoned": getattr(enemy, "poison_counters", 0) > 0,
+        "regenerating": getattr(enemy, "regen_counters", 0) > 0,
         # The charge gauge (D8-2.4): count and threshold pips are public; the
         # triggered component's content is not (the cockpit's raw dump has it).
         "charge": getattr(enemy, "charge", 0),

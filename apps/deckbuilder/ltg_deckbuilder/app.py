@@ -37,6 +37,7 @@ from ltg_core.schema import (
     CORPSE_LEGAL_EFFECTS,
     CREATURE_CLASSES,
     CREATURE_TYPES,
+    REF_GROUPS,
     REF_VALUES,
     Row,
     SIDE_VALUES,
@@ -206,6 +207,9 @@ def api_effect_specs() -> dict:
     that backs the editor's reference dropdown."""
     return {"specs": effect_specs(), "modes": MODE_VALUES, "sides": SIDE_VALUES,
             "refs": REF_VALUES,
+            # Dropdown sections for the reference select (§D22-1): ordered
+            # [group label, [ref names]] pairs; stored values group client-side.
+            "ref_groups": [[label, names] for label, names in REF_GROUPS],
             # §D19-5: the verbs whose chosen target may be CORPSE-exclusive
             # (state: "corpse") — the editor shows its "corpse only" checkbox
             # for exactly these.

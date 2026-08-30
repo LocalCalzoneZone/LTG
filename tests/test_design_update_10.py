@@ -503,3 +503,27 @@ def test_an_art_refresh_keeps_the_party_panel_clips():
     after = next(c for c in session.snapshot_for("A")["characters"] if c["id"] == soren.id)
     assert after["anims"] == before["anims"]
     assert after["description"] == before["description"]
+
+
+# --------------------------------------------------------------------------- #
+# The phase-narration floor (beta playtest 2026-08-30): a caption is not a scene
+# --------------------------------------------------------------------------- #
+def test_generation_rejects_thin_narration():
+    from ltg_game_server import llm
+    assert llm._narration_problems("") and "missing" in llm._narration_problems("")[0]
+    thin = "You push through the splintered gate into the courtyard."
+    [p] = llm._narration_problems(thin)
+    assert "too thin" in p and "road in" in p
+    full = ("You begin up the wooded path toward the foothills, and for a few "
+            "hours the only sound is your own boots on the stones. " * 12)
+    assert llm._narration_problems(full) == []
+
+
+def test_prompt_teaches_the_story_beat():
+    from ltg_game_server import llm
+    D = llm.ADVENTURE_EXTENSION
+    for needle in ("2 to 4 PARAGRAPHS", "THE ROAD IN", "THE DISCOVERY",
+                   "THE REASON", "A VOICE, when it earns it",
+                   "AFTERMATH of the previous fight",
+                   "We got company!"):
+        assert needle in D, needle

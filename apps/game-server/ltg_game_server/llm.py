@@ -279,19 +279,23 @@ them positionally is still correct and reads better.)
 Because a row shape is dodgeable, it may hit HARDER than a single-target ability
 of the same level — that is the trade the player is being offered.
 
-## Typed counters: poison, regen, and charge (Design Update 08)
-- POISON `{"kind": "poison", "amount": 1, "target": {chosen hero}}` — the victim
-  gains 1 counter per amount NOW and again at each Upkeep (each counter is a
-  permanent −0/−1) until ANY healing on them cures it. Magnitude: amount 1 per
-  tick at any level (an optional `"turns": N` bounds it). Poison is NOT damage —
-  it ignores shields and never breaks a channel. It is the anti-turtle,
-  anti-channeler pressure: one poisoner per encounter reads as a clock the
-  enemy healer forces the party's healer to answer.
-- REGEN `{"kind": "regen", "amount": 1, "target": {self or ally}}` (Fortify) —
-  the mirror: +0/+1 per tick until the creature is dealt damage that CONNECTS.
-  A regen'd elite must be *hit* to be whittled, making chip damage a real
-  assignment. Regen ticks count as healing (they cure poison).
-- CHARGE — the WINDUP pattern (see its own section below).
+## Typed counters: poison, regen, and charge (Design Update 08, reworked D22)
+- POISON `{"kind": "poison", "amount": N, "target": {chosen hero}}` — places N
+  poison counters; the victim LOSES 1 life per counter at each Upkeep until ANY
+  healing on them removes ALL the counters. The counters are the clock — they
+  neither grow nor expire on their own. Poison is NOT damage — it ignores
+  shields and never breaks a channel. It is the anti-turtle, anti-channeler
+  pressure: one poisoner per encounter reads as a clock the enemy forces the
+  party's healer to answer. Magnitude: 1–2 counters per application.
+- REGEN `{"kind": "regen", "amount": N, "target": {self or ally}}` (Fortify) —
+  the mirror: places N regen counters; the creature HEALS 1 per counter at each
+  Upkeep until damage that CONNECTS removes ALL the counters. A regen'd elite
+  must be *hit* to be whittled, making chip damage a real assignment. Poison
+  and regen counters annihilate 1:1.
+- CHARGE — the WINDUP pattern (see its own section below). The count is
+  readable by effects via the `{"ref": "caster_charge"}` / `{"ref":
+  "target_charge"}` value references — e.g. an ability that deals damage equal
+  to the gauge.
 
 ## Resource attacks — hurting the PLAN, not the hit points
 Three verbs attack what the party can DO rather than how much HP they have.
@@ -512,8 +516,10 @@ The party watches the pips rise without knowing what they feed — eat it, count
 it on the stack, or stop it from ever filling (kill, stun, strip the gather).
 Build it as TWO components on one enemy:
 - The gather: proactive, priced as Escalate (4), verbs
-  `[{"kind": "charge", "amount": 1}]`, target_rule "self" (charge is enemy-only
-  and always self). Its intent reads as "gathering" to the players.
+  `[{"kind": "charge", "amount": 1}]`, target_rule "self" (omit the target
+  field — it defaults to self). Its intent reads as "gathering" to the players.
+  Note heroes can now drain the gauge (§D22-1: the charge verb also takes
+  `"op": "remove"`, amount "all" for a full defuse) — a windup is answerable.
 - The detonation: `"timing": "reactive"`, `"trigger": "on_charge_full"`,
   `"charge_threshold": <Y>` — it fires onto the stack the moment charge reaches
   Y and the charge resets. Priced at its archetype base + the reactive +2, no
@@ -573,8 +579,8 @@ so write them freely — but write them as what they are.
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
 deathtouch (3/4) · hexproof (5/6) · indestructible (6/6).
 Infect: any damage the creature deals that CONNECTS also poisons the victim
-(one unbounded poison effect per connecting hit, first counter at the next
-Upkeep). An infected biter turns every landed hit into a healer assignment —
+(one poison counter per connecting hit — it drains 1 life at each Upkeep until
+healing removes the counters). An infected biter turns every landed hit into a healer assignment —
 pair it with pressure that punishes healing (on_hero_healed) for a genuinely
 nasty knot, and use AT MOST ONE infect creature per encounter.
 Hexproof wards off targeted SPELLS and ABILITIES only — basic attacks still land
@@ -839,9 +845,9 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
             {"kind": "deal_damage", "amount": {"ref": "caster_base_power", "mult": 2}, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // a scaled reference: twice this enemy's printed Power; mult is an integer ≥ 1
             {"kind": "protection", "parameter": "all_damage", "combat_kind": "all", "target": {"mode": "self"}},   // a one-shot CHARGE (no clock): negates the next matching damaging spell/attack/ability, whenever it comes (Ward); parameter ∈ all_damage|combat_damage|spell_damage
             {"kind": "counter", "filter": "spell"},               // REACTIVE Counter only: cancels the triggering action; "attack" filter for a parry; "ability" filter for on_ultimate_cast (an Ultimate is an activated ability, NOT a spell); NO target field
-            {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: −0/−1 per Upkeep until healed
-            {"kind": "regen",  "amount": 1, "target": {"mode": "self"}},   // Fortify: +0/+1 per Upkeep until damaged
-            {"kind": "charge", "amount": 1},                      // gather (windup); enemy-only, always self, NO target field
+            {"kind": "poison", "amount": 1, "target": {"mode": "chosen", "side": "ally", "targeted": true}},  // Debilitate: loses 1 life per counter each Upkeep; healing removes all counters
+            {"kind": "regen",  "amount": 1, "target": {"mode": "self"}},   // Fortify: heals 1 per counter each Upkeep; connecting damage removes all counters
+            {"kind": "charge", "amount": 1},                      // gather (windup); omit target (defaults to self); op "remove" drains ("all" = defuse)
             {"kind": "grant_keyword", "keywords": ["flying"], "duration": "encounter", "target": {"mode": "chosen", "side": "ally", "targeted": true}},
             {"kind": "create_token", "token_id": "<id in tokens>", "count": <int>, "hp": <int>, "power": <int>},
             {"kind": "wound", "power": 1, "toughness": 1, "duration": "while_channeled", "target": {"mode": "all", "side": "ally"}},   // CHANNEL aura: holds until broken
@@ -1851,13 +1857,38 @@ descriptions). This block adds the arc-level rules:
   variety. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
   2.5× budget, counts double), thematically distinct (the gate-captain, not the
   king), and STRICTLY lower level than Phase III's boss.
-- NARRATION: each phase carries a `narration` — one short paragraph, SECOND
-  PERSON, PRESENT TENSE, describing the party arriving into that phase's scene
-  ("You push through the splintered gate. Beyond, the courtyard…"). Phase I's
-  narration is the adventure's opening. No mechanics, no numbers — atmosphere
-  and forward motion. Name what the party can SEE and what is about to fight
-  them; the concreteness rule above binds here hardest, because this paragraph
-  is the only thing the player reads before the board appears.
+- NARRATION: each phase carries a `narration` — 2 to 4 PARAGRAPHS (roughly
+  120–250 words; it is checked, a single thin paragraph is rejected), SECOND
+  PERSON, PRESENT TENSE, separated by blank lines. This is the story the player
+  reads before the board appears — the ONLY story they get — so it does a
+  scene's work, not a caption's:
+    * THE ROAD IN. How the party got here from the last beat: Phase I picks up
+      the ride out of town (the quest's own journey — hours on the wooded path,
+      the weather turning, the first wrong sign); Phases II and III open on the
+      AFTERMATH of the previous fight (the wounds, the loot-glance, the door
+      the survivors fled through) and the push deeper.
+    * THE DISCOVERY. What the party sees, rounding the bend: the scene, and the
+      enemies IN it, mid-act — not waiting on a mark. Name the bodies the
+      player is about to fight (the same designs as this phase's pool) doing
+      something: picking over an upturned wagon, hauling a chest, arguing over
+      a map, feeding something in a pit.
+    * THE REASON. Why this fight, right now: what the enemies are doing here,
+      what they want, and what tips it into violence — they spot you, you spot
+      the hostages, the ground gives way. The player should finish reading
+      knowing exactly why swords are out on both sides.
+    * A VOICE, when it earns it. Enemy dialogue in quotes brings the moment to
+      life — the lead goblin looking up first: "We got company!" he shouts.
+      "Get 'em quick before the big boss comes back!" One or two lines, in
+      character, never exposition dumped into a mouth.
+  No mechanics, no numbers. The concreteness rule binds here hardest: name what
+  the party can SEE and who is about to fight them. Like so (Phase I shape):
+  "You begin up the wooded path toward the foothills, and for a few hours the
+  only sound is your own boots. Then, past a bend, voices — harsh, quarrelling.
+  A wagon lies on its side across the track, wheels still turning, and goblins
+  are picking over it: sacks slit, crates pried, the wagon-riders sprawled
+  where they fell. The biggest of them, a snarling brute with dull green skin
+  and a leather eyepatch, looks up first. 'We got company!' he bellows. 'Get
+  'em quick, before the big boss comes back!'"
 - `flavor` is the adventure's one-line pitch, shown in the New Game list.
 
 # Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
@@ -2042,6 +2073,27 @@ def _adventure_context_lines(context: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+NARRATION_MIN_WORDS = 100
+
+
+def _narration_problems(narration: Any) -> List[str]:
+    """The phase-narration gate (beta playtest): a caption-sized paragraph drops
+    the player into a fight with no road in, no reason, and no idea who these
+    enemies are. The floor forces a scene's worth of story; the prompt's
+    NARRATION section teaches what the words must carry."""
+    text = str(narration or "").strip()
+    if not text:
+        return ['missing its "narration" (2–4 second-person paragraphs '
+                "— see NARRATION)"]
+    words = len(text.split())
+    if words < NARRATION_MIN_WORDS:
+        return [f'its "narration" is {words} words — too thin to carry the '
+                "story. Write 2–4 paragraphs (120–250 words): the road in from "
+                "the last beat, what the party sees the enemies DOING, why the "
+                "fight starts, and a line of enemy dialogue if it earns one"]
+    return []
+
+
 def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                        note: str = "", attempts: int = 3,
                        loadouts: Optional[List[Dict[str, Any]]] = None,
@@ -2110,9 +2162,7 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                     problems.extend(_corpse_problems(enc))  # §D19-1: corpse fuel
                     problems.extend(_type_problems(enc))    # §D21: types required
                     problems.extend(_sameness_problems(enc))  # anti-monotony
-                    if not str(phase.get("narration") or "").strip():
-                        problems.append('missing its "narration" (one short '
-                                        "second-person paragraph)")
+                    problems.extend(_narration_problems(phase.get("narration")))
                     if problems:
                         raise ValueError("; ".join(problems))
                 except ValueError as exc:
@@ -2366,7 +2416,17 @@ Write:
 1. "quests": TWO to FOUR QUEST OPTIONS — what the party may agree to this act.
    THIS IS THE ACT'S ONE REAL CHOICE, so make it a real one: the options must be
    MATERIALLY DIFFERENT. Each option: {"id": short_snake_case,
-   "title": "...", "text": the quest as the journal shows it (2–4 sentences),
+   "title": "...", "text": the quest AS THE PARTY'S OWN JOURNAL ENTRY (2–4
+   sentences) — written in the party's voice, first person plural ("we", "us"),
+   as if one of them set it down that evening. It must carry, in that voice:
+   WHO asked and where they hold court, WHAT we are being asked to do, WHERE,
+   and WHY it matters (the stakes, and what the asker believes is behind it).
+   Facts alone kill it; a ledger line is not a journal. Like so: "Yorrin Dagg
+   at The Rope Loft, mine-captain of the Sootfall crew, has asked us to
+   investigate the Sootfall Adit — three nights of tremors and lamps burning a
+   mile in where no one should be digging. His men hope it is treasure-hunters.
+   He is feeding eleven idle diggers out of his own purse and fears something
+   worse." NO second person, no "you",
    "adventure_theme": one line naming the PLACE that option's ride-out happens
    in and what the party does there — REQUIRED, DISTINCT per option (it is
    rejected otherwise), because the dungeon is generated from it}.
@@ -2426,10 +2486,26 @@ Write:
          happened last time in one clear sentence.
    - "speaker": "narration" is an unvoiced beat — stage direction, not a line
      anyone speaks: what the NPC does with their hands, what the party notices
-     on the wall, what a name the NPC just used actually refers to. Use it
-     freely (roughly one per tree) to carry the context that would be clumsy in
-     someone's mouth. It renders in italic with no nameplate, so never write
-     narration as though it were dialogue and never put quotation marks in it.
+     on the wall, what a name the NPC just used actually refers to. It renders
+     in italic with no nameplate, so never write narration as though it were
+     dialogue and never put quotation marks in it.
+     NARRATION IS REQUIRED, not seasoning (it is checked): the questgiver's
+     tree needs at least TWO narration nodes, every other tree of four or more
+     nodes at least ONE. Write the scene like a novel, not a transcript:
+     whenever a line refers to something physical, the narration beat SHOWS it —
+     if the mine-captain says "…and it gave me this arm", the next node is
+     narration: "He raises the splinted arm, and grimaces at the motion. The
+     injury is clearly still fresh." Reveals earn a beat too: the room reacting,
+     the speaker's hands stopping, the thing on the table the party now notices.
+   - THE DIALOGUE STANDS ALONE. The persona sheet you were given is YOUR
+     briefing, not the player's — assume the player never read it and cannot
+     see it. Any persona fact the conversation leans on (an injury, a debt, the
+     eleven diggers wintering upstairs) must be INTRODUCED inside the tree —
+     spoken plainly or shown in a narration beat — before anything refers to
+     it. The same goes for party choices: a choice label may only reference
+     what THIS conversation (or the quest journal) has already established.
+     "Your crew thinks it's treasure-hunters" is illegal until someone in the
+     tree has said what the crew thinks.
    - HOOKS are a CLOSED vocabulary — use ONLY these shapes, nothing else:
        {"kind": "set_flag", "flag": "<name>"}
        {"kind": "grant_quest", "quest": "<quest id>"}   (accepts THAT option)

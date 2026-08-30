@@ -360,7 +360,9 @@ class ScenarioRun:
         if self.committed:
             tree = self._committed_tree(npc_id, tree)
         self.conversation = Conversation(npc_id, tree)
+        self._note_meeting(loc, npc)
         self._note_npc_line()
+        self._note_quest_offers()
 
     @property
     def committed(self) -> bool:
@@ -549,6 +551,7 @@ class ScenarioRun:
                 self.conversation = None
         else:
             self._note_npc_line()
+            self._note_quest_offers()
         return fired
 
     def _closing_reply(self, npc_id: str, kinds: "set[str]") -> str:
@@ -579,14 +582,14 @@ class ScenarioRun:
             self.flags["quest_accepted"] = True
             for flag in [f for f in self.flags if f.startswith(DEFERRED_PREFIX)]:
                 self.flags.pop(flag, None)
-            self.add_journal("quest", f'You agreed to take on "{self.quest.get("title", "")}": {self.quest.get("text", "")}')
+            self.add_journal("quest", f'We took on "{self.quest.get("title", "")}". {self.quest.get("text", "")}')
         elif kind == "defer_quest":
             npc_id = self.conversation.npc_id if self.conversation is not None else ""
             if npc_id:
                 self.flags[DEFERRED_PREFIX + npc_id] = True
             found = sc.find_npc(self.town, npc_id)
             if found is not None:
-                self.add_journal("event", f"You told {found[1]['name']} you would think on it "
+                self.add_journal("event", f"We told {found[1]['name']} we would think on it "
                                           "and come back.")
         elif kind == "advance_quest":
             if self.quest.get("status") == "accepted":
@@ -596,7 +599,7 @@ class ScenarioRun:
         elif kind == "give_gold":
             for cid in self.character_ids:
                 self.gold[cid] = self.gold.get(cid, 0) + int(h.get("amount", 0))
-            self.add_journal("event", f"Each of you received {int(h.get('amount', 0))} gold.")
+            self.add_journal("event", f"We each pocketed {int(h.get('amount', 0))} gold.")
         elif kind == "give_item":
             self.flags[f"item_{h.get('item')}"] = True  # Phase 2 lands the item itself
         elif kind == "rest":
@@ -609,7 +612,7 @@ class ScenarioRun:
             loc = sc.find_location(self.town, h.get("location") or "") or (npc[0] if npc else None)
             who = (npc[1]["name"] if npc else "") + (f" at {loc['name']}" if loc else "")
             if who.strip():
-                self.add_journal("event", f"You were told to seek {who.strip()}.")
+                self.add_journal("event", f"We were told to seek {who.strip()}.")
 
     def rest(self) -> None:
         """The inn: full restore (HP; the adventure resets the rest)."""
@@ -626,6 +629,54 @@ class ScenarioRun:
         if self.journal and self.journal[-1] == entry:
             return
         self.journal.append(entry)
+
+    def _note_meeting(self, loc: Dict[str, Any], npc: Dict[str, Any]) -> None:
+        """First conversation with an NPC: their card (the persona the player
+        saw when they clicked the portrait) goes into the journal. Playtest:
+        the card vanishes once the dialogue opens, and the dialogue leans on
+        its facts — the splinted arm, the eleven diggers — so a player who
+        skimmed it is lost with no way back. The journal is the way back."""
+        flag = f"_met_{npc['id']}"
+        if self.flags.get(flag):
+            return
+        self.flags[flag] = True
+        persona = str(npc.get("persona") or "").strip()
+        if not persona:
+            return
+        self.add_journal("met", f"{npc['name']} — {npc.get('role', '')}".rstrip(" —")
+                         + f". {persona}", speaker=npc["name"], where=loc["name"])
+
+    def _note_quest_offers(self) -> None:
+        """The party is LOOKING at an offer: journal each quest option the
+        current node's visible choices would accept, once per option (playtest:
+        an offer heard in dialogue and nowhere else is an offer forgotten —
+        'Available quest' entries make the choice reviewable before and after)."""
+        conv = self.conversation
+        if conv is None or conv.node is None:
+            return
+        found = sc.find_npc(self.town, conv.npc_id)
+        loc_name, npc_name = (found[0]["name"], found[1]["name"]) if found else ("", "")
+        for ch in conv.node.get("choices", []):
+            if not all(self.flags.get(f) for f in ch.get("requires", [])):
+                continue
+            for h in ch.get("effects", []):
+                if h.get("kind") != "grant_quest":
+                    continue
+                option = self.quest_option(h.get("quest"))
+                if option is None or self.flags.get(f"_offered_{option['id']}"):
+                    continue
+                self.flags[f"_offered_{option['id']}"] = True
+                if self.quest.get("status") == "none":
+                    self.quest["status"] = "offered"
+                text = str(option["text"]).strip()
+                # We-voice quest text names its asker itself; append the
+                # provenance only when it doesn't, so the entry never reads
+                # "…has asked us… (offered by the same man, again)".
+                offered_by = (f" (offered by {npc_name} at {loc_name})"
+                              if npc_name and npc_name not in text else "")
+                self.add_journal(
+                    "quest_offered",
+                    f'Available quest — "{option["title"]}": {text}' + offered_by)
 
     def _note_npc_line(self) -> None:
         """Record what the NPC just said (the node the party is looking at)."""
@@ -714,7 +765,7 @@ class ScenarioRun:
         run.difficulty = self.options.get("difficulty", "standard")
         state, portraits, art, eid = run.start(self.character_ids, seed=seed,
                                                loadouts=self.loadouts)
-        self.add_journal("event", f'You rode out for {self.adventure_detail.get("name", "the road")}.')
+        self.add_journal("event", f'We rode out for {self.adventure_detail.get("name", "the road")}.')
         # Pools carry across acts (a lone adventure re-derives them; a run knows).
         for cid, live in zip(self.character_ids, run.live_ids):
             run.banked[live] = int(self.banked.get(cid, 0))
@@ -779,8 +830,8 @@ class ScenarioRun:
         self.flags[f"act_{n}_complete"] = True
         self.flags.pop("defeated_once", None)
         self.quest["status"] = "complete"
-        self.add_journal("event", f'{(self.adventure_detail or {}).get("name", "The adventure")} is done; '
-                                  f'"{self.quest.get("title", "")}" is complete.')
+        self.add_journal("event", f'{(self.adventure_detail or {}).get("name", "The adventure")} is behind us; '
+                                  f'"{self.quest.get("title", "")}" is done.')
         self.completed_acts.append({"act": n, "title": self.outline["title"],
                                     "quest": self.quest.get("title", ""),
                                     "adventure": (self.adventure_detail or {}).get("name", "")})
