@@ -285,6 +285,17 @@ def _begin_turn(st: GameState) -> None:
         _log(st, "turn_order", f"Turn order: {names}.",
              order=[c.id for c in _party_ordered(st)])
     _log(st, "turn_start", f"— Turn {st.turn} —", turn=st.turn)
+    for e in st.living_enemies():
+        e.hurt_this_round = False   # `neglect` bookkeeping (§boss pressure)
+        # Timed enrage: the boss will not wait to be bloodied — at the start of
+        # `enrage_round`, fury boils over unbidden (same hard reset; the Enrage
+        # component fires as the usual on_enrage reaction in the next window).
+        if (e.is_boss and not e.enraged and e.enrage_round is not None
+                and st.turn >= e.enrage_round):
+            _enrage_boss(e)
+            _log(st, "enrage",
+                 f"{e.name}'s fury boils over — it will not wait to be bloodied!",
+                 enemy=e.id, timed=True, turn=st.turn)
     for c in st.party:
         c.capacity_chosen = False
     for pending in list(st.pending_ramp):
@@ -693,8 +704,44 @@ def _objective_tick(st: GameState) -> None:
         _log(st, "win", "The party holds the line — victory.",
              result="victory", objective="survive")
         return
+    if obj.kind == "deadline" and obj.rounds_done >= obj.turns:
+        # The hard clock (beta 2026-08-30): every enemy dead within N rounds or
+        # the encounter is lost. Nothing interacts with it; it simply runs.
+        # (All-enemies-dead already ended the game in victory before this tick.)
+        st.result = "defeat"
+        _log(st, "loss", "The clock runs out — the encounter is lost.",
+             result="defeat", objective="deadline")
+        return
     if obj.kind == "race" and obj.status == "active" and obj.rounds_done >= obj.turns:
         _race_expire(st, obj)
+
+
+def _objective_shielded(st: GameState, enemy_id: str) -> bool:
+    """Whether the race objective's guards shield `enemy_id` from party
+    TARGETING (§D12-1 guards, beta 2026-08-30): true while the marked target
+    still has any guard body undefeated. Area effects are untouched — the
+    shield answers the point-and-click kill, not the battlefield."""
+    obj = st.objective
+    if (obj is None or obj.kind != "race" or obj.status != "active"
+            or obj.target_id != enemy_id or not obj.guards):
+        return False
+    return any(not _race_target_defeated(st, g) for g in obj.guards)
+
+
+def _check_guards_down(st: GameState) -> None:
+    """Log the shield-break beat exactly once: the last guard falls and the
+    marked enemy stands exposed."""
+    obj = st.objective
+    if (obj is None or obj.kind != "race" or not obj.guards or obj.guards_down
+            or obj.status != "active"):
+        return
+    if all(_race_target_defeated(st, g) for g in obj.guards):
+        obj.guards_down = True
+        target = st.enemy(obj.target_id)
+        if target is not None:
+            _log(st, "guards_down",
+                 f"The last guard falls — {target.name} stands exposed!",
+                 enemy=target.id, objective="race")
 
 
 def _race_target_defeated(st: GameState, tid: Optional[str]) -> bool:
@@ -2026,6 +2073,20 @@ def _end_step(st: GameState) -> None:
         t.prevent_tags = []
         _expire_keywords(t)
     _tick_control(st)  # turn-bound control expires at the End Step (§D9-1.4)
+    # Boss neglect (beta 2026-08-30): a boss that went a whole round unhurt
+    # (from round 2 — round 1 is the party's setup breath) grows permanently.
+    # Same math as a +1/+1 counters verb; the tally badges in the UI.
+    for e in st.living_enemies():
+        if e.neglect > 0 and not e.hurt_this_round and st.turn >= 2:
+            n = e.neglect
+            e.power += n
+            e.max_hp += n
+            e.hp += n
+            e.counters = getattr(e, "counters", 0) + n
+            _log(st, "neglect",
+                 f"{e.name} goes unbloodied this round and swells with power — "
+                 f"+{n}/+{n}, permanently (HP {e.hp}/{e.max_hp}).",
+                 enemy=e.id, amount=n)
     _reapply_channel_stats(st)
     _reap_dead(st)
     _log(st, "end_step", "End step: temporary effects expire.")
@@ -6416,6 +6477,8 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     overkill = max(0, amount - target.hp)  # damage beyond hp — cleaves past on trample
     dealt = target.hp - max(floor, target.hp - amount)
     target.hp = max(floor, target.hp - amount)
+    if (dealt > 0 or absorbed > 0) and isinstance(target, EnemyState):
+        target.hurt_this_round = True   # `neglect` bookkeeping (a soaked blow counts)
     if dealt > 0 or absorbed == 0:
         # `source_id` (additive, §D12-3.4): machine-readable attribution for
         # the autoplay metrics — `source` stays the display string.
@@ -6516,6 +6579,21 @@ def _heal(st: GameState, target, amount: int, reason: str = "",
         _fire_event(st, "life_gain", target)
 
 
+def _enrage_boss(boss: EnemyState) -> bool:
+    """Flip a boss to enraged with the §F-9 hard reset: control shaken off
+    (stun/taunt drop — fury doesn't sit out a turn), ability cooldowns cleared
+    (the post-enrage kit opens at full aggression); once_per_encounter firings
+    stay spent. Shared by the ≤25%-HP path and the timed `enrage_round` path.
+    Returns whether control was shaken (the caller's log wants to know)."""
+    boss.enraged = True
+    shaken = boss.stunned > 0 or boss.taunted_by is not None
+    boss.stunned = 0
+    boss.stunned_by = None
+    boss.taunted_by = None
+    boss.cooldowns = {k: v for k, v in boss.cooldowns.items() if v >= 10 ** 9}
+    return shaken
+
+
 def _after_damage(st: GameState, target) -> None:
     # Boss enrage (§F-9): the first time a boss falls to ≤25% max HP it enrages —
     # one-way, checked on every HP change (all damage paths converge here). The flag
@@ -6523,16 +6601,7 @@ def _after_damage(st: GameState, target) -> None:
     # `on_enrage` reaction in the next reaction window.
     if (isinstance(target, EnemyState) and target.is_boss and not target.enraged
             and target.alive and target.in_execute_window):
-        target.enraged = True
-        # Enraging is a hard reset, not just a flag (§F-9 upgraded): the boss shakes
-        # off control (stun/taunt drop — fury doesn't sit out a turn) and its ability
-        # cooldowns clear (the post-enrage kit opens at full aggression). once_per_
-        # encounter firings stay spent — the drama doesn't repeat.
-        shaken = target.stunned > 0 or target.taunted_by is not None
-        target.stunned = 0
-        target.stunned_by = None
-        target.taunted_by = None
-        target.cooldowns = {k: v for k, v in target.cooldowns.items() if v >= 10 ** 9}
+        shaken = _enrage_boss(target)
         _log(st, "enrage", f"{target.name} ENRAGES ({target.effective_hp}/"
              f"{target.max_hp} HP) — the execute window is open"
              + (", control effects are shaken off" if shaken else "")
@@ -6655,6 +6724,7 @@ def _draw(st: GameState, char: CharacterState, n: int, ctx: dict = None) -> None
 def _check_end(st: GameState) -> None:
     if st.result is not None:
         return
+    _check_guards_down(st)   # the shield-break beat (§D12-1 guards)
     # A race objective completes the moment its marked enemy is defeated
     # (§D12-1.4): the doom clock vanishes; the encounter continues to standard victory.
     obj = st.objective
@@ -6765,7 +6835,8 @@ def _legal_attack_targets(st: GameState, actor: CharacterState) -> List[EnemySta
     """The enemies `actor` may basic-attack, honouring its attack mode + rows — and a
     live enemy taunt (§F-3 "taunt-us"): while the taunter lives and is reachable, it is
     the ONLY legal basic-attack target. An unreachable/dead taunter lifts the bind."""
-    reachable = _reachable_targets(actor, st.living_enemies())
+    reachable = [e for e in _reachable_targets(actor, st.living_enemies())
+                 if not _objective_shielded(st, e.id)]
     if actor.taunted_to is not None:
         bound = [e for e in reachable if e.id == actor.taunted_to]
         taunter = st.enemy(actor.taunted_to)
@@ -7434,12 +7505,14 @@ def _side_options(st: GameState, side):
     and revives can reach it. Enemies/tokens leave play at 0 HP, so only living
     ones are offered."""
     if side == "enemy":
-        return [(e.id, e.name) for e in st.living_enemies()]
+        return [(e.id, e.name) for e in st.living_enemies()
+                if not _objective_shielded(st, e.id)]
     if side == "ally":
         return ([(c.id, c.name) for c in st.party]
                 + [(t.id, t.name) for t in st.living_tokens()])
     if side == "any":
-        return ([(e.id, e.name) for e in st.living_enemies()]
+        return ([(e.id, e.name) for e in st.living_enemies()
+                 if not _objective_shielded(st, e.id)]
                 + [(c.id, c.name) for c in st.party]
                 + [(t.id, t.name) for t in st.living_tokens()])
     return [(None, None)]  # self-only / untargeted / 'all' (no choice to make)

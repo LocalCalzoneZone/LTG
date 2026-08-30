@@ -781,16 +781,25 @@ def _validate_objective(raw_obj: Any, enemies: List[Dict[str, Any]],
         for r in raw.get("reinforcements", []):
             check_ids(_objective_roster_ids(r.get("layouts") or r.get("ids")),
                       f"reinforcements (turn {r.get('turn')})")
-    else:  # race
+    elif obj.kind == "race":
         target = str(obj.target)
         if target not in known:
             raise ValueError(f"objective: marked target '{target}' is not in "
                              "the enemy pool")
+        check_ids(list(obj.guards), "guards")
+        if target in obj.guards:
+            raise ValueError("objective: the marked target cannot guard itself")
         for size, roster in (layouts or {}).items():
             if target not in roster:
                 raise ValueError(
                     f"objective: the marked target ({target}) must be fielded "
                     f"in every layout (missing at size {size})")
+            for g in obj.guards:
+                if g not in roster:
+                    raise ValueError(
+                        f"objective: guard '{g}' must stand beside the marked "
+                        f"target in every layout (missing at size {size})")
+    # "deadline" needs no roster checks: no target, no ids — just the clock.
     return raw
 
 

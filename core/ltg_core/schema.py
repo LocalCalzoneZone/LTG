@@ -2600,16 +2600,22 @@ class EncounterObjective(BaseModel):
       later waves (reserve-zone enemies block victory by construction).
     - `race`: defeat the marked `target` (graveyard or exile — nothing else
       counts) within `turns` rounds, or the `fail` shape fires (`escalation`
-      required iff fail == "escalate").
+      required iff fail == "escalate"). Optional `guards`: pool ids that shield
+      the target — while any guard body stands undefeated, the party cannot
+      TARGET the marked enemy (area damage still clips it).
+    - `deadline`: the hard clock — defeat EVERY enemy within `turns` rounds or
+      the encounter is lost. No target, no payload, no interaction: the clock
+      simply runs.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["survive", "waves", "race"]
+    kind: Literal["survive", "waves", "race", "deadline"]
     turns: Optional[int] = None
     reinforcements: List[Reinforcement] = Field(default_factory=list)
     waves: Optional[List[ObjectiveRoster]] = None
     target: Optional[str] = None
+    guards: List[str] = Field(default_factory=list)   # race only
     fail: Optional[Literal["defeat", "escalate"]] = None
     escalation: Optional[Escalation] = None
     resolved: bool = False  # set by the combat loader once rosters are concrete
@@ -2625,7 +2631,14 @@ class EncounterObjective(BaseModel):
         if self.kind == "survive":
             if not self.turns or self.turns < 1:
                 raise ValueError("a 'survive' objective needs 'turns' >= 1")
-            forbid("waves", "target", "fail", "escalation")
+            forbid("waves", "target", "fail", "escalation", "guards")
+        elif self.kind == "deadline":
+            if not self.turns or self.turns < 1:
+                raise ValueError("a 'deadline' objective needs 'turns' >= 1")
+            forbid("waves", "target", "fail", "escalation", "guards")
+            if self.reinforcements:
+                raise ValueError("a 'deadline' objective must not carry "
+                                 "'reinforcements'")
         elif self.kind == "waves":
             if not self.waves:
                 raise ValueError("a 'waves' objective needs at least one later "
@@ -2634,7 +2647,7 @@ class EncounterObjective(BaseModel):
                 empty = (not any(w.values())) if isinstance(w, dict) else (not w)
                 if empty:
                     raise ValueError(f"wave {i} fields no enemies")
-            forbid("turns", "target", "fail", "escalation")
+            forbid("turns", "target", "fail", "escalation", "guards")
             if self.reinforcements:
                 raise ValueError("a 'waves' objective must not carry 'reinforcements'")
         else:  # race

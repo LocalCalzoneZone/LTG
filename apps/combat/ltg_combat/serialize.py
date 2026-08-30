@@ -803,6 +803,8 @@ def objective_block(state: GameState) -> Optional[Dict[str, Any]]:
         line = f"Survive: {remaining} round{plural} remain"
     elif obj.kind == "waves":
         line = f"Wave {obj.wave_index + 1} of {waves_total}"
+    elif obj.kind == "deadline":
+        line = f"Defeat every enemy — {remaining} round{plural} remain"
     else:  # race
         target = state.enemy(obj.target_id) if obj.target_id else None
         name = target.name if target is not None else "the marked enemy"
@@ -810,13 +812,19 @@ def objective_block(state: GameState) -> Optional[Dict[str, Any]]:
             line = "The doom clock is shattered."
         elif obj.status == "failed":
             line = "The clock has run out."
+        elif obj.guards and not obj.guards_down:
+            standing = sum(1 for g in obj.guards if state.enemy(g) is not None)
+            line = (f"Defeat {name} — warded by {standing} guard"
+                    f"{'' if standing == 1 else 's'} — "
+                    f"{remaining} round{plural} remain")
         else:
             line = f"Defeat {name} — {remaining} round{plural} remain"
     return {
         "kind": obj.kind,
         "status": obj.status,
         "line": line,
-        "rounds_remaining": remaining if obj.kind in ("survive", "race") else None,
+        "rounds_remaining": (remaining if obj.kind in ("survive", "race", "deadline")
+                             else None),
         "wave": obj.wave_index + 1 if obj.kind == "waves" else None,
         "waves_total": waves_total if obj.kind == "waves" else None,
         "target_id": obj.target_id,
@@ -846,6 +854,11 @@ def objective_outcome_line(state: GameState) -> Optional[str]:
         return f"All {len(obj.waves) + 1} waves broken."
     if obj.kind == "race" and state.result == "defeat" and obj.status == "failed":
         return "The doom clock ran out."
+    if obj.kind == "deadline" and state.result == "defeat" \
+            and obj.rounds_done >= obj.turns:
+        return "The clock ran out with enemies still standing."
+    if obj.kind == "deadline" and state.result == "victory":
+        return "The field cleared with rounds to spare."
     return None
 
 
