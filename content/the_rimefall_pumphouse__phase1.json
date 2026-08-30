@@ -1,0 +1,650 @@
+{
+  "name": "The Ice-Stair and the Catch-Basin",
+  "scene": "The frozen Rimefall hangs sixty feet of green-white stilled water down the cliff, and a dwarf-cut stair of black iron treads is pinned to the rock beside it. Grey-wool sappers have set coal braziers on the landings and strung guide-ropes across the catch-basin below, where the meltwater that should be roaring lies under a skin of grey slush. Far down the valley, Karzum's chimney smoke leans away in the wind.",
+  "scene_image": "/art/the_rimefall_pumphouse__phase1/scene-cb08906c.png",
+  "enemies": [
+    {
+      "id": "rime_picket",
+      "name": "Rimefall Picket",
+      "flavor": "Grabs a hero onto the open stair and answers blows struck at the crew.",
+      "description": "A squat grey dwarf in felted wool over riveted scale, iron eye-shade lowered to a slit, hobnailed boots biting the ice as he swings a short pick on a leather thong.",
+      "hp": 8,
+      "power": 2,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "soldier"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "haft_check",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Haft-Check \u2014 deal 6 and drag a hero out onto the open stair",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "taunt",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "cold_iron_answer",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Cold Iron Answer \u2014 deal 6 to whoever struck a crewmate",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/rime_picket-a1d5a8d7.png"
+    },
+    {
+      "id": "drift_hound",
+      "name": "Sleet-Drift Hound",
+      "flavor": "Goes for the tendons \u2014 the lamed hero loses their Skill.",
+      "description": "A short-legged, barrel-chested mountain hound with frost crusted into a wiry slate-grey coat, cropped ears, and a studded collar of grey felt and brass rings.",
+      "hp": 5,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "beast"
+      ],
+      "classes": [
+        "hunter"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "hamstring_bite",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 28,
+          "target_rule": "highest_threat",
+          "telegraph": "Hamstring Bite \u2014 deal 6 and lame the hero's Skill",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 6,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "modify_action",
+              "action": "skill",
+              "modifier": "lock_skill",
+              "duration": "encounter",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "blood_on_the_ice",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Blood on the Ice \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/drift_hound-0f82f5fa.png"
+    },
+    {
+      "id": "rime_rot_sapper",
+      "name": "Rime-Rot Sapper",
+      "flavor": "Bleeds life away with rot-flasks; no shield answers it.",
+      "description": "A lean grey dwarf with a bandolier of clay flasks packed in straw, gloves stained rust-orange, a wool scarf wound to the eyes and a chipped auger slung at his hip.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "rot_charge",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Rime-Rot Charge \u2014 3 life bled away, unpreventable",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "cracked_flask",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "once_per_encounter": true,
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Cracked Flask \u2014 the rot splashes back for 3 life",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/rime_rot_sapper-0a57bfde.png"
+    },
+    {
+      "id": "cold_cant_foreman",
+      "name": "Cold-Cant Foreman",
+      "flavor": "Holds a work-dirge that bleeds the party every turn \u2014 break it.",
+      "description": "A broad-shouldered dwarf woman in layered grey wool with a brass whistle on a chain, beating time on the rail with a frost-white maul-haft, breath smoking in long measured plumes.",
+      "hp": 8,
+      "power": 1,
+      "level": 4,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "ritualist"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "the_cold_cant",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "valuation",
+          "telegraph": "The Cold Cant \u2014 a held work-dirge: 3 life a turn from a hero, and the party works at -1/-0",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 3,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 0,
+              "duration": "while_channeled",
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            }
+          ]
+        },
+        {
+          "id": "grip_the_rail",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_incoming_lethal",
+          "once_per_encounter": true,
+          "priority": 10,
+          "target_rule": "self",
+          "telegraph": "Grip the Rail \u2014 heal 6 and keep singing",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/cold_cant_foreman-87d5c7ca.png"
+    },
+    {
+      "id": "eye_shade_warder",
+      "name": "Eye-Shade Warder",
+      "flavor": "No damage of its own \u2014 it keeps the Foreman's dirge alive.",
+      "description": "A stocky dwarf behind a slab shield of riveted black iron, lamp-hood strapped to the boss of it, eye-shade pushed low so only a grey beard shows.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "shoulder_the_lamp",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "cold_cant_foreman",
+          "telegraph": "Shoulder the Lamp \u2014 shield the Foreman from the next blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hold_the_line",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_ally_below_50",
+          "cooldown": 2,
+          "priority": 15,
+          "target_rule": "wounded_ally",
+          "telegraph": "Hold the Line \u2014 heal the worst-hurt crewmate 5",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/eye_shade_warder-15234921.png"
+    },
+    {
+      "id": "sling_crew_sapper",
+      "name": "Sling-Crew Sapper",
+      "flavor": "Rakes the middle rank with grit from above.",
+      "description": "A wiry dwarf braced on a landing with a leather sling whirring overhead, a satchel of frozen gravel at her belt, wool wrappings on both forearms scorched from brazier work.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "archer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "hail_of_grit",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_row": "mid",
+          "target_rule": "valuation",
+          "telegraph": "Hail of Grit \u2014 3 to everyone standing in the middle rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "mid"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "close_the_ranks",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "priority": 18,
+          "target_rule": "self",
+          "telegraph": "Close the Ranks \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/sling_crew_sapper-12b40ee2.png"
+    },
+    {
+      "id": "auger_crawler",
+      "name": "Auger-Crawler",
+      "flavor": "Chews up through the ice under the front rank.",
+      "description": "A knee-high iron beetle of a machine, six ratcheting legs and a spiral bore for a head, trailing steam and packed snow from its vents.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "bore_the_step",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 32,
+          "condition": {
+            "kind": "turn",
+            "op": ">=",
+            "value": 2
+          },
+          "target_row": "front",
+          "target_rule": "valuation",
+          "telegraph": "Bore the Step \u2014 3 up through the front rank's boots",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "snap_back",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hit",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "trigger_source",
+          "telegraph": "Snap-Back \u2014 deal 5 to the one who struck it",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/auger_crawler-21318780.png"
+    },
+    {
+      "id": "stair_hammerer",
+      "name": "Stair-Hammerer",
+      "flavor": "Gets heavier every other turn, and spends it on you between.",
+      "description": "A thick-armed dwarf stripped to a sweat-soaked wool jerkin in the cold, swinging a spike-maul used for pinning treads into rock, knuckles wrapped in grey felt.",
+      "hp": 8,
+      "power": 3,
+      "level": 4,
+      "row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "set_the_pace",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 40,
+          "target_rule": "self",
+          "telegraph": "Set the Pace \u2014 +2/+2, permanently",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "grey_wool_grit",
+          "archetype": "Fortify",
+          "timing": "reactive",
+          "trigger": "on_self_below_40",
+          "once_per_encounter": true,
+          "priority": 12,
+          "target_rule": "self",
+          "telegraph": "Grey-Wool Grit \u2014 heal 6 and keep swinging",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 6,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/stair_hammerer-c8f1fb26.png"
+    },
+    {
+      "id": "grey_wool_creeper",
+      "name": "Grey-Wool Creeper",
+      "flavor": "Cuts packs open and bleeds spellcasters for the trouble.",
+      "description": "A small grey dwarf in soft felt boots with the nails filed flat, a curved strap-knife in each hand, everything about him muffled and quiet against the stone.",
+      "hp": 4,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "rogue"
+      ],
+      "keywords": [],
+      "components": [
+        {
+          "id": "cut_the_pack_strap",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 30,
+          "target_rule": "valuation",
+          "telegraph": "Cut the Pack-Strap \u2014 deal 5 and a card falls into the snow",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "move_card",
+              "count": 1,
+              "source": "hand",
+              "destination": "graveyard",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "hush_the_step",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "cooldown": 2,
+          "priority": 22,
+          "target_rule": "trigger_source",
+          "telegraph": "Hush the Step \u2014 3 life from the caster, unpreventable",
+          "verbs": [
+            {
+              "kind": "lose_life",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_rimefall_pumphouse__phase1/grey_wool_creeper-5237c135.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "rime_picket",
+      "rime_rot_sapper",
+      "grey_wool_creeper"
+    ],
+    "2": [
+      "rime_picket",
+      "eye_shade_warder",
+      "cold_cant_foreman",
+      "rime_rot_sapper",
+      "sling_crew_sapper"
+    ],
+    "3": [
+      "rime_picket",
+      "eye_shade_warder",
+      "cold_cant_foreman",
+      "drift_hound",
+      "rime_rot_sapper",
+      "auger_crawler",
+      "sling_crew_sapper",
+      "grey_wool_creeper"
+    ],
+    "4": [
+      "rime_picket",
+      "rime_picket",
+      "eye_shade_warder",
+      "cold_cant_foreman",
+      "drift_hound",
+      "rime_rot_sapper",
+      "auger_crawler",
+      "sling_crew_sapper",
+      "grey_wool_creeper",
+      "stair_hammerer"
+    ]
+  }
+}

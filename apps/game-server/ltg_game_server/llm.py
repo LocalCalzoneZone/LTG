@@ -1815,7 +1815,10 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
 # narration overflow the default `max_tokens` most models assume, and truncated
 # JSON would otherwise waste repair attempts. Kept below common per-model output
 # ceilings so the request never 400s.
-ADVENTURE_MAX_TOKENS = 48000  # three phases x an 8-10 design pool each
+ADVENTURE_MAX_TOKENS = 64000  # three phases x an 8-10 design pool each; 48000
+# proved too tight once the §variety floor pushed pools to 8-10 distinct designs
+# (2026-08 truncation in the wild). 64000 matches SCENARIO_MAX_TOKENS, which the
+# same model pool already accepts without a 400.
 ADVENTURE_TIMEOUT = 900.0  # one reply carries three encounters; allow the time
 
 # Appended to the (editable) encounter instructions for an adventure request:

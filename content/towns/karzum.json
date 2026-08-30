@@ -1,0 +1,390 @@
+{
+  "kind": "town",
+  "name": "Karzum",
+  "region_flavor": "Karzum straddles the only wagon-wide notch through the Frostcap peaks, where the northern trade road climbs in switchbacks past frozen waterfalls and the wind smells of pine smoke and mule.",
+  "scene": "A dwarf-cut fortress grown into the cliffs of a high pass: terraces of grey stone stacked one above another, arrow-slits reglazed as kitchen windows, and forty chimney-vents breathing straight up into the cold. The Greatway switchbacks through the Ironjaw Gate at the bottom and out the Sky Stair at the top, crossing Kholdrun's Bridge over the Wyrmthroat Gorge on a single black arch. Snowcapped horns of mountain crowd the sky on every side, and the whole town glows amber at dusk where lamp-charms hang from the stair-rails. The scene is winter, with now amidst the cobbles and in small drifts against the buildings and walls.",
+  "art_url": "/art/towns/karzum/town-d1c14429.png",
+  "locations": [
+    {
+      "id": "the_kettle_and_anvil",
+      "name": "The Kettle and Anvil",
+      "function": "inn",
+      "description": "The old officers' mess, now the warmest room in the pass — beds in the wall-nooks, bread all day, and a hearth big enough to walk into.",
+      "exterior_scene": "A broad archway in the cliff-face with its keystone carved as an anvil, and a real iron kettle the size of a barrel hanging from a bracket above the door as a sign. Two shuttered bay windows glow butter-yellow onto the packed snow of the terrace, and a boot-scraper shaped like a dwarf's grinning face is set into the step.",
+      "exterior_art_url": "/art/towns/karzum/ext-the_kettle_and_anvil-c3d477be.png",
+      "interior_scene": "A vaulted hall of grey stone, warm as a bakery, with a hearth so wide there are benches inside the arch of it and a spit-crane black with three hundred years of drippings. Sleeping nooks are cut into the walls in two rows, each hung with a plaid curtain and a numbered brass tag, and a long trestle table down the middle carries flour-dusted boards, a jug of pine beer, and a wooden trencher of butter melting near the fire. It smells of new bread, wet wool drying on the rail, and the faint hot-metal ghost of the room's soldier days.",
+      "interior_art_url": "/art/towns/karzum/loc-the_kettle_and_anvil-9f87f603.png",
+      "scene": "A vaulted hall of grey stone, warm as a bakery, with a hearth so wide there are benches inside the arch of it and a spit-crane black with three hundred years of drippings. Sleeping nooks are cut into the walls in two rows, each hung with a plaid curtain and a numbered brass tag, and a long trestle table down the middle carries flour-dusted boards, a jug of pine beer, and a wooden trencher of butter melting near the fire. It smells of new bread, wet wool drying on the rail, and the faint hot-metal ghost of the room's soldier days.",
+      "art_url": "/art/towns/karzum/loc-the_kettle_and_anvil-9f87f603.png",
+      "npcs": [
+        {
+          "id": "poppy_bramblecask",
+          "name": "Poppy Bramblecask",
+          "role": "innkeeper",
+          "persona": "A halfling who cooked for caravans for twenty years before deciding she'd rather the road came to her, and who greets everyone as though they are late for a meal she has already made. Her voice is quick and cheerful and she talks while working, thumping dough or counting bed-tags. She cares enormously about two things: that nobody sleeps cold in her town, and that her sourdough starter, which she calls Grandmother, is fed on time. She keeps a slate by the door where snowed-in travellers write their names and where they were bound, and she has never once let anyone leave without breakfast.",
+          "portrait_desc": "A stout halfling woman of fifty, four feet tall, with grey-brown curls escaping a red kerchief and flour to the elbows. She wears a quilted blue smock over a knitted jersey and heavy felt slippers, and stands with one fist on her hip and a wooden spoon held like a sceptre.",
+          "art_url": "/art/towns/karzum/npc-poppy_bramblecask-f9e55e08.png",
+          "topics": [
+            {
+              "ask": "Full house tonight?",
+              "reply": "Nook nine's yours, and mind the step — Karzum's floors were cut for folk with a lower centre of gravity, which is to say folk like me. If the wind comes round from the Sky Stair in the night you'll hear the kettle-sign banging; that's not a ghost, that's a bracket I've been asking Vasla to fix since autumn."
+            },
+            {
+              "ask": "What's in the pot?",
+              "reply": "Mutton and barley, same as yesterday, better than yesterday. Bread's Grukka's — she does a rye with caraway that makes southern merchants cry into their soup, and I don't stop them, it's good for trade."
+            },
+            {
+              "ask": "Do many get stranded here?",
+              "reply": "Forty-one souls last Deepwinter, all of them in this hall, and by the third day the Aldmere wool-men and the salt-dwarves were singing the same songs badly together. That's Karzum's whole trick, dear: nobody argues about tolls while sharing a blanket."
+            }
+          ],
+          "vendor": false
+        },
+        {
+          "id": "grukka_ashpot",
+          "name": "Grukka Ashpot",
+          "role": "baker and cook",
+          "persona": "An orc woman who came up the pass with a mercenary company thirty years ago, stayed to nurse a broken ankle, and never got round to leaving. She speaks slowly and softly, mostly about temperatures and timings, and has an alarming gentleness with small breakable things. She is proud that the old forge-vent under the kitchen keeps her ovens at exactly the heat she wants and treats the vent almost as a colleague. She hums marching songs while shaping loaves and has taught the tunes to half the children in town, words carefully omitted.",
+          "portrait_desc": "A tall, heavy-shouldered orc woman in her fifties, grey-green skin, tusks filed short, black hair in a tight braid with a bone pin. She wears a scorched leather apron over a sleeveless linen shirt, flour to the wrists, and carries a long wooden peel across one shoulder like a halberd.",
+          "art_url": "/art/towns/karzum/npc-grukka_ashpot-a987b212.png",
+          "topics": [
+            {
+              "ask": "You bake for the whole town?",
+              "reply": "The whole town and the mules. Two hundred loaves before the gate opens, then honey buns for the gate-watch, because Captain Vance is a better neighbour when she has eaten."
+            },
+            {
+              "ask": "How did you end up in Karzum?",
+              "reply": "Turned my ankle on the Sky Stair in a hailstorm and Poppy put me by the fire with a bowl of soup. Fire was warm. Soup was bad. I fixed the soup, and here I am."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "grimhelt_s_forge",
+      "name": "Grimhelt's Forge",
+      "function": "weaponsmith",
+      "description": "The stronghold's original armoury, still ringing. Vasla Grimhelt makes axes, pass-picks, and mule-shoes, and will tell you exactly why lowland steel fails at altitude.",
+      "exterior_scene": "A squat blockhouse of fitted granite built out from the cliff, its chimney a stone tube twice the height of the roof and always trailing sparks. The double door stands open even in snow, and above it hangs a sign of no words at all: a broken sword and a whole axe, riveted side by side on an iron plate.",
+      "exterior_art_url": "/art/towns/karzum/ext-grimhelt_s_forge-c70cc1a9.png",
+      "interior_scene": "Heat hits like a wall in a low room floored with black sand, where a brick forge glows orange under a bellows the size of a rowboat and the anvil sits on an oak stump bedded into the rock. Racks along the walls hold axe-heads by the dozen, pass-picks with leather thongs, and mule-shoes strung like beads on wire; a quench-trough of green water steams gently beneath a window slit that shows one white peak. The air tastes of coal and scale, and every surface has the same fine grey grit that gets into your teeth.",
+      "interior_art_url": "/art/towns/karzum/loc-grimhelt_s_forge-8652979c.png",
+      "scene": "Heat hits like a wall in a low room floored with black sand, where a brick forge glows orange under a bellows the size of a rowboat and the anvil sits on an oak stump bedded into the rock. Racks along the walls hold axe-heads by the dozen, pass-picks with leather thongs, and mule-shoes strung like beads on wire; a quench-trough of green water steams gently beneath a window slit that shows one white peak. The air tastes of coal and scale, and every surface has the same fine grey grit that gets into your teeth.",
+      "art_url": "/art/towns/karzum/loc-grimhelt_s_forge-8652979c.png",
+      "npcs": [
+        {
+          "id": "vasla_grimhelt",
+          "name": "Vasla Grimhelt",
+          "role": "smith",
+          "persona": "A dwarf smith of the fourth Grimhelt generation to work this forge, and she will make sure you know the number. She is loud, proud, and entirely without small talk, preferring to grade a visitor by their bootnails and grip before she says anything friendly. Her long feud is with the Aldmere Caravan Guild, who buy cheap lowland blades in bulk and then complain when the cold snaps them at the tang; she keeps a barrel of their broken merchandise by the door as an argument. She is fiercely fond of her apprentice and hides it behind bark and criticism, and she sharpens the town's kitchen knives for free every Frostmoon because her mother did.",
+          "portrait_desc": "A broad dwarf woman of a hundred and ten, barely five feet and built like a door-post, with copper-red hair shaved at the sides and a plaited beard clipped short and singed at the ends. She wears a scarred leather apron over a sleeveless mail-lined jerkin, both forearms wrapped in stained linen, and stands square with a hammer resting on her shoulder.",
+          "art_url": "/art/towns/karzum/npc-vasla_grimhelt-67ab783a.png",
+          "topics": [
+            {
+              "ask": "What's the barrel of broken swords by the door?",
+              "reply": "That is nine years of Aldmere Guild bargains. Lowland smiths quench soft and sell pretty, then a blade goes cold on the Sky Stair and shears at the tang like a carrot. Bring me the hilt and I'll put steel on it that remembers what winter is."
+            },
+            {
+              "ask": "What do you make most of?",
+              "reply": "Pass-picks and mule-shoes, and I'm not ashamed of it. A caravan that keeps its footing on Kholdrun's Bridge doesn't need a sword; the ones who slip need a priestess."
+            },
+            {
+              "ask": "Your family has always been here?",
+              "reply": "Four generations at this anvil, and the stump under it was set by my great-grandmother when Karzum still mustered spears. The garrison marched away, the anvil stayed. Anvils are more reliable than armies."
+            }
+          ],
+          "vendor": true
+        },
+        {
+          "id": "nabi_ashpot",
+          "name": "Nabi Ashpot",
+          "role": "apprentice smith",
+          "persona": "A half-orc girl of seventeen, Grukka's daughter, who is enormously strong, endlessly enthusiastic, and slightly too fast for the work. She talks in bursts while pumping the bellows and asks visitors what they'd want a weapon to do, as though collecting ideas. Her secret ambition is not blades at all but bells — she wants to hang a proper ring of them in the Ember Shrine so the whole pass can hear the hours, and she has already cast three cracked ones. She apologises for the noise about every ten minutes and never once stops making it.",
+          "portrait_desc": "A young half-orc woman, tall and thick-armed, olive-grey skin with a broad flat nose and short black hair tied with a leather cord. She wears a too-big apron doubled over at the waist, a soot-smudged shirt with the sleeves cut off, and a burn-scarred glove on one hand only.",
+          "art_url": "/art/towns/karzum/npc-nabi_ashpot-7cdd2250.png",
+          "topics": [
+            {
+              "ask": "Do you like the work?",
+              "reply": "I love the work. I would love it more if it were bells. Mistress Vasla says a bell is a bucket that got ideas, but she let me use the good bronze last Frostmoon, so she doesn't mean it."
+            },
+            {
+              "ask": "What happened to your bells?",
+              "reply": "Two cracked cooling and one came out sounding like a cough. The fourth's poured and sitting in the sand out back, and if it rings true I'm hanging it at the shrine whether Hedda says yes or not. She'll say yes. She likes noise, she just pretends the coals need quiet."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "tallowmar_s_curious_fittings",
+      "name": "Tallowmar's Curious Fittings",
+      "function": "artificer",
+      "description": "A gnome's workshop of lamp-charms, hand-warmers, snow-goggles and clever little brass things that make a cold road survivable.",
+      "exterior_scene": "A narrow three-storey house wedged into a gap between two bastions, all shutters and brackets, with eleven glass lamp-charms hanging from a pole over the door in a row like fruit. The shopfront is a bow window of thick green glass crowded with brass gadgets, and the door has a knocker shaped like a hand holding a lantern.",
+      "exterior_art_url": "/art/towns/karzum/ext-tallowmar_s_curious_fittings-dc5e5831.png",
+      "interior_scene": "A cramped, honey-lit room where every wall is pigeonholes, each with a paper label in tiny script, and the ceiling beam is hung with dozens of glass lamp-charms glowing soft gold. A workbench runs beneath the bow window under a jeweller's clamp, a tray of graded brass springs, a coil of copper wire and a saucer of tiny screws; the pot-bellied stove in the corner ticks as it cools. It smells of lamp oil, hot brass and lavender, and something in one of the pigeonholes hums faintly whenever the door opens.",
+      "interior_art_url": "/art/towns/karzum/loc-tallowmar_s_curious_fittings-f60c40eb.png",
+      "scene": "A cramped, honey-lit room where every wall is pigeonholes, each with a paper label in tiny script, and the ceiling beam is hung with dozens of glass lamp-charms glowing soft gold. A workbench runs beneath the bow window under a jeweller's clamp, a tray of graded brass springs, a coil of copper wire and a saucer of tiny screws; the pot-bellied stove in the corner ticks as it cools. It smells of lamp oil, hot brass and lavender, and something in one of the pigeonholes hums faintly whenever the door opens.",
+      "art_url": "/art/towns/karzum/loc-tallowmar_s_curious_fittings-f60c40eb.png",
+      "npcs": [
+        {
+          "id": "nib_tallowmar",
+          "name": "Nib Tallowmar",
+          "role": "artificer",
+          "persona": "A gnome who makes nothing large, nothing warlike, and nothing that cannot be repaired at the roadside with a knife and a bootlace. He is chatty in a precise, delighted way, always explaining the third use of an object nobody asked about, and he measures people's fingers, heads and feet by eye and is usually right. He cares about the caravans in a personal way — he can name mules — and he keeps a ledger of which of his lamp-charms are out on the road and when they were last refilled. His one vanity is that he refuses to sign his work, insisting anyone who cannot recognise a Tallowmar spring by feel does not deserve to know.",
+          "portrait_desc": "A gnome of ninety, three and a half feet tall, with a bald freckled crown, huge white eyebrows and a nose like a small pear. He wears a waistcoat of many pockets over a striped shirt, a brass loupe pushed up on his forehead, and knitted fingerless mitts with the wool worn through at the thumbs.",
+          "art_url": "/art/towns/karzum/npc-nib_tallowmar-4f822408.png",
+          "topics": [
+            {
+              "ask": "What sells best up here?",
+              "reply": "Hand-warmers, four to one over everything else. A brass egg, a spoon of ember-clay, and a merchant can still count coins at the top of the Sky Stair without weeping. My goggles are better work, but nobody buys sight; they buy fingers."
+            },
+            {
+              "ask": "Do your lamp-charms ever go out?",
+              "reply": "Only if you drown them or lie to them. Ninety-two of mine are out on the road this season — I have the list — and old Mokk's been carrying number eleven for six years without a single refill, which he takes as proof of virtue and I take as proof of a good spring."
+            },
+            {
+              "ask": "Why is that pigeonhole humming?",
+              "reply": "Third row, second from the left. That is a tuning-fork I made from Nabi's first cracked bell, and it answers the draught from the Deep Barracks vents. It means nothing, it is merely rude."
+            }
+          ],
+          "vendor": true
+        },
+        {
+          "id": "dilla_grimhelt",
+          "name": "Dilla Grimhelt",
+          "role": "child apprentice",
+          "persona": "A dwarf girl of eleven, Vasla's niece, apprenticed here because she has small hands and no patience for the forge's heat. She is relentlessly curious and speaks with total confidence about things she has half-heard, especially the sealed lower levels of the stronghold, which she is forbidden to enter and visits regularly. She collects proof — a bent nail, a scrap of grey wool, a tooth she insists is a tooth — and keeps them in a tin under the workbench. She sweeps brass filings into a jar because Nib pays her a copper a jarful, and she is saving for goggles of her own.",
+          "portrait_desc": "A stocky dwarf girl of eleven with two thick black braids, ruddy cheeks and a chipped front tooth. She wears an apron cut down from an adult's, one knee patched, and brass-rimmed goggles far too large pushed up on her brow.",
+          "art_url": "/art/towns/karzum/npc-dilla_grimhelt-9fe20de8.png",
+          "topics": [
+            {
+              "ask": "What's in the tin under the bench?",
+              "reply": "Proof. A nail bent flat, wool that isn't sheep, and a tooth as long as my thumb, and I got all three from the Deep Barracks stair below the cistern where nobody's allowed. Something down there is big and it drinks from the cistern, and Captain Vance says it's cave-bears and I say cave-bears don't file nails flat."
+            },
+            {
+              "ask": "Isn't the forge the family trade?",
+              "reply": "Auntie Vasla says my hands are too small and my mouth is too big for the forge. Master Nib says small hands are the whole profession, so I've decided he's right and she's cross about it."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "frostbite_and_fennel",
+      "name": "Frostbite and Fennel",
+      "function": "apothecary",
+      "description": "Salves for frostbite, tonics for altitude sickness, and a warm cellar garden fed by the old forge-vents.",
+      "exterior_scene": "A low round tower, once a water-bastion, its walls whitewashed and its arrow-slits stuffed with drying bundles of thyme and fennel. Over the studded door hangs a painted board of a blue foot and a green sprig, and steam drifts steadily from a grate at the base of the wall, melting a green ring in the snow.",
+      "exterior_art_url": "/art/towns/karzum/ext-frostbite_and_fennel-9a1bd66e.png",
+      "interior_scene": "A curved room walled in shelves of stoppered blue glass, each jar labelled in a fine slanting hand, with bunches of dried fennel, thyme and grey mountain moss hung head-down from the rafter hooks. A hot iron stove sits in the middle beneath a copper still with a slow drip, and a stone stair spirals down through a grate in the floor, breathing up warm wet air that smells of soil and living green. Under the window a marble slab holds a mortar, a set of brass scales, and a dish of yellow wax gone soft in the heat.",
+      "interior_art_url": "/art/towns/karzum/loc-frostbite_and_fennel-2ec88acb.png",
+      "scene": "A curved room walled in shelves of stoppered blue glass, each jar labelled in a fine slanting hand, with bunches of dried fennel, thyme and grey mountain moss hung head-down from the rafter hooks. A hot iron stove sits in the middle beneath a copper still with a slow drip, and a stone stair spirals down through a grate in the floor, breathing up warm wet air that smells of soil and living green. Under the window a marble slab holds a mortar, a set of brass scales, and a dish of yellow wax gone soft in the heat.",
+      "art_url": "/art/towns/karzum/loc-frostbite_and_fennel-2ec88acb.png",
+      "npcs": [
+        {
+          "id": "aeliru_frostfern",
+          "name": "Aeliru Frostfern",
+          "role": "apothecary",
+          "persona": "An elf who came north two centuries ago to see whether anything green could be persuaded to grow at this altitude, answered the question, and stayed to keep answering it. She is calm, unhurried and very dry, delivering advice as flat statements of fact and finding human urgency mildly funny. She loves her cellar garden above all — twelve terraced beds warmed by the stronghold's old forge-vents — and will interrupt any conversation to go turn the vent-flue. She has treated frostbite on perhaps four thousand travellers and can tell from a handshake whether a finger will be kept.",
+          "portrait_desc": "A tall, spare elf woman with pale grey-brown skin, silver hair coiled and pinned with a bone needle, and fine lines only at the eyes. She wears layered green and undyed wool robes with the sleeves pinned back, a canvas garden apron, and soil under her fingernails.",
+          "art_url": "/art/towns/karzum/npc-aeliru_frostfern-6d699d1a.png",
+          "topics": [
+            {
+              "ask": "What should I buy before the Sky Stair?",
+              "reply": "Goose-fat salve, a tin of the grey moss for the tea, and the patience to stop when your ears stop hurting, because that is the sign, not the cold. Most of what I sell is a way of making people believe advice they were given free."
+            },
+            {
+              "ask": "What grows down that stair?",
+              "reply": "Twelve beds of it: fennel, thyme, blue borage, and one obstinate lemon tree that has produced four lemons in ninety years. The dwarves cut vents to carry forge-heat out of the mountain, and I simply decline to let it leave."
+            },
+            {
+              "ask": "Two hundred years in one town?",
+              "reply": "Two hundred and forty. It is a pass, so the whole world walks past my door and I need not walk anywhere. I have seen the same wool families come through in six generations, and the great-grandchildren still have the same bad boots."
+            }
+          ],
+          "vendor": true
+        },
+        {
+          "id": "dunna_ketch",
+          "name": "Dunna Ketch",
+          "role": "retired ranger",
+          "persona": "A human woman who guided caravans over the Frostcaps for forty years and now occupies the stool nearest the stove, cutting mushrooms into rings for drying because her hands want a job. She is blunt, weathered, and much funnier than she looks, with a habit of grading everyone's cold-weather gear out loud and unasked. She knows every switchback, cistern and wind-shadow between here and the northern lakes, and gives directions in walking-hours rather than miles. She is quietly delighted that the young gate-watch keep coming to ask her things and pretends every time to be put out.",
+          "portrait_desc": "A wiry human woman of sixty-five, brown skin cracked at the cheekbones, close-cropped white hair, one eyelid drooping from an old frost injury. She wears a patched sheepskin coat indoors, hobnailed boots, and a knife at her belt with a handle worn glossy.",
+          "art_url": "/art/towns/karzum/npc-dunna_ketch-b0499691.png",
+          "topics": [
+            {
+              "ask": "You know the pass well?",
+              "reply": "Better than the map, which was drawn by a man on a mule in fog. Nine hours to the Kholdrun cairns if you leave at the gate-horn, eleven if you stop to admire the waterfall, and if the wind turns westerly you sit down behind the third cairn and wait, you do not press on."
+            },
+            {
+              "ask": "Why do you sit in an apothecary all day?",
+              "reply": "Warmest stool in Karzum and the company doesn't chatter. Also Aeliru pays me in mushroom tea for slicing mushrooms, which is either a fair wage or a very slow theft."
+            },
+            {
+              "ask": "Those are strange boots you've got.",
+              "reply": "Hobnails set in a double crescent, and the smith who did it is dead and left no apprentice, so admire them from a distance. And your boots are smooth as a church pew, which the Sky Stair will teach you about within the hour."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "the_ironjaw_gate",
+      "name": "The Ironjaw Gate",
+      "function": "gate",
+      "description": "The lower gate and its watch-room, where every cart, mule and traveller in or out of Karzum is written into the ledger.",
+      "exterior_scene": "Twin doors of black iron, each strapped with tooth-shaped bolts the size of fists, set in a barbican whose stonework is carved with the interlocking jaws that give the gate its name. A brazier burns in an iron cage on the left post, and above the arch a stone dwarf's face with a broken nose looks down the switchbacks at whoever is climbing.",
+      "exterior_art_url": "/art/towns/karzum/ext-the_ironjaw_gate-80e42ae1.png",
+      "interior_scene": "A snug guardroom cut into the gate's thickness, lit by one high slit and three lamp-charms, with a heavy oak table under a wall of hooks holding lanterns, snowshoes and a long brass horn. The travellers' ledger lies open on the table beside an inkpot kept warm on a trivet over a coal-pan, and a rack of spears and pass-picks stands within arm's reach of the door. Boiled tea, wet leather and coal smoke; through the murder-hole grille you can hear cart wheels on the ramp below.",
+      "interior_art_url": "/art/towns/karzum/loc-the_ironjaw_gate-2d0512e7.png",
+      "scene": "A snug guardroom cut into the gate's thickness, lit by one high slit and three lamp-charms, with a heavy oak table under a wall of hooks holding lanterns, snowshoes and a long brass horn. The travellers' ledger lies open on the table beside an inkpot kept warm on a trivet over a coal-pan, and a rack of spears and pass-picks stands within arm's reach of the door. Boiled tea, wet leather and coal smoke; through the murder-hole grille you can hear cart wheels on the ramp below.",
+      "art_url": "/art/towns/karzum/loc-the_ironjaw_gate-2d0512e7.png",
+      "npcs": [
+        {
+          "id": "serel_vance",
+          "name": "Serel Vance",
+          "role": "watch-captain",
+          "persona": "A human woman who spent fifteen years guarding other people's wagons before Karzum hired her to guard the whole doorway, and she runs the gate like a well-kept inn rather than a fort. She is brisk, courteous and impossible to hurry, and she will have your name, your trade and your destination in the ledger before you have finished stamping the snow off. She cares about the count above all else — every soul who goes up the Sky Stair must come back down or be accounted for — and she reads the ledger aloud to herself at the turn of each month. She hands out Grukka's honey buns to the watch and considers this a matter of discipline.",
+          "portrait_desc": "A human woman of forty, brown-skinned and square-jawed, black hair cropped at the collar under a fur-lined hood. She wears a mail shirt over quilted wool with a grey surcoat bearing Karzum's anvil-and-peak, thick mittens tucked in her belt, and a quill behind one ear.",
+          "art_url": "/art/towns/karzum/npc-serel_vance-ab00bebb.png",
+          "topics": [
+            {
+              "ask": "Why the ledger for everyone?",
+              "reply": "Because a name in ink is the cheapest rescue there is. Forty-one went up the Stair the winter before I came and thirty-eight came down, and nobody could say who the three were. Not on my gate."
+            },
+            {
+              "ask": "Any trouble at the gate?",
+              "reply": "Wolves at the third switchback in a lean month, and the Aldmere Guild trying to talk their way out of the mule-toll in every month. The wolves are more honest and better company."
+            },
+            {
+              "ask": "What's the horn for?",
+              "reply": "One blast, gate opening. Two, storm coming and get inside. Three, everyone with hands comes to the Stair with rope. We have blown three twice in my time and both times we got them all back, and Poppy fed forty-one people in one hall on the strength of it."
+            }
+          ],
+          "vendor": false
+        },
+        {
+          "id": "torgrim_sleetbeard",
+          "name": "Torgrim Sleetbeard",
+          "role": "gate-elder",
+          "persona": "The oldest dwarf in Karzum and the last man alive who wore the garrison's colours, though he was only a horn-boy and admits it before anyone can accuse him. He sits on a stool inside the barbican in all weathers, greets every cart, and tells the history of whatever stone you happen to be leaning against. He is unfailingly kind to children and travellers and sharply dismissive of anyone who calls Karzum a ruin, since a ruin does not have bread ovens. He has been trying for forty years to persuade the town to unseal the Deep Barracks and clean them out properly, and he says so to each new watch-captain in turn.",
+          "portrait_desc": "An immensely old dwarf, four and a half feet and slightly bent, with a white beard forked and tucked into his belt and a nose gone purple with cold. He wears a garrison surcoat two centuries out of fashion over three layers of wool, a fur hat with earflaps, and holds a brass-shod stick across his knees.",
+          "art_url": "/art/towns/karzum/npc-torgrim_sleetbeard-d63898c9.png",
+          "topics": [
+            {
+              "ask": "You served here?",
+              "reply": "Horn-boy, third watch, and I'll not pretend to a spear I never carried. I blew the dawn-note from that arch for eleven years, and when the garrison marched south I stayed because somebody has to open a door."
+            },
+            {
+              "ask": "What's below the town?",
+              "reply": "Four floors of Deep Barracks, a cistern the size of this square, and a stair that goes down to the old ore-galleries, all sealed with rubble the year I turned sixty. Sealing is not cleaning. Something has been drinking at that cistern and filling the vents with grey wool, and every captain tells me it is bears."
+            },
+            {
+              "ask": "Isn't Karzum a strange place to spend a life?",
+              "reply": "Strange? Lad, six roads' worth of the world comes through this gate and stops for soup. I have met three kings, a wyrm-hunter and a woman who could juggle nine eggs, all without leaving my stool."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "the_long_hall_market",
+      "name": "The Long Hall Market",
+      "function": "market",
+      "description": "The old muster hall, roofed and windbreaked, where caravans lay out their goods and everybody's business becomes everybody's business.",
+      "exterior_scene": "A colonnade of squat granite pillars closed in with tarred timber shutters and hung with painted trade-boards — a tea-leaf, a bale of wool, a horseshoe, a fish. The wide double entrance is curtained with heavy felt against the wind, weighted at the bottom with a chain, and mule-lines are pegged along the wall outside.",
+      "exterior_art_url": "/art/towns/karzum/ext-the_long_hall_market-b26096b3.png",
+      "interior_scene": "A long pillared hall floored in flagstones worn into channels, the drill-hall of a vanished garrison now packed with trestle stalls, stacked wool-bales, salt-barrels and a great slack pyramid of brass-strapped tea-chests. Charcoal braziers stand at intervals down the middle, each ringed by a puddle of melt, and lamp-charms swing from the pillar brackets making everything look warmer than it is. The smell is cardamom, wet sheep, mule and hot charcoal, and pigeons argue somewhere up in the roof-beams.",
+      "interior_art_url": "/art/towns/karzum/loc-the_long_hall_market-db55c525.png",
+      "scene": "A long pillared hall floored in flagstones worn into channels, the drill-hall of a vanished garrison now packed with trestle stalls, stacked wool-bales, salt-barrels and a great slack pyramid of brass-strapped tea-chests. Charcoal braziers stand at intervals down the middle, each ringed by a puddle of melt, and lamp-charms swing from the pillar brackets making everything look warmer than it is. The smell is cardamom, wet sheep, mule and hot charcoal, and pigeons argue somewhere up in the roof-beams.",
+      "art_url": "/art/towns/karzum/loc-the_long_hall_market-db55c525.png",
+      "npcs": [
+        {
+          "id": "sadiya_vell",
+          "name": "Sadiya Vell",
+          "role": "tea and spice merchant",
+          "persona": "A human woman from the southern river cities who came up with a single mule-load of pepper eleven years ago and now holds the best pitch in the hall, three pillars from the door. She is warm, fast-talking and shamelessly nosy, and she trades news with the same enthusiasm as cardamom, treating both as perishable goods. She keeps a brazier and a pot of spiced tea going for anyone who stops, on the reasoning that no one gossips standing in a draught. Her running argument is with the Aldmere Guild's factor over what counts as a mule-load, and she has won it twice in front of witnesses.",
+          "portrait_desc": "A human woman of thirty-five, warm brown skin, black hair wound in a bright orange scarf, gold rings in both ears. She wears three layered wool coats of clashing southern colours, fingerless gloves, and a leather satchel of scales and tiny weights slung across her chest.",
+          "art_url": "/art/towns/karzum/npc-sadiya_vell-3ab5dba3.png",
+          "topics": [
+            {
+              "ask": "What have you got?",
+              "reply": "Pepper, cardamom, dried figs, and the last of the good cinnamon until the passes open. Sit by the brazier, drink the tea, and tell me where you've come from — the tea's free, the news is the price."
+            },
+            {
+              "ask": "Is it good trading up here?",
+              "reply": "It is the only pass, my friend. Everything from the northern lakes to the river cities squeezes through this hall, and half of it stops here for a week because of weather. A week is a very long time to be standing beside a spice stall."
+            },
+            {
+              "ask": "You seem to know everyone.",
+              "reply": "Three pillars from the door, so everyone passes me twice. I know whose mule is lame, whose factor is drinking, and that Nib Tallowmar has been quietly measuring my head for goggles I have not ordered."
+            }
+          ],
+          "vendor": false
+        },
+        {
+          "id": "mokk_barrelfoot",
+          "name": "Mokk Barrelfoot",
+          "role": "mule drover",
+          "persona": "A hill-dwarf drover who sells nothing at all in the market but occupies a stall-space anyway, mending harness and holding court. He speaks about mules with the seriousness other folk reserve for family and can recite the temperament of every animal that has come through the gate this decade. He is comfortable, unhurried, and mildly smug about a lamp-charm he has carried for six years without refilling. He does small favours for everyone and keeps a mental account of them that he never calls in, which makes him the most quietly powerful person in the hall.",
+          "portrait_desc": "A round dwarf of eighty in a felted brown coat sewn with harness-buckles, his grey beard short and full of chaff. He has a broad sunburnt face, one milky eye, and sits on an upturned pack-saddle with strap-leather across his knees and an awl in his fist.",
+          "art_url": "/art/towns/karzum/npc-mokk_barrelfoot-59543821.png",
+          "topics": [
+            {
+              "ask": "What do you sell?",
+              "reply": "Nothing. I mend straps, I judge mules, and I drink Sadiya's tea. Selling would mean keeping accounts and accounts spoil a friendship faster than a bad mule."
+            },
+            {
+              "ask": "How do you pick a good mule for the pass?",
+              "reply": "Look at the hind feet and the ears, not the shoulders. A mule that flicks one ear at a rockfall will carry you over Kholdrun's Bridge; a mule that flicks both will take you and the cargo into the Wyrmthroat. Merchants always buy the pretty broad ones and I always get the work of fishing their crates out of the gorge."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    },
+    {
+      "id": "the_ember_shrine_of_durnkal",
+      "name": "The Ember Shrine of Durnkal",
+      "function": "shrine",
+      "description": "A little vaulted chapel around a coal-bed that has not gone out in four hundred years, where travellers leave a handful of fuel for luck.",
+      "exterior_scene": "A round stone porch built onto the terrace wall, its doorway framed by two carved pillars shaped like bellows, and a slot beside the door where passers-by drop coal or kindling as an offering. A single thread of blue smoke rises from a copper cowl on the roof, and the snow on the steps is always melted into two dark footpaths.",
+      "exterior_art_url": "/art/towns/karzum/ext-the_ember_shrine_of_durnkal-ede09f4c.png",
+      "interior_scene": "A small domed chamber of soot-blackened stone with a waist-high iron brazier at the centre, its coal-bed glowing dull orange under a fine grey crust. The walls are lined with hundreds of iron pilgrim-tokens hung on nails, each stamped with a name, and a low stone bench runs the whole circle worn smooth by four centuries of sitting. It is silent but for the settling tick of the coals, warm on the face and cold at the back, and the air smells of coal-dust and beeswax.",
+      "interior_art_url": "/art/towns/karzum/loc-the_ember_shrine_of_durnkal-9da8d391.png",
+      "scene": "A small domed chamber of soot-blackened stone with a waist-high iron brazier at the centre, its coal-bed glowing dull orange under a fine grey crust. The walls are lined with hundreds of iron pilgrim-tokens hung on nails, each stamped with a name, and a low stone bench runs the whole circle worn smooth by four centuries of sitting. It is silent but for the settling tick of the coals, warm on the face and cold at the back, and the air smells of coal-dust and beeswax.",
+      "art_url": "/art/towns/karzum/loc-the_ember_shrine_of_durnkal-9da8d391.png",
+      "npcs": [
+        {
+          "id": "hedda_emberkeep",
+          "name": "Hedda Emberkeep",
+          "role": "priestess of the forge-saint",
+          "persona": "A dwarf priestess whose entire office is that the coals do not go out, a duty she has kept for sixty years and treats as both trivial and sacred. She is soft-spoken, practical and given to a slow, sly humour, and she counsels travellers by handing them a shovel and letting them talk while they bank the fire. She stamps an iron token with the name of anyone who asks and nails it to the wall, and she can find any of them in the dark by touch. Her one grievance is that Karzum has no bells and the hours are marked by shouting, so she is privately hoping the smith's apprentice succeeds.",
+          "portrait_desc": "A dwarf woman of a hundred and forty, small and round, with white hair in a coiled bun and cheeks permanently flushed from the brazier. She wears a plain grey robe belted with a leather strap of stamping-punches, a soot-marked cloth over one shoulder, and iron-soled sandals over thick socks.",
+          "art_url": "/art/towns/karzum/npc-hedda_emberkeep-71ad036b.png",
+          "topics": [
+            {
+              "ask": "How old is that fire?",
+              "reply": "Four hundred and eleven years, and I have had it in my keeping for sixty of them. It has been down to the size of a fist twice and once to a handful of red — that was the year the coal barge sank — and the whole town came up the stair with buckets of kindling."
+            },
+            {
+              "ask": "What are all the iron tokens?",
+              "reply": "Every soul who asked to be remembered here. Give me a name and I'll stamp it while you sit, and if you come back in thirty years I will put your hand on it in the dark. Some folk come only for that."
+            },
+            {
+              "ask": "What does Durnkal ask of travellers?",
+              "reply": "Fuel and company. Drop a handful of coal in the slot on your way past and sit long enough to warm your face, and that is the whole liturgy — Durnkal was a smith, not a philosopher."
+            }
+          ],
+          "vendor": false
+        }
+      ]
+    }
+  ]
+}

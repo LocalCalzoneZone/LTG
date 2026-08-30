@@ -1,0 +1,645 @@
+{
+  "name": "Sootfall Adit \u2014 The Kholdrun Deep Forge",
+  "scene": "At the mine's buried end, the Kholdrun Deep Forge fills a vast chamber with orange furnace-light, iron gantries, and rivers of slag crawling through stone channels. The old bellows hang like enormous black lungs above a dais of hammered iron, where fresh rails point toward a half-finished cart adit.",
+  "scene_image": "/art/the_sootfall_adit__phase3/scene-1569903f.png",
+  "enemies": [
+    {
+      "id": "ordokar_slagvein",
+      "name": "Ordokar Slagvein",
+      "flavor": "The silent delve-master turns every fallen hero into a crisis for the survivors.",
+      "description": "Ordokar is a massive grey dwarf wrapped in felted wool and black iron plates, his flat-filed nails silent on stone. An iron eye-shade covers one eye against the furnace glare, while his brass tally-rod crackles with orange runes beneath the hanging bellows.",
+      "hp": 15,
+      "power": 3,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "warlord",
+        "artificer"
+      ],
+      "is_boss": true,
+      "keywords": [
+        "trample"
+      ],
+      "components": [
+        {
+          "id": "rod_of_measure",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "pre_enrage",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "highest_threat",
+          "telegraph": "Rod of Measure \u2014 mark the strongest hero for a crushing blow",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "slagline_sweep",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "phase": "post_enrage",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "self",
+          "target_row": "front",
+          "telegraph": "Slagline Sweep \u2014 the forge floor erupts across the front",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "all",
+                "side": "ally",
+                "rows": [
+                  "front"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "companys_last_law",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Company's Last Law \u2014 stun a hero beneath the furnace bell",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "executioners_surge",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "priority": 12,
+          "cooldown": 3,
+          "target_rule": "highest_threat",
+          "telegraph": "Executioner's Surge \u2014 the company rushes the exposed survivors",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "slagvein_enrage",
+          "archetype": "Enrage",
+          "timing": "reactive",
+          "priority": 5,
+          "target_rule": "self",
+          "telegraph": "SLAGVEIN UNBOUND \u2014 the forge answers its master",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 3,
+              "toughness": 3,
+              "target": {
+                "mode": "self"
+              }
+            },
+            {
+              "kind": "deal_damage",
+              "amount": 5,
+              "target": {
+                "mode": "all",
+                "side": "ally"
+              }
+            },
+            {
+              "kind": "grant_keyword",
+              "keywords": [
+                "trample"
+              ],
+              "duration": "encounter",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/ordokar_slagvein-f32f8ce6.png"
+    },
+    {
+      "id": "fallen_companyman",
+      "name": "Fallen Companyman",
+      "flavor": "A veteran surges when a hero falls.",
+      "description": "A scarred dwarf in dented iron, one sleeve pinned empty and a heavy pick clenched in his remaining hand.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "warrior"
+      ],
+      "components": [
+        {
+          "id": "last_shift",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "priority": 15,
+          "cooldown": 3,
+          "target_rule": "highest_threat",
+          "telegraph": "Last Shift \u2014 avenge the fallen with a brutal pick strike",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "ore_fury",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 2,
+          "target_rule": "self",
+          "telegraph": "Ore Fury \u2014 sharpen the pick with permanent strength",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/fallen_companyman-dbe8a1f4.png"
+    },
+    {
+      "id": "forge_guard",
+      "name": "Forge Guard",
+      "flavor": "A shield wall protects Ordokar and retaliates against attackers.",
+      "description": "A heavy dwarf in blackened plate, carrying a tower shield with a glowing coal at its center and a short iron maul.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "knight"
+      ],
+      "components": [
+        {
+          "id": "masters_cover",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 15,
+          "cooldown": 3,
+          "target_rule": "ordokar_slagvein",
+          "telegraph": "Master's Cover \u2014 the guard interposes his shield before Ordokar",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "chosen",
+                "side": "enemy",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "maul_rebuke",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Maul-Rebuke \u2014 answer the blow against the company",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/forge_guard-58d76298.png"
+    },
+    {
+      "id": "bellows_chanter",
+      "name": "Bellows Chanter",
+      "flavor": "Channels the forge's roar into a furnace hymn.",
+      "description": "A robed dwarf with copper plates on his shoulders, beating an iron drum beside the bellows chains.",
+      "hp": 8,
+      "power": 1,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf",
+        "elemental"
+      ],
+      "classes": [
+        "ritualist",
+        "bard"
+      ],
+      "components": [
+        {
+          "id": "bellows_hymn",
+          "archetype": "Punish",
+          "timing": "proactive",
+          "channel": true,
+          "action_type": "spell",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "valuation",
+          "telegraph": "Bellows Hymn \u2014 the furnace begins striking a hero every upkeep",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 2,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "iron_note_wound",
+          "archetype": "Debilitate",
+          "timing": "reactive",
+          "trigger": "on_spell_cast",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "trigger_source",
+          "telegraph": "Iron Note \u2014 the casting hero buckles beneath the furnace tone",
+          "verbs": [
+            {
+              "kind": "wound",
+              "power": 1,
+              "toughness": 1,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/bellows_chanter-c0bf6904.png"
+    },
+    {
+      "id": "slag_thrower",
+      "name": "Slag Thrower",
+      "flavor": "A rear-line bomber punishes heroes who cluster in the middle.",
+      "description": "A squat dwarf with a soot-crusted hood, hefting a bronze pot of molten slag with both hands.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "rear",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf",
+        "elemental"
+      ],
+      "classes": [
+        "artificer"
+      ],
+      "components": [
+        {
+          "id": "slag_arc",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 30,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Slag Arc \u2014 molten iron splashes across a hero's rank",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true,
+                "scope": "blast"
+              }
+            }
+          ]
+        },
+        {
+          "id": "backstep",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 3,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Backstep \u2014 retreat along the forge gantry"
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/slag_thrower-b37191e3.png"
+    },
+    {
+      "id": "chain_bailiff",
+      "name": "Chain Bailiff",
+      "flavor": "Drags a hero forward, then demands the party break the line.",
+      "description": "A lean dwarf in a ring-studded coat, wielding a hooked chain and a brass warrant tablet.",
+      "hp": 8,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "soldier",
+        "rogue"
+      ],
+      "components": [
+        {
+          "id": "writ_of_pull",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "telegraph": "Writ of Pull \u2014 chain a hero into the execution line",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            },
+            {
+              "kind": "move",
+              "direction": "to_front",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "chain_guard",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "priority": 35,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Chain Guard \u2014 lock the bailiff behind iron links",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "combat_damage",
+              "combat_kind": "melee",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/chain_bailiff-488605e9.png"
+    },
+    {
+      "id": "red_ore_adept",
+      "name": "Red-Ore Adept",
+      "flavor": "A dangerous caster drains the strongest hero's ultimate gauge.",
+      "description": "A young dwarf in a crimson felt mantle, with raw red ore embedded in both palms and a brass rod across his back.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "ranged",
+      "types": [
+        "dwarf",
+        "elemental"
+      ],
+      "classes": [
+        "wizard",
+        "cultist"
+      ],
+      "components": [
+        {
+          "id": "gauge_shaving",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 20,
+          "cooldown": 2,
+          "target_rule": "primed_hero",
+          "condition": {
+            "kind": "hero_gauge_pct",
+            "op": ">=",
+            "value": 80
+          },
+          "action_type": "spell",
+          "telegraph": "Gauge-Shaving \u2014 cut twenty marks from a nearly ready ultimate",
+          "verbs": [
+            {
+              "kind": "modify_action",
+              "action": "ultimate",
+              "modifier": "drain_ultimate",
+              "amount": 20,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "ore_bolt",
+          "archetype": "Burst",
+          "timing": "proactive",
+          "priority": 40,
+          "cooldown": 2,
+          "target_rule": "valuation",
+          "action_type": "spell",
+          "telegraph": "Ore Bolt \u2014 fire a red shard at a hero",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 3,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/red_ore_adept-41151335.png"
+    },
+    {
+      "id": "furnace_runner",
+      "name": "Furnace Runner",
+      "flavor": "A hooked assassin marks a hero, then rallies the company when one falls.",
+      "description": "A small dwarf in ash-grey leathers, with a brass hook knife, copper goggles, and fuse cord across his chest.",
+      "hp": 5,
+      "power": 2,
+      "level": 3,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "dwarf"
+      ],
+      "classes": [
+        "assassin",
+        "scout"
+      ],
+      "components": [
+        {
+          "id": "brand_the_leader",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "priority": 25,
+          "cooldown": 3,
+          "target_rule": "highest_threat",
+          "telegraph": "Brand the Leader \u2014 cripple the strongest hero's skill hand",
+          "verbs": [
+            {
+              "kind": "modify_action",
+              "action": "skill",
+              "modifier": "lock_skill",
+              "duration": "encounter",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner_avenges",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_hero_downed",
+          "priority": 14,
+          "cooldown": 3,
+          "target_rule": "self",
+          "telegraph": "Runner Avenges \u2014 the furnace runner gains permanent strength",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ],
+      "image": "/art/the_sootfall_adit__phase3/furnace_runner-ac48b186.png"
+    }
+  ],
+  "tokens": {},
+  "difficulty": "standard",
+  "layouts": {
+    "1": [
+      "ordokar_slagvein",
+      "fallen_companyman"
+    ],
+    "2": [
+      "ordokar_slagvein",
+      "fallen_companyman",
+      "forge_guard",
+      "slag_thrower"
+    ],
+    "3": [
+      "ordokar_slagvein",
+      "fallen_companyman",
+      "forge_guard",
+      "slag_thrower",
+      "chain_bailiff",
+      "red_ore_adept"
+    ],
+    "4": [
+      "ordokar_slagvein",
+      "fallen_companyman",
+      "forge_guard",
+      "slag_thrower",
+      "chain_bailiff",
+      "red_ore_adept",
+      "bellows_chanter",
+      "furnace_runner"
+    ]
+  }
+}

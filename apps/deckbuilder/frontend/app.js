@@ -64,6 +64,7 @@ const ANIM_TRIGGERS = [
   ["attack", "Attack"], ["cast", "Cast (spell)"], ["channel", "Channel (channeled spell)"],
   ["defend", "Defend"], ["mitigate", "Mitigate"], ["skill", "Skill"],
   ["ultimate", "Ultimate"], ["hit", "Hit (takes damage)"], ["death", "Death"],
+  ["revive", "Revive (stands back up — author it from the death clip's last frame to the portrait pose)"],
   ["victory", "Victory (party wins the fight)"],
 ];
 const ANIM_TRIGGER_LABEL = Object.fromEntries(ANIM_TRIGGERS);

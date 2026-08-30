@@ -16,9 +16,20 @@ import type { PanelAnimBundle, PanelAnimation } from "../lib/types";
 // at the top because the fight is over: nothing that follows should cut the
 // celebration short. Death still wins — it is terminal, so a hero who fell on
 // the last exchange keeps their held final frame instead of cheering.
+//
+// Death and victory both HOLD their final frame rather than dropping back to
+// the portrait: the fight is over either way, and the panel should stay in its
+// ending pose. A held death frame releases on revive; a held victory frame
+// releases when the next encounter begins.
+//
+// Revive is the one thing allowed to break death's terminal hold: the clip is
+// authored to open on the death clip's final frame and end on the portrait
+// pose, so it plays over the held frame and hands back to the portrait when it
+// ends (normal clear — revive does not hold).
 
-const PRIORITY: Record<string, number> = { hit: 0, death: 3, ultimate: 2, victory: 3 };
+const PRIORITY: Record<string, number> = { hit: 0, death: 3, ultimate: 2, revive: 3, victory: 3 };
 const prio = (a: PanelAnimation) => PRIORITY[a.trigger] ?? 1;
+const holds = (a: PanelAnimation) => a.trigger === "death" || a.trigger === "victory";
 const isVideo = (a: PanelAnimation) => /\.(webm|mp4)(\?|$)/i.test(a.file);
 
 interface Playing {
@@ -44,6 +55,9 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
   // The trigger pulses aimed at this panel (filtered inside the effect: a
   // filtered selector would hand back a fresh array on every store change).
   const fx = useGame((s) => s.fx);
+  // The fight this panel belongs to — when it changes (the next adventure
+  // phase, a new encounter in the same session) a held victory frame releases.
+  const encounterId = useGame((s) => s.snapshot?.encounter_id);
 
   useEffect(() => {
     const pulses = fx.filter((e) => e.kind === "panel" && e.entityId === charId);
@@ -53,8 +67,8 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
       const anim = anims.find((a) => a.id === p.label);
       if (!anim) continue;
       setPlaying((cur) => {
-        // Death is terminal — nothing replaces it once it has begun.
-        if (cur && cur.anim.trigger === "death") return cur;
+        // Death is terminal — nothing but a revive replaces it once it has begun.
+        if (cur && cur.anim.trigger === "death" && anim.trigger !== "revive") return cur;
         if (cur && prio(anim) < prio(cur.anim)) return cur;
         return { anim, key: p.key };
       });
@@ -67,7 +81,8 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
   }, [fx, charId, anims]);
 
   // Drive playback: start the chosen clip from frame 0 at its speed; when it
-  // ends, drop back to the portrait (a death clip holds its final frame).
+  // ends, drop back to the portrait (death and victory clips hold their final
+  // frame instead).
   useEffect(() => {
     if (imgTimer.current != null) {
       window.clearTimeout(imgTimer.current);
@@ -81,7 +96,7 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
       const clear = () => setPlaying((cur) => (cur?.key === playing.key ? null : cur));
       el.currentTime = 0;
       el.playbackRate = anim.speed > 0 ? anim.speed : 1;
-      el.onended = anim.trigger === "death" ? null : clear; // a death clip holds its last frame
+      el.onended = holds(anim) ? null : clear; // death/victory hold their last frame
       el.onerror = clear;
       // A play() interrupted by pause() (React StrictMode re-running the effect,
       // or a higher-priority clip taking over) rejects with AbortError — that is
@@ -93,17 +108,17 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
       // pane) so `ended` never fires — never leave the panel stuck on a clip.
       const speed = anim.speed > 0 ? anim.speed : 1;
       const budget = ((Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 10) / speed) * 1000 + 1500;
-      const watchdog = anim.trigger === "death" ? null : window.setTimeout(clear, budget);
+      const watchdog = holds(anim) ? null : window.setTimeout(clear, budget);
       return () => {
         el.onended = null;
         el.onerror = null;
         if (watchdog != null) window.clearTimeout(watchdog);
-        if (anim.trigger !== "death") el.pause();
+        if (!holds(anim)) el.pause();
       };
     }
     // Animated image: browsers can't retime or signal the end, so the panel
-    // shows it for the authored duration and swaps back.
-    if (anim.trigger !== "death") {
+    // shows it for the authored duration and swaps back (holding triggers stay).
+    if (!holds(anim)) {
       imgTimer.current = window.setTimeout(
         () => setPlaying((cur) => (cur?.key === playing.key ? null : cur)),
         Math.max(300, (anim.duration_s || 5) * 1000),
@@ -112,12 +127,30 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
     return undefined;
   }, [playing]);
 
-  // A revived hero drops the held death frame.
+  // A revived hero drops the held death frame. With a revive clip authored,
+  // the drop waits for the revive pulse to replace the frame instead — an
+  // instant swap to the portrait would jump the pose the clip is about to
+  // stand up from. The timeout is the safety net for a revival that never
+  // fires the pulse (e.g. a between-phases heal): it outlasts the fx
+  // scheduler's delay cap, and by then either the revive clip is playing (the
+  // conditional clear is a no-op) or the frame must release regardless.
   useEffect(() => {
-    if (!incapacitated) {
+    if (incapacitated) return;
+    const drop = () =>
       setPlaying((cur) => (cur && cur.anim.trigger === "death" ? null : cur));
+    if (!anims.some((a) => a.trigger === "revive" && !a.alternate)) {
+      drop();
+      return;
     }
-  }, [incapacitated]);
+    const t = window.setTimeout(drop, 4000);
+    return () => window.clearTimeout(t);
+  }, [incapacitated, anims]);
+
+  // A new fight drops the held victory frame — the celebration lasts exactly
+  // until the next round begins.
+  useEffect(() => {
+    setPlaying((cur) => (cur && cur.anim.trigger === "victory" ? null : cur));
+  }, [encounterId]);
 
   if (!anims.length) return null;
   const media = "pointer-events-none absolute inset-0 h-full w-full object-cover object-top";
