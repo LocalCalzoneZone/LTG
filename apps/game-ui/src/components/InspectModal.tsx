@@ -101,6 +101,14 @@ function extraCharacterTags(char: CharacterView): string[] {
 
 function characterLines(char: CharacterView): Line[] {
   const out = commonLines(char);
+  if (char.charge > 0) {
+    out.push({
+      key: "charge",
+      tone: "text-brass",
+      main: `Charge — ${char.charge} charge counter${char.charge > 1 ? "s" : ""}`,
+      note: 'stored power — cards can spend it or scale by it ("equal to your charge counters")',
+    });
+  }
   if (char.incapacitated) {
     out.unshift({
       key: "downed",

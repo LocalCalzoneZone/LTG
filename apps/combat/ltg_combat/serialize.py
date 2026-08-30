@@ -497,6 +497,8 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "ultimate_gauge": getattr(char, "ultimate_gauge_pct", 0),
         "poison_counters": getattr(char, "poison_counters", 0),
         "regen_counters": getattr(char, "regen_counters", 0),
+        # Charge counters (§D22-1): heroes hold the windup gauge too.
+        "charge": getattr(char, "charge", 0),
         "poisoned": getattr(char, "poison_counters", 0) > 0,
         "regenerating": getattr(char, "regen_counters", 0) > 0,
         "raw": to_jsonable(char),

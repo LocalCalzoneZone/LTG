@@ -160,6 +160,10 @@ def test_a_hero_builds_spends_and_empties_charge():
     _resolve_on(st, [Charge.model_validate({"kind": "charge", "op": "remove", "amount": 1})])
     assert p.charge == 1
     assert _value(Ref(ref="caster_charge"), {"caster_obj": p}) == 1
+    # …and the count is public: the client payload and badge tag carry it.
+    from ltg_combat.serialize import _character_dict
+    cd = _character_dict(st, p)
+    assert cd["charge"] == 1 and "charge ×1" in cd["status_tags"]
     _resolve_on(st, [Charge.model_validate({"kind": "charge", "op": "remove", "amount": "all"})])
     assert p.charge == 0
     _resolve_on(st, [Charge.model_validate({"kind": "charge", "op": "remove", "amount": 5})])

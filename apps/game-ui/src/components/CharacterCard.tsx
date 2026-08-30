@@ -130,7 +130,8 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       {/* keyword sigils + counters — top-left, off the face */}
       <div className="absolute left-1.5 top-1.5">
         <KeywordBadges keywords={char.keywords} counters={char.counters}
-          poison={char.poison_counters} regen={char.regen_counters} />
+          poison={char.poison_counters} regen={char.regen_counters}
+          charge={char.charge} />
       </div>
 
       {/* ultimate gauge (D8-3.3) — a thin brass meter above the stat gems */}

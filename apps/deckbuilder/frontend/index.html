@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LTG — Deck Builder</title>
-  <link rel="stylesheet" href="/styles.css?v=18" />
+  <link rel="stylesheet" href="/styles.css?v=20" />
 </head>
 <body>
   <header class="topbar">
@@ -129,8 +129,16 @@
   <div id="anim-overlay" class="overlay hidden">
     <div class="detail-card anim-card">
       <h3>Panel animations</h3>
-      <div class="sub">Clips played over the portrait in game when the matching action resolves. Set a clip on each action you want animated. An <b>alternate</b> never plays automatically — it is offered as a pick on cards and stance abilities instead.</div>
-      <div id="anim-list" class="anim-list"></div>
+      <div class="sub">Clips played over the portrait in game when the matching action resolves. Pick a file for each action, then press ▶ to preview it over the portrait — exactly as it plays on the battlefield. An <b>alternate</b> never plays automatically; it is offered as a pick on cards and stance abilities instead.</div>
+      <div class="anim-layout">
+        <div class="anim-stage" id="anim-stage">
+          <img id="anim-stage-img" alt="Character portrait" hidden />
+          <div id="anim-stage-ph" class="anim-stage-ph">No portrait yet.<br />Set one on the character sheet first.</div>
+          <video id="anim-stage-video" muted playsinline preload="auto" hidden></video>
+          <img id="anim-stage-anim" alt="" hidden />
+        </div>
+        <div id="anim-list" class="anim-list"></div>
+      </div>
       <div class="detail-actions">
         <div class="anim-add">
           <button id="anim-add" class="primary">+ Add alternate animation</button>
@@ -195,6 +203,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/app.js?v=29"></script>
+  <script src="/app.js?v=31"></script>
 </body>
 </html>

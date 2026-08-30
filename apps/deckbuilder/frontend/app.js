@@ -135,33 +135,82 @@ function renderPortrait() {
 // Panel animations (Update 16): the clip list on the character sheet. Files
 // upload to the server (loadouts/anim/<char>/) and the loadout keeps only the
 // URL path + metadata; the game plays a clip over the portrait when its
-// trigger action resolves. The modal shows one slot per action type — set a
-// file on each you want animated. An "alternate" is never picked by its
-// trigger — it is offered on cards / stance abilities as an explicit choice.
+// trigger action resolves. The modal is a preview stage: the full-size
+// portrait on the left (battlefield-sized, 9:16), one compact row per action
+// on the right — pick a file, tune timing/speed, press ▶ to play the clip
+// over the portrait exactly as the game does. An "alternate" is never picked
+// by its trigger — it is offered on cards / stance abilities as an explicit
+// choice, under its own name.
 // --------------------------------------------------------------------------
-function animRowHtml(a, i, isAlt) {
+let stageTimer = null;  // animated-image preview: swap back after duration_s
+
+function stopStagePlayback() {
+  clearTimeout(stageTimer); stageTimer = null;
+  const v = $("#anim-stage-video"), im = $("#anim-stage-anim");
+  if (v) { v.pause(); v.onended = v.onerror = null; v.hidden = true; v.removeAttribute("src"); }
+  if (im) { im.hidden = true; im.removeAttribute("src"); }
+  document.querySelectorAll(".anim-play.playing").forEach((b) => b.classList.remove("playing"));
+}
+
+// Mirror the game's PanelAnim player: a video restarts from frame 0 at its
+// authored speed and drops back to the portrait on end; an animated image
+// shows for its duration (browsers can't retime or end-signal those).
+function playOnStage(a, btn) {
+  stopStagePlayback();
+  if (btn) btn.classList.add("playing");
+  const done = () => stopStagePlayback();
+  if (animIsVideo(a)) {
+    const v = $("#anim-stage-video");
+    v.src = a.file;
+    v.hidden = false;
+    v.currentTime = 0;
+    v.playbackRate = (a.speed || 1) > 0 ? (a.speed || 1) : 1;
+    v.onended = done; v.onerror = done;
+    v.play().catch(done);
+  } else {
+    const im = $("#anim-stage-anim");
+    // A cache-busting query restarts the gif/webp from its first frame.
+    im.src = a.file + (a.file.includes("?") ? "&" : "?") + "t=" + Date.now();
+    im.hidden = false;
+    stageTimer = setTimeout(done, (a.duration_s || 5) * 1000);
+  }
+}
+
+function refreshStagePortrait() {
+  const img = $("#anim-stage-img"), ph = $("#anim-stage-ph");
+  const src = state.character.portrait || "";
+  if (img) { img.hidden = !src; if (src) img.src = src; else img.removeAttribute("src"); }
+  if (ph) ph.hidden = !!src;
+}
+
+// Row order (per design): file → name → timing/speed → play. `a` may be null
+// for an empty slot (offer the picker); alternates swap the fixed action name
+// for a custom-name input plus a "for <action>" select.
+function animRowHtml(a, i, label, isAlt) {
+  if (!a) {
+    return `<div class="anim-row empty">
+      <button class="anim-file-btn anim-slot-add" data-trigger="${escapeAttr(label[0])}">+ Add animation</button>
+      <span class="anim-name">${label[1]}</span>
+    </div>`;
+  }
   const video = animIsVideo(a);
-  const thumb = video
-    ? `<video src="${escapeAttr(a.file)}" muted playsinline preload="metadata"></video>`
-    : `<img src="${escapeAttr(a.file)}" alt="" />`;
+  const opts = [
+    video
+      ? `<label class="inline" title="Playback rate — leave at 1 to play the clip as authored">speed ×<input type="number" class="anim-speed" data-i="${i}" min="0.25" max="4" step="0.25" value="${a.speed ?? 1}" /></label>`
+      : `<label class="inline" title="Animated images can't be retimed by the browser — how long to show the clip">shows <input type="number" class="anim-dur" data-i="${i}" min="0.5" max="30" step="0.5" value="${a.duration_s ?? 5}" /> s</label>`,
+    IMPACT_TRIGGERS.has(a.trigger)
+      ? `<label class="inline" title="When the action lands in the clip (seconds from its start) — the board's hit / damage effects wait for this moment so the clip leads">impact <input type="number" class="anim-impact" data-i="${i}" min="0" max="10" step="0.1" value="${a.impact_s ?? 1.5}" /> s</label>`
+      : "",
+  ].join("");
+  const name = isAlt
+    ? `<input type="text" class="anim-title" data-i="${i}" value="${escapeAttr(a.title || "")}" placeholder="Name (e.g. Crystal blade slash)" />`
+    : `<span class="anim-name">${label[1]}</span>`;
   return `<div class="anim-row${isAlt ? " alt" : ""}" data-i="${i}">
-    <div class="anim-thumb" data-i="${i}" title="${video ? "Click to preview" : "Animated image"}">
-      ${thumb}${video ? `<div class="anim-play">▶</div>` : ""}
-    </div>
-    <div class="anim-body">
-      ${isAlt ? `<input type="text" class="anim-title" data-i="${i}" value="${escapeAttr(a.title || "")}" placeholder="Title (e.g. Crystal blade slash)" />` : ""}
-      <div class="anim-line">
-        ${isAlt ? `<label class="inline">for <select class="anim-trigger" data-i="${i}">
-            ${ANIM_TRIGGERS.map(([v, l]) => `<option value="${v}" ${a.trigger === v ? "selected" : ""}>${l}</option>`).join("")}
-          </select></label>` : ""}
-        ${video
-          ? `<label class="inline" title="Playback rate — leave at 1 to play the clip as authored">speed ×<input type="number" class="anim-speed" data-i="${i}" min="0.25" max="4" step="0.25" value="${a.speed ?? 1}" /></label>`
-          : `<label class="inline" title="Animated images can't be retimed by the browser — how long to show the clip">shows for <input type="number" class="anim-dur" data-i="${i}" min="0.5" max="30" step="0.5" value="${a.duration_s ?? 5}" /> s</label>`}
-        ${IMPACT_TRIGGERS.has(a.trigger) ? `<label class="inline" title="When the action lands in the clip (seconds from its start) — the board's hit / damage effects wait for this moment so the clip leads">impact at <input type="number" class="anim-impact" data-i="${i}" min="0" max="10" step="0.1" value="${a.impact_s ?? 1.5}" /> s</label>` : ""}
-        <span class="anim-file" title="${escapeAttr(a.file)}">${escapeHtml((a.file || "").split("/").pop())}</span>
-        <button class="small danger anim-remove" data-i="${i}" title="Remove this clip (deletes the file)">×</button>
-      </div>
-    </div>
+    <button class="anim-file-btn" data-i="${i}" title="${escapeAttr(a.file)} — click to replace the file">${escapeHtml((a.file || "").split("/").pop())}</button>
+    ${name}
+    <span class="anim-opts">${opts}</span>
+    <button class="anim-play" data-i="${i}" title="Play over the portrait">▶</button>
+    <button class="small danger anim-remove" data-i="${i}" title="Remove this clip (deletes the file)">×</button>
   </div>`;
 }
 
@@ -172,35 +221,32 @@ function renderAnimations() {
   const host = $("#anim-list");
   if (!host) return;
   const indexed = anims.map((a, i) => [a, i]);
-  // One slot per action type; legacy loadouts may hold several defaults on the
-  // same trigger — all are shown, but a filled slot only offers remove.
-  const slots = ANIM_TRIGGERS.map(([trig, label]) => {
-    const rows = indexed.filter(([a]) => !a.alternate && a.trigger === trig);
-    return `<div class="anim-slot">
-      <div class="anim-slot-head">
-        <span class="anim-slot-name">${label}</span>
-        ${rows.length ? "" : `<button class="small anim-slot-add" data-trigger="${trig}">+ Set clip</button>`}
-      </div>
-      ${rows.map(([a, i]) => animRowHtml(a, i, false)).join("")}
-    </div>`;
+  // One row per action type (legacy loadouts may hold several defaults on the
+  // same trigger — each gets its own row), then the alternates.
+  const slots = ANIM_TRIGGERS.map((t) => {
+    const rows = indexed.filter(([a]) => !a.alternate && a.trigger === t[0]);
+    return rows.length
+      ? rows.map(([a, i]) => animRowHtml(a, i, t, false)).join("")
+      : animRowHtml(null, -1, t, false);
   }).join("");
   const alts = indexed.filter(([a]) => a.alternate);
   const altSection = alts.length
-    ? `<div class="anim-slot anim-alts">
-        <div class="anim-slot-head"><span class="anim-slot-name">Alternates</span></div>
-        ${alts.map(([a, i]) => animRowHtml(a, i, true)).join("")}
-      </div>`
+    ? `<div class="anim-sect">Alternates</div>`
+      + alts.map(([a, i]) => animRowHtml(a, i, null, true)).join("")
     : "";
   host.innerHTML = slots + altSection;
 
   host.querySelectorAll(".anim-slot-add").forEach((btn) => {
     btn.onclick = () => startAnimUpload({ trigger: btn.dataset.trigger, alternate: false });
   });
+  host.querySelectorAll(".anim-file-btn:not(.anim-slot-add)").forEach((btn) => {
+    btn.onclick = () => startAnimUpload({ replace: +btn.dataset.i });
+  });
+  host.querySelectorAll(".anim-play").forEach((btn) => {
+    btn.onclick = () => playOnStage(anims[+btn.dataset.i], btn);
+  });
   host.querySelectorAll(".anim-title").forEach((inp) => {
     inp.oninput = () => { anims[+inp.dataset.i].title = inp.value; };
-  });
-  host.querySelectorAll(".anim-trigger").forEach((sel) => {
-    sel.onchange = () => { anims[+sel.dataset.i].trigger = sel.value; };
   });
   host.querySelectorAll(".anim-speed").forEach((inp) => {
     inp.onchange = () => { anims[+inp.dataset.i].speed = Math.max(0.25, +inp.value || 1); };
@@ -211,18 +257,6 @@ function renderAnimations() {
   host.querySelectorAll(".anim-dur").forEach((inp) => {
     inp.onchange = () => { anims[+inp.dataset.i].duration_s = Math.max(0.5, +inp.value || 5); };
   });
-  host.querySelectorAll(".anim-thumb").forEach((th) => {
-    const v = th.querySelector("video");
-    if (!v) return;
-    th.onclick = () => {
-      if (v.paused) {
-        v.currentTime = 0;
-        v.playbackRate = anims[+th.dataset.i].speed || 1;
-        v.play(); th.classList.add("playing");
-        v.onended = () => th.classList.remove("playing");
-      } else { v.pause(); th.classList.remove("playing"); }
-    };
-  });
   host.querySelectorAll(".anim-remove").forEach((btn) => {
     btn.onclick = async () => {
       const i = +btn.dataset.i;
@@ -230,6 +264,7 @@ function renderAnimations() {
       if (!confirm(`Remove "${a.title || a.file.split("/").pop()}"? This deletes the clip file.`)) return;
       try { await api("POST", "/api/anim/delete", { file: a.file }); }
       catch (e) { toast("Delete failed: " + e.message); return; }
+      stopStagePlayback();
       anims.splice(i, 1);
       // Drop dangling picks so cards / stances fall back to their defaults.
       const gone = a.id;
@@ -247,15 +282,17 @@ function renderAnimations() {
 }
 
 function openAnimations() {
+  refreshStagePortrait();
   renderAnimations();
   $("#anim-overlay").classList.remove("hidden");
 }
 function closeAnimations() {
-  document.querySelectorAll("#anim-list video").forEach((v) => v.pause());
+  stopStagePlayback();
   $("#anim-overlay").classList.add("hidden");
 }
 
-// The slot the file picker was opened for: {trigger, alternate}.
+// The slot the file picker was opened for: {trigger, alternate} for a new
+// clip, or {replace: index} to swap the file under an existing entry.
 let pendingAnim = null;
 
 function startAnimUpload(slot) {
@@ -290,18 +327,28 @@ function bindAnimationUpload() {
       try {
         const res = await api("POST", "/api/anim/upload",
           { character: state.character.name, filename: file.name, data: reader.result });
-        animList().push({
-          id: "anim_" + Math.random().toString(36).slice(2, 10),
-          // A slotted default is named by its action; an alternate by its file.
-          title: slot.alternate
-            ? file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ")
-            : (ANIM_TRIGGER_LABEL[slot.trigger] || slot.trigger),
-          file: res.file, trigger: slot.trigger, alternate: slot.alternate,
-          speed: 1.0, duration_s: 5.0, impact_s: 1.5,
-        });
+        const old = slot.replace != null ? animList()[slot.replace] : null;
+        if (old) {
+          // Swap the file under the existing entry: the id (and with it every
+          // card / stance pick) survives; the replaced clip file is deleted.
+          const prev = old.file;
+          old.file = res.file;
+          try { await api("POST", "/api/anim/delete", { file: prev }); } catch (e) { /* orphan is harmless */ }
+        } else {
+          animList().push({
+            id: "anim_" + Math.random().toString(36).slice(2, 10),
+            // A slotted default is named by its action; an alternate by its file.
+            title: slot.alternate
+              ? file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ")
+              : (ANIM_TRIGGER_LABEL[slot.trigger] || slot.trigger),
+            file: res.file, trigger: slot.trigger, alternate: slot.alternate,
+            speed: 1.0, duration_s: 5.0, impact_s: 1.5,
+          });
+        }
         status.hidden = true;
+        stopStagePlayback();
         renderAnimations();
-        toast(`Added ${file.name} (${(res.bytes / 1048576).toFixed(1)} MB)`);
+        toast(`${old ? "Replaced with" : "Added"} ${file.name} (${(res.bytes / 1048576).toFixed(1)} MB)`);
       } catch (e) {
         status.hidden = true;
         toast("Upload failed: " + e.message);
@@ -314,8 +361,9 @@ function bindAnimationUpload() {
 // The <select> for picking a clip on a card / stance attack: "Default" + every
 // clip (alternates tagged). `current` is the picked id or null.
 function animSelectHtml(cls, dataAttrs, current, defaultLabel) {
+  // A default is labelled by its action; an alternate stands on its custom name.
   const opts = animList().map((a) =>
-    `<option value="${escapeAttr(a.id)}" ${current === a.id ? "selected" : ""}>${escapeHtml(a.title || a.file.split("/").pop())} — ${ANIM_TRIGGER_LABEL[a.trigger] || a.trigger}${a.alternate ? " (alternate)" : ""}</option>`);
+    `<option value="${escapeAttr(a.id)}" ${current === a.id ? "selected" : ""}>${escapeHtml(a.title || a.file.split("/").pop())}${a.alternate ? " (alternate)" : ` — ${ANIM_TRIGGER_LABEL[a.trigger] || a.trigger}`}</option>`);
   return `<select class="${cls}" ${dataAttrs}>
       <option value="" ${!current ? "selected" : ""}>${escapeHtml(defaultLabel)}</option>${opts.join("")}</select>`;
 }
