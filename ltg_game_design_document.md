@@ -93,21 +93,26 @@ A character's deck is its **loadout**: a **40-card singleton library** (no dupli
 Each card carries: a reflavoured **name** and its **source** name; a **mana cost** (coloured); a **timing** (`instant` / `sorcery` / `channeled`); a **rarity**; a **level** (its mana value, used by level-gated effects); a **type** (player cards are always `spell`); and its **effects** (the LTG effect JSON, §11).
 
 ### 4.6 Actions, reactions, and what a character can do
-**An action** is something a character does proactively on its own turn; taking it spends the character's single **proactive action** for that turn. **A reaction** is something a character does in response to another action, outside the normal flow of its turn; reactions are **free** (they don't spend the proactive action) and are limited only by mana.
+> **Amended by Update 23 §D23-1/§D23-2 (2026-09-05).** The single "proactive action" is
+> replaced by TWO TURN GROUPS, and three keywords now FREE one verb each. Where this
+> section and §D23-1/2 disagree, §D23-1/2 wins.
+
+**An action** is something a character does proactively on its own turn. **A reaction** is something a character does in response to another action, outside the normal flow of its turn; reactions are **free** (they never touch the turn) and are limited only by mana.
 
 **Every character has three free abilities, usable once per round each:**
 - an **offensive ability** — its **basic attack**, dealing damage equal to its Power (§4.7);
 - a **defensive action** — *Defend* (placeholder name; character/gear-flavoured later) — grants the character temporary HP;
 - a **defensive reaction** — *Parry* — reduces an incoming hit.
 
-**The proactive action.** On its turn, a character takes exactly **one** of:
-- **Attack** — make an attack (its basic attack, or an attack granted by a card); afterwards it may act only at instant speed;
-- **Cast** — cast `sorcery`-speed spells, limited only by mana; **no attack** this turn;
-- **Defend** — use its defensive action (temporary HP).
+**The turn (§D23-1).** A character's turn is EITHER one **turn-spending verb** OR **the pair**:
+- **Turn-spending verbs** — **Attack** (its basic attack, or an attack granted by a card), **Cast** (any sorcery-speed play; several sorceries may ride one Cast), **Skill**, **Ultimate**. Taking one of these *is* your turn.
+- **The pair** — **Defend** (temporary HP) and **Move** (reposition to any row). Either one, or both together, in either order, is also a full turn.
 
-**Free, any time (not the proactive action):** casting **instants** (limited only by mana) and using **reactions** (Parry, triggered responses). These may be done on the character's own turn or in response to others' actions, and never consume the proactive action.
+Per-verb limits still apply on top: one basic Attack, one Defend, one Move a turn; one Skill and one Ultimate an encounter.
 
-The **vigilance** keyword (§7) lifts the attack-vs-cast restriction, letting a character cast **and** attack in one turn.
+**Free, any time (never part of the turn):** casting **instants** (limited only by mana) and using **reactions** (Mitigate, triggered responses, Pass, Delay).
+
+**Keywords free one verb (§D23-2).** A freed verb does not count toward the turn, and after taking one the character may take **exactly one more verb**, from either group — never the whole pair. **Vigilance** frees the Attack; **Defender** frees the Defend (and never basic-attacks); **Haste** frees the Move.
 
 ### 4.7 Power and attacks
 A character's **Power** is its attack value: its basic attack deals damage equal to its Power. **Pump** effects (§4.9) add temporary Power, increasing that turn's attack. (Power = attack; there is no separate gear stat at this time.)
@@ -252,6 +257,8 @@ Behaviour is composed from a finite set: **Burst** (big single hit), **Evasive**
 ### 9.3 Enemy AI
 Each enemy **declares** its intent in the Enemy Intents step and **executes** it in the Enemy actions step (§4.2). Move selection is done by **deterministic code heuristics** (the *Slay the Spire* pattern) — **never** an LLM at runtime. This keeps the engine deterministic and hand-runnable.
 
+**Determinism without solvability (Update 23 §D23-6).** Rules merge into one priority list, evaluated first-match-wins. Ties **inside a priority band** are broken by a key seeded from the fight's `rng_seed`, the enemy id and the turn — so the same fight replays identically while two fights differ, and a kit is no longer solved the first time it is met. Priority bands still decide; only ties move. The **emergency band (10–19)** is exempt from the attack cadence, and a component's **cooldown is spent when its intent is DECLARED**, so stripping a telegraph buys the party one round rather than locking a one-trick body out of its only rule.
+
 ### 9.4 Minions vs bosses
 - **Minions** are **removable** — destroy/exile/bounce all work.
 - **Bosses** are "**player-class**": **immune to removal** (destroy/exile/bounce) until their execute window. You **can** still damage, attack, counter, debuff, tap, strip, and mill a boss — anything that affects it **in place** works; only effects that would **remove it from the board** are blocked. (Triage: *removes from board* → boss-immune; *affects in place* → works.)
@@ -309,9 +316,11 @@ The set is **extensible** but deliberately small. The engine implements one hand
 
 ## 13. Glossary
 
-- **Action** — something a character does proactively on its turn, spending its one proactive action.
-- **Reaction** — a free, mana-limited response made outside the normal turn flow; does not spend the proactive action.
-- **Active / reactive** — whether an action costs the proactive turn-action (active) or is a free response/auto-trigger (reactive).
+- **Action** — something a character does proactively on its turn, spending its turn (§4.6/§D23-1).
+- **Reaction** — a free, mana-limited response made outside the normal turn flow; never touches the turn.
+- **Active / reactive** — whether an action spends the turn (active) or is a free response/auto-trigger (reactive).
+- **Turn-spending verb / the pair** — the two turn groups (§D23-1): Attack, Cast, Skill, Ultimate each *are* your turn; Defend and Move go together and cost one turn between them.
+- **Freed verb** — a verb a keyword lifts out of the turn (§D23-2: vigilance → Attack, defender → Defend, haste → Move). Taking one buys exactly one more verb.
 - **Archetype** — Fighter / Tactician / Caster / Channeler; sets starting HP, hand, mana.
 - **Basic attack** — a character's free offensive ability, dealing damage equal to its Power.
 - **Boss** — a "player-class" enemy, immune to removal until its execute window.
@@ -320,7 +329,7 @@ The set is **extensible** but deliberately small. The engine implements one hand
 - **Channel / channeled** — a sustained enchantment effect held by a caster, paid by reserved mana.
 - **Counter** — a filtered effect that cancels a matching enemy action on the stack.
 - **Curve-up** — the automatic +1 mana capacity each turn from turn 2 onward.
-- **Defend** — the free defensive *action* (placeholder name); grants temporary HP; costs the proactive action.
+- **Defend** — the defensive *action* (placeholder name); grants temporary HP equal to base Power; half of the pair (§D23-1), and freed by `defender`.
 - **Effect / primitive** — a declarative mechanical verb (e.g. `deal_damage`); the unit cards are built from.
 - **Execute / execute window** — to remove an enemy outright; a boss is executable only at ≤25% max HP.
 - **Fizzle** — a targeted effect doing nothing because its target became illegal by resolution.

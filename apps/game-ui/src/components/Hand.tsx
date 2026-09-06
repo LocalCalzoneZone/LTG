@@ -3,7 +3,7 @@ import type { CardView } from "../lib/types";
 import type { Choices, Choice } from "../lib/choices";
 import { useGame } from "../lib/store";
 import { Pips } from "./Pips";
-import { IconSigil } from "./Icons";
+import { IconSigil, IconTurnMark } from "./Icons";
 
 export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | null }) {
   const select = useGame((s) => s.selectChoice);
@@ -54,6 +54,10 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
             card={card}
             playable={playable}
             active={active}
+            // §D23-9: a sorcery-speed card SPENDS THE TURN, so it wears the same
+            // mark as the action bar's left group. Instants carry none — they
+            // cost nothing but mana.
+            spendsTurn={playable && card.timing !== "instant"}
             justDrawn={justDrawn.has(i)}
             onClick={() => choice && select(choice)}
           />
@@ -63,10 +67,11 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
   );
 }
 
-export function HandCard({ card, playable, active, justDrawn, onClick }: {
+export function HandCard({ card, playable, active, spendsTurn, justDrawn, onClick }: {
   card: CardView;
   playable: boolean;
   active: boolean;
+  spendsTurn?: boolean;
   justDrawn?: boolean;
   onClick: () => void;
 }) {
@@ -108,8 +113,11 @@ export function HandCard({ card, playable, active, justDrawn, onClick }: {
       <div className="flex-1 overflow-hidden text-[clamp(8px,1.1vh,11px)] font-light leading-snug text-mist">
         {card.text}
       </div>
-      {/* Type */}
-      <div className="caps-label mt-0.5 text-right text-[clamp(7px,1vh,9px)] tracking-[0.18em] text-dimmed">
+      {/* Type — with §D23-9's turn mark when casting this card is your turn. */}
+      <div className="caps-label mt-0.5 flex items-center justify-end gap-1 text-[clamp(7px,1vh,9px)] tracking-[0.18em] text-dimmed">
+        {spendsTurn && (
+          <IconTurnMark size={7} className="text-brass/70" />
+        )}
         {card.timing}
       </div>
     </div>

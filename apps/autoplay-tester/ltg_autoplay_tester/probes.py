@@ -48,6 +48,12 @@ FILLER_CARD: Dict[str, Any] = {
 # read is ADVISORY context, not a gate: near the win-rate ceiling every delta
 # compresses and z under-fires (see the ceiling warning below). Recalibrate on
 # every policy-version bump.
+#
+# NOT recalibrated for greedy-1.5.0 (Update 23, 2026-09-06) — a deliberate call:
+# the harness is not believed to be producing trustworthy data in its current
+# form, so a fresh reference distribution would only re-anchor the band to noise.
+# The numbers below still date from greedy-1.2.0 / baseline-2. Treat card
+# verdicts as directional until the instrument itself is revisited.
 OVER_PP = 4.0
 UNDER_PP = -4.0
 OVER_Z = 2.0          # advisory: SDs above the deck's own distribution

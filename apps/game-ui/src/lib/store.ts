@@ -123,6 +123,8 @@ interface StoreState {
   sheetFor: string | null; // character sheet modal: a character id, or null
   seats: Record<string, string | null>;
   you: string[];
+  // §D23-8: the seats standing on "pass for the rest of this enemy phase".
+  passAllSeats: string[];
 
   focusedId: string | null;
   // Intents-window hover wiring (D8-1.5): hovering a line highlights the enemy
@@ -177,6 +179,8 @@ interface StoreState {
   // seats
   claim: (ids: string[]) => void;
   release: (ids: string[]) => void;
+  // §D23-8: set/clear Pass-All for named seats (per character, not per player).
+  setPassAll: (on: boolean, characterIds: string[]) => void;
 
   // adventures (Update 10): confirm one controlled character's level-up.
   confirmLevelUp: (characterId: string, build: Record<string, unknown>) => void;
@@ -216,6 +220,7 @@ export const useGame = create<StoreState>((set, get) => ({
   connected: false,
   snapshot: null,
   seats: {},
+  passAllSeats: [],
   you: [],
   focusedId: null,
   hoverIntent: null,
@@ -264,7 +269,7 @@ export const useGame = create<StoreState>((set, get) => ({
         set({ clientId: msg.client_id });
         break;
       case "seats":
-        set({ seats: msg.seats, you: msg.you });
+        set({ seats: msg.seats, you: msg.you, passAllSeats: msg.pass_all ?? [] });
         get()._recomputeFocus();
         break;
       case "state": {
@@ -445,6 +450,8 @@ export const useGame = create<StoreState>((set, get) => ({
   },
 
   claim: (ids) => get().socket?.send({ type: "claim_seat", character_ids: ids }),
+  setPassAll: (on, characterIds) =>
+    get().socket?.send({ type: "pass_all", on, character_ids: characterIds }),
   // Scenario Mode (Update 17): town verbs, the all-players confirmation, jobs.
   sendTown: (verb, payload) => get().socket?.send({ type: "town", verb, payload: payload ?? {} }),
   answerConfirm: (id, yes) => get().socket?.send({ type: "confirm", id, yes }),

@@ -65,6 +65,27 @@ def test_malformed_card_rejected_missing_required_field():
         Card.model_validate(data)
 
 
+# --------------------------------------------------------------------------- #
+# §D23-7.4 — an unknown value reference is rejected at AUTHORING
+# --------------------------------------------------------------------------- #
+def test_unknown_value_reference_is_rejected_at_authoring():
+    """It used to validate cleanly and raise ValueError mid-resolution, taking
+    the encounter down with it. A typo now fails the card at the door."""
+    data = json.loads((EXAMPLES / "giant_growth.json").read_text())
+    data["effects"][0]["power"] = {"ref": "caster_powr"}
+    with pytest.raises(ValidationError):
+        Card.model_validate(data)
+
+
+def test_known_and_stored_value_references_are_accepted():
+    from ltg_core.schema import REF_VALUES, Ref
+    for name in REF_VALUES:
+        assert Ref(ref=name).ref == name
+    assert Ref(ref="$R1").ref == "$R1"        # a set_reference on the same card
+    with pytest.raises(ValidationError):
+        Ref(ref="$")                          # …but it must name something
+
+
 def test_character_colors_count_enforced():
     with pytest.raises(ValidationError):
         Loadout.model_validate(

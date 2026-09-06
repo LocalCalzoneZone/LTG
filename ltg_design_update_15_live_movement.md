@@ -37,6 +37,12 @@ Enemies and ally tokens use the same live model. An enemy **Move intent** (Advan
 
 ## L-3. The intent re-check: dodging is interposition  *(replaces Update 02 §M-B.2)*
 
+> **Scope widened by Update 23 §D23-4 (2026-09-05).** Interposition now also covers a
+> **melee, single-target COMBAT ABILITY** (the §M-A.7 derived class: an ability whose verbs
+> deal damage) from a ground, non-relentless attacker — the interposer eats the damage
+> *and its riders*. Ranged intents, flying attackers, positional (row-aimed) intents and
+> non-damage abilities still never redirect, exactly as below.
+
 Intents remain **nominal** — declared against an individual, telegraphed by name ("Grukk will strike Soren for 6") — but they are no longer locked. One canonical routine, `recheck_intents`, runs **after every occupancy change**: any resolved move (voluntary, action-bound, or enemy), any forced-movement effect (push/pull spells now bend intents — a real buff to those cards), and any death. The last board state before the intent executes governs.
 
 ### L-3.1 The redirect rule (nominal melee)
@@ -79,7 +85,14 @@ A new intent class alongside nominal intents. A **positional intent** targets a 
 ## L-6. Keyword errata
 
 ### L-6.1 Haste — full strength, repriced  *(replaces Update 02 §M-C)*
-Haste grants the proactive action **plus a free voluntary move**, per §L-2.2: **live**, own turn, stack empty, never while your own action is unresolved. The clause "haste does not enable dodging" is repealed — a hasted character genuinely acts *and* is genuinely somewhere else: strike from the front and fall back; dodge a melee intent onto the wall **and** still attack; reposition into Mitigate adjacency after casting. Haste is the action-economy sister of vigilance on the movement axis, and now pulls its weight. **Cost: 15 → 20 points** (T5 table and any mirrors), vigilance territory; revisit with autoplay data.
+> **Superseded in part by Update 23 §D23-2 (2026-09-05).** Haste now **frees the Move**
+> under the turn-group model: the step sits outside the turn, and after taking it the
+> character may take exactly one more verb (Attack / Cast / Defend / Skill / Ultimate).
+> **Price: 20 → 15 points** — under turn groups the Move is half of the pair rather than a
+> whole turn, so freeing it is worth strictly less than freeing the Attack (vigilance keeps
+> its 20). The timing rules below are unchanged.
+
+Haste grants a **free voluntary move**, per §L-2.2: **live**, own turn, stack empty, never while your own action is unresolved. The clause "haste does not enable dodging" is repealed — a hasted character genuinely acts *and* is genuinely somewhere else: strike from the front and fall back; dodge a melee intent onto the wall **and** still attack; reposition into Mitigate adjacency after casting.
 
 ### L-6.2 `relentless` — new enemy keyword
 *"This enemy's nominal intents never redirect: they pursue the declared target wherever it stands (the intent fizzles only if the target dies)."* The old locked-promise dread, reintroduced deliberately as a boss/elite signature — expressible only because the default became dodgeable. Enemy-only. Priced with the §D4 component tables at implementation.

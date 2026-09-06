@@ -129,6 +129,13 @@ Player-side charge does not exist; the **ultimate gauge** (§D8-3.3) is the play
 
 ## D8-3. Heroic actions: Skill and Ultimate
 
+> **Amended by Update 23 §D23-1 (2026-09-05).** Both the Skill and the Ultimate are
+> ordinary **turn-spending verbs**: taking either is your turn, and a keyword-FREED verb
+> (a vigilant swing, a defender's shield, a hasted step) buys one alongside — in either
+> order. The old rule "**the Ultimate opens the turn or not at all**" is **repealed**; it
+> punished a tank for raising its free shield first. (Update 11 already amended §D8-3.1's
+> "instant speed" to active speed, main phase only.)
+
 Every player-character gains two authored abilities beyond the evergreen three. Both are defined in the **Deckbuilder's character editor using the card schema** — the same effect editor, targets, modal/conditional containers, and validation a library card gets — with a name and flavour text. They are **not** library cards: they live on the character sheet, are never drawn, do not count toward the 20-card deck, rarity quotas, or the singleton rule.
 
 ### D8-3.1 Skill

@@ -14,7 +14,10 @@ def _enemy(eid, name, hp, row="front", mode="melee", amount=2):
                        "intent_type": "attack", "targeting": "lowest_hp_party", "mode": mode}}
 
 
-def _hero(mode="melee", row="front", hp=20, keywords=None, name="Hero", level=1, hand=None):
+def _hero(mode="melee", row=None, hp=20, keywords=None, name="Hero", level=1, hand=None):
+    # §D23-3: a ranged hero cannot fire from the Front row, so a ranged fixture
+    # that does not say where it stands stands in Mid — where an archer belongs.
+    row = row or ("mid" if mode == "ranged" else "front")
     return {"id": name.lower(), "name": name, "archetype": "Fighter", "hp": hp, "power": 3,
             "hand_size": len(hand or []), "identity": ["W", "U", "B", "R", "G"],
             "attack_mode": mode, "row": row, "level": level, "library": hand or [],

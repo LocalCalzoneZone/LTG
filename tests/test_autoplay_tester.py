@@ -221,7 +221,7 @@ def test_card_probe_flags_the_broken_card_and_is_deterministic(soren):
     # A 9-damage 1-mana nuke shifts the duel's breaking point several rungs.
     assert v1["flag"] == "OVER"
     assert v1["marginal"]["delta_pp"] > probes.OVER_PP
-    assert v1["policy_version"] == "greedy-1.4.0"
+    assert v1["policy_version"] == "greedy-1.5.0"
     assert v1["screening_only"] is True      # quick-tier preset
     assert [r["lever"] for r in v1["ladder"]][:2] == [
         "cost +1 generic", "cost +2 generic"]

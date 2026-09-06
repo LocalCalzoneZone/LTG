@@ -16,9 +16,16 @@ import asyncio
 import random
 import secrets
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from ltg_combat.engine import apply_action, auto_pass_action, legal_actions
+from ltg_combat.engine import (
+    apply_action,
+    auto_pass_action,
+    legal_actions,
+    pass_all_action,
+    settle,
+)
+from ltg_combat.serialize import phase_step
 from ltg_combat.state import GameState
 
 from .adventure import AdventureRun
@@ -118,6 +125,16 @@ class Session:
             self.seats = {cid: None for cid in scenario.character_ids}
         else:
             self.seats = {}
+        # §D23-8 — PASS-ALL, PER CHARACTER and PER PHASE (both playtest calls:
+        # not per player — a solo player holding the party still wants their tank
+        # in every window while the empty-handed archer sits the phase out; and
+        # scoped to whichever phase you press it in, not the enemy phase
+        # specifically). Maps a seat id to the (turn, phase) it was set in: that
+        # seat's windows are answered automatically until the phase turns over,
+        # which clears its entry. Press it on your turn and you are not asked
+        # again until the allies phase; press it in the enemy phase and you are
+        # not asked again until the round ends.
+        self.pass_all: Dict[str, Tuple[int, str]] = {}
         # Smart auto-pass (D8-4) runs from the first snapshot: a character with
         # nothing meaningful to do at the opening window is passed for, silently.
         if self.state is not None:
@@ -166,7 +183,70 @@ class Session:
         return {
             "seats": dict(self.seats),
             "you": sorted(self.controlled_by(client_id)),
+            # §D23-8: which seats are standing "pass for the rest of this step".
+            # Filtered at READ time, not just when the drain gets round to
+            # expiring them: the drain can finish its last iteration and return
+            # without another broadcast, which would leave the toggle lit on a
+            # flag the server has already stopped honouring.
+            "pass_all": sorted(self._live_pass_all()),
         }
+
+    def set_pass_all(self, client_id: str, on: bool,
+                     character_ids: Optional[List[str]] = None) -> None:
+        """§D23-8: set (or clear) Pass-All for named seats. The client names ONE
+        character (the toggle is per character); omitting `character_ids` covers
+        every seat this client controls, which is what a scripted/test caller
+        wants. Every named seat must be one this client controls."""
+        owned = self.controlled_by(client_id)
+        targets = set(character_ids) if character_ids else set(owned)
+        if not targets or not targets <= owned:
+            raise ValueError("you do not control that character")
+        # The SETTLED phase, not the stored one: the stored state lags a step
+        # behind, so reading it would stamp the flag with the phase the player
+        # has already left and expire it immediately.
+        here = self._phase_now()
+        for cid in targets:
+            if on:
+                self.pass_all[cid] = here
+            else:
+                self.pass_all.pop(cid, None)
+
+    def _live_pass_all(self) -> Dict[str, Tuple[int, str]]:
+        """The Pass-All flags still in force: those set in the step the game is
+        actually in. A flag never outlives its step, so this is what both the
+        toggle and the auto-pass read."""
+        if not self.pass_all:
+            return {}
+        here = self._phase_now()
+        return {cid: when for cid, when in self.pass_all.items() if when == here}
+
+    def _phase_now(self) -> Tuple[int, str]:
+        """The (turn, STEP) the game is actually in — read off the SETTLED view,
+        because the stored state lags a step behind it. The turn-tracker STEP,
+        not the raw engine phase, so the span a Pass-All covers is the one the
+        player was shown: the four upkeep phases are one step to them."""
+        if self.state is None:
+            return (0, "")
+        view = settle(self.state)
+        return (view.turn, phase_step(view))
+
+    def _pass_all_step(self) -> bool:
+        """§D23-8: answer one flagged seat's window, or drop the flags whose
+        phase has turned over. True when a Pass was submitted."""
+        if self.state is None or not self.pass_all:
+            return False
+        # EXPIRE FIRST. A standing "no" covers exactly the step it was set in,
+        # so the moment the step turns over it goes — checking this before acting
+        # is what stops a flag set in the Enemies step from silently eating the
+        # next step's first window.
+        self.pass_all = self._live_pass_all()
+        if not self.pass_all:
+            return False
+        action = pass_all_action(self.state, set(self.pass_all))
+        if action is None:
+            return False
+        self.state, _events = apply_action(self.state, action)
+        return True
 
     # -- actions (authority) ------------------------------------------------- #
     def apply_index(self, client_id: str, index: int,
@@ -220,6 +300,8 @@ class Session:
         if self.state is None:
             return
         for _ in range(_AUTO_CAP):
+            if self._pass_all_step():      # §D23-8: a standing "no" answers first
+                continue
             action = auto_pass_action(self.state)
             if action is None:
                 break
@@ -260,7 +342,20 @@ class Session:
             async with self.lock():
                 if self.state is None:
                     return
-                pending = auto_pass_action(self.state)
+                # §D23-8: a seat standing on Pass-All answers before anything is
+                # asked of the player, and its Pass is paced like any other step.
+                if self._pass_all_step():
+                    if self.adventure is not None:
+                        self.adventure.on_state_change(self.state)
+                        self._run_hooks()
+                    paced = True
+                else:
+                    paced = False
+                    pending = auto_pass_action(self.state)
+            if paced:
+                await broadcast(self)
+                await asyncio.sleep(PACE_STEP_S)
+                continue
             if pending is None:
                 return
             if pending.kind == "settle":

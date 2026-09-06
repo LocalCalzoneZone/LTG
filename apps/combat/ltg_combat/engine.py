@@ -30,6 +30,7 @@ import copy
 import itertools
 import math
 import random
+import zlib
 from typing import List, Optional, Tuple
 
 from ltg_core.schema import (
@@ -288,14 +289,18 @@ def _begin_turn(st: GameState) -> None:
     for e in st.living_enemies():
         e.hurt_this_round = False   # `neglect` bookkeeping (§boss pressure)
         # Timed enrage: the boss will not wait to be bloodied — at the start of
-        # `enrage_round`, fury boils over unbidden (same hard reset; the Enrage
-        # component fires as the usual on_enrage reaction in the next window).
+        # `enrage_round` (counted from ITS arrival, §D23-5), fury boils over
+        # unbidden. §D23-5 also makes it a ONE-BEAT event: the Enrage component
+        # lands in the same beat as the announcement instead of waiting for the
+        # next unrelated resolution to open an on_enrage window — the fury and
+        # the blow were arriving several actions apart, which read as a bug.
         if (e.is_boss and not e.enraged and e.enrage_round is not None
-                and st.turn >= e.enrage_round):
+                and _own_turn(st, e) >= e.enrage_round):
             _enrage_boss(e)
             _log(st, "enrage",
                  f"{e.name}'s fury boils over — it will not wait to be bloodied!",
                  enemy=e.id, timed=True, turn=st.turn)
+            _fire_timed_enrage(st, e)
     for c in st.party:
         c.capacity_chosen = False
     for pending in list(st.pending_ramp):
@@ -680,6 +685,10 @@ def _deploy_reserve(st: GameState, eid: str) -> Optional[str]:
         return None
     e.reserve = False
     e.row = e.home_row
+    # §D23-5: a late arrival counts its own fuses from here. A boss deployed on
+    # turn 6 with `enrage_round: 3` used to walk in already enraged, and one with
+    # `neglect` swelled at the end of the very round it appeared.
+    e.deployed_turn = st.turn
     return e.name
 
 
@@ -856,10 +865,9 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     if not double or e.round_intent_status != "declared":
         _consume_pending_strips(st, e)
         return
-    # Slot 2: spend slot 1's component cooldown NOW so it can't be picked twice,
-    # then run the whole pass again and file the result in the second slot.
-    if e.intent is not None and e.intent.source_component is not None:
-        _start_cooldown(st, e, e.intent.source_component)
+    # Slot 2: slot 1's component already spent its cooldown at declaration
+    # (§D23-6), so it cannot be picked twice — run the whole pass again and file
+    # the result in the second slot.
     first = (e.intent, e.round_intent, e.round_intent_status, e.round_intent_reveal)
     # Slot 2 never forces the swing — slot 1 already satisfied the cadence, and
     # two identical sword swings a round is the drum-beat §F-9 warns about.
@@ -871,8 +879,6 @@ def _declare_enemy_intent(st: GameState, e: EnemyState) -> None:
     e.round_intent2_reveal = e.round_intent_reveal
     (e.intent, e.round_intent,
      e.round_intent_status, e.round_intent_reveal) = first
-    if e.intent2 is not None and e.intent2.source_component is not None:
-        _start_cooldown(st, e, e.intent2.source_component)
     _consume_pending_strips(st, e)
 
 
@@ -906,15 +912,27 @@ def _pick_enemy_intent(st: GameState, e: EnemyState, swing: Optional[int] = None
 
     §D18-3: `force_swing` skips the component list outright (the cadence is due),
     and `swing` lets each rule be measured against the basic attack — a pure
-    damage rule that cannot beat the sword is passed over so the sword lands."""
-    if force_swing:
-        _declare_default_attack(st, e)
-        return
-    for comp in _proactive_rules(e):
+    damage rule that cannot beat the sword is passed over so the sword lands.
+
+    §D23-6 carves the EMERGENCY BAND out of that force: priority 10-19 is where
+    an author puts "if this is happening, drop everything" — the heal at 20% HP,
+    the panic summon — and the cadence was overriding exactly those. When the
+    cadence is due, an eligible emergency rule still goes first; only if none is
+    ready does the forced swing land."""
+    lo, hi = EMERGENCY_BAND
+    for comp in _proactive_rules(st, e):
+        if force_swing and not (lo <= comp.priority < hi):
+            continue   # cadence due: only an emergency rule outranks the sword
         if _outclassed_by_the_sword(comp, swing):
             continue
         intent = _try_declare_component(st, e, comp)
         if intent is not None:
+            # §D23-6: THE COOLDOWN IS SPENT ON DECLARATION, for every slot and
+            # every enemy. It used to start at execution, so a STRIPPED intent
+            # cost the enemy nothing and it re-declared the same rule next round
+            # — strip was a lock on a one-trick body rather than a one-round
+            # answer. Telegraphing the rule is the commitment.
+            _start_cooldown(st, e, comp.id)
             e.intent = intent
             e.round_intent = intent
             e.round_intent_status = "declared"
@@ -928,9 +946,13 @@ def _pick_enemy_intent(st: GameState, e: EnemyState, swing: Optional[int] = None
 
 
 def _declare_default_attack(st: GameState, e: EnemyState) -> None:
-    """The terminal priority-90 rule: the basic attack. Pacified (`prevent attack`) or
-    with no reachable target, the enemy declares nothing (Move-toward-reach is added in
-    §F-7.3)."""
+    """The terminal priority-90 rule: the basic attack.
+
+    Pacified (`prevent attack`), or with nothing in reach, the enemy declares
+    nothing — with one exception (§D23-3): a RANGED-primary enemy standing in the
+    Front row has no legal shot from there, so it declares a Move back to Mid.
+    That replaces the vestigial §F-7.3 "Advance" (a melee enemy already reaches
+    the front-most occupied row from anywhere, so it never fired)."""
     tmpl = e.intent_template
     if tmpl.get("intent_type", "attack") == "attack" and _prevented_action(e, "attack"):
         e.intent = None
@@ -947,6 +969,11 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
         name = tmpl.get("name", f"{e.name} Attack")
         kind = "attack" if tmpl.get("intent_type", "attack") == "attack" \
             else tmpl.get("action_type", "ability")
+        # §D23-3: a row-aimed RANGED volley is an attack like any other — it
+        # cannot be loosed from the Front row either.
+        if tmpl.get("mode", e.attack_mode) == "ranged" and e.row == "front":
+            _fall_back_or_idle(st, e)
+            return
         effects = [DealDamage(amount=base, target=t_row("ally", row))]
         e.intent = Intent(name=name, action_type=kind,
                           effects=effects,
@@ -961,19 +988,12 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
         return
     target, mode, amount, name = _choose_enemy_attack(st, e)
     if target is None:
-        dest = _move_toward_reach(st, e)  # §F-7.3: step toward reach instead of idling
-        if dest is not None:
-            e.intent = _move_intent("Advance", dest, None)
-            e.round_intent = e.intent
-            e.round_intent_status = "declared"
-            _log(st, "intent_declared", f"{e.name} advances toward {dest} (no target in reach).",
-                 enemy=e.id, intent="Advance", destination=dest)
-            return
-        e.intent = None
-        _log(st, "no_target", f"{e.name} has no reachable target and declares nothing.",
-             enemy=e.id)
+        _fall_back_or_idle(st, e)
         return
-    e.attack_mode = mode  # the chosen attack carries onto the stack (R-1) and the panel
+    # §D23-7.7: the chosen mode rides on the INTENT only. It used to be written
+    # back onto `e.attack_mode`, so one melee enemy forced onto its ranged
+    # fallback became permanently ranged — rewriting its reach for every later
+    # component pick and every reachability test.
     effects = [DealDamage(amount=amount, target=t_chosen("ally", targeted=True))]
     # An attack-type intent lands on the stack as an `attack` (so combat_damage
     # prevention and ability/attack counters answer it — R-1/R-11).
@@ -995,12 +1015,28 @@ def _declare_default_attack(st: GameState, e: EnemyState) -> None:
 # --------------------------------------------------------------------------- #
 # Components: the merged priority list (Design Update 04 §F-3 / §F-7)
 # --------------------------------------------------------------------------- #
-def _proactive_rules(e: EnemyState) -> List[Component]:
-    """The enemy's proactive components in evaluation order: priority ascending, ties
-    broken by authoring order (§F-7.1). `sorted` is stable, so a priority-only key keeps
-    authoring order within a band."""
+def _seeded_key(st: GameState, e: EnemyState, comp_id: str) -> int:
+    """§D23-6: a stable pseudo-random ordering key for one component, this enemy,
+    this turn. Derived from the fight's `rng_seed`, so the SAME fight replays
+    identically (an unseeded scenario stays fully deterministic on 0), while two
+    different fights order the same kit differently."""
+    return zlib.crc32(("%s|%s|%s|%s" % (st.rng_seed or 0, e.id, st.turn, comp_id))
+                      .encode("utf-8"))
+
+
+def _proactive_rules(st: GameState, e: EnemyState) -> List[Component]:
+    """The enemy's proactive components in evaluation order: priority ascending
+    (§F-7.1), ties broken by a SEEDED key rather than authoring order (§D23-6).
+
+    Authoring order made a kit solvable in one fight: the same enemy, at the same
+    priority band, always reached for the same rule, so a player who had met it
+    once knew its whole turn. Ordering ties by the fight's seed keeps a fight
+    perfectly reproducible while making two fights differ — and it varies per
+    turn, so the same band does not lock onto one rule for the whole encounter.
+    Bands still decide: priority is a designer's statement of intent, and only
+    ties inside a band move."""
     return sorted([c for c in e.components if c.timing == "proactive"],
-                  key=lambda c: c.priority)
+                  key=lambda c: (c.priority, _seeded_key(st, e, c.id)))
 
 
 def _cooldown_ready(st: GameState, e: EnemyState, comp: Component) -> bool:
@@ -1058,6 +1094,31 @@ def _condition_met(st: GameState, e: EnemyState, cond: dict) -> bool:
         # §D12-2.2: how many heroes hold a live amplify/double_next tag.
         lhs = len([c for c in st.living_party()
                    if c.amplify_tags or c.double_next])
+    elif kind == "hero_in_row":
+        # §D23-6: how many living heroes stand in `row` — the gate that lets a
+        # kit answer POSITION ("the cleaver winds up once two of you crowd the
+        # front line") instead of only reading HP bars.
+        row = cond.get("row", "front")
+        lhs = len([c for c in st.living_party() if c.row == row])
+    elif kind == "hero_hp_pct":
+        # §D23-6: the LOWEST hero HP fraction in the party — "someone is nearly
+        # down". Written with op "<=" it arms an executioner; the whole party
+        # being healthy reads as 100.
+        fracs = [100.0 * c.effective_hp / c.max_hp for c in st.living_party()
+                 if c.max_hp]
+        lhs = min(fracs) if fracs else 100.0
+    elif kind == "corpse_count":
+        # §D23-6: bodies on the field (§D19-1 fuel) — a necromancer's rule can
+        # wait until the harvest is worth it.
+        lhs = len(st.corpses)
+    elif kind == "turn_mod":
+        # §D23-6: turn parity / every-Nth-turn rotation. {"kind": "turn_mod",
+        # "mod": 3, "value": 0} fires on turns 3, 6, 9… — a windup that reads as
+        # a rhythm rather than a cooldown the party can only infer. The default
+        # op is "==" here: ">=" against a remainder means nothing.
+        mod = max(1, int(cond.get("mod", 2)))
+        lhs = st.turn % mod
+        op = cond.get("op", "==")
     else:
         return False
     return _cmp(lhs, op, val)
@@ -1101,6 +1162,12 @@ def _corpse_for(st: GameState, e: EnemyState):
                                         _row_rank(c.row), c.level, c.name))[0]
 
 
+def _slug_tag(tag: str) -> str:
+    """§D21 tags are stored slugged and lower-case; a grudge written "Cleric" in
+    an authored rule must still find a hero tagged "cleric"."""
+    return str(tag or "").strip().lower().replace(" ", "_")
+
+
 def _component_target(st: GameState, e: EnemyState, comp: Component):
     """Resolve a component's `target_rule` to a concrete combatant (§F-3 / §F-7.2), or
     None when it wants a target it can't find (so the rule is skipped, first-match-wins).
@@ -1126,7 +1193,9 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
     if rule == "corpse":
         return _corpse_for(st, e)
     if rule == "channeling_player":
-        return _lowest_hp([c for c in st.living_party() if c.channels])
+        # §D23-7.7: reach applies here like everywhere else — a melee enemy
+        # cannot reach past the wall to interrupt a channeler in the Rear row.
+        return _lowest_hp([c for c in _pickable(st, e, comp) if c.channels])
     if rule == "highest_threat":
         # The assassin's read: the hardest-hitting reachable hero (ties: casters
         # and ranged before melee, then the most wounded).
@@ -1146,9 +1215,27 @@ def _component_target(st: GameState, e: EnemyState, comp: Component):
                                                  c.effective_hp, _row_rank(c.row),
                                                  c.name))[0]
         return _valuation_target(st, e, comp)
+    if rule.startswith("hero_class:") or rule.startswith("hero_type:"):
+        # §D23-6 — GRUDGES. "The undead hunt the cleric": a kit that names a
+        # ROLE rather than a body, so generation can write a rivalry that holds
+        # whoever is in the seat. Reachable heroes with the tag, lowest HP first;
+        # nobody in the party wearing it falls through to plain valuation, so a
+        # grudge never turns a rule into a dead slot.
+        field, wanted = rule.split(":", 1)
+        attr = "classes" if field == "hero_class" else "types"
+        wanted = _slug_tag(wanted)
+        marked = [c for c in _pickable(st, e, comp)
+                  if wanted in [_slug_tag(t) for t in (getattr(c, attr, None) or [])]]
+        return _lowest_hp(marked) if marked else _valuation_target(st, e, comp)
     if rule == "valuation":
         return _valuation_target(st, e, comp)
-    return st.combatant(rule)  # a fixed combatant id
+    # A fixed combatant id. A HERO named this way is still subject to reach
+    # (§D23-7.7) — an authored grudge names whom to hunt, not a licence to reach
+    # through the front line; an enemy-side id (buff/heal a named ally) is not.
+    fixed = st.combatant(rule)
+    if isinstance(fixed, CharacterState) and fixed not in _pickable(st, e, comp):
+        return None
+    return fixed
 
 
 def _component_damage(comp: Component) -> int:
@@ -1340,6 +1427,12 @@ def _rank_valuation(cands: List, dmg: int):
 # was being thrown away by enemies that never used it.
 ATTACK_CADENCE = 2
 
+# §D23-6: the priority band an author reserves for "drop everything" rules — the
+# emergency heal at 20% HP, the panic summon, the interrupt. The §D18-3 attack
+# cadence never forces the sword over one of these. Bounds are the authoring
+# convention already in use: 10-19 is the emergency band, 20+ the ordinary kit.
+EMERGENCY_BAND = (10, 20)
+
 # Damage-ish verbs — what makes an intent land as a real blow rather than a
 # gesture. Read by the taunt rule and by the outclass test.
 _DAMAGE_KINDS = frozenset({"deal_damage", "lose_life", "drain"})
@@ -1351,9 +1444,12 @@ def _taunt_with_teeth(e: EnemyState, verbs):
     Playtest: a taunt-only intent reads as a SKIPPED turn — the sword is pointed
     somewhere, no number moves, and a whole enemy activation evaporates. A verb
     list that grabs a hero (`taunt`) without hitting one now gains a blow first:
-    `deal_damage` for the enemy's CURRENT Power, aimed at the same body the
-    taunt drags. Current (not base) Power, so the balance register and any
-    stacked counters are all in the swing.
+    `deal_damage` for the enemy's Power, aimed at the same body the taunt drags.
+
+    §D23-7.5: the bite carries a `caster_power` REF rather than a number frozen
+    at declaration, so — exactly like a basic swing (R-7) — it re-reads the
+    taunter's current Power when the intent EXECUTES: a wound landed after the
+    telegraph blunts it, an anthem sharpens it.
 
     Generated content is held to the same rule at authoring time
     (`llm._design_problems`); this covers everything already shipped."""
@@ -1361,7 +1457,7 @@ def _taunt_with_teeth(e: EnemyState, verbs):
     if "taunt" not in kinds or any(k in _DAMAGE_KINDS for k in kinds):
         return list(verbs)
     grab = next(v for v in verbs if getattr(v, "kind", None) == "taunt")
-    bite = DealDamage(amount=max(1, e.current_power), target=grab.target)
+    bite = DealDamage(amount=Ref(ref="caster_power"), target=grab.target)
     return [bite] + list(verbs)
 
 
@@ -1588,6 +1684,10 @@ def _try_declare_component(st: GameState, e: EnemyState, comp: Component) -> Opt
     return Intent(name=name, action_type=kind, effects=verbs,
                   target_id=(target.id if target is not None else None),
                   corpse_id=corpse_id, source_component=comp.id,
+                  # §D23-4: an enemy has one body, so its ability swings the way
+                  # the creature does — the wall reads this to know whether it
+                  # can be interposed on.
+                  attack_mode=e.attack_mode,
                   # A channelled component deals nothing as its intent resolves —
                   # it starts a held channel — so it is never a Combat Ability.
                   combat_ability=(not comp.channel
@@ -1611,26 +1711,50 @@ def _reposition_row(st: GameState, e: EnemyState, comp: Component) -> Optional[s
     return e.home_row if e.home_row != e.row else None
 
 
-def _move_toward_reach(st: GameState, e: EnemyState) -> Optional[str]:
-    """The row a stranded enemy steps to when nothing is reachable (§F-7.3): toward the
-    front-most row a living player occupies, one step at a time is unnecessary here —
-    it commits to that row and the reach check re-runs next turn. None if no players."""
-    party = st.living_party()
-    if not party:
-        return None
-    front = min(_row_rank(c.row) for c in party)
-    dest = next((r for r, rank in _ROW_RANK.items() if rank == front), "front")
-    return dest if dest != e.row else None
+def _fall_back_or_idle(st: GameState, e: EnemyState) -> None:
+    """§D23-3: what an enemy does when its basic attack has nothing to hit.
+
+    A RANGED-primary enemy standing in Front is there by accident — a forced
+    move, a rout — and cannot shoot from the melee line, so it spends the turn
+    getting back to Mid. That step is the punishment landing: a whole enemy
+    activation bought by one shove. Anything else (a melee enemy walled off by an
+    all-flying line, say) declares nothing, as it always did."""
+    if e.attack_mode == "ranged" and e.row == "front":
+        e.intent = _move_intent("Fall back", "mid", None)
+        e.round_intent = e.intent
+        e.round_intent_status = "declared"
+        _log(st, "intent_declared",
+             f"{e.name} falls back to mid — it cannot shoot from the front row.",
+             enemy=e.id, intent="Fall back", destination="mid")
+        return
+    e.intent = None
+    _log(st, "no_target", f"{e.name} has no reachable target and declares nothing.",
+         enemy=e.id)
 
 
-def _redirectable(e: EnemyState, intent: Optional[Intent]) -> bool:
-    """§L-3: only a nominal MELEE basic-attack intent re-targets — from an attacker
-    that is neither flying (its melee ignores the wall going in, so nothing can
-    interpose) nor relentless (it pursues the declared target, §L-6.2). Ranged
-    intents, component telegraphs, Moves and positional intents never redirect."""
-    if intent is None or intent.kind != "action" or intent.action_type != "attack":
+def _redirectable(st: GameState, e: EnemyState, intent: Optional[Intent]) -> bool:
+    """§L-3 / §D23-4: can a body step in front of this intent and eat it instead?
+
+    The wall answers a nominal MELEE basic-attack intent, and — since §D23-4 — a
+    melee, SINGLE-TARGET COMBAT ABILITY too (the §M-A.7 derived class: an ability
+    whose verbs deal damage). "Battering Ram, deal 5 and stun" is a swing by
+    another name, and it was walking through the front line untouched while the
+    plain sword behind it got walled; the interposer eats the rider along with
+    the damage, exactly as §M-A.7 already rules.
+
+    Never: a ranged intent (it shoots over the wall), a FLYING attacker (its melee
+    ignores the wall going in, so nothing can interpose), a `relentless` one (it
+    pursues its declared target, §L-6.2), a positional row-aimed intent (it is
+    aimed at ground, not a name), a Move, or a non-damage ability. Nor an intent
+    aimed at anything but a living hero — a corpse-fuelled rule binds a BODY on
+    the enemy's own side, and no wall stands in front of that."""
+    if intent is None or intent.kind != "action":
         return False
     if intent.target_id is None or intent.target_row is not None:
+        return False
+    if not (intent.action_type == "attack" or intent.combat_ability):
+        return False
+    if not isinstance(st.combatant(intent.target_id), CharacterState):
         return False
     mode = intent.attack_mode or e.attack_mode
     return (mode == "melee" and not _has_kw(e, "flying")
@@ -1649,7 +1773,7 @@ def _recheck_intents(st: GameState) -> None:
     execution, as ever); ally-token intents re-check symmetrically."""
     for e in st.living_enemies():
         for intent in (e.intent, e.intent2):
-            if not _redirectable(e, intent):
+            if not _redirectable(st, e, intent):
                 continue
             cur = st.character(intent.target_id)
             if cur is None or not cur.alive:
@@ -1726,11 +1850,14 @@ def _choose_enemy_attack(st: GameState, e: EnemyState):
     primary = list(_reachable_targets(e, party, mode=primary_mode))
     primary_amount, primary_name = _attack_amount(e, tmpl), tmpl["name"]
     # The weaker ranged attack is a fallback only a melee-primary enemy can have.
-    has_fallback = bool(e.ranged_template) and primary_mode == "melee"
-    fallback = (list(_reachable_targets(e, party, mode="ranged"))
-                if has_fallback else [])
-    fb_amount = _attack_amount(e, e.ranged_template) if has_fallback else 0
-    fb_name = e.ranged_template.get("name", primary_name) if has_fallback else primary_name
+    armed = bool(e.ranged_template) and primary_mode == "melee"
+    fallback = list(_reachable_targets(e, party, mode="ranged")) if armed else []
+    fb_amount = _attack_amount(e, e.ranged_template) if armed else 0
+    fb_name = e.ranged_template.get("name", primary_name) if armed else primary_name
+    # §D23-3: standing in the Front row there is no shot to fall back ON, so the
+    # brute simply hunts what its sword can reach instead of finding an empty pool
+    # and declaring nothing.
+    has_fallback = armed and bool(fallback)
     none = (None, None, 0, None)
 
     def aim(target):
@@ -1898,7 +2025,8 @@ def _swing_instead(st: GameState, enemy: EnemyState, intent: Intent,
         pushed = _push(st, StackItem(
             kind=swing.action_type, source_id=enemy.id, source_side="enemy",
             label=swing.name, effects=swing.effects, target_id=None,
-            target_row=swing.target_row, attack_mode=enemy.attack_mode,
+            target_row=swing.target_row,
+            attack_mode=swing.attack_mode or enemy.attack_mode,
             attack_power=swing.attack_power))
     else:
         if swing.target_id is None:
@@ -1906,7 +2034,8 @@ def _swing_instead(st: GameState, enemy: EnemyState, intent: Intent,
         pushed = _push(st, StackItem(
             kind=swing.action_type, source_id=enemy.id, source_side="enemy",
             label=swing.name, effects=swing.effects, target_id=swing.target_id,
-            attack_mode=enemy.attack_mode, attack_power=swing.attack_power))
+            attack_mode=swing.attack_mode or enemy.attack_mode,
+            attack_power=swing.attack_power))
     st.priority = None              # a real action: the party gets its window
     st.passes = 0
     _log(st, "intent_execute", f"{enemy.name} executes {swing.name}.",
@@ -1936,8 +2065,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         st.acted_enemies.append(enemy.id)
     if intent is None:
         return
-    if intent.source_component is not None:
-        _start_cooldown(st, enemy, intent.source_component)
+    # (The component's cooldown was spent when the intent was DECLARED — §D23-6.)
     if intent.kind == "move":  # a Move relocates the body LIVE as it executes (§L-2.3)
         enemy.row = intent.move_to
         _set_intent_status(enemy, intent, "executed")
@@ -1954,7 +2082,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
             source_side="enemy", label=intent.name,
             effects=intent.effects, target_id=None,
             target_row=intent.target_row, corpse_id=intent.corpse_id,
-            attack_mode=enemy.attack_mode,
+            attack_mode=intent.attack_mode or enemy.attack_mode,
             attack_power=intent.attack_power,
             component_id=intent.source_component))
         _set_intent_status(enemy, intent, "executed")
@@ -1982,7 +2110,7 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
     # §L-3.1(3): a redirectable melee swing whose target is unreachable with no
     # legal interposer left (an all-flying line, say) has nothing to land on.
     # Every occupancy change re-ran the re-check, so this is the true final state.
-    if _redirectable(enemy, intent) and target not in _reachable_targets(
+    if _redirectable(st, enemy, intent) and target not in _reachable_targets(
             enemy, st.living_party()):
         _log(st, "fizzle", f"{enemy.name}'s {intent.name} fizzles — no path to "
              f"{target.name}.", enemy=enemy.id, label=intent.name)
@@ -2000,7 +2128,8 @@ def _execute_intent(st: GameState, enemy: EnemyState) -> None:
         source_side="enemy", label=intent.name,
         effects=intent.effects, target_id=intent.target_id,
         corpse_id=intent.corpse_id,
-        attack_mode=enemy.attack_mode, attack_power=intent.attack_power,
+        attack_mode=intent.attack_mode or enemy.attack_mode,
+        attack_power=intent.attack_power,
         starts_channel=bool(src_comp is not None and src_comp.channel),
         component_id=intent.source_component))
     _set_intent_status(enemy, intent, "executed")  # the stack is honest (D8-1.5)
@@ -2077,7 +2206,9 @@ def _end_step(st: GameState) -> None:
     # (from round 2 — round 1 is the party's setup breath) grows permanently.
     # Same math as a +1/+1 counters verb; the tally badges in the UI.
     for e in st.living_enemies():
-        if e.neglect > 0 and not e.hurt_this_round and st.turn >= 2:
+        # The grace round is the body's OWN first round (§D23-5) — a wave that
+        # lands on turn 5 gets the same breath the opening line-up got.
+        if e.neglect > 0 and not e.hurt_this_round and _own_turn(st, e) >= 2:
             n = e.neglect
             e.power += n
             e.max_hp += n
@@ -2102,7 +2233,9 @@ def _reap_dead(st: GameState) -> None:
         if t.effective_hp <= 0:
             _remove_token(st, t)
     for c in st.party:
-        if c.effective_hp <= 0 and c.channels:
+        if c.effective_hp <= 0 and not c.down_credited:
+            _after_damage(st, c)   # §D23-7.6: the normal downing path, once
+        elif c.effective_hp <= 0 and c.channels:
             _note_break(st, c, "incapacitated")
     _process_breaks(st)
 
@@ -2256,9 +2389,14 @@ def _do_pass(st: GameState, action: Action) -> None:
     resolve. Otherwise the top resolves, and the effects it produced are offered to
     the enemy side as post-resolution triggers (on_hit / on_ally_hit / on_ally_death)."""
     actor = st.character(action.actor_id)
-    suffix = " (auto)" if getattr(action, "auto", False) else ""
+    # §D23-8: a synthetic Pass names WHY it happened — "(auto)" for the smart
+    # auto-pass (§D8-4), "(pass-all)" for a seat's standing "no". The transcript
+    # never pretends the player was there for each window.
+    reason = "pass-all" if "pass-all" in str(getattr(action, "label", "") or "") \
+        else "auto" if getattr(action, "auto", False) else ""
+    suffix = f" ({reason})" if reason else ""
     _log(st, "pass", f"{actor.name} passes{suffix}.", character=actor.id,
-         auto=bool(getattr(action, "auto", False)))
+         auto=bool(getattr(action, "auto", False)), reason=reason or None)
     st.passes += 1
     if st.passes >= len(st.living_party()):
         if _offer_reactions(st, _pre_trigger_ctx(st)):
@@ -2546,20 +2684,60 @@ def _do_delay(st: GameState, action: Action) -> None:
          order=[c.id for c in _party_ordered(st)])
 
 
-def _proactive_allowance(actor: CharacterState) -> int:
-    """How many DISTINCT proactive actions the character may take this turn: one,
-    or two with vigilance — GDD §7, "may attack and still act/defend". The pairing
-    is free-form (attack+cast, defend+attack, skill+attack, …); the per-action
-    limits still apply on top (one basic Attack, one Defend, one Skill a fight)."""
-    return 2 if _has_kw(actor, "vigilance") else 1
+# §D23-1 — THE TURN IS TWO GROUPS, not a count of actions.
+#
+# A character's turn is EITHER one turn-spending verb OR the pair. The old model
+# ("one proactive action, two with vigilance") collapsed every turn into "cast or
+# swing": Defend and Move were priced like an attack, so nobody ever bought them,
+# and the tank and the archer had no positional stake in the fight.
+TURN_VERBS = frozenset({"attack", "cast", "skill", "ultimate"})
+PAIR_VERBS = frozenset({"defend", "move"})
+
+
+def _freed(actor: CharacterState, mode: str) -> bool:
+    """Is `mode` FREE for this character — a verb one of its keywords lifts out of
+    the turn economy (§D23-2)? A freed verb does not count toward the turn; after
+    taking one the character may take exactly one more verb, from either group."""
+    return ((mode == "attack" and _has_kw(actor, "vigilance"))
+            or (mode == "defend" and _has_kw(actor, "defender"))
+            or (mode == "move" and _has_kw(actor, "haste")))
+
+
+def _freeing_keyword(actor: CharacterState, mode: str) -> Optional[str]:
+    """The keyword that frees `mode` for this character, for the offer label."""
+    return {"attack": "vigilance", "defend": "defender",
+            "move": "haste"}.get(mode) if _freed(actor, mode) else None
+
+
+def _free_suffix(actor: CharacterState, mode: str) -> str:
+    """" (free, haste)" and friends — the offer says WHY the verb is free, so the
+    turn economy is legible at the action bar without a rules lookup."""
+    kw = _freeing_keyword(actor, mode)
+    return f" (free, {kw})" if kw else ""
 
 
 def _proactive_open(actor: CharacterState, mode: str) -> bool:
-    """True if `mode` is still available: either it is an action already underway
-    this turn (further sorcery-speed spells ride the same Cast) or the turn's
-    allowance has room for another."""
-    return (mode in actor.proactive_modes
-            or len(actor.proactive_modes) < _proactive_allowance(actor))
+    """True if `mode` is still available this turn under §D23-1/§D23-2.
+
+    A mode already underway is always open — that is what lets several
+    sorcery-speed spells ride one Cast. Otherwise the two groups decide:
+
+      * a TURN-SPENDING verb (Attack / Cast / Skill / Ultimate) IS the turn, so
+        it needs the turn untouched;
+      * the PAIR (Defend, Move) is a turn between them — either one, or both, in
+        either order, and nothing else;
+      * a FREED verb (§D23-2) sits outside the count, and buys exactly one more
+        verb from either group afterwards (never the whole pair)."""
+    if mode in actor.proactive_modes:
+        return True
+    taken = [m for m in actor.proactive_modes if not _freed(actor, m)]
+    if _freed(actor, mode):
+        return len(taken) <= 1
+    if len(taken) < len(actor.proactive_modes):   # a freed verb has been taken
+        return not taken                          # …so exactly one more, any group
+    if mode in TURN_VERBS:
+        return not taken
+    return all(m in PAIR_VERBS for m in taken) and len(taken) < 2
 
 
 def _spend_proactive(st: GameState, actor: CharacterState, mode: str,
@@ -2662,14 +2840,14 @@ def _do_defend(st: GameState, action: Action) -> None:
     raises effective_hp and expires at End (R-7). The buffer is the actor's BASE
     Power, so the same stat that decides what your swing is worth decides what
     turtling is worth: a heavy hitter has a real choice to make every turn instead
-    of always attacking. Free (no proactive action) for a `defender`, whose whole
-    identity is the shield wall."""
+    of always attacking. Half of the PAIR (§D23-1) and FREED for a `defender`
+    (§D23-2), whose whole identity is the shield wall."""
     actor = st.character(action.actor_id)
     # Held as a REACTION (`defend_as_reaction`, offered only with a stack up): the
-    # proactive action is not spent — it may already be gone, which is the point.
-    # A `defender` never spends it either.
+    # turn is not touched at all — it may already be spent, which is the point.
+    # Otherwise the verb is always recorded; `_freed` decides whether it counts.
     reactive = bool(st.stack) and _has_action_mod(actor, "defend_as_reaction")
-    if not reactive and not _has_kw(actor, "defender"):
+    if not reactive:
         _spend_proactive(st, actor, "defend")
     actor.used_defend = True
     gain = _defend_value(actor)
@@ -2703,11 +2881,11 @@ def _do_move(st: GameState, action: Action) -> None:
     """The voluntary Move (§L-2.2): a stack action, taken on your turn with the
     stack clear, resolving LIVE — the body relocates at resolution and the §L-3
     re-check runs. Reactable but uncounterable (no counter filter matches kind
-    "move" — you cannot counter footwork). Costs the proactive action unless the
-    mover has haste (then it is free); once per turn either way."""
+    "move" — you cannot counter footwork). Half of the PAIR (§D23-1), so it pairs
+    with a Defend and nothing else; `haste` FREES it (§D23-2). The verb is always
+    recorded — `_freed` is what decides whether it counts. Once per turn."""
     actor = st.character(action.actor_id)
-    if not _has_kw(actor, "haste"):
-        _spend_proactive(st, actor, "move")
+    _spend_proactive(st, actor, "move")
     actor.used_move = True
     _push(st, StackItem(kind="move", source_id=actor.id, source_side="party",
                         label=f"Move to {action.target_id}", effects=[],
@@ -2903,8 +3081,7 @@ def _do_stance_ability(st: GameState, action: Action) -> None:
         _spend_proactive(st, actor, "defend")
         actor.used_defend = True
     elif slot == "move":
-        if not _has_kw(actor, "haste"):
-            _spend_proactive(st, actor, "move")
+        _spend_proactive(st, actor, "move")   # §D23-2: `haste` frees it, not skips it
         actor.used_move = True
     else:  # mitigate — the once-per-turn reaction, in the same window
         actor.used_mitigate = True
@@ -3454,10 +3631,18 @@ def _break_enemy_channels(st: GameState, enemy: EnemyState, reason: str,
 
 def _reap_aura_kills(st: GameState) -> None:
     """Remove board creatures a just-applied continuous aura reduced to ≤0 effective
-    HP (the non-damage kill path). Enemies/tokens die immediately; a PC wounded to ≤0
-    is a temporary downing that resolves at End (R-7), so it is left to `_reap_dead`."""
+    HP (the non-damage kill path). Enemies/tokens die immediately.
+
+    §D23-7.6: a PC an aura pushes to ≤0 goes down through the SAME path as one
+    beaten down by damage — `_after_damage` logs the incapacitation, pays the
+    ally-down gauge credit and fires the death event. It used to fall silently:
+    no log line, no credit, no trigger. `down_credited` keeps it to once per
+    downing (it clears when the character stands back up)."""
     for c in list(st.enemies) + list(st.tokens):
         if c.effective_hp <= 0:
+            _after_damage(st, c)
+    for c in st.party:
+        if c.effective_hp <= 0 and not c.down_credited:
             _after_damage(st, c)
 
 
@@ -4036,7 +4221,11 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict,
             continue
         if effect.kind in _CARD_ZONE_VERBS and not isinstance(target, CharacterState):
             continue  # no hand, no library, nothing for a card verb to do
-        if _is_targeted(effect) and (target is None or not _legal_target(target)):
+        # §D23-7.2: read `targeted` off the RESOLVED descriptor, so a slot ref
+        # ("$T1") is checked here exactly like an inline one — a target that left
+        # the board fizzles the effect.
+        eff_targeted = bool(getattr(desc, "targeted", False))
+        if eff_targeted and (target is None or not _legal_target(target)):
             _log(st, "fizzle", f"{item.label}'s {effect.kind} fizzles (no legal target).",
                  kind=effect.kind)
             continue
@@ -4046,7 +4235,7 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict,
         # are exempt: hexproof wards off spells and abilities that target, not the
         # sword — an attack action always lands (playtest ruling, Update 06).
         if (item.kind != "attack"
-                and _is_targeted(effect) and target is not None and _has_kw(target, "hexproof")
+                and eff_targeted and target is not None and _has_kw(target, "hexproof")
                 and ((item.source_side == "enemy" and not isinstance(target, EnemyState))
                      or (item.source_side != "enemy" and isinstance(target, EnemyState)))):
             _log(st, "fizzle", f"{item.label} fizzles — {target.name} has Hexproof.",
@@ -4082,6 +4271,13 @@ def _resolve_effect(st: GameState, item: StackItem, effect, ctx: dict,
         # target_* value refs read the creature this iteration lands on (each of
         # a mode:all set reads its own stats); caster_obj is set by the ctx builder.
         for victim in victims:
+            # §D23-7.3: a body that fell to an earlier victim in this same set
+            # (a chain kill, a lifted aura) takes nothing more. Characters and
+            # corpses stay on the field and are never skipped here.
+            if isinstance(victim, EnemyState) and victim not in st.enemies:
+                continue
+            if isinstance(victim, TokenState) and victim not in st.tokens:
+                continue
             ctx["target_obj"] = victim
             handler(st, item, effect, victim, ctx)
 
@@ -4593,6 +4789,8 @@ def _r_lose_life(st, item, effect, target, ctx):
     target.hp = max(0, target.hp - amount)
     if isinstance(target, CharacterState):
         _gain_gauge(st, target, lost)  # +1 gauge per point of current HP lost (D8-3.3)
+    if lost > 0:
+        _mark_hurt(target)             # §D23-5: life loss is hurting it
     _log(st, "lose_life", f"{target.name} loses {amount} HP (HP {target.hp}).",
          target=_tid(target), amount=amount, hp=target.hp)
     _after_damage(st, target)
@@ -4974,7 +5172,13 @@ def _r_fight(st, item, effect, target, ctx):
         side = odesc.side.value if odesc.side is not None else "ally"
         others = _creatures_on_side(st, side, item, odesc)
     else:
-        others = [st.combatant(_site_id(item, ctx, odesc, ("eff_other", id(effect))))]
+        # A card's fight has two independent picks, so `other` reads its own site.
+        # An ENEMY component has exactly one pick — its target_rule's — so the
+        # duellist's `other` falls back to that (§D23-6: `fight` is enemy
+        # vocabulary now, and without this it fizzled every time).
+        fallback = item.target_id if item.source_side == "enemy" else None
+        others = [st.combatant(
+            _site_id(item, ctx, odesc, ("eff_other", id(effect))) or fallback)]
     others = [o for o in others if o is not None and _legal_target(o)]
     if target is None or not _legal_target(target) or not others:
         _log(st, "fizzle", f"{item.label}'s fight fizzles (a creature is gone).", kind="fight")
@@ -5034,7 +5238,11 @@ def _intent_reveal(intent: Intent, enemy: EnemyState) -> str:
 
 def _strip_slot(st: GameState, target: EnemyState, slot2: bool) -> None:
     """Strip one declared intent slot: reveal it (D8-1.3 — the log names what was
-    prevented, the intents window annotates the struck line) and clear it."""
+    prevented, the intents window annotates the struck line) and clear it.
+
+    The component's COOLDOWN STAYS SPENT (§D23-6): it was paid at declaration, so
+    unravelling the telegraph buys the party this round, not a permanent lock on a
+    one-trick body — which then has to reach for something else next round."""
     intent = target.intent2 if slot2 else target.intent
     reveal = _intent_reveal(intent, target)
     if slot2:
@@ -5197,6 +5405,8 @@ def _r_wound(st, item, effect, target, ctx):
     else:
         # A turn-scoped wound eating into an encounter buffer eats it for good.
         _sync_enc_temp(target)
+    if toughness > 0:
+        _mark_hurt(target)             # §D23-5: a wound is hurting it
     _log(st, "wound", f"{target.name} suffers -{power}/-{toughness} "
          f"(eff HP {target.effective_hp}).", target=_tid(target),
          power=power, toughness=toughness)
@@ -6036,6 +6246,18 @@ def _tick_afflictions(st: GameState) -> None:
         _tick_afflictions_one(st, c)
 
 
+def _mark_hurt(target) -> None:
+    """§D23-5: the boss's `neglect` bookkeeping — this body was HURT this round.
+
+    Neglect asks "did the party leave it alone?", and the answer used to be read
+    off `_deal_damage` alone. A poison deck that whittled a boss down and killed
+    it was still told it had neglected it, and swelled the boss every round for
+    winning correctly. Every HP drop counts now: damage, the poison tick, life
+    loss, and a wound that eats into its buffer."""
+    if isinstance(target, EnemyState):
+        target.hurt_this_round = True
+
+
 def _tick_afflictions_one(st: GameState, c) -> None:
     poison = getattr(c, "poison_counters", 0)
     if poison > 0 and getattr(c, "alive", isinstance(c, CharacterState)):
@@ -6047,6 +6269,8 @@ def _tick_afflictions_one(st: GameState, c) -> None:
              target=_tid(c), amount=lost, counters=poison, hp=c.hp)
         if isinstance(c, CharacterState):
             _gain_gauge(st, c, lost)  # +1 gauge per point of current HP lost (T-49)
+        if lost > 0:
+            _mark_hurt(c)             # §D23-5: poison is hurting it
         _after_damage(st, c)
     if not getattr(c, "alive", False) and not isinstance(c, CharacterState):
         return  # died to its own poison — nothing left to regenerate
@@ -6477,8 +6701,8 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
     overkill = max(0, amount - target.hp)  # damage beyond hp — cleaves past on trample
     dealt = target.hp - max(floor, target.hp - amount)
     target.hp = max(floor, target.hp - amount)
-    if (dealt > 0 or absorbed > 0) and isinstance(target, EnemyState):
-        target.hurt_this_round = True   # `neglect` bookkeeping (a soaked blow counts)
+    if dealt > 0 or absorbed > 0:
+        _mark_hurt(target)   # `neglect` bookkeeping (a soaked blow counts)
     if dealt > 0 or absorbed == 0:
         # `source_id` (additive, §D12-3.4): machine-readable attribution for
         # the autoplay metrics — `source` stays the display string.
@@ -6579,6 +6803,30 @@ def _heal(st: GameState, target, amount: int, reason: str = "",
         _fire_event(st, "life_gain", target)
 
 
+def _own_turn(st: GameState, e: EnemyState) -> int:
+    """§D23-5: which round of ITS OWN fight this is for `e` — 1 on the turn it
+    arrived. Anything fielded at setup arrives on turn 1, so this is `st.turn`
+    for the opening line-up and the boss dials read exactly as before."""
+    return st.turn - max(1, getattr(e, "deployed_turn", 1)) + 1
+
+
+def _fire_timed_enrage(st: GameState, boss: EnemyState) -> None:
+    """§D23-5's one-beat enrage: land the boss's Enrage component in the same beat
+    the timed fury is announced.
+
+    The ≤25%-HP crossing keeps the ordinary `on_enrage` reaction path (it happens
+    mid-combat, and the next window is right there). The TIMED crossing happens at
+    Upkeep with nothing on the stack, so the reaction had to wait for some
+    unrelated resolution to open a window — the announcement and the blow arrived
+    turns apart and read as two unrelated events."""
+    for comp in _reactive_rules(boss):
+        if comp.trigger != "on_enrage" or not _component_eligible(st, boss, comp):
+            continue
+        st.reacted_window = [x for x in st.reacted_window if x != boss.id]
+        _fire_reaction(st, boss, comp, {})
+        return
+
+
 def _enrage_boss(boss: EnemyState) -> bool:
     """Flip a boss to enraged with the §F-9 hard reset: control shaken off
     (stun/taunt drop — fury doesn't sit out a turn), ability cooldowns cleared
@@ -6660,10 +6908,19 @@ def _kill_enemy(st: GameState, enemy: EnemyState, leaves_corpse: bool = True,
     Death now leaves a CORPSE on the row where it fell (§D9-1.1) — except for
     tokens (`created_by` set: raised undead cannot be re-raised, the anti-loop
     rule) and for `exile`, which passes `leaves_corpse=False` (and
-    `death_event=False`: exile fires no death triggers — §D9-1.2)."""
+    `death_event=False`: exile fires no death triggers — §D9-1.2).
+
+    §D23-7.3 — A BODY IS KILLED ONCE. A body already off the board (an aura tick
+    and a lifted effect racing the same enemy down) is never re-killed: no second
+    log line, no second corpse, no second death event."""
+    if enemy not in st.enemies:
+        return
     _break_enemy_channels(st, enemy, "channeler died")  # its OWN channels die with it
-    if enemy in st.enemies:
-        st.enemies.remove(enemy)
+    if enemy not in st.enemies:
+        # Lifting its own aura re-entered this function (the lift dropped it to
+        # ≤0 again) and that call did the whole job — corpse, log, death event.
+        return
+    st.enemies.remove(enemy)
     if enemy.id in st.acted_enemies:
         st.acted_enemies.remove(enemy.id)
     if enemy.intent is not None or enemy.intent2 is not None:
@@ -6695,8 +6952,9 @@ def _kill_enemy(st: GameState, enemy: EnemyState, leaves_corpse: bool = True,
 
 
 def _remove_token(st: GameState, token: TokenState) -> None:
-    if token in st.tokens:
-        st.tokens.remove(token)
+    if token not in st.tokens:
+        return  # §D23-7.3: a body is destroyed once
+    st.tokens.remove(token)
     if token.id in st.acted_tokens:
         st.acted_tokens.remove(token.id)
     _log(st, "token_died", f"{token.name} is destroyed.", token=token.id)
@@ -6800,6 +7058,15 @@ def _reachable_targets(attacker, defenders: List, mode: Optional[str] = None) ->
     if mode is None:
         mode = getattr(attacker, "attack_mode", "melee")
     akw = getattr(attacker, "keywords", {})
+    # §D23-3 — POINT BLANK. A ranged attack cannot be made from the Front row, by
+    # anyone: heroes, allied tokens and enemies alike. This is what gives a
+    # ranged hero a positional stake in the fight — dash into Front to Mitigate
+    # for the tank and you pay with next turn's shot unless you spend the turn
+    # walking back out; an enemy forced-move that shoves an archer forward is a
+    # real punishment rather than a shrug. Spells are not attacks and never come
+    # through here: a caster standing in Front still casts.
+    if mode == "ranged" and getattr(attacker, "row", None) == "front":
+        return []
     if mode == "ranged":
         return list(defenders)
     if "flying" in akw:  # flying melee ignores the shield; reach defenders pin it
@@ -6985,11 +7252,13 @@ def _stance_actions(st: GameState, actor: CharacterState, slot: str,
 
 
 def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
-    """A character's own turn: the proactive mode (Attack XOR Cast XOR Defend) —
-    where Cast may cast several sorcery-speed spells — plus free instants, the
-    free voluntary drop, and end turn. A held STANCE (§D9-2) rewires the four
-    main abilities: each slot is unchanged, removed, or a replacement action.
-    Casting is untouchable — a stance rewires your body, not your spellbook."""
+    """A character's own turn under §D23-1: EITHER one turn-spending verb (Attack
+    / Cast / Skill / Ultimate — where Cast may cast several sorcery-speed spells)
+    OR the pair (Defend and Move, either or both, in either order) — plus free
+    instants, the free voluntary drop, and end turn. A keyword may FREE one verb
+    out of that count (§D23-2). A held STANCE (§D9-2) rewires the four main
+    abilities: each slot is unchanged, removed, or a replacement action. Casting
+    is untouchable — a stance rewires your body, not your spellbook."""
     actions: List[Action] = []
     # Stunned (§F-3 enemy Debilitate): the proactive window is denied outright — the
     # only move is to end the turn (which spends one stack of the stun). Reaction
@@ -6999,10 +7268,11 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     aslot = _stance_slot(actor, "attack")
     dslot = _stance_slot(actor, "defend")
     mslot = _stance_slot(actor, "move")
-    # Attack (basic, once per round): it costs a proactive action, so it is locked
-    # out once the turn's allowance is spent (vigilance buys a second — it may
-    # follow a Cast, a Defend, a Skill, either way round), and forbidden outright
-    # while a `prevent attack` shield (Pacifism) rides the actor.
+    # Attack (basic, once per round): a TURN-SPENDING verb (§D23-1) — taking it
+    # IS your turn, so it is locked out once anything else has spent the turn.
+    # `vigilance` FREES it (§D23-2): the swing steps outside the count and buys
+    # exactly one more verb. Forbidden outright while a `prevent attack` shield
+    # (Pacifism) rides the actor.
     # A stance may remove it (gone in every form) or replace it (an activated
     # ability with the slot's economy — once per round, satisfies the proactive
     # Attack choice; Pacifism binds the sword, not the replacement).
@@ -7010,39 +7280,35 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
         if aslot == "unchanged":
             if not _prevented_action(actor, "attack") and not _has_kw(actor, "defender"):
                 dbl = " ×2 (double strike)" if _has_kw(actor, "double_strike") else ""
+                free = _free_suffix(actor, "attack")
                 for e in _legal_attack_targets(st, actor):  # only rows this attack can reach
                     actions.append(Action("attack", actor.id, target_id=e.id,
                                           label=f"Attack {e.name} ({actor.attack_mode} "
-                                                f"Power {actor.current_power}){dbl}"))
+                                                f"Power {actor.current_power}){dbl}{free}"))
         elif aslot != "removed":
             actions += _stance_actions(st, actor, "attack", aslot)
-    # Defend (the defensive action): a proactive action like any other — a vigilant
-    # character may Defend and still swing (the bug this rule used to have). A
-    # `defender` gets it FREE: the action is never spent, so the same turn still
-    # buys a cast or a Skill. That is the whole trade — no sword, no footwork,
-    # but the shield costs nothing.
-    free_defend = _has_kw(actor, "defender")
-    if not actor.used_defend and (free_defend or _proactive_open(actor, "defend")):
+    # Defend: half of the PAIR (§D23-1) — it goes with a Move, and with nothing
+    # else. A `defender` gets it FREED (§D23-2): the shield sits outside the turn,
+    # so the same turn still buys a cast or a Skill. That is the whole trade — no
+    # sword, but the shield costs nothing (and, since §D23-2, the feet are free).
+    if not actor.used_defend and _proactive_open(actor, "defend"):
         if dslot == "unchanged":
-            suffix = " (free, defender)" if free_defend else ""
+            suffix = _free_suffix(actor, "defend")
             actions.append(Action("defend", actor.id,
                                   label=f"Defend (+{_defend_value(actor)} temp HP){suffix}"))
         elif dslot != "removed":
             actions += _stance_actions(st, actor, "defend", dslot)
     # Move (§L-2.2): a live stack action, offered only in the main phase (the
     # stack is clear here by construction — never mid-window, never while your
-    # own action is unresolved). Costs the action; haste makes one voluntary move
-    # free (offered alongside the normal action). Once per turn.
-    # A stance-removed Move is total — neither the action nor the haste free move.
-    move_ok = not actor.used_move and (_proactive_open(actor, "move")
-                                       or _has_kw(actor, "haste"))
+    # own action is unresolved). The other half of the PAIR (§D23-1); `haste`
+    # FREES it (§D23-2). Once per turn.
+    # §D23-2 repeals the "rooted defender" clause in full: the shield wall may
+    # walk, and may dash to Mitigate for an ally, like anyone else.
+    # A stance-removed Move is total — neither the pair verb nor the free one.
+    move_ok = not actor.used_move and _proactive_open(actor, "move")
     if mslot == "unchanged":
-        # A `defender` is rooted: no voluntary Move, and haste does not buy one
-        # back. Gated on the BASIC move only, following the same line Pacifism
-        # draws on the attack slot — a stance replacement is its own ability, not
-        # the footwork the keyword forbids.
-        if move_ok and not _has_kw(actor, "defender"):
-            free = " (free, haste)" if _has_kw(actor, "haste") else ""
+        if move_ok:
+            free = _free_suffix(actor, "move")
             for row in ("front", "mid", "rear"):
                 if row != actor.row:
                     actions.append(Action("move", actor.id, target_id=row,
@@ -7050,9 +7316,9 @@ def _legal_main(st: GameState, actor: CharacterState) -> List[Action]:
     elif mslot != "removed":
         if move_ok:
             actions += _stance_actions(st, actor, "move", mslot)
-    # Cast sorcery-speed spells (sorcery/channeled): once Cast is the turn's action
-    # every further sorcery rides it; starting one after another action needs the
-    # vigilance allowance.
+    # Cast sorcery-speed spells (sorcery/channeled): a turn-spending verb (§D23-1).
+    # Once Cast is the turn's verb every further sorcery rides the same Cast;
+    # starting one after another verb needs a freed verb to have paid for it.
     if _proactive_open(actor, "cast"):
         for card in actor.hand:
             if card.timing in _SORCERY_SPEED and _can_pay(actor, card):
@@ -7137,12 +7403,10 @@ def _legal_react(st: GameState, actor: CharacterState) -> List[Action]:
                             and abs(_row_rank(actor.row) - _row_rank(ally.row)) <= 1):
                         continue
                     # Ally mode is an action-bound DASH (§M-A.6) — the guard
-                    # relocates to the ally's row. A `defender` is rooted, so it
-                    # can only cover someone already standing with it: allies come
-                    # to the wall, the wall does not come to them.
+                    # relocates to the ally's row. §D23-2 repealed the defender's
+                    # "rooted" clause in full: the wall comes to them like anyone
+                    # else. (Flipping that back is this one line.)
                     same_row = ally.row == actor.row
-                    if _has_kw(actor, "defender") and not same_row:
-                        continue
                     where = "" if same_row else f", move to {ally.row}"
                     actions.append(Action("mitigate", actor.id, target_id=ally.id,
                                           label=f"Mitigate for {ally.name} (−{x} per hit{where})"))
@@ -7188,11 +7452,12 @@ def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:
 def _heroic_actions(st: GameState, actor: CharacterState,
                     main_phase: bool) -> List[Action]:
     """The once-per-encounter Skill/Ultimate offers (D8-3, amended). BOTH are
-    activated abilities at active speed — main phase only. The Skill consumes a
-    proactive action, so it is offered only while the turn's allowance has room —
-    vigilance buys a second, letting the Skill ride alongside an Attack/Cast/Defend
-    turn (and vice versa). The Ultimate additionally needs a full gauge, and is
-    never the second action: it opens the turn or not at all."""
+    activated abilities at active speed — main phase only, and BOTH are ordinary
+    turn-spending verbs under §D23-1: taking one is your turn, and a freed verb
+    (a vigilant swing, a defender's shield, a hasted step) buys one alongside.
+    The Ultimate additionally needs a full gauge. §D23-1 repeals the old "the
+    Ultimate opens the turn or not at all" rule (Update 08 §D8-3, amended) — the
+    limit break no longer punishes the tank for raising a free shield first."""
     out: List[Action] = []
     if not main_phase:
         return out
@@ -7206,9 +7471,9 @@ def _heroic_actions(st: GameState, actor: CharacterState,
         # the held one is dropped, same as a stance card.
         if not (_card_has_stance(skill) and _active_stance(actor) is not None):
             out += _hero_ability_actions(st, actor, skill, "use_skill", "Skill")
-    if (actor.ultimate is not None and not actor.ultimate_used
-            and actor.ultimate_gauge >= actor.ultimate_charge_cost
-            and not actor.proactive_modes):
+    if (_proactive_open(actor, "ultimate") and actor.ultimate is not None
+            and not actor.ultimate_used
+            and actor.ultimate_gauge >= actor.ultimate_charge_cost):
         out += _hero_ability_actions(st, actor, actor.ultimate, "use_ultimate", "Ultimate")
     return out
 
@@ -7218,14 +7483,15 @@ def _hero_ability_actions(st: GameState, actor: CharacterState, card: Card,
     """Enumerate a Skill/Ultimate exactly like a cast — one action per
     (mode × target × X) — re-labelled and re-kinded as the heroic action."""
     out = []
-    for a in _cast_actions(st, actor, card):
+    for a in _cast_actions(st, actor, card, heroic=True):
         a.kind = kind
         a.label = a.label.replace(f"Cast {card.name}", f"{tag}: {card.name}", 1)
         out.append(a)
     return out
 
 
-def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Action]:
+def _cast_actions(st: GameState, actor: CharacterState, card: Card,
+                  heroic: bool = False) -> List[Action]:
     """One cast Action per (mode × legal target). Modal cards offer one branch per
     mode (the option is chosen here, at cast); a counter offers one option per
     enemy action it could answer; other cards offer one option per legal target.
@@ -7234,8 +7500,10 @@ def _cast_actions(st: GameState, actor: CharacterState, card: Card) -> List[Acti
 
     Silence (`prevent cast`) is enforced HERE, at the one chokepoint every cast
     offer funnels through (main-phase sorceries, main-phase instants, reaction
-    instants), so no offer site can leak a cast past it."""
-    if _silenced_for(actor, card):
+    instants), so no offer site can leak a cast past it. `heroic=True` (the Skill
+    and the Ultimate, which merely borrow this enumeration) skips that gate:
+    §D23-7.1 — neither is a cast, so neither is silenced."""
+    if not heroic and _silenced_for(actor, card):
         return []
     base = _cost_total(card)
     # X options: every value the pool can cover beyond the base cost (the caller
@@ -7778,6 +8046,38 @@ def auto_pass_action(state: GameState) -> Optional[Action]:
     if kinds and kinds <= {"end_turn", "delay"}:
         return Action("end_turn", st.priority, auto=True, label="End turn (auto)")
     return None
+
+
+def pass_all_action(state: GameState, seats) -> Optional[Action]:
+    """§D23-8 — the synthetic Pass for a seat that has set PASS-ALL.
+
+    A phase can ask one seat the same question a dozen times — every ally
+    activation, every enemy activation, every resolution opens another window —
+    and a hand of nothing but sorceries answers "no" to all of them. This is the
+    player's standing "no" FOR THE REST OF THE CURRENT PHASE (playtest: the scope
+    is the phase, whichever phase you are in, not the enemy phase specifically):
+    the server passes that seat automatically, logged distinctly so the
+    transcript never pretends the player was there for each one.
+
+    Only REACTION windows: `st.stack` must hold something, so a flagged seat's
+    own main phase is untouched — Pass-All never ends your turn or plays it for
+    you. None whenever a real decision is owed: no window open, the priority
+    holder is not one of the flagged seats, or a choice is pending. Whether the
+    flag has outlived its phase is the CALLER's business (it holds the phase the
+    flag was set in)."""
+    if not seats:
+        return None
+    st = copy.deepcopy(state)
+    _advance(st)
+    if st.result is not None or st.priority is None or st.pending_choice is not None:
+        return None
+    if not st.stack:
+        return None
+    if st.priority not in seats:
+        return None
+    if not any(a.kind == "pass" for a in _legal(st)):
+        return None
+    return Action("pass", st.priority, auto=True, label="Pass (pass-all)")
 
 
 def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:

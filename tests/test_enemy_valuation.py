@@ -18,8 +18,11 @@ def _char(cid, hp=10, power=2, attack_mode="melee", row="front"):
 
 
 def _ranged_enemy(eid="e"):
-    # Ranged so reachability never confounds the ranking (it hits any row).
+    # Ranged so reachability never confounds the ranking (it hits any row) —
+    # standing in Mid, because §D23-3 gives an archer in the Front row no shot
+    # at all, which would confound it in a different way.
     return {"id": eid, "name": eid, "hp": 30, "level": 3,
+            "row": "mid", "attack_mode": "ranged",
             "intent": {"name": "Shot", "amount": 2, "action_type": "ability",
                        "intent_type": "attack", "targeting": "lowest_hp_party",
                        "mode": "ranged"}}

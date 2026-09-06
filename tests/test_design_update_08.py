@@ -576,11 +576,21 @@ def test_vigilance_stops_at_two_proactive_actions():
     assert "end_turn" in kinds
 
 
-def test_ultimate_is_never_the_second_action_but_vigilance_follows_it():
-    st = _vig_state(gauge=100)
-    st = _do(st, "attack")
+def test_the_ultimate_is_an_ordinary_turn_verb_either_side_of_a_freed_swing():
+    """§D23-1 repeals "the Ultimate opens the turn or not at all". It is a
+    turn-spending verb like any other, so a FREED verb (here the vigilant swing)
+    buys it in either order — the limit break no longer punishes a hero for
+    having used their keyword first."""
+    st = _do(_vig_state(gauge=100), "attack")
     st = _do(st, "pass")
-    assert "use_ultimate" not in _kinds(st)   # it opens the turn or not at all
+    assert "use_ultimate" in _kinds(st)       # free swing, then the limit break
     st2 = _do(_vig_state(gauge=100), "use_ultimate")
     st2 = _do(st2, "pass")
-    assert "attack" in _kinds(st2)            # …but the vigilant swing still follows
+    assert "attack" in _kinds(st2)            # …and the vigilant swing still follows
+
+
+def test_the_ultimate_still_needs_the_turn_when_nothing_freed_it():
+    """The other half: without a freeing keyword, a spent turn is a spent turn."""
+    st = _do(_heroic_state(gauge=100), "attack")
+    st = _do(st, "pass")
+    assert "use_ultimate" not in _kinds(st)

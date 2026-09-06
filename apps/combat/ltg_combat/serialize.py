@@ -221,7 +221,19 @@ def _veiled_entry(state: GameState, enemy, intent, status: str, reveal: str,
         # The full footprint (§D18-4): one row for a row shape, three for a
         # blast — every row the client should light, not just the primary.
         "target_rows": rows,
+        # §D23-4: can a body step in front of this? The intent line reads as a
+        # "swing" (it can be walled) or "pursues" (it follows its target), so the
+        # decision to interpose is visible before the blow lands.
+        "redirectable": _redirectable_bit(state, enemy, intent),
     }
+
+
+def _redirectable_bit(state: GameState, enemy, intent) -> bool:
+    """§D23-4's telegraph bit, asked of the engine so the two can never drift."""
+    if intent is None:
+        return False
+    from .engine import _redirectable
+    return bool(_redirectable(state, enemy, intent))
 
 
 def veiled_intent(state: GameState, enemy) -> Optional[Dict[str, Any]]:
@@ -447,6 +459,31 @@ def _has_defender(char) -> bool:
     return "defender" in (getattr(char, "keywords", {}) or {})
 
 
+# The six verbs the turn economy governs (§D23-1). Reactions — Mitigate, Pass,
+# Delay, instants — are outside it and never appear here.
+_TURN_ECONOMY_VERBS = ("attack", "cast", "defend", "move", "skill", "ultimate")
+
+
+def _turn_open(char) -> Dict[str, bool]:
+    """§D23-1/§D23-2: which verbs the TURN still allows this character, asked of
+    the engine itself rather than re-derived here. It answers only the turn-group
+    question — a verb can be open here and still unavailable for its own reason
+    (no mana, the Skill already used, a ranged hero standing in Front). The
+    client greys a cell and explains WHY without carrying a copy of the rules."""
+    from .engine import _proactive_open   # imported here: presentation reads rules, never states them
+    return {verb: _proactive_open(char, verb) for verb in _TURN_ECONOMY_VERBS}
+
+
+def _reach_blocked(char) -> Optional[str]:
+    """§D23-3: why this character's basic attack has no reach from where it
+    stands, or None. Only one cause today — "front", a ranged attacker on the
+    melee line — and the action bar turns it into the disabled Attack cell's
+    explanation ("point-blank: ranged can't fire from the Front row")."""
+    if getattr(char, "attack_mode", None) == "ranged" and getattr(char, "row", None) == "front":
+        return "front"
+    return None
+
+
 def _character_dict(state: GameState, char) -> Dict[str, Any]:
     return {
         "id": char.id,
@@ -467,6 +504,10 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "temp_mod": char.temp_mod,
         "prevent_pool": char.prevent_pool,
         "acted_mode": char.acted_mode,
+        # §D23-1: what the turn still allows, per verb — the action bar's greying.
+        "turn_open": _turn_open(char),
+        # §D23-3: set when position, not the turn, is what closed the Attack cell.
+        "reach_blocked": _reach_blocked(char),
         "turn_ended": char.turn_ended,
         "mana": _mana_by_color(char),
         "reserved_pips": _pip_str(char.reserved),
@@ -551,7 +592,8 @@ def _evergreen_block(char) -> Dict[str, Any]:
                                   f"Gain temporary HP equal to base Power "
                                   f"({_defend_value(char)}) — a buffer that fades at "
                                   f"end of turn."
-                                  + (" Free (Defender)." if _has_defender(char) else "")),
+                                  + (" Free (Defender) — then one more verb."
+                                     if _has_defender(char) else "")),
         "defensive_reaction": entry("mitigate", "Mitigate",
                                     f"Reduce each hit of an incoming attack by ceil(Power/2) = "
                                     f"{_mitigate_value(char)}; or intercept for an adjacent ally."),
@@ -777,6 +819,24 @@ _PHASE_LABEL = {
     "intents": "enemy intents", "player": "player actions", "allies": "ally actions",
     "enemy": "enemy actions", "end": "end step",
 }
+
+
+# The five STEPS the turn tracker shows, and which engine phase belongs to each.
+# Coarser than `_PHASE_LABEL` on purpose: the upkeep bookkeeping phases read as
+# one step to a player, and this is the vocabulary the ribbon already uses.
+# §D23-8 scopes Pass-All to a step, so what the player is told ("passing for the
+# rest of the Enemies step") is exactly what the server enforces.
+_PHASE_STEP = {
+    "upkeep": "Upkeep", "capacity": "Upkeep", "draw": "Upkeep",
+    "intents": "Upkeep", "player": "Players", "allies": "Allies",
+    "enemy": "Enemies", "end": "End",
+}
+
+
+def phase_step(state: GameState) -> str:
+    """Which turn-tracker STEP the game is in, ignoring any open reaction window
+    (a window mid-enemy-phase is still the Enemies step)."""
+    return _PHASE_STEP.get(state.phase, state.phase)
 
 
 def phase_label(state: GameState) -> str:

@@ -35,7 +35,10 @@ def _state(components=None, intent_amount=3):
         "party": [{"id": "ys", "name": "Ys", "hp": 10, "power": 2, "hand_size": 1,
                    "identity": ["W"], "row": "front", "attack_mode": "melee",
                    "library": [dict(_FOG)]}],
+        # Mid: §D23-3 — a ranged enemy cannot shoot from the Front row, and an
+        # archer standing in the melee line is a layout fault (§D23-6).
         "enemies": [{"id": "sov", "name": "Sovereign", "hp": 20, "level": 4,
+                     "row": "mid", "attack_mode": "ranged",
                      "intent": {"name": "Swipe", "amount": intent_amount,
                                 "action_type": "ability", "intent_type": "attack",
                                 "targeting": "lowest_hp_party", "mode": "ranged"}}],

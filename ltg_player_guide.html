@@ -244,33 +244,43 @@ fight mid-round.</p>
 <!-- ================================================================ -->
 <h2 id="turn"><span class="num">III</span>Your Turn: Actions</h2>
 
-<p>On your turn you take exactly <b>one proactive action</b>:</p>
+<p>Your turn is <b>either one turn-spending verb, or the pair</b>. Taking a
+turn-spending verb <em>is</em> your turn; Defend and Move go together and cost one
+turn between them.</p>
 
 <div class="tbl-scroll"><table>
-  <tr><th style="width:120px">Action</th><th>What it does</th></tr>
-  <tr><td class="phase">Attack</td><td>Your basic attack — damage equal to your <b>Power</b> — or an attack a card grants. Afterwards you may still act at instant speed, but cast no sorceries.</td></tr>
-  <tr><td class="phase">Cast</td><td>Cast <b>sorcery</b>-speed spells — as many as your mana allows. No attack this turn.</td></tr>
-  <tr><td class="phase">Defend</td><td>Your defensive stance: gain <b>+3 temporary HP</b> until end of turn.</td></tr>
-  <tr><td class="phase">Move</td><td>Reposition to any row. Free of mana; resolves <b>live</b> (it goes on the stack, and pending melee intents re-check when you arrive). Cannot be countered.</td></tr>
+  <tr><th style="width:120px">Verb</th><th style="width:110px">Group</th><th>What it does</th></tr>
+  <tr><td class="phase">Attack</td><td>one of these is your turn</td><td>Your basic attack — damage equal to your <b>Power</b> — or an attack a card grants. A <b>ranged</b> attack cannot be made from the <b>Front row</b>: no shot at point-blank.</td></tr>
+  <tr><td class="phase">Cast</td><td>one of these is your turn</td><td>Cast <b>sorcery</b>-speed spells — as many as your mana allows, all on one Cast. (Spells are not attacks: a caster in Front still casts.)</td></tr>
+  <tr><td class="phase">Skill</td><td>one of these is your turn</td><td>Your authored signature move, once per encounter (§XVI).</td></tr>
+  <tr><td class="phase">Ultimate</td><td>one of these is your turn</td><td>Your finisher, on a full gauge, once per encounter (§XVI).</td></tr>
+  <tr><td class="phase">Defend</td><td>these two go together</td><td>Your defensive stance: temporary HP equal to your <b>base Power</b>, until end of turn.</td></tr>
+  <tr><td class="phase">Move</td><td>these two go together</td><td>Reposition to any row. Free of mana; resolves <b>live</b> (it goes on the stack, and pending melee intents re-check when you arrive). Cannot be countered.</td></tr>
 </table></div>
 
+<p>So: swing, <em>or</em> cast, <em>or</em> use your Skill, <em>or</em> unleash your
+Ultimate — <em>or</em> raise your shield and reposition, in either order. Per-verb
+limits still apply on top (one Attack, one Defend, one Move a turn; one Skill and one
+Ultimate an encounter).</p>
+
 <p><b>Free, at any time, on anyone's turn:</b> casting <b>instants</b> (limited only
-by mana) and your once-per-turn <b>Mitigate</b> reaction. Neither consumes the
-proactive action. Your <b>Skill</b> and <b>Ultimate</b> (§XVI) are <em>actions</em> —
-they spend the turn like Attack or Cast does.
-Two keywords bend the rules: <b>vigilance</b> lets you pair your attack with a Cast
-turn — or with your Skill; <b>haste</b> lets you take your action <em>and</em> make a
-free move.</p>
+by mana), your once-per-turn <b>Mitigate</b> reaction, Pass and Delay. None of these
+touch your turn.</p>
+
+<p>Three keywords <b>free one verb</b> each. A freed verb sits outside the turn, and
+after taking it you may take <b>exactly one more verb</b>, from either group (never
+the whole pair): <b>vigilance</b> frees the Attack, <b>defender</b> frees the Defend,
+<b>haste</b> frees the Move.</p>
 
 <h3>The abilities every character owns</h3>
 
 <div class="tbl-scroll"><table>
   <tr><th style="width:130px">Ability</th><th style="width:120px">Timing</th><th>Effect</th></tr>
-  <tr><td class="phase">Basic attack</td><td>action · 1/round</td><td>Deal damage equal to your Power (melee or ranged, whichever mode you own).</td></tr>
-  <tr><td class="phase">Defend</td><td>action · 1/round</td><td>+3 temporary HP until end of turn.</td></tr>
+  <tr><td class="phase">Basic attack</td><td>turn verb · 1/round</td><td>Deal damage equal to your Power (melee or ranged, whichever mode you own). Ranged cannot fire from the Front row.</td></tr>
+  <tr><td class="phase">Defend</td><td>pair verb · 1/round</td><td>Temporary HP equal to your base Power, until end of turn.</td></tr>
   <tr><td class="phase">Mitigate</td><td>reaction · 1/turn</td><td>Answer one incoming <b>attack</b>: reduce each of its hits by <b>half your Power, rounded up</b> — on yourself, or intercepting for an ally (see below).</td></tr>
-  <tr><td class="phase">Skill</td><td>action · 1/encounter</td><td>Your authored signature move — a one-shot, or a channeled form you hold (§XVI).</td></tr>
-  <tr><td class="phase">Ultimate</td><td>action · 1/encounter</td><td>Your authored finisher — no mana cost, but only castable on a full ultimate gauge (§XVI).</td></tr>
+  <tr><td class="phase">Skill</td><td>turn verb · 1/encounter</td><td>Your authored signature move — a one-shot, or a channeled form you hold (§XVI).</td></tr>
+  <tr><td class="phase">Ultimate</td><td>turn verb · 1/encounter</td><td>Your authored finisher — no mana cost, but only castable on a full ultimate gauge (§XVI).</td></tr>
 </table></div>
 
 <p class="muted">One more thing can reshape this list: a held <b>stance</b> (§VIII)
@@ -629,8 +639,9 @@ work the way an MTG charm or kicker leads you to expect.</p>
   <tr><td class="phase">reach</td><td>Your melee can strike flyers — and pins an enemy melee-flyer.</td><td>as expected</td></tr>
   <tr><td class="phase">first strike</td><td>Hold your basic attack as a <em>reaction</em>: it resolves before the blow that provoked it — and may kill the attacker first.</td><td>reimagined, same soul</td></tr>
   <tr><td class="phase">double strike</td><td>The basic attack strikes twice.</td><td>as expected</td></tr>
-  <tr><td class="phase">vigilance</td><td>Attack <em>and</em> still cast or act in one turn.</td><td>untapping → action economy</td></tr>
-  <tr><td class="phase">haste</td><td>Take your action <em>and</em> a free move.</td><td>speed → mobility</td></tr>
+  <tr><td class="phase">vigilance</td><td>Frees the Attack: swing, then take one more verb.</td><td>untapping → action economy</td></tr>
+  <tr><td class="phase">defender</td><td>Frees the Defend: shield, then take one more verb. Never basic-attacks; walks and dashes like anyone else.</td><td>defender → the shield wall</td></tr>
+  <tr><td class="phase">haste</td><td>Frees the Move: step, then take one more verb.</td><td>speed → mobility</td></tr>
   <tr><td class="phase">trample</td><td>When your hit fells its target, the excess spills onto one nearby creature on the felled side.</td><td>as expected, precise</td></tr>
   <tr><td class="phase">deathtouch</td><td>Any of its damage that connects can execute a minion outright.</td><td>as expected</td></tr>
   <tr><td class="phase">lifelink</td><td>Heal equal to damage that <em>connects</em> — a fully mitigated hit heals nothing.</td><td>as expected</td></tr>
@@ -706,7 +717,7 @@ fifth is dear.</p>
   <tr><td class="phase">+1 mana capacity</td><td>15 · 15 · 20 · 25 · 30 · +5 each</td><td>your turn-1 mana; the curve-up builds on it</td></tr>
   <tr><td class="phase">+1 starting card</td><td>15 · 15 · 20 · 25 · 30 · +5 each</td><td>opening-hand size</td></tr>
   <tr><td class="phase">+1 Power</td><td>10 · 10 · 15 · 20 · 25 · +5 each</td><td>max +2 bought at creation (melee caps at 4, ranged at 3); the cap grows with your level (§XVII)</td></tr>
-  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts, flat</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 20 · vigilance 20 · flying 25</td></tr>
+  <tr><td class="phase">One keyword <span class="muted">(max one — ever)</span></td><td>5–25 pts, flat</td><td>reach 5 · trample 10 · first strike 15 · lifelink 15 · haste 15 · vigilance 20 · flying 25</td></tr>
 </table></div>
 <p class="muted">The counter never resets: the level-up screen prices your sixth HP pair as
 the sixth, however many adventures ago you bought the first five. Loadouts saved before
@@ -756,7 +767,7 @@ sheet, not in your library.</p>
 
 <div class="tbl-scroll"><table>
   <tr><th style="width:110px"></th><th>Skill</th><th>Ultimate</th></tr>
-  <tr><td class="phase">Timing</td><td>An action on your turn (vigilance lets it share the turn with an Attack or Cast)</td><td>An action on your turn</td></tr>
+  <tr><td class="phase">Timing</td><td>A turn-spending verb (a freed verb — vigilance, defender, haste — lets it share the turn)</td><td>A turn-spending verb, on a full gauge</td></tr>
   <tr><td class="phase">Form</td><td>A one-shot — or a <b>channeled form</b> you hold, even a stance (§VIII)</td><td>Always a one-shot</td></tr>
   <tr><td class="phase">Uses</td><td>Once per encounter</td><td>Once per encounter</td></tr>
   <tr><td class="phase">Cost</td><td>Optional mana cost (a channeled skill reserves it while held)</td><td>Never costs mana — the gauge is the cost</td></tr>
@@ -773,7 +784,7 @@ game:</p>
 
 <div class="tbl-scroll"><table>
   <tr><th>You…</th><th style="width:210px">Gauge</th></tr>
-  <tr><td>take your proactive action</td><td>+2</td></tr>
+  <tr><td>take your turn's first verb</td><td>+2</td></tr>
   <tr><td>cast a spell</td><td>+1 per mana spent</td></tr>
   <tr><td>lose HP</td><td>+1 per point</td></tr>
   <tr><td>deal damage that connects</td><td>+1 per point</td></tr>

@@ -116,21 +116,28 @@ Both are checked continuously.
 
 ### What a character can do on its turn
 
-A character takes exactly **one proactive action**:
+A turn is **either one turn-spending verb, or the pair** (§D23-1):
+
+**Turn-spending verbs** — taking one of these *is* your turn:
 
 - **Attack** — its basic attack (damage equal to its **Power**), or an attack granted by
-  a card. Afterwards it may still act at instant speed.
-- **Cast** — cast `sorcery`-speed spells, limited only by mana. No attack this turn.
-- **Defend** — the free defensive action; grants temporary HP (currently +3, a
-  documented placeholder).
+  a card.
+- **Cast** — cast `sorcery`-speed spells, limited only by mana; several may ride one Cast.
+- **Skill** — the authored once-per-encounter ability.
+- **Ultimate** — the limit break, on a full gauge. (It no longer has to *open* the turn.)
+
+**The pair** — either one, or both together, in either order, is also a full turn:
+
+- **Defend** — grants temporary HP equal to base **Power**.
 - **Move** — reposition to any row. Costs no mana.
 
-**Free, at any time, on anyone's turn:** casting **instants** (limited only by mana) and
-using **reactions**. These never consume the proactive action.
+**Free, at any time, on anyone's turn:** casting **instants** (limited only by mana),
+**Mitigate**, Pass and Delay. These are reactions and never touch the turn.
 
-Two keywords lift these restrictions. **Vigilance** lets a character attack *and* cast in
-the same turn. **Haste** lets it take its proactive action *and* make a free voluntary
-move.
+Three keywords **free one verb** each (§D23-2). A freed verb does not count toward the
+turn, and after taking one the character may take **exactly one more verb**, from either
+group (never the whole pair). **Vigilance** frees the Attack, **Defender** frees the
+Defend, **Haste** frees the Move.
 
 ### Damage, HP, and death
 
@@ -186,26 +193,28 @@ the protected ally's row**. Covering a backline ally pulls the tank off the fron
 so the melee the wall was holding reaches the backline next round. Every interception is
 a trade — *who do I save, and what do I expose by leaving?*
 
-### Movement, and why you can never dodge
+### Movement, and why dodging is interposition
 
-Every combatant tracks **two** row values:
+Update 15 replaced the old two-row model with **one live position**. A combatant has a
+single `row`, and it relocates the moment a move RESOLVES — a voluntary Move, the melee
+lunge (a melee swing closes to Front as it hits the stack), the ally-Mitigate dash, a
+forced move, or an enemy Move intent.
 
-- **`current`** — its physical row. This is what enemy and ally **intents** read. It
-  changes **only at End step**.
-- **`committed`** — the row it has committed to occupy. This is what its **own** actions
-  and reactions read for reach and legality. It can change during the turn.
+Because bodies move live, a declared intent is **re-checked** after every occupancy
+change. A nominal melee swing — and, since §D23-4, a melee single-target **combat
+ability** — whose target is no longer in the attacker's reachable row **redirects** onto
+whoever now stands in front. So walking away never dodges anything by itself: the intent
+simply follows. It is answered only by **interposition** — putting another body in the
+way, which then eats the blow *and its riders*. Ranged intents, flyers, `relentless`
+attackers and row-aimed (positional) intents never redirect; a positional intent is aimed
+at **ground**, so vacating the row before it resolves genuinely is a dodge.
 
-Separating these resolves the "two places at once" problem: your *reach* updates the
-instant you commit to a move, but your *body* does not relocate until End step.
-
-**Forced moves** write `committed` immediately: making a melee attack commits you to the
-front; intercepting for an ally commits you to their row. **Voluntary moves** (the Move
-action, or a free haste move) write a separate pending slot and do not touch `committed` at
-all — so a planned destination never grants reach mid-turn.
-
-Since intents lock their target at declaration and never re-check, and bodies only move at
-End step (after the enemy step), **no movement can dodge a declared attack**. That is the
-guarantee the whole model exists to provide.
+**Ranged attacks cannot be made from the Front row** (§D23-3) — heroes, allied tokens and
+enemies alike. Spells are not attacks and are unaffected: a caster in Front still casts.
+This gives a ranged hero a real positional stake: dash into Front to Mitigate for the tank
+and you pay with the next shot unless you spend a turn walking back out. On the enemy
+side, a ranged-primary body shoved onto the melee line spends its whole activation
+falling back to Mid.
 
 ### The stack
 
@@ -214,7 +223,7 @@ has two orthogonal properties:
 
 | | **spell** | **ability** |
 |---|---|---|
-| **active** (costs your proactive action) | sorcery | attack, activated, Defend |
+| **active** (spends your turn — §D23-1) | sorcery | attack, activated, Defend, Move |
 | **reactive** (free) | instant | triggered, Mitigate |
 
 Speed is **derived, never stored**: a player card is always a spell whose speed comes from
@@ -548,8 +557,9 @@ keyword's identifier, display name, gloss, grantability, and params. `grant_keyw
 | **reach** | its melee may strike flyers, and pins an enemy melee-flyer |
 | **first strike** | may hold its attack and use it as a reaction (strikes first) |
 | **double strike** | the basic attack strikes twice |
-| **vigilance** | may attack **and** still cast or act |
-| **haste** | may take its proactive action **and** make a free voluntary move |
+| **vigilance** | frees the Attack: swing, then take one more verb |
+| **defender** | frees the Defend: shield, then take one more verb. Never basic-attacks; walks and dashes like anyone else |
+| **haste** | frees the Move: step, then take one more verb |
 | **trample** | excess damage overflows to the same or an adjacent row |
 | **deathtouch** | its damage can **execute** a minion outright |
 | **lifelink** | heals equal to the damage it deals |
@@ -704,8 +714,20 @@ all components merge into **one priority-ordered list** (lower number first), ev
 
 Priority bands, by convention: **10–19** emergencies (self-preservation, `on_incoming_lethal`)
 · **20–49** tactical opportunities · **90** the default basic attack. Every enemy's list must
-terminate in that default Attack rule, so the proactive pass always produces an intent. Ties
-resolve by authoring order. Fully deterministic.
+terminate in that default Attack rule, so the proactive pass always produces an intent.
+The emergency band is exempt from the attack cadence (§D23-6): "drop everything" rules are
+never overridden by the forced swing.
+
+Ties **inside a band** are broken by a key seeded from the fight's `rng_seed`, the enemy and
+the turn (§D23-6) — the same fight always plays out identically, two fights differ, and a kit
+is no longer solved the first time you meet it. Priority still decides; only ties move.
+
+Conditions gate any component: `self_hp_pct` · `self_hp` · `turn` · `ally_count` ·
+`hero_count` · `hero_channeling` · `self_channeling` · `hero_gauge_pct` · `hero_primed` ·
+**`hero_in_row`** (position) · **`hero_hp_pct`** (someone is nearly down) ·
+**`corpse_count`** (the harvest is worth a turn) · **`turn_mod`** (a rhythm: every Nth turn).
+An unknown condition kind is rejected when the content loads, not silently failed at
+evaluation.
 
 ### Target valuation — the default-attack brain
 
@@ -724,7 +746,9 @@ frontliner **without scripting either**.
 Other target rules sharpen it: `highest_threat` (the assassin's read — cut the sword arm) ·
 `lowest_hp_ally` and `wounded_ally` (support that skips the unwounded, so a healer never
 wastes a turn) · `channeling_player` (the ritual-breaker) · `trigger_source` (whoever caused
-the trigger) · `self`. **Control spreads:** a stun rule skips already-stunned heroes and a
+the trigger) · `self` · **`hero_class:<class>` / `hero_type:<type>`** — a *grudge* that names
+a role rather than a body ("the undead hunt the cleric"), falling back to valuation when
+nobody in the party wears it. Every hero-directed rule honours **reach** (§D23-7.7). **Control spreads:** a stun rule skips already-stunned heroes and a
 taunt rule skips already-taunted ones, so two control pieces no longer overwrite each other.
 
 ### Bosses, enrage, and bloodied moments

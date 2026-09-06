@@ -155,6 +155,42 @@ def _incoming_damage(state: GameState, item) -> Tuple[Optional[str], int]:
     return victim.id, total
 
 
+# §D23-9 / §B.9 — the positional layer's reads. Position became a real decision
+# in Update 23 (ranged cannot fire from Front; Defend and Move are a pair that
+# costs one turn between them), and a stick that never moved could not measure
+# any of it.
+_ROWS = ("front", "mid", "rear")
+
+
+def _telegraphed_row_damage(state: GameState) -> Dict[str, int]:
+    """Damage the enemy side has TELEGRAPHED at each party row (§L-5 positional
+    intents plus row-shaped stack items). Read from the declared intents, so the
+    stick moves off ground that has been named — the whole point of a row shape
+    being aimed at a place rather than a body."""
+    out: Dict[str, int] = {r: 0 for r in _ROWS}
+    for e in state.living_enemies():
+        for intent in (e.intent, e.intent2):
+            row = getattr(intent, "target_row", None)
+            if row is None:
+                continue
+            amount = 0
+            for eff in getattr(intent, "effects", []) or []:
+                if getattr(eff, "kind", None) == "deal_damage" \
+                        and isinstance(getattr(eff, "amount", None), int):
+                    amount += eff.amount
+            if amount <= 0 and intent.attack_power is not None:
+                amount = max(0, intent.attack_power + e.power_bonus)
+            if row in out:
+                out[row] += amount
+    return out
+
+
+def _row_of(action) -> Optional[str]:
+    """The destination row a `move` action names."""
+    row = getattr(action, "target_id", None)
+    return row if row in _ROWS else None
+
+
 def _enemy_kill_order(state: GameState) -> List[str]:
     """The greedy bot's kill-priority mirror (§D12-3.3 rule 4): the race-marked
     target first, then healers/support, escalators, channelers, then lowest HP."""
@@ -321,10 +357,20 @@ class GreedyPolicy(Policy):
     table ranked characters largely by whether identity[0] happened to match
     their deck's dominant pip). Now: lock the colour with the largest deficit
     between remaining pips (hand + library) and the pool's supply; ties keep
-    identity order."""
+    identity order.
+
+    1.5.0 (the positional pass, driven by Update 23): position is a real
+    decision now — a ranged hero cannot fire from the Front row (§D23-3), and
+    Defend and Move are a PAIR that costs one turn between them (§D23-1) rather
+    than two whole turns. A stick that never moved could measure none of it.
+    Three rules, all deliberately blunt: vacate a row a positional intent has
+    telegraphed lethal damage at (1b); step out of Front when ranged and
+    therefore holding no shot (9b); and, once nothing better than a Defend is
+    left, take the OTHER half of the pair as well (12b) instead of ending the
+    turn with a free verb in hand."""
 
     name = "greedy"
-    version = "greedy-1.4.0"
+    version = "greedy-1.5.0"
 
     # -- entry ---------------------------------------------------------------- #
     def choose(self, state: GameState, legal: List[Action],
@@ -570,6 +616,23 @@ class GreedyPolicy(Policy):
             return self._pick("1-win-now",
                               sorted(finishers, key=lambda f: f[:2])[0][2])
 
+        # 1b. Vacate telegraphed ground (1.5.0): a positional intent aimed at
+        # this actor's row that would kill it. Walking out is the dodge working
+        # (§L-5) — and it is cheap, because the Move is only half a turn.
+        moves = by_kind.get("move", [])
+        if moves and actor is not None:
+            threat = _telegraphed_row_damage(state)
+            here = threat.get(actor.row, 0)
+            if here >= actor.effective_hp > 0:
+                safer = [a for a in moves
+                         if threat.get(_row_of(a) or "", 0) < here
+                         and not (actor.attack_mode == "ranged"
+                                  and _row_of(a) == "front")]
+                if safer:
+                    return self._pick("1b-vacate-row", sorted(
+                        safer, key=lambda a: (threat.get(_row_of(a) or "", 0),
+                                              _row_of(a) or ""))[0])
+
         # 2b. Stand a downed ally back up the moment it is possible.
         if revives:
             return self._pick("2-revive", sorted(
@@ -694,6 +757,18 @@ class GreedyPolicy(Policy):
         if line_first is not None:
             return self._pick("9-cast-line", line_first)
 
+        # 9b. Step out of the melee line (1.5.0): a ranged hero standing in
+        # Front has no shot at all (§D23-3), so getting out IS the play — the
+        # ladder has already established there is no swing and no better cast.
+        if (moves and actor is not None and actor.attack_mode == "ranged"
+                and actor.row == "front" and enemies):
+            threat = _telegraphed_row_damage(state)
+            out = [a for a in moves if _row_of(a) in ("mid", "rear")]
+            if out:
+                return self._pick("9b-step-out", sorted(
+                    out, key=lambda a: (threat.get(_row_of(a) or "", 0),
+                                        _row_of(a) or ""))[0])
+
         # 11. The utility mana sink, in fixed order (heal the wounded first).
         # Each card ranks at its FIRST kind whose guard passes (1.3.0) — an
         # untargeted heal serves while anyone is wounded, and a card whose
@@ -730,6 +805,28 @@ class GreedyPolicy(Policy):
             return self._pick("12-defend", sorted(
                 stance_by_slot["defend"],
                 key=lambda a: (a.target_id or "", a.label))[0])
+
+        # 12b. Take the other half of the pair (1.5.0). The Defend is spent and
+        # nothing better is left: under §D23-1 the Move rides along for free, so
+        # ending the turn without it simply throws a verb away. Prefer safer
+        # ground; a ranged body prefers to be off the melee line.
+        if moves and actor is not None:
+            threat = _telegraphed_row_damage(state)
+            here = threat.get(actor.row, 0)
+
+            def pair_key(a):
+                row = _row_of(a) or ""
+                return (threat.get(row, 0),
+                        0 if not (actor.attack_mode == "ranged"
+                                  and row == "front") else 1,
+                        row)
+            better = [a for a in moves
+                      if pair_key(a) < (here,
+                                        1 if (actor.attack_mode == "ranged"
+                                              and actor.row == "front") else 0,
+                                        actor.row)]
+            if better:
+                return self._pick("12b-pair-move", sorted(better, key=pair_key)[0])
         nxt = self._pass_like(by_kind)
         if nxt is not None:
             return self._pick("pass", nxt)
