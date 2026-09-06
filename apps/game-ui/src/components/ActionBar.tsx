@@ -1,14 +1,37 @@
 import { useGame } from "../lib/store";
 import type { Choice, Choices } from "../lib/choices";
 import type { CharacterView } from "../lib/types";
-import { IconMend, IconMove, IconShield, IconSkill, IconSword, IconUltimate } from "./Icons";
+import {
+  IconMend, IconMove, IconPairMark, IconShield, IconSkill, IconSword,
+  IconTurnMark, IconUltimate,
+} from "./Icons";
 
-const CORE: { key: keyof Choices; Icon: typeof IconSword; label: string; flavor?: "offensive" | "defensive_action" | "defensive_reaction" }[] = [
-  { key: "attack", Icon: IconSword, label: "Attack", flavor: "offensive" },
-  { key: "defend", Icon: IconShield, label: "Defend", flavor: "defensive_action" },
-  { key: "mitigate", Icon: IconMend, label: "Mitigate", flavor: "defensive_reaction" },
-  { key: "move", Icon: IconMove, label: "Move" },
-];
+type CoreSpec = {
+  key: keyof Choices;
+  Icon: typeof IconSword;
+  label: string;
+  flavor?: "offensive" | "defensive_action" | "defensive_reaction";
+  // §D23-1: which turn group this verb belongs to, for the disabled reason.
+  group?: "turn" | "pair";
+};
+
+const ATTACK: CoreSpec = { key: "attack", Icon: IconSword, label: "Attack", flavor: "offensive", group: "turn" };
+const DEFEND: CoreSpec = { key: "defend", Icon: IconShield, label: "Defend", flavor: "defensive_action", group: "pair" };
+const MOVE: CoreSpec = { key: "move", Icon: IconMove, label: "Move", group: "pair" };
+const MITIGATE: CoreSpec = { key: "mitigate", Icon: IconMend, label: "Mitigate", flavor: "defensive_reaction" };
+
+// §D23-9 — why a cell is dark. The words "action" and "half action" never
+// appear: an action is a thing on the stack, and calling a Move half of one is
+// exactly the framing the turn groups replaced.
+function closedReason(char: CharacterView | null | undefined, spec: CoreSpec): string | null {
+  if (!char) return null;
+  const open = char.turn_open ?? {};
+  if (spec.key === "attack" && char.reach_blocked === "front")
+    return "point-blank: ranged can't fire from the Front row";
+  if (spec.group && open[spec.key] === false)
+    return spec.group === "turn" ? "your turn is spent" : "pair with Defend/Move only";
+  return null;
+}
 
 // Shared button chrome for the 3×2 action grid (core actions + the Skill).
 const CELL_ON_ACTIVE = "border-brass bg-gradient-to-b from-brass-hi to-brass text-ink-0 shadow-[0_0_14px_rgba(233,204,130,0.3)]";
@@ -23,7 +46,8 @@ export function ActionBar({ choices, reaction, char }: {
   const select = useGame((s) => s.selectChoice);
   const armed = useGame((s) => s.armed);
 
-  const coreBtn = ({ key, Icon, label, flavor }: (typeof CORE)[number]) => {
+  const coreBtn = (spec: CoreSpec) => {
+    const { key, Icon, label, flavor } = spec;
     const choice = choices?.[key] as Choice | undefined;
     const enabled = !!choice;
     // Stance replacements (§D9-2) arrive as `stance_ability` choices carrying the
@@ -34,20 +58,27 @@ export function ActionBar({ choices, reaction, char }: {
     // mechanical name rides the tooltip so the mechanics stay legible. A stance
     // has REPLACED this ability, so its authored name/label wins instead.
     const entry = flavor ? char?.evergreen?.[flavor] : undefined;
-    const display = isStance
+    let display = isStance
       ? (choice?.label || label)
       : (entry?.name && entry.name !== label ? entry.name : label);
-    const tip = isStance
+    // §D23-8: in a reaction window the Mitigate cell says what it would TURN, so
+    // the decision needs no second look at the stack.
+    if (key === "mitigate" && reaction && enabled && char)
+      display = `${display} −${char.mitigate_value}`;
+    const closed = enabled ? null : closedReason(char, spec);
+    const base = isStance
       ? `${choice?.label ?? label} — ${label} (replaced by your stance)`
       : entry
         ? `${label}: ${entry.text}${entry.flavor ? `\n${entry.flavor}` : ""}`
         : label;
+    const tip = closed ? `${base}\n${closed}` : base;
     return (
       <button
         key={label}
         disabled={!enabled}
         onClick={() => choice && select(choice)}
         title={tip}
+        aria-label={closed ? `${label} — ${closed}` : label}
         className={`caps-label flex flex-col items-center justify-center gap-1 border text-[11px] tracking-[0.14em] transition ${
           enabled ? (active ? CELL_ON_ACTIVE : CELL_ON) : CELL_OFF
         }`}
@@ -66,12 +97,14 @@ export function ActionBar({ choices, reaction, char }: {
     const enabled = !!choice;
     const active = armed?.kind === "use_skill";
     const cost = skill?.cost && skill.cost !== "{0}" ? ` Costs ${skill.cost}.` : "";
+    const closed = !enabled && skill != null && !skill.used
+      && char?.turn_open?.skill === false ? "your turn is spent" : null;
     const tip = skill == null
       ? "Skill — none authored for this character"
       : skill.used
         ? `${skill.name ?? "Skill"} — already used this encounter`
-        : `${skill.name ?? "Skill"} — Skill (an action, once per encounter; consumes your turn's action unless vigilant).${cost}`
-          + `${skill.text ? `\n${skill.text}` : ""}`;
+        : `${skill.name ?? "Skill"} — Skill (once per encounter; taking it is your turn).${cost}`
+          + `${skill.text ? `\n${skill.text}` : ""}${closed ? `\n${closed}` : ""}`;
     return (
       <button
         disabled={!enabled}
@@ -102,14 +135,26 @@ export function ActionBar({ choices, reaction, char }: {
           Reaction Window
         </div>
       )}
-      {/* 3×2 grid: the four core actions, the Skill, and the Pass stack. */}
+      {/* §D23-9 — the turn GROUPS, read left-to-right in two columns.
+          Left: the turn-spending verbs (Attack, Skill — the Ultimate is the same
+          group, in its own gauge column). Right: the pair (Defend, Move).
+          A brass hairline bracket spans each, with one diamond over the left and
+          two half-diamonds over the right; the words are in the tooltips. */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <GroupBracket Mark={IconTurnMark} label="one of these is your turn" />
+        <GroupBracket Mark={IconPairMark} label="these two go together" />
+      </div>
+      {/* Attack | Defend · Skill | Move · Mitigate | Pass/Delay */}
       <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-3 gap-1.5">
-        {CORE.map(coreBtn)}
+        {coreBtn(ATTACK)}
+        {coreBtn(DEFEND)}
         {skillBtn()}
-        {/* Pass / Delay share the last cell. Pass answers a reaction window
-            (usually THE decision: brass). Delay is a main-phase move: the
-            character drops to the end of the party turn order for the rest of
-            the encounter and the next character goes now. */}
+        {coreBtn(MOVE)}
+        {coreBtn(MITIGATE)}
+        {/* Pass / Delay share a cell. Pass answers a reaction window (usually
+            THE decision: brass). Delay is a main-phase move: the character drops
+            to the end of the party turn order for the rest of the encounter and
+            the next character goes now. */}
         <div className="flex min-h-0 flex-col gap-1.5">
           <button
             disabled={!choices?.pass}
@@ -130,21 +175,76 @@ export function ActionBar({ choices, reaction, char }: {
           </button>
         </div>
       </div>
-      {/* End Turn — prominent, always the bottom-most control */}
-      <button
-        disabled={!choices?.endTurn}
-        onClick={() => choices?.endTurn && select(choices.endTurn)}
-        className={`chamfer-x caps-label py-2 text-[12px] tracking-[0.3em] transition ${
-          choices?.endTurn
-            ? "bg-gradient-to-b from-brass/15 to-brass/5 text-brass ring-1 ring-inset ring-brass/40 hover:from-brass-hi hover:to-brass hover:text-ink-0"
-            : "cursor-not-allowed bg-white/[0.02] text-dimmed/60"
-        }`}
-      >
-        End Turn
-      </button>
+      {/* Pass-All (§D23-8) beside End Turn — the bottom row of controls. */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <PassAllToggle char={char} />
+        <button
+          disabled={!choices?.endTurn}
+          onClick={() => choices?.endTurn && select(choices.endTurn)}
+          className={`chamfer-x caps-label py-2 text-[12px] tracking-[0.3em] transition ${
+            choices?.endTurn
+              ? "bg-gradient-to-b from-brass/15 to-brass/5 text-brass ring-1 ring-inset ring-brass/40 hover:from-brass-hi hover:to-brass hover:text-ink-0"
+              : "cursor-not-allowed bg-white/[0.02] text-dimmed/60"
+          }`}
+        >
+          End Turn
+        </button>
+      </div>
     </div>
   );
 }
+
+/** §D23-9 — one group's brass hairline bracket and its mark. The tooltip says
+ *  the rule in words, because a bracket alone teaches nobody. */
+function GroupBracket({ Mark, label }: { Mark: typeof IconTurnMark; label: string }) {
+  return (
+    <div title={label} className="flex items-center justify-center gap-1.5">
+      <span className="h-px flex-1 bg-gradient-to-r from-transparent to-brass/40" />
+      <Mark size={10} className="text-brass/70" />
+      <span className="h-px flex-1 bg-gradient-to-l from-transparent to-brass/40" />
+    </div>
+  );
+}
+
+/** §D23-8 — "pass for the rest of this phase". Two playtest calls shape it:
+ *  PER CHARACTER, not per player (a solo player holding the whole party still
+ *  wants their tank in every window while the empty-handed archer sits out), and
+ *  scoped to WHICHEVER PHASE you press it in, not the enemy phase specifically.
+ *  While set, the server answers that one seat's windows automatically; it
+ *  clears the moment the phase turns over, so it is a standing "no" for one
+ *  phase and never a setting. */
+function PassAllToggle({ char }: { char?: CharacterView | null }) {
+  const setPassAll = useGame((s) => s.setPassAll);
+  const passAllSeats = useGame((s) => s.passAllSeats);
+  const step = useGame((s) => s.snapshot?.phase_step ?? "");
+  const on = !!char && passAllSeats.includes(char.id);
+  const name = char?.name ?? "this character";
+  // Name the span the standing "no" actually covers — "for the rest of this
+  // phase" leaves the player guessing how long they have just gone quiet for.
+  // `phase_step` is the server's own scope, so the words cannot over-promise.
+  const here = step ? `the ${step} step` : "this step";
+  return (
+    <button
+      disabled={!char?.controlled}
+      onClick={() => char && setPassAll(!on, [char.id])}
+      title={!char?.controlled
+        ? "Pass All — only for characters you control"
+        : on
+          ? `${name} is passing every window for the rest of ${here} — click to take their windows back`
+          : `Pass every remaining window in ${here} for ${name} alone (the next step asks again)`}
+      className={`chamfer-x caps-label py-2 text-[11px] tracking-[0.22em] transition ${
+        !char?.controlled
+          ? "cursor-not-allowed bg-white/[0.02] text-dimmed/50 ring-1 ring-inset ring-line/50"
+          : on
+            ? "bg-gradient-to-b from-brass-hi to-brass text-ink-0"
+            : "bg-white/[0.02] text-dimmed ring-1 ring-inset ring-line hover:text-brass hover:ring-brass/40"
+      }`}
+    >
+      {on ? "Passing All" : "Pass All"}
+    </button>
+  );
+}
+
 
 /** The Ultimate column (D8-3.2/3.3): an icon button over a vertical gauge,
  * sitting between the mana widget and the action grid. The gauge fills from

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ltg_combat.engine import apply_action, legal_actions
+from ltg_combat.engine import apply_action, legal_actions, settle
 from ltg_combat.scenario import state_from_dict
 from ltg_game_server import content
 from ltg_game_server.session import SessionManager
@@ -396,7 +396,10 @@ def test_counter_target_id_maps_to_a_stack_uid():
     spec = {
         "party": [{"id": "caster", "name": "Caster", "hp": 20, "power": 2, "hand_size": 1,
                    "identity": ["U", "U"], "library": [unweave]}],
+        # Mid: §D23-3 leaves a ranged enemy in the Front row nothing to put on the
+        # stack, and this test is about the counter's target id.
         "enemies": [{"id": "goblin", "name": "Goblin", "hp": 6, "level": 1,
+                     "row": "mid", "attack_mode": "ranged",
                      "intent": {"name": "Zap", "amount": 2, "action_type": "ability",
                                 "mode": "ranged", "targeting": "lowest_hp_party"}}],
     }
@@ -421,3 +424,140 @@ def test_disconnect_releases_seats():
     assert s.controlled_by("A") == {"soren", "ys"}
     s.remove_client("A")
     assert all(owner is None for owner in s.seats.values())
+
+
+# --------------------------------------------------------------------------- #
+# §D23-8 — Pass-All
+# --------------------------------------------------------------------------- #
+def _pass_all_session(ids=("p",)):
+    """Heroes holding instants against an enemy that swings every round — so the
+    enemy phase really does open windows worth declining."""
+    def hero(cid):
+        return {"id": cid, "name": cid.upper(), "hp": 40, "power": 2,
+                "hand_size": 1, "identity": ["U"], "row": "front",
+                "attack_mode": "melee",
+                "library": [_card(f"{cid}bolt{i}", "Bolt", "instant",
+                                  {"generic": 0, "colors": {}},
+                                  [{"kind": "deal_damage", "amount": 1,
+                                    "target": {"mode": "chosen", "side": "enemy",
+                                               "targeted": True}}])
+                            for i in range(4)]}
+    spec = {
+        "party": [hero(cid) for cid in ids],
+        "enemies": [{"id": "e", "name": "E", "hp": 40, "level": 2, "power": 2,
+                     "intent": {"name": "Bash", "amount": 2, "action_type": "attack",
+                                "intent_type": "attack",
+                                "targeting": "lowest_hp_party", "mode": "melee"}}],
+    }
+    s = SessionManager().create(state_from_dict(spec))
+    s.clients["A"] = None
+    s.claim("A", list(ids))
+    return s
+
+
+def _to_enemy_step(s):
+    """End every hero's turn and drain to the first window of the Enemies step."""
+    for cid in list(s.seats):
+        act = next((a for a in legal_actions(s.state)
+                    if a.kind == "end_turn" and a.actor_id == cid), None)
+        if act is not None:
+            s.state, _ = apply_action(s.state, act)
+    s._auto_advance()
+    return s
+
+
+def _pass_all_lines(s):
+    return [ev for ev in s.state.log
+            if ev.type == "pass" and "pass-all" in ev.msg]
+
+
+def test_pass_all_answers_the_rest_of_the_step_for_the_seat():
+    _to_enemy_step(s := _pass_all_session())
+    assert s._phase_now()[1] == "Enemies"
+    s.set_pass_all("A", True, ["p"])
+    assert s.seats_payload("A")["pass_all"] == ["p"]
+    s._auto_advance()
+    # The remaining enemy windows were answered for us: the drain ran past them
+    # instead of stopping, and the log says who did the passing.
+    assert _pass_all_lines(s)
+
+
+def test_the_toggle_goes_dark_the_moment_the_step_turns_over():
+    """The flag is filtered where the CLIENT reads it, not only where the drain
+    expires it: the paced drain can finish its last iteration and return without
+    another broadcast, which used to leave the toggle lit on a flag the server
+    had already stopped honouring."""
+    _to_enemy_step(s := _pass_all_session())
+    s.set_pass_all("A", True, ["p"])
+    assert s.seats_payload("A")["pass_all"] == ["p"]
+    # Force the step over WITHOUT running the drain that does the expiring.
+    s.pass_all = {"p": (s._phase_now()[0], "Allies")}
+    assert s.seats_payload("A")["pass_all"] == []
+
+
+def test_pass_all_expires_when_the_step_turns_over():
+    """Playtest: the scope is A STEP. Once the Enemies step is done the standing
+    'no' goes with it — the next step asks again."""
+    _to_enemy_step(s := _pass_all_session())
+    s.set_pass_all("A", True, ["p"])
+    s._auto_advance()
+    assert s._phase_now()[1] != "Enemies"
+    assert not s.pass_all
+
+
+def test_a_flag_set_on_your_own_turn_does_not_cover_the_enemy_step():
+    """The other direction of the same rule: press it during the Players step and
+    it quiets the rest of THAT step — it does not reach forward into the enemy
+    step, which is a decision you have not made yet."""
+    s = _pass_all_session()
+    assert s._phase_now()[1] == "Players"
+    s.set_pass_all("A", True, ["p"])
+    _to_enemy_step(s)
+    assert not s.pass_all
+    assert not _pass_all_lines(s), "the enemy step must still ask"
+
+
+def test_pass_all_can_be_switched_off_again():
+    s = _pass_all_session()
+    s.set_pass_all("A", True)
+    s.set_pass_all("A", False)
+    assert s.seats_payload("A")["pass_all"] == []
+
+
+def test_pass_all_only_covers_seats_the_client_controls():
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren"])
+    with pytest.raises(ValueError):
+        s.set_pass_all("A", True, ["ys"])
+    s.set_pass_all("A", True)
+    assert s.seats_payload("A")["pass_all"] == ["soren"]
+
+
+def test_pass_all_is_per_character_not_per_player():
+    """Playtest: one player holding the whole party still wants their tank in
+    every window while the empty-handed archer sits the phase out. Toggling one
+    seat must not speak for the other."""
+    s = _two_char_session()
+    s.clients["A"] = None
+    s.claim("A", ["soren", "ys"])
+    s.set_pass_all("A", True, ["soren"])
+    assert s.seats_payload("A")["pass_all"] == ["soren"]
+    s.set_pass_all("A", True, ["ys"])
+    assert s.seats_payload("A")["pass_all"] == ["soren", "ys"]
+    s.set_pass_all("A", False, ["soren"])
+    assert s.seats_payload("A")["pass_all"] == ["ys"]
+
+
+def test_one_seats_pass_all_leaves_the_others_windows_alone():
+    """The other half: the flagged seat is answered for, the unflagged one is
+    still asked. Two heroes, both holding instants, only one flagged."""
+    _to_enemy_step(s := _pass_all_session(["p", "q"]))
+    s.set_pass_all("A", True, ["p"])
+    s._auto_advance()
+    assert {ev.data.get("character") for ev in _pass_all_lines(s)} == {"p"}, \
+        "only the flagged seat is answered for"
+    # …and the drain stopped on the unflagged seat's window rather than running
+    # the whole enemy step: q still has a decision to make.
+    view = settle(s.state)
+    assert view.stack and view.priority == "q"

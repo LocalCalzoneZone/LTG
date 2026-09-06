@@ -621,6 +621,11 @@ class EnemyState:
     enrage_round: Optional[int] = None
     neglect: int = 0
     hurt_this_round: bool = False   # damage bookkeeping for `neglect`; reset each turn
+    # §D23-5: the encounter turn this body ARRIVED. 1 for anything fielded at
+    # setup; the deploy turn for a reserve body (a wave, a summoned lieutenant).
+    # `enrage_round` and the neglect grace round count from here, so a boss that
+    # walks in on turn 6 with `enrage_round: 3` does not arrive already furious.
+    deployed_turn: int = 1
     created_by: Optional[str] = None  # the enemy that spawned this token (§F-4 per-creator cap)
     # The `rises` trait (§D9-1.5): on death the corpse STIRS and the enemy revives
     # after this many Upkeeps at half max HP (T-52), once per encounter. Cleared

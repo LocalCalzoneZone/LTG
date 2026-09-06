@@ -169,6 +169,13 @@ export interface CharacterView {
   } | null;
   mitigate_value: number;
   acted_mode: string | null;
+  // §D23-1: which verbs the TURN still allows. A verb can be open here and
+  // still unavailable for its own reason (no mana, the Skill already used, a
+  // ranged hero standing in Front) — this answers only "has the turn room?".
+  turn_open: Record<string, boolean>;
+  // §D23-3: set to "front" when POSITION, not the turn, closed the Attack cell
+  // (a ranged attacker cannot fire from the melee line). Null otherwise.
+  reach_blocked: string | null;
   turn_ended: boolean;
   mana: ManaBlock;
   is_active_focusable: boolean;
@@ -215,6 +222,10 @@ export interface IntentView {
   // §D18-4: the FULL footprint — one row for a row shape, three for a blast.
   // The board lights every row in it, not just the primary.
   target_rows?: Row[] | null;
+  // §D23-4: can a body step in front of this? True for a melee basic swing or a
+  // melee single-target combat ability from a ground, non-relentless attacker —
+  // the intent line reads "swing" (it can be walled) or "pursues".
+  redirectable?: boolean;
   // 1, or 2 for an enraged boss's second declared intent (§D9-4 boss fury).
   slot: number;
 }
@@ -466,6 +477,10 @@ export interface GameSnapshot {
   turn: number;
   phase: string;
   phase_label: string;
+  // §D23-8: the turn-tracker step ("Upkeep" | "Players" | "Allies" | "Enemies" |
+  // "End") — the span a Pass-All covers, named by the server so the client never
+  // keeps a second copy of the phase vocabulary.
+  phase_step: string;
   // Generated battle backdrop URL ("" until one exists) and the encounter this
   // game was built from — in-game art generate/remove calls aim at it.
   scene_image: string;

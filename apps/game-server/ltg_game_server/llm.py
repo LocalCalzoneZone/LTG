@@ -434,6 +434,16 @@ condition (optional gate on any component):
   nearly full (arm the gauge-punisher only when it matters)
 {"kind": "hero_primed", "op": ">=", "value": 1} — a hero holds a live
   amplify/double_next combo tag (a spike is being set up)
+{"kind": "hero_in_row", "row": "front", "op": ">=", "value": 2} — POSITION: how
+  many heroes stand in that row. The cleaver that only winds up once the party
+  crowds the front line; the flanker that waits for the back line to empty
+{"kind": "hero_hp_pct", "op": "<=", "value": 30} — the LOWEST hero HP fraction in
+  the party: "someone is nearly down". An executioner's gate
+{"kind": "corpse_count", "op": ">=", "value": 2} — bodies on the field; a
+  necromancer that waits until the harvest is worth a turn
+{"kind": "turn_mod", "mod": 3, "value": 0} — a RHYTHM: fires on turns 3, 6, 9…
+  (`mod` is the cycle, `value` the turn within it). Reads as a drumbeat the party
+  can learn and plan around, unlike a cooldown they can only infer
 
 trigger (reactive components): "on_hit" (this enemy took damage) · "on_ally_hit" ·
 "on_ally_death" · "on_targeted" · "on_spell_cast" (punish or COUNTER casting) ·
@@ -899,6 +909,10 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
       ]
     }
   ],
+  // ROW PLACEMENT (D23-3): a RANGED enemy MUST stand in "mid" or "rear" — a
+  // ranged attack cannot be made from the melee line, so a ranged body in
+  // "front" would spend its first turn walking backwards. The gate rejects it.
+  // Melee bodies take "front" (or "mid" for a second rank that steps up).
   "layouts": {                          // REQUIRED: the roster per party size (ids from "enemies"; repeats clone)
     "1": ["enemy_a", "enemy_b"],
     "2": ["enemy_a", "enemy_a", "enemy_b", "enemy_c"],
@@ -922,8 +936,31 @@ the spell's caster, so give it ONLY to a spell-mirror sentinel and expect hostil
 spells to rebound). `amplify` and `double_next` are combo primers: use them as a
 windup the party can see coming (prime, then swing) — priming is one-shot and
 holds until spent. NEVER use these verbs (player-only; they do nothing
-or break the fight): destroy, bounce, strip_intent, fight, revive, draw, scry,
-ramp, add_mana, stance. `break_channel` IS enemy-legal — the mirror of the
+or break the fight): destroy, bounce, strip_intent, revive, draw, scry,
+ramp, add_mana, stance.
+
+FIVE VERBS THE POOL UNDER-USES (§D23-6) — reach for these before writing another
+"deal N to a hero", which is what most kits collapse into:
+- `conditional` INSIDE a component: one rule that reads the board and does two
+  different things, instead of two rules the party learns separately.
+  {"kind": "conditional", "condition": {"kind": "self_hp_pct", "op": "<", "value": 50},
+   "effects": [{"kind": "deal_damage", "amount": 6, "target": {"mode": "all", "side": "ally"}}]}
+- `redirect` — a BODYGUARD: it turns an action aimed at its charge onto ITSELF.
+  Reactive on "on_ally_hit" / "on_targeted", no target field. It makes the
+  bodyguard a kill-priority puzzle rather than another damage stat.
+  {"kind": "redirect"}
+- `fight` — a DUELLIST that forces a trade: the two bodies deal each other their
+  Power, simultaneously. Give it to a body whose Power is its whole threat, so
+  the party must decide whether it can afford the exchange. `target` is the
+  duellist itself, `other` the hero its target_rule picked.
+  {"kind": "fight", "target": {"mode": "self"},
+   "other": {"mode": "chosen", "side": "ally", "targeted": true}}
+- `amplify` — a VISIBLE gathering, the alternative to `charge`: prime this turn,
+  land double next turn. Cheaper to author than a charge windup and just as
+  readable at the table (the primed tag shows).
+- `remove_keyword` — an ANTI-FLYER net (and the answer to a hero's granted
+  keyword): it strips what the party bought.
+  {"kind": "remove_keyword", "keywords": ["flying"], "target": {"mode": "chosen", "side": "ally", "targeted": true}} `break_channel` IS enemy-legal — the mirror of the
 party's ritual-breaker: it ends every channel the hero it hits is holding. Give
 it `"target_rule": "channeling_player"` and gate it on
 {"kind":"hero_channeling","op":">=","value":1} so it never fires into a party
@@ -1445,6 +1482,26 @@ def _check_layouts(encounter: Dict[str, Any]) -> None:
                 f'layouts["{size}"] fields {worst[0]} copies of "{worst[1]}" — '
                 "no design may appear more than 3 times in a layout. Spread the "
                 "extra bodies across other designs (or add a new one).")
+    _check_ranged_placement(encounter)
+
+
+def _check_ranged_placement(encounter: Dict[str, Any]) -> None:
+    """§D23-3/§D23-6: a ranged enemy standing in the Front row is a LAYOUT FAULT.
+
+    Ranged attacks cannot be made from the melee line, so such a body spends its
+    first activation walking backwards — the party gets a free round and the
+    design reads as broken. Archers, casters and artillery belong in Mid or Rear."""
+    misplaced = [str(e.get("name") or e.get("id") or "?")
+                 for e in encounter.get("enemies", [])
+                 if isinstance(e, dict)
+                 and str(e.get("attack_mode") or "melee") == "ranged"
+                 and str(e.get("row") or "front") == "front"]
+    if misplaced:
+        raise ValueError(
+            "ranged enemies standing in the FRONT row: " + ", ".join(misplaced)
+            + ' — a ranged attack cannot be made from the melee line (D23-3), so '
+            'these would spend their first turn walking backwards. Give each a '
+            '"row" of "mid" or "rear".')
 
 
 # Verb kinds that only develop the acting enemy itself when aimed at "self" —
@@ -1999,8 +2056,15 @@ descriptions). This block adds the arc-level rules:
 
 One phase MAY carry an optional `"objective"` — an alternate win condition that
 turns the phase into a set piece. The standing rules are HARD validation:
-- AT MOST ONE objective in the whole adventure, and only on Phase I or Phase II.
-  Phase III is ALWAYS the standard boss kill — the climax stays a fight.
+- AT MOST ONE objective in the whole adventure.
+- On Phase I or Phase II it may be any of the four kinds below.
+- On Phase III it must MODIFY the boss fight, never replace it (§D23-5). Exactly
+  three shapes are legal there, and nothing else is: a `race` that marks THE BOSS
+  and carries `guards` (the lieutenants shield it until they fall, and a clock
+  runs on the kill); a `waves` schedule whose FINAL wave fields the boss
+  (reinforcements keep arriving through the climax, which still ends on the
+  boss); or a `deadline` (a clock over the standard kill). A Phase III without
+  an objective is the standard boss kill, and stays the common case.
 - Objectives are fully public (the party sees the goal and its countdown from
   turn 1). Defeat by party wipe is unchanged.
 Use one in roughly two adventures out of three, when the fiction asks for it;

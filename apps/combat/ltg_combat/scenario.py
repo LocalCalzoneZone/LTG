@@ -32,6 +32,18 @@ _VERBS = TypeAdapter(List[Effect])
 
 _ROWS = {"front", "mid", "rear"}  # legal battlefield rows (§L-5 target_row values)
 
+# §D23-6: the component CONDITION vocabulary the engine can actually evaluate
+# (`engine._condition_met`). It is checked at LOAD, not at evaluation: an unknown
+# kind used to fail closed and silently, so a typo'd gate meant the rule simply
+# never fired and the enemy quietly lost a third of its kit for the whole
+# encounter. Now the content fails loudly, at the door.
+_CONDITION_KINDS = frozenset({
+    "self_hp_pct", "self_hp", "turn", "ally_count", "hero_count",
+    "hero_channeling", "self_channeling", "hero_gauge_pct", "hero_primed",
+    # Added by §D23-6.
+    "hero_in_row", "hero_hp_pct", "corpse_count", "turn_mod",
+})
+
 
 def _check_enemy_verbs(verbs) -> None:
     """Enemy-side legality (Design Update 09): `stance` is player-only (§D9-2.3),
@@ -105,6 +117,13 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
     if spec.get("target_row") is not None and spec["target_row"] not in _ROWS:
         raise ValueError(f"component '{spec.get('id', '?')}': target_row must be "
                          f"one of {sorted(_ROWS)}, got {spec['target_row']!r}")
+    cond = spec.get("condition")
+    if isinstance(cond, dict) and cond.get("kind") not in _CONDITION_KINDS:
+        raise ValueError(
+            f"component '{spec.get('id', '?')}': unknown condition kind "
+            f"{cond.get('kind')!r} — expected one of {sorted(_CONDITION_KINDS)}")
+    if cond is not None and not isinstance(cond, dict):
+        raise ValueError(f"component '{spec.get('id', '?')}': condition must be an object")
     return Component(
         id=spec["id"], archetype=spec.get("archetype", ""),
         timing="reactive" if is_enrage else spec.get("timing", "proactive"),

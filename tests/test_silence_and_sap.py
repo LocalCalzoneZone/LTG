@@ -323,3 +323,41 @@ def test_an_enemy_can_force_a_hero_to_discard():
     # Either the pick is pending (more candidates than it takes) or a card moved.
     moved = st.pending_choice is not None or st.character("p").graveyard
     assert moved, "the discard must actually reach the hero's hand"
+
+
+# --------------------------------------------------------------------------- #
+# §D23-7.1 — Silence binds the tongue, not the Skill or the Ultimate
+# --------------------------------------------------------------------------- #
+def _heroic(cid="p"):
+    """A hero carrying both heroic abilities, wired straight onto the state —
+    both are authored as sorcery-timed cards, which is exactly the shape Silence
+    used to catch by mistake."""
+    from ltg_combat.state import Card
+    skill = _card("skl", [{"kind": "pump", "power": 1, "toughness": 1,
+                           "target": {"mode": "self"}, "duration": "this_turn"}],
+                  timing="sorcery")
+    ult = _card("ult", [{"kind": "deal_damage", "amount": 9,
+                         "target": {"mode": "chosen", "side": "enemy",
+                                    "targeted": True}}], timing="sorcery")
+    st = _state([_char(cid)], [_enemy("e")])
+    hero = st.character(cid)
+    hero.skill = Card.model_validate(skill)
+    hero.ultimate = Card.model_validate(ult)
+    hero.ultimate_gauge = hero.ultimate_charge_cost
+    return st
+
+
+def test_silence_does_not_gate_the_skill_or_the_ultimate():
+    """§D23-7.1: neither heroic ability is a cast. Silencing a hero used to take
+    their whole kit away because both borrow the cast enumeration."""
+    st = _silence(_heroic(), "p")
+    kinds = {a.kind for a in legal_actions(st)}
+    assert "cast" not in kinds                 # the tongue is bound
+    assert "use_skill" in kinds and "use_ultimate" in kinds
+
+
+def test_silence_still_stops_a_silenced_heros_sorceries():
+    """The other half of the same rule: the Skill being open is not a licence to
+    cast — the gate still catches ordinary spells on the same turn."""
+    st = _silence(_heroic(), "p")
+    assert not any(a.kind == "cast" for a in legal_actions(st))

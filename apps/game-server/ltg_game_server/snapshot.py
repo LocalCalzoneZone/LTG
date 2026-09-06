@@ -28,6 +28,7 @@ from ltg_combat.serialize import (
     objective_block,
     objective_outcome_line,
     phase_label,
+    phase_step,
     serialize_actions,
     veiled_intent,
     veiled_intents,
@@ -203,6 +204,11 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "stance": cd["stance"],
         "mitigate_value": cd["mitigate_value"],
         "acted_mode": cd["acted_mode"],
+        # §D23-1/§D23-3: what the turn still allows per verb, and whether
+        # POSITION (not the turn) is what closed the Attack cell — so the action
+        # bar can grey a cell and say why without carrying a copy of the rules.
+        "turn_open": cd["turn_open"],
+        "reach_blocked": cd["reach_blocked"],
         "turn_ended": cd["turn_ended"],
         "mana": _mana_block(cd, char, pending_capacity),
         # Seat-derived: focusable == you control it and it's up (§4.4 downed is not
@@ -442,6 +448,9 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
         "turn": view.turn,
         "phase": view.phase,
         "phase_label": phase_label(view),
+        # §D23-8: the turn-tracker step, so the client can name the span a
+        # Pass-All covers with the same word the server scopes it by.
+        "phase_step": phase_step(view),
         # Art plumbing: the generated battle backdrop ("" until one exists) and
         # the encounter to aim in-game generate/remove calls at.
         "scene_image": art.get("scene", ""),

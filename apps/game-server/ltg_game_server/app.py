@@ -955,6 +955,27 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                 session.release(client_id, list(msg.get("character_ids", [])))
                 await _broadcast(session)
 
+            elif mtype == "pass_all":
+                # §D23-8: "pass for the rest of this enemy phase" for the named
+                # character (the toggle is per character, not per player).
+                # Setting it drains the windows already waiting, so the toggle
+                # takes effect on the click, not on the next one.
+                ids = msg.get("character_ids")
+                if not isinstance(ids, list) or not ids:
+                    # The wire contract is per character: naming the seat is what
+                    # keeps a client from silently speaking for the whole party.
+                    await _send(ws, {"type": "error",
+                                     "message": "pass_all.character_ids required"})
+                    continue
+                async with session.lock():
+                    try:
+                        session.set_pass_all(client_id, bool(msg.get("on")), ids)
+                    except ValueError as exc:
+                        await _send(ws, {"type": "error", "message": str(exc)})
+                        continue
+                await _broadcast(session)
+                session.start_pacer(_broadcast)
+
             elif mtype == "submit_action":
                 action = msg.get("action", {})
                 index = action.get("index")

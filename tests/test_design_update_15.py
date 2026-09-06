@@ -186,14 +186,29 @@ def test_relentless_pursues_through_the_wall():
 
 # --- §L-2.3: enemy movement is live -------------------------------------------- #
 def test_enemy_move_intent_relocates_at_execution():
-    # A stranded ground-melee enemy (the whole party flies) advances toward reach;
-    # the body relocates AS THE INTENT EXECUTES, not at End step.
-    st = _state([_char("bird", row="rear", keywords=["flying"])],
-                [_enemy("e", "bird", amount=2)])
+    """§D23-3 replaced the vestigial "Advance" with the FALL BACK: an archer that
+    finds itself in the Front row cannot shoot from there, so it spends its
+    activation walking out. The body relocates AS THE INTENT EXECUTES, not at End
+    step — which is the §L-2.3 rule this test has always been about."""
+    archer = _enemy("e", "bird", amount=2, mode="ranged")
+    archer["attack_mode"] = "ranged"
+    archer["row"] = "front"                                   # shoved onto the line
+    st = _state([_char("bird", row="rear")], [archer])
     st = _finish_turn(st)
     ev = next(e for e in st.log if e.type == "enemy_move")
     assert "End step" not in ev.msg                           # the old deferred wording
-    assert st.enemies[0].row == "rear"
+    assert st.enemies[0].row == "mid"
+
+
+def test_a_stranded_melee_enemy_declares_nothing():
+    """The other half of §D23-3's enemy rule: "Advance" is gone for good. A ground
+    melee enemy walled off by an all-flying party idles — it never had a reason to
+    walk (melee already reaches the front-most occupied row from anywhere)."""
+    st = _state([_char("bird", row="rear", keywords=["flying"])],
+                [_enemy("e", "bird", amount=2)])
+    st = _finish_turn(st)
+    assert not any(e.type == "enemy_move" for e in st.log)
+    assert any(e.type == "no_target" for e in st.log)
 
 
 # --- §L-5 schema surface: row-aimed attacks in both enemy forms ----------------- #

@@ -148,7 +148,9 @@ def _flyer(eid="e"):
 
 
 def test_make_ranged_lets_a_melee_hero_hit_a_flyer():
-    party = [_char("p", attack_mode="melee",
+    # Mid, not Front: §D23-3 forbids firing from the melee line, and the rule
+    # under test is reach, not position.
+    party = [_char("p", row="mid", attack_mode="melee",
                    library=[_mod_card("bow", "attack", "make_ranged"), _filler("f")],
                    hand=2)]
     st = _state(party, [_flyer()])
@@ -159,7 +161,7 @@ def test_make_ranged_lets_a_melee_hero_hit_a_flyer():
 
 
 def test_make_melee_takes_a_ranged_heros_reach_away():
-    party = [_char("p", attack_mode="ranged",
+    party = [_char("p", row="mid", attack_mode="ranged",
                    library=[_mod_card("bind", "attack", "make_melee"), _filler("f")],
                    hand=2)]
     st = _state(party, [_flyer()])
@@ -201,7 +203,7 @@ def test_an_encounter_reach_modifier_survives_the_end_step():
 def test_the_attack_offer_and_the_swing_both_wear_the_new_reach():
     """The modifier writes the live `attack_mode`, so every downstream read — the
     offer label and the stack item R-1 legality runs on — follows for free."""
-    party = [_char("p", attack_mode="melee",
+    party = [_char("p", row="mid", attack_mode="melee",
                    library=[_mod_card("bow", "attack", "make_ranged"), _filler("f")],
                    hand=2)]
     st = _cast_mod(_state(party), "bow")

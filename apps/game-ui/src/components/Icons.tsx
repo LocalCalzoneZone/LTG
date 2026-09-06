@@ -48,6 +48,22 @@ export const IconMend = make(
   </>,
 );
 
+// §D23-9 — the two turn-group marks. One whole diamond over the turn-spending
+// verbs ("one of these is your turn"); two half-diamonds over the pair ("these
+// two go together"). Filled, not stroked: at 10px a hairline outline vanishes.
+export const IconTurnMark = make(
+  <path d="M12 5.5 18.5 12 12 18.5 5.5 12z" fill="currentColor" stroke="none" />,
+  0,
+);
+
+export const IconPairMark = make(
+  <>
+    <path d="M10 5.5 3.5 12 10 18.5z" fill="currentColor" stroke="none" />
+    <path d="M14 5.5 20.5 12 14 18.5z" fill="currentColor" stroke="none" />
+  </>,
+  0,
+);
+
 export const IconMove = make(
   <>
     <path d="M4.5 12h14" />

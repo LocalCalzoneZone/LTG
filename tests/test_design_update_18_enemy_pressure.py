@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pytest
 
+from ltg_core.schema import Ref
+
 from ltg_combat.engine import apply_action, legal_actions
 from ltg_combat.scenario import state_from_dict
 from ltg_combat.serialize import intent_category, intent_rows, veiled_intent
@@ -96,7 +98,9 @@ def test_a_taunt_only_component_gains_a_blow_for_the_enemys_power():
     kinds = [e.kind for e in intent.effects]
     # The bite is prepended, aimed at the same body the taunt drags.
     assert kinds == ["deal_damage", "taunt"]
-    assert intent.effects[0].amount == 5           # the enemy's CURRENT Power
+    # §D23-7.5: the bite carries a live Power reference, not a number frozen at
+    # declaration — it is read again when the intent executes.
+    assert intent.effects[0].amount == Ref(ref="caster_power")
     assert intent.effects[0].target == intent.effects[1].target
 
 

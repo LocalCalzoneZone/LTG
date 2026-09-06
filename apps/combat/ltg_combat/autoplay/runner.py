@@ -318,6 +318,12 @@ def _zero_char() -> Dict[str, Any]:
             # Per-card channel economy: starts / triggers fired / turns held /
             # reserved mana × turns held / voluntary drops.
             "channel_stats": {},
+            # §D23 positional telemetry: voluntary Moves taken (the pair verb
+            # nobody used to buy) and reaction WINDOWS this seat was offered —
+            # the two numbers that say whether position and the reaction economy
+            # are actually being played.
+            "moves": 0,
+            "windows": 0,
             # Filled from drive telemetry (when the runner collects it):
             # decision counts per policy ladder rule, and per-card castability
             # {card_id: {hand, offered, cast_rules}}.
@@ -343,6 +349,9 @@ def _collect_metrics(st: GameState, spec: Dict[str, Any],
     enemies: Dict[str, Dict[str, Any]] = {}
     costs = _card_costs(spec)
     enemy_channels_broken = 0
+    # §D23-4: how often a body stepped in front of a blow this fight — the
+    # measure of whether interposition is a real play or a rules footnote.
+    redirects = 0
     # (character, card) → (start turn, reserved mana) for channels still held —
     # closed out at fight end so turns-held includes the final hold.
     open_channels: Dict[Tuple[str, str], Tuple[int, int]] = {}
@@ -426,6 +435,18 @@ def _collect_metrics(st: GameState, spec: Dict[str, Any],
             if cid in chars and d.get("card"):
                 w = chars[cid]["condition_whiffs"]
                 w[d["card"]] = w.get(d["card"], 0) + 1
+        elif ev.type == "move_declared":
+            cid = d.get("character")
+            if cid in chars:
+                chars[cid]["moves"] += 1
+        elif ev.type == "pass":
+            # Every Pass is a window that was offered and declined — the
+            # denominator for "how often did anyone actually react?".
+            cid = d.get("character")
+            if cid in chars:
+                chars[cid]["windows"] += 1
+        elif ev.type == "intent_redirect":
+            redirects += 1
         elif ev.type == "enemy_died":
             eid = d.get("enemy")
             if eid:
@@ -460,8 +481,15 @@ def _collect_metrics(st: GameState, spec: Dict[str, Any],
             if obj.kind in ("survive", "race") else None,
             "waves_deployed": obj.wave_index + 1 if obj.kind == "waves" else None,
         }
+    for c in st.party:
+        m = chars[c.id]
+        # Per ROUND, so cells of different lengths compare (§D23 tuning feed).
+        m["moves_per_round"] = round(m["moves"] / max(1, st.turn), 2)
+        m["windows_per_round"] = round(m["windows"] / max(1, st.turn), 2)
     return {"characters": chars, "enemies": enemies, "objective": objective,
-            "enemy_channels_broken": enemy_channels_broken}
+            "enemy_channels_broken": enemy_channels_broken,
+            "redirects": redirects,
+            "redirects_per_round": round(redirects / max(1, st.turn), 2)}
 
 
 # --------------------------------------------------------------------------- #

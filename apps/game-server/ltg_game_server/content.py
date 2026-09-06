@@ -1059,16 +1059,18 @@ def _validate_adventure(phases: List[Dict[str, Any]],
     for i, text in enumerate(narrations, start=1):
         if not str(text or "").strip():
             raise ValueError(f"phase {i} is missing its narration")
-    # Objectives (§D12-1.1): at most ONE per adventure, on Phases I–II only —
-    # Phase III is always the standard boss kill (the climax stays a fight).
+    # Objectives (§D12-1.1, amended by §D23-5): at most ONE per adventure. It may
+    # now sit on Phase III, but only in a MODIFIER shape — one that changes the
+    # boss fight rather than replacing the boss kill with something else.
     with_objective = [i for i, phase in enumerate(phases, start=1)
                       if phase.get("objective")]
     if len(with_objective) > 1:
         raise ValueError("an adventure carries at most one objective "
                          f"(phases {', '.join(map(str, with_objective))} all have one)")
     if PHASE_COUNT in with_objective:
-        raise ValueError("Phase III is always the standard boss kill — "
-                         "objectives may appear on Phases I and II only")
+        problem = _phase_three_objective_problem(phases[-1])
+        if problem:
+            raise ValueError(f"Phase III: {problem}")
     finale_bosses, _ = _phase_boss_levels(phases[-1]["enemies"])
     if len(finale_bosses) != 1:
         raise ValueError("Phase III must contain exactly one boss (is_boss)")
@@ -1084,6 +1086,49 @@ def _validate_adventure(phases: List[Dict[str, Any]],
                 f"phase {i} fields a level-{highest} enemy above Phase III's boss "
                 f"(level {finale_level}) — the boss is the adventure's "
                 "highest-level enemy")
+
+
+# §D23-5: the objective shapes that MODIFY the climax instead of replacing it.
+# Phase III's win condition is the boss kill; an objective there has to leave
+# that intact. Anything else — a `survive` that lets the party win by waiting out
+# the boss, a `race` marking some minion — is still refused.
+def _phase_three_objective_problem(phase: Dict[str, Any]) -> Optional[str]:
+    """Why this Phase III objective is not a legal modifier, or None if it is.
+
+    The three legal shapes (§D23-5):
+      * `race` marking THE BOSS, with guards — the lieutenants shield it until
+        they fall, and a clock runs on the kill;
+      * `waves` with the boss in the final wave — a reinforcement schedule that
+        runs during the boss phase and still ends on the boss;
+      * `deadline` — a clock, and nothing else, over the standard kill."""
+    obj = phase.get("objective")
+    if not isinstance(obj, dict):
+        return None
+    kind = str(obj.get("kind") or "")
+    boss_ids = {str(e.get("id")) for e in phase.get("enemies", [])
+                if isinstance(e, dict) and e.get("is_boss")}
+    if kind == "deadline":
+        return None
+    if kind == "race":
+        if str(obj.get("target") or "") not in boss_ids:
+            return ("a Phase III \"race\" must mark THE BOSS — marking a minion "
+                    "replaces the climax instead of shaping it")
+        if not [g for g in (obj.get("guards") or []) if str(g).strip()]:
+            return ("a Phase III \"race\" needs \"guards\" — the lieutenants that "
+                    "shield the boss until they fall are the whole set piece")
+        return None
+    if kind == "waves":
+        waves = obj.get("waves") or []
+        if not waves:
+            return "a \"waves\" objective needs at least one later wave"
+        final_ids = set(_objective_roster_ids(waves[-1]))
+        if not (boss_ids & final_ids):
+            return ("a Phase III \"waves\" objective must field the boss in the "
+                    "FINAL wave — the climax still ends on the boss")
+        return None
+    return (f"a \"{kind}\" objective on Phase III replaces the boss kill; only a "
+            "boss-marked \"race\" with guards, a \"waves\" schedule ending on the "
+            "boss, or a \"deadline\" may modify the climax (§D23-5)")
 
 
 def save_adventure(raw: Dict[str, Any],

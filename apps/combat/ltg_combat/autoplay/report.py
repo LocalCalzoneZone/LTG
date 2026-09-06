@@ -46,6 +46,8 @@ def aggregate(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             **{k: rec.get(k) for k in CELL_KEY},
             "n": 0, "wins": 0, "anomalies": 0, "rounds": [],
             "damage": {}, "damage_total": 0,
+            # §D23 positional/reaction telemetry, summed and reported per round.
+            "moves": 0, "windows": 0, "redirects": 0, "round_total": 0,
         })
         cell["n"] += 1
         if rec.get("result") == "victory":
@@ -53,10 +55,14 @@ def aggregate(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         if rec.get("anomaly"):
             cell["anomalies"] += 1
         cell["rounds"].append(rec.get("rounds", 0))
+        cell["round_total"] += int(rec.get("rounds", 0) or 0)
+        cell["redirects"] += int(rec.get("redirects", 0) or 0)
         for cid, m in (rec.get("characters") or {}).items():
             dealt = int(m.get("damage_dealt", 0) or 0)
             cell["damage"][cid] = cell["damage"].get(cid, 0) + dealt
             cell["damage_total"] += dealt
+            cell["moves"] += int(m.get("moves", 0) or 0)
+            cell["windows"] += int(m.get("windows", 0) or 0)
 
     out = []
     for key in sorted(cells, key=lambda k: tuple(str(x) for x in k)):
@@ -79,12 +85,17 @@ def aggregate(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                              f"(< {DAMAGE_SHARE_MIN:.0%})")
         if c["anomalies"]:
             flags.append(f"{c['anomalies']} anomalous run(s)")
+        rounds_total = max(1, c["round_total"])
         out.append({
             **{k: c[k] for k in CELL_KEY},
             "n": n, "win_rate": round(win_rate, 4),
             "mean_rounds": round(mean_rounds, 2),
             "anomalies": c["anomalies"],
             "damage_share": {cid: round(s, 4) for cid, s in shares.items()},
+            # §D23: is position being played, and is the wall ever used?
+            "moves_per_round": round(c["moves"] / rounds_total, 2),
+            "windows_per_round": round(c["windows"] / rounds_total, 2),
+            "redirects_per_round": round(c["redirects"] / rounds_total, 2),
             "flags": flags,
         })
     return {"cells": out, "policy_versions": versions, "footer": FOOTER}
@@ -104,6 +115,12 @@ def render_report(agg: Dict[str, Any]) -> str:
             f"{c['mean_rounds']:>7.1f}")
         for cid, share in c["damage_share"].items():
             lines.append(f"    damage {cid}: {share:.0%}")
+        # §D23 positional read: Moves taken, reaction windows declined, and
+        # blows walled — all per round, so cells of different lengths compare.
+        lines.append(
+            f"    per round — moves {c.get('moves_per_round', 0):.2f} · "
+            f"windows {c.get('windows_per_round', 0):.2f} · "
+            f"redirects {c.get('redirects_per_round', 0):.2f}")
         for f in c["flags"]:
             lines.append(f"    ⚑ {f}")
     lines.append("")

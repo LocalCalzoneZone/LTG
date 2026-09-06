@@ -36,7 +36,9 @@ def _state():
                           "effects": [{"kind": "draw", "amount": 0}]}]},
         ],
         # Ranged so it reaches any row; hunts the lowest-HP character (→ Ally).
+        # Mid, because §D23-3 leaves a ranged enemy in the Front row no shot.
         "enemies": [{"id": "ogre", "name": "Ogre", "hp": 20, "level": 1,
+                     "row": "mid", "attack_mode": "ranged",
                      "intent": {"name": "Hurl", "amount": 3, "action_type": "ability",
                                 "intent_type": "attack", "targeting": "lowest_hp_party",
                                 "mode": "ranged"}}],

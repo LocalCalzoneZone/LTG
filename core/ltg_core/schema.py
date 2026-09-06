@@ -327,6 +327,25 @@ class Ref(BaseModel):
     ref: str
     mult: int = Field(1, ge=1)
 
+    @field_validator("ref")
+    @classmethod
+    def _known_ref(cls, v: str) -> str:
+        """§D23-7.4: the ref must be one the resolver knows — a registry name, or
+        a `$name` stored by a `set_reference` on the same card. A typo used to
+        sail through authoring and blow up mid-resolution, taking the encounter
+        with it; it now fails the card at the door."""
+        v = v.strip()
+        if v.startswith("$"):
+            name = v[1:]
+            if not name or not name.replace("_", "").isalnum():
+                raise ValueError("a stored ref must name a plain identifier (e.g. $R1)")
+            return v
+        if v not in REF_VALUES:
+            raise ValueError(
+                "unknown value reference '%s' (expected one of: %s, or a $stored name)"
+                % (v, ", ".join(sorted(REF_VALUES))))
+        return v
+
     @model_serializer(mode="wrap")
     def _omit_unit_mult(self, handler):
         out = handler(self)
@@ -410,9 +429,9 @@ KEYWORDS = {
     "reach": {"display": "Reach", "gloss": "its melee may strike flyers, and pins an enemy melee-flyer to rows not behind it (R-1)", "grantable": True, "params": []},
     "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
     "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
-    "vigilance": {"display": "Vigilance", "gloss": "may attack and still act/defend", "grantable": True, "params": []},
-    "defender": {"display": "Defender", "gloss": "can't attack or move; its Defend is FREE — it still casts, uses its Skill/Ultimate, and Mitigates. Hero-only: enemies ignore it", "grantable": True, "params": []},
-    "haste": {"display": "Haste", "gloss": "may take its proactive action and also make a free voluntary move this turn — live, though never while its own action is unresolved (L-6.1)", "grantable": True, "params": []},
+    "vigilance": {"display": "Vigilance", "gloss": "frees the Attack (D23-2): swing, then take one more verb — Cast, Defend, Move, Skill or Ultimate", "grantable": True, "params": []},
+    "defender": {"display": "Defender", "gloss": "frees the Defend (D23-2): raise the shield, then take one more verb — Cast, Move, Skill or Ultimate. Can never basic-attack; it walks and dashes like anyone else. Hero-only: enemies ignore it", "grantable": True, "params": []},
+    "haste": {"display": "Haste", "gloss": "frees the Move (D23-2): step, then take one more verb — Attack, Cast, Defend, Skill or Ultimate. Live, though never while its own action is unresolved (L-6.1)", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
     "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
@@ -1967,11 +1986,12 @@ MAX_POWER_BOUGHT = 2  # per level (T5-14 / T-60)
 MAX_KEYWORDS = 1     # §P-3 one keyword at creation                  T5-06
 
 # Buyable keyword costs (§P-3, T5-07..13). The set is deliberately narrow.
-# Haste 15 → 20 (Update 15 §L-6.1): the free move is live now — act, then
-# genuinely be somewhere else — vigilance-tier turn economy.
+# Haste 15 → 20 (Update 15 §L-6.1), then 20 → 15 (§D23-2): under turn GROUPS the
+# Move is half of the pair, not a whole turn, so freeing it is worth strictly
+# less than freeing the Attack. Vigilance stays at 20.
 CREATION_KEYWORD_COST = {
     "reach": 5, "trample": 10, "first_strike": 15, "lifelink": 15,
-    "haste": 20, "vigilance": 20, "flying": 25,
+    "haste": 15, "vigilance": 20, "flying": 25,
 }
 # Hard-stop at creation (§P-3, D8-2.5): may exist on enemies / via gear later,
 # never bought — infect reaches a hero only by being granted.

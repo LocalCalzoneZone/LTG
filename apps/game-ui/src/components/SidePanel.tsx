@@ -307,6 +307,20 @@ function IntentLine({ intent }: { intent: import("../lib/types").IntentView }) {
           {intent.category}
         </span>
       )}
+      {/* §D23-4: can a body step in front of it? "swing" can be walled by
+          taking the front row; "pursues" follows its target wherever it goes. */}
+      {intent.status === "declared" && intent.redirectable != null && (
+        <span
+          title={intent.redirectable
+            ? "A swing — step in front of its target and it falls on you instead"
+            : "It pursues its target: interposing will not turn it"}
+          className={`caps-label ml-1.5 border px-1 text-[9px] tracking-[0.12em] opacity-80 ${
+            intent.redirectable ? "border-brass/50 text-brass" : "border-line2 text-dimmed"
+          }`}
+        >
+          {intent.redirectable ? "swing" : "pursues"}
+        </span>
+      )}
       {intent.status === "stripped" && intent.reveal && (
         <div className="pl-3 text-[11px] italic text-brass/90">
           unravelled — it would have been {intent.reveal}

@@ -9,17 +9,6 @@ import { QuitControl } from "./QuitControl";
 // _PHASE_LABEL vocabulary). Intents are not broadcast to players, so the
 // engine's intents phase reads as part of Upkeep here.
 const STEPS = ["Upkeep", "Players", "Allies", "Enemies", "End"];
-const STEP_OF: Record<string, string> = {
-  upkeep: "Upkeep",
-  capacity: "Upkeep",
-  draw: "Upkeep",
-  intents: "Upkeep",
-  player: "Players",
-  allies: "Allies",
-  enemy: "Enemies",
-  end: "End",
-};
-
 /** One 42px ribbon: wordmark · turn tracker · seats · invite / options / new game.
  *  Always rendered, so an empty battlefield can still reach New Game / Options. */
 export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
@@ -46,7 +35,9 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
     snapshot?.characters ?? town?.party_sheet ?? [];
   const unclaimed = seatRoster.map((c) => c.id).filter((id) => seats[id] == null);
 
-  const stepNow = snapshot ? (STEP_OF[snapshot.phase] ?? null) : null;
+  // The step comes from the server (`phase_step`), so the ribbon and the
+  // Pass-All toggle can never disagree about what step the game is in.
+  const stepNow = snapshot?.phase_step ?? null;
   const nowIdx = stepNow ? STEPS.indexOf(stepNow) : -1;
   const turn = snapshot?.turn ?? null;
 

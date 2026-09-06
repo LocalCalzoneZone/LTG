@@ -132,3 +132,52 @@ def test_basic_attack_offers_and_lands_on_hexproof_enemy():
                if a.kind == "attack" and a.target_id == "hexer")
     st = _resolve_stack(apply_action(st, act)[0])
     assert st.enemy("hexer").hp == 10 - 2         # the swing landed through hexproof
+
+
+# --------------------------------------------------------------------------- #
+# §D23-7.2 — a SLOT-referenced target ("$T1") is checked like an inline one
+# --------------------------------------------------------------------------- #
+# The `targeted` flag lives on the card's target SLOT, not on the effect, so the
+# resolution-time checks used to read `targeted: false` off the bare "$T1"
+# string and wave every slot-ref card through: it could not fizzle when its
+# target left the board, and hexproof gained in response did not protect.
+_SLOT_ZAP = _card("slotzap", [{"kind": "deal_damage", "amount": 2, "target": "$T1"}])
+_SLOT_ZAP["targets"] = {"T1": {"mode": "chosen", "side": "enemy", "targeted": True}}
+
+_GONE = _card("gone", [{"kind": "bounce",
+                        "target": {"mode": "chosen", "side": "enemy",
+                                   "targeted": False}}])
+
+
+def _cast(st, card_id, **match):
+    act = next(a for a in legal_actions(st)
+               if a.kind == "cast" and a.card_id == card_id
+               and all(getattr(a, k) == v for k, v in match.items()))
+    return apply_action(st, act)[0]
+
+
+def test_slot_ref_effect_fizzles_when_its_target_leaves_the_board():
+    st = _state([dict(_SLOT_ZAP), dict(_GONE)])
+    st = _cast(st, "slotzap", target_id="grunt")
+    st = _cast(st, "gone", target_id="grunt")   # bounce answers it in the window
+    st = _resolve_stack(st)
+    assert st.enemy("grunt").in_hand
+    assert any(e.type == "fizzle" for e in st.log)
+
+
+def test_slot_ref_effect_is_stopped_by_hexproof_gained_in_response():
+    st = _state([dict(_SLOT_ZAP)])
+    st = _cast(st, "slotzap", target_id="grunt")
+    st.enemy("grunt").keywords["hexproof"] = ""   # granted while the zap is on the stack
+    st = _resolve_stack(st)
+    assert st.enemy("grunt").hp == 10             # nothing landed
+    assert any(e.type == "fizzle" for e in st.log)
+
+
+def test_slot_ref_targeting_is_still_offered_normally():
+    """The gate is at RESOLUTION — the offer side (which already read the slot)
+    is unchanged: a hexproof enemy is never offered, a plain one is."""
+    st = _state([dict(_SLOT_ZAP)])
+    tids = {a.target_id for a in legal_actions(st)
+            if a.kind == "cast" and a.card_id == "slotzap"}
+    assert "grunt" in tids and "hexer" not in tids

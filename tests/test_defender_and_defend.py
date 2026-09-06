@@ -4,9 +4,11 @@ DEFEND now grants temp HP equal to BASE Power instead of a flat 3, so the stat
 that decides what your swing is worth also decides what turtling is worth — a
 heavy hitter has a real choice every turn instead of always attacking.
 
-DEFENDER is the shield-wall keyword: no attack, no move, but Defend costs no
-proactive action, so the turn still buys a cast or a Skill. Hero-only — the
-engine reads it in the party's action paths and nowhere on the enemy side.
+DEFENDER is the shield-wall keyword: no basic attack ever, but the Defend is
+FREED (§D23-2) — raise the shield and still take one more verb (a cast, a Move,
+a Skill, an Ultimate). §D23-2 repealed the "rooted" clause in full: a defender
+walks and dashes to Mitigate like anyone else. Hero-only — the engine reads it in
+the party's action paths and nowhere on the enemy side.
 """
 
 from __future__ import annotations
@@ -110,15 +112,26 @@ def test_defender_cannot_attack():
     assert _kinds(st, "attack", "p") == []
 
 
-def test_defender_cannot_move():
+def test_a_defender_may_move():
+    """§D23-2 repeals the rooting: the wall walks. It buys the shield wall a real
+    positional game (step out of a row assault, cover a different lane) without
+    giving it back the sword."""
     st = _state([_char("p", keywords=["defender"])])
-    assert _kinds(st, "move", "p") == []
+    assert {a.target_id for a in _kinds(st, "move", "p")} == {"mid", "rear"}
 
 
-def test_haste_does_not_buy_a_defender_a_move():
-    """Haste grants a FREE move; rooted still means rooted."""
-    st = _state([_char("p", keywords=["defender", "haste"])])
-    assert _kinds(st, "move", "p") == []
+def test_a_defender_may_defend_and_still_move():
+    """The freed Defend buys exactly one more verb — the Move is a legal choice
+    for it, and the turn is then spent."""
+    st = _state([_char("p", keywords=["defender"],
+                       library=[_sorcery("s1"), _sorcery("s2")])])
+    st = _do(st, kind="defend")
+    assert _kinds(st, "cast", "p"), "the freed shield still leaves one verb"
+    st = _do(st, kind="move", target_id="rear")
+    while st.stack:
+        st = _do(st, kind="pass")
+    assert st.character("p").row == "rear"
+    assert not _kinds(st, "cast", "p"), "…and that one verb is now spent"
 
 
 def test_defender_holds_no_first_strike_swing():
@@ -189,10 +202,10 @@ def test_a_defender_may_still_mitigate_for_itself():
     assert any(a.kind == "mitigate" and a.target_id == "p" for a in legal_actions(st))
 
 
-def test_a_defender_covers_an_ally_in_its_own_row_but_will_not_dash():
-    """Ally-mode Mitigate relocates the guard to the ally's row (§M-A.6) — that is
-    a move, so a rooted defender can only cover someone already standing with it.
-    Allies come to the wall; the wall does not come to them."""
+def test_a_defender_dashes_to_cover_an_adjacent_ally():
+    """§D23-2: the wall comes to them. Ally-mode Mitigate relocates the guard to
+    the ally's row (§M-A.6); the defender's repealed rooting no longer blocks it,
+    which is what makes a shield-wall hero worth a seat next to a squishy one."""
     # RANGED, so the §L-3 melee-interposition redirect doesn't pull the swing onto
     # the front-row wall — the shot reaches past it, which is the case under test.
     st = _state([_char("wall", keywords=["defender"], power=4, hp=30, row="front"),
@@ -200,9 +213,8 @@ def test_a_defender_covers_an_ally_in_its_own_row_but_will_not_dash():
                 [_enemy(target="lowest_hp_party", mode="ranged")])
     st = _to_enemy_window(st)
     assert st.stack[-1].target_id == "mage"       # the shot is aimed past the wall
-    offers = [a for a in legal_actions(st)
-              if a.kind == "mitigate" and a.actor_id == "wall"]
-    assert offers == [], "a rooted defender cannot dash to another row"
+    assert any(a.kind == "mitigate" and a.actor_id == "wall" and a.target_id == "mage"
+               for a in legal_actions(st))
 
 
 def test_a_plain_guard_may_still_dash_to_an_adjacent_ally():

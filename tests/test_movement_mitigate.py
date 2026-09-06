@@ -5,7 +5,7 @@ interposition rules themselves are pinned in test_design_update_15.py."""
 
 from __future__ import annotations
 
-from ltg_combat.engine import apply_action, legal_actions
+from ltg_combat.engine import apply_action, legal_actions, settle
 from ltg_combat.scenario import state_from_dict
 
 
@@ -157,16 +157,17 @@ def test_mitigate_ally_blocked_by_adjacency():
 
 # --- Haste -------------------------------------------------------------------- #
 def test_haste_allows_act_and_free_live_move():
+    """§D23-2: `haste` FREES the Move — the step sits outside the turn, so an
+    Attack (a whole turn on its own under §D23-1) still leaves it available."""
     st = _state([_char("p", row="front", power=2, hp=30)], [_enemy("e", "p")])
     st.party[0].keywords["haste"] = "encounter"
-    st = _do(st, kind="attack", target_id="e")               # spend the proactive action
+    st = _do(st, kind="attack", target_id="e")               # a turn-spending verb
     st = _pass_all(st)                                        # resolve the attack → main phase
-    assert st.party[0].acted_mode == "attack"
     move = next((a for a in legal_actions(st) if a.kind == "move"), None)
     assert move is not None                                   # haste still offers a free move
+    assert "(free, haste)" in move.label                      # …and says why
     st = apply_action(st, next(a for a in legal_actions(st)
                                if a.kind == "move" and a.target_id == "rear"))[0]
-    assert st.party[0].acted_mode == "attack"                # the free move did NOT cost the action
     st = _pass_all(st)
     assert st.party[0].row == "rear"                          # resolved LIVE, before the enemy step
 
@@ -179,3 +180,110 @@ def test_no_move_while_own_action_is_unresolved():
     st = _do(st, kind="attack", target_id="e")
     assert st.stack
     assert all(a.kind != "move" for a in legal_actions(st))
+
+
+# --- §D23-4: interposition covers melee combat abilities ---------------------- #
+def _ability_enemy(eid="e", verbs=None, mode="melee", keywords=None, amount=3, row=None):
+    """An enemy whose whole turn is one authored ability aimed at a hero — the
+    §M-A.7 "Combat Ability" shape when its verbs deal damage."""
+    # §D23-3: an archer stands off the melee line, or it has no shot at all.
+    out = {"id": eid, "name": eid, "hp": 20, "level": 2, "power": 2,
+           "attack_mode": mode, "row": row or ("mid" if mode == "ranged" else "front"),
+           "intent": {"name": "Hit", "amount": amount, "action_type": "ability",
+                      "intent_type": "attack", "targeting": "lowest_hp_party",
+                      "mode": mode},
+           "components": [{
+               "id": "ram", "timing": "proactive", "priority": 10,
+               "target_rule": "valuation", "telegraph": "Battering Ram",
+               "verbs": verbs or [{"kind": "deal_damage", "amount": amount,
+                                   "target": {"mode": "chosen", "side": "ally",
+                                              "targeted": True}}]}]}
+    if keywords:
+        out["keywords"] = keywords
+    return out
+
+
+def _declared(st):
+    """Settle into the player phase, where the round's intents are telegraphed."""
+    return settle(st)
+
+
+def test_a_melee_combat_ability_redirects_onto_an_interposer():
+    """§D23-4. "Battering Ram, deal 5" is a swing by another name: it used to walk
+    through the front line untouched while the plain sword behind it got walled."""
+    st = _declared(_state([_char("tank", row="front", hp=30),
+                           _char("mage", row="front", hp=10)],
+                          [_ability_enemy()]))
+    assert st.enemies[0].intent.target_id == "mage"           # the squishy is picked
+    st = _do(st, kind="end_turn", actor_id="tank")
+    st = _do(st, kind="move", actor_id="mage", target_id="rear")   # step behind the tank
+    st = _pass_all(st)
+    assert st.enemies[0].intent.target_id == "tank"
+    assert any(ev.type == "intent_redirect" for ev in st.log)
+
+
+def test_the_interposer_eats_the_ability_s_rider_too():
+    """§M-A.7's ruling, unchanged: the body that eats "deal 3 and stun" eats the
+    stun. Walling a combat ability is a real commitment, not a free block."""
+    verbs = [{"kind": "deal_damage", "amount": 3,
+              "target": {"mode": "chosen", "side": "ally", "targeted": True}},
+             {"kind": "stun", "amount": 1,
+              "target": {"mode": "chosen", "side": "ally", "targeted": True}}]
+    st = _declared(_state([_char("tank", row="front", hp=30),
+                           _char("mage", row="front", hp=10)],
+                          [_ability_enemy(verbs=verbs)]))
+    st = _do(st, kind="end_turn", actor_id="tank")
+    st = _do(st, kind="move", actor_id="mage", target_id="rear")
+    st = _pass_all(st)
+    st = _drive_to_enemy_window(st)
+    st = _pass_all(st)
+    assert st.character("mage").hp == 10 and st.character("mage").stunned == 0
+    assert st.character("tank").hp == 27 and st.character("tank").stunned >= 1
+
+
+def test_a_ranged_combat_ability_shoots_over_the_wall():
+    st = _declared(_state([_char("tank", row="front", hp=30),
+                           _char("mage", row="front", hp=10)],
+                          [_ability_enemy(mode="ranged")]))
+    st = _do(st, kind="end_turn", actor_id="tank")
+    st = _do(st, kind="move", actor_id="mage", target_id="rear")
+    st = _pass_all(st)
+    assert st.enemies[0].intent.target_id == "mage"            # no wall stops a shot
+
+
+def test_a_relentless_attackers_ability_pursues():
+    st = _declared(_state([_char("tank", row="front", hp=30),
+                           _char("mage", row="front", hp=10)],
+                          [_ability_enemy(keywords=["relentless"])]))
+    st = _do(st, kind="end_turn", actor_id="tank")
+    st = _do(st, kind="move", actor_id="mage", target_id="rear")
+    st = _pass_all(st)
+    assert st.enemies[0].intent.target_id == "mage"            # §L-6.2: it follows
+
+
+def test_a_non_damage_ability_never_redirects():
+    """The line §D23-4 draws: a blow can be walled, a curse cannot."""
+    verbs = [{"kind": "wound", "power": 1, "toughness": 1, "duration": "this_turn",
+              "target": {"mode": "chosen", "side": "ally", "targeted": True}}]
+    st = _declared(_state([_char("tank", row="front", hp=30),
+                           _char("mage", row="front", hp=10)],
+                          [_ability_enemy(verbs=verbs)]))
+    aimed = st.enemies[0].intent.target_id
+    st = _do(st, kind="end_turn", actor_id="tank")
+    st = _do(st, kind="move", actor_id="mage", target_id="rear")
+    st = _pass_all(st)
+    assert st.enemies[0].intent.target_id == aimed
+
+
+def test_the_telegraph_says_whether_it_can_be_walled():
+    """§D23-4's telegraph bit: the intent line reads as a swing or as a pursuit,
+    so the decision to step in front is visible before the blow lands."""
+    from ltg_combat.serialize import veiled_intent
+    st = _declared(_state([_char("tank", row="front", hp=30),
+                           _char("mage", row="front", hp=10)],
+                          [_ability_enemy()]))
+    assert veiled_intent(st, st.enemies[0])["redirectable"] is True
+    st2 = _declared(_state([_char("tank", row="front", hp=30),
+                            _char("mage", row="front", hp=10)],
+                           [_ability_enemy(keywords=["relentless"])]))
+    assert veiled_intent(st2, st2.enemies[0])["redirectable"] is False

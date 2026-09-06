@@ -74,8 +74,26 @@ The veiled telegraph carries a **redirectable** bit: the intent line reads as a 
 
 ### §D23-8 Reaction windows
 
+> **Amended by playtest, 2026-09-06** (all three changes are implemented):
+> * **Pass-All is PER CHARACTER, not per player.** One player holding the whole
+>   party still wants their tank awake in every window while the empty-handed
+>   archer sits the step out. The toggle names the focused character; the wire
+>   message must carry `character_ids`, and each seat's flag expires on its own.
+> * **Pass-All is scoped to THE CURRENT STEP, not to the enemy phase.** Press it
+>   in any step and it answers that seat's remaining windows until the step turns
+>   over, then clears: press it on your turn and you are not asked again until the
+>   Allies step; press it in the Enemies step and you are not asked again until the
+>   next round. The scope is the turn-tracker STEP (`serialize.phase_step` —
+>   Upkeep / Players / Allies / Enemies / End, so the four upkeep phases count as
+>   one), which is both what the server enforces and what the tooltip names.
+>   It never touches a main phase: only windows with something on the stack.
+> * **The reaction strip is REMOVED.** Naming the threat above the action bar was
+>   not needed — the stack panel already carries it and the Mitigate cell already
+>   carries the number. The plain "Reaction Window" banner stands in its place.
+>   Do not re-add the strip.
+
 - **Pass-All.** A toggle in the reaction row: "pass for the rest of this enemy phase". While set, the server passes that seat automatically; it clears at the next player phase. Logged as "Pass (pass-all)".
-- **The reaction strip names the threat.** It shows the top-of-stack line ("Pollen Mite · Basic Attack → Bones, 3 dmg") and the Mitigate value on the Mitigate cell ("Mitigate −2"), so each window is a one-glance decision.
+- ~~**The reaction strip names the threat.**~~ Withdrawn (see above). The Mitigate value still rides the **Mitigate cell** ("Mitigate −2") in a reaction window — that half was kept.
 
 Standing orders and relevance heuristics were considered and rejected.
 

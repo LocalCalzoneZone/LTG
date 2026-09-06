@@ -125,3 +125,28 @@ def test_keyword_fixtures_round_trip(name):
     data = json.loads((EXAMPLES / f"{name}.json").read_text())
     c = Card.model_validate(data)
     assert Card.model_validate(c.model_dump()) == c
+
+
+# --- §D23-2: what the freeing keywords cost and say -------------------------- #
+def test_haste_costs_fifteen_points_again():
+    """§D23-2 reprices haste 20 → 15. Under turn GROUPS the Move is half of the
+    pair, not a whole turn, so freeing it is worth strictly less than freeing the
+    Attack — vigilance keeps its 20."""
+    from ltg_core.schema import CREATION_KEYWORD_COST
+    assert CREATION_KEYWORD_COST["haste"] == 15
+    assert CREATION_KEYWORD_COST["vigilance"] == 20
+
+
+def test_the_freeing_keywords_gloss_the_one_more_verb_rule():
+    """Each of the three says the same shape in words: it frees ONE verb, and one
+    more verb follows. A player should not have to read §D23-2 to play them."""
+    from ltg_core.schema import KEYWORDS
+    for kw in ("vigilance", "defender", "haste"):
+        gloss = KEYWORDS[kw]["gloss"]
+        assert "frees the" in gloss and "one more verb" in gloss
+
+
+def test_the_defender_gloss_no_longer_claims_it_cannot_move():
+    """§D23-2 repealed the rooting; the printed rule has to follow."""
+    from ltg_core.schema import KEYWORDS
+    assert "can't attack or move" not in KEYWORDS["defender"]["gloss"]

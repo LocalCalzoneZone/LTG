@@ -31,8 +31,11 @@ def _state(card, mode="melee", components=None):
         "party": [{"id": "ys", "name": "Ys", "hp": 10, "power": 2, "hand_size": 1,
                    "identity": ["W"], "row": "front", "attack_mode": "melee",
                    "library": [dict(card)]}],
+        # A ranged enemy stands off the melee line (§D23-3/§D23-6); a melee one
+        # takes the front row as usual.
         "enemies": [{"id": "sov", "name": "Sovereign", "hp": 20, "level": 4,
                      "attack_mode": mode,
+                     "row": "mid" if mode == "ranged" else "front",
                      "intent": {"name": "Swipe", "amount": 3,
                                 "action_type": "ability", "intent_type": "attack",
                                 "targeting": "lowest_hp_party", "mode": mode}}],
