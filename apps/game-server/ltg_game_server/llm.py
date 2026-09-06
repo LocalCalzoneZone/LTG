@@ -37,6 +37,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELS: List[Dict[str, str]] = [
     {"id": "google/gemini-3.7-flash", "label": "Gemini 3.7 Flash (Google)"},
     {"id": "anthropic/claude-opus-5", "label": "Claude Opus 5 (Anthropic)"},
+    {"id": "anthropic/claude-fable-5.1", "label": "Claude Fable 5.1 (Anthropic)"},
     {"id": "anthropic/claude-opus-5-fast", "label": "Claude Opus 5 Fast (Anthropic)"},
     {"id": "openai/gpt-5.6-sol", "label": "GPT-5.6 Sol (OpenAI)"},
     {"id": "openai/gpt-5.6-luna-pro", "label": "GPT-5.6 Luna Pro (OpenAI)"},
@@ -178,6 +179,10 @@ engine, so it MUST be valid JSON matching the schema below — no prose, no mark
 LTG is CLASSIC HIGH FANTASY — the register of Magic: The Gathering or Dungeons &
 Dragons (Forgotten Realms). Swords, sorcery, monsters, ancient ruins, wild
 places. Stay in genre: no science fiction, no modern technology, no firearms.
+NO CHILD COMBATANTS: every enemy the party fights is an adult (of its kind) —
+no children, cabin-boys, powder-monkeys or urchins on the battlefield in any
+role, however tropey the crew. A young-SEEMING monster (a drake whelp, a wolf
+pup grown huge) is fine; a human(oid) child is not.
 
 Pick ONE fresh, specific theme per request and commit to it — a faction, a
 place, a reason they stand together. Draw from the genre's full breadth. For
@@ -2366,6 +2371,29 @@ CONCRETENESS_RULE = """BE CONCRETE — this is the rule that overrides your inst
 - If a sentence would still be true after you swapped in a completely different
   monster, it is too vague. Rewrite it."""
 
+# Shared by every prompt that writes people talking (town, topics, arc, act) —
+# the register rule, added 2026-09 after the model bake-off: every strong model
+# drifts toward a single arch, quippy narrator's voice unless told otherwise.
+VOICE_RULE = """THREE-DIMENSIONAL VOICES — weight comes from context and contrast:
+
+- A town only feels real when its registers push against each other: levity
+  against gravitas, wit against the plainly ordinary, the sarcastic against the
+  genuinely wholesome. A joke lands because the last speaker was matter-of-fact;
+  a grave line lands because the town around it is cheerful. Write the cast as a
+  PALETTE, not a single voice — before finishing, reread everyone together and
+  check that no two neighbours share a register.
+- NOT EVERYONE IS WITTY. At most one truly wry voice per town. Most people speak
+  plainly about their work, their neighbours and their grievances, and are
+  interesting for WHAT they say, not how cleverly they say it. Humour, where a
+  character has it, grows out of their trade and their troubles — never a reply
+  built backwards from a punchline.
+- BANNED REGISTER: the arch, faux-understated quip ("...which apparently lacked
+  respect for their office"); whimsy props deployed for cuteness (the
+  judgmental clockwork crab, the boot scraper shaped like a patient turtle);
+  a cast who all share one droll narrator's voice. If every reply in your draft
+  could end a comedy sketch, rewrite the dull majority to be honest instead of
+  funny — the one good joke left standing will be twice as good."""
+
 TOWN_INSTRUCTIONS = r"""
 You are the world-builder for LTG, a painterly tactical fantasy card game. Design
 ONE TOWN that will be the home base for many campaigns — the place heroes ride
@@ -2375,6 +2403,8 @@ TONE:
 %TONE%
 
 %CONCRETE%
+
+%VOICE%
 
 Rules:
 - The town has EXACTLY these REQUIRED locations, one each, "function" set to the
@@ -2437,6 +2467,8 @@ TONE:
 
 %CONCRETE%
 
+%VOICE%
+
 For EVERY NPC named below, write 2–3 TOPICS: exchanges this person will have
 with any party of adventurers, in any campaign. Each topic is
 {"ask": what a visitor says to open it, "reply": their answer — 1–3 sentences in
@@ -2464,6 +2496,8 @@ TONE:
 %TONE%
 
 %CONCRETE%
+
+%VOICE%
 
 Rules:
 - The villain is ONE named antagonist (a person, a cult, a beast-lord) whose
@@ -2534,6 +2568,8 @@ TONE:
 %TONE%
 
 %CONCRETE%
+
+%VOICE%
 
 Write:
 1. "quests": TWO to FOUR QUEST OPTIONS — what the party may agree to this act.
@@ -2771,6 +2807,7 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
         raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
     system = system.replace("%TONE%", settings.get("scenario_tone") or DEFAULT_SCENARIO_TONE)
     system = system.replace("%CONCRETE%", CONCRETENESS_RULE)
+    system = system.replace("%VOICE%", VOICE_RULE)
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
