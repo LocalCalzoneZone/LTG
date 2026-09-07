@@ -130,7 +130,7 @@ def test_retired_glm_slugs_alias_to_a_live_model():
     ids = [m["id"] for m in llm.MODELS]
     assert "z-ai/glm-5.3-flash" not in ids
     for old in ("z-ai/glm-5.2", "z-ai/glm-5.3", "z-ai/glm-5.3-flash"):
-        assert llm._valid_model(old) == "google/gemini-3.7-flash"
+        assert llm._valid_model(old) == "google/gemini-3.8-flash"
 
 
 def test_every_model_choice_has_a_label_and_is_valid():
@@ -144,3 +144,52 @@ def test_the_model_roster_reaches_the_ui_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(llm, "SETTINGS_PATH", tmp_path / "llm_settings.json")
     ui_ids = {m["id"] for m in llm.public_settings()["models"]}
     assert ui_ids == {m["id"] for m in llm.MODELS}
+
+
+def test_the_retired_gemini_slug_aliases_to_the_live_flash_model():
+    # Renamed 2026-09: 3.7 Flash → 3.8 Flash. The dropdown offers only the new
+    # slug; a settings file naming the old one keeps working.
+    ids = [m["id"] for m in llm.MODELS]
+    assert "google/gemini-3.8-flash" in ids and "google/gemini-3.7-flash" not in ids
+    assert llm._valid_model("google/gemini-3.7-flash") == "google/gemini-3.8-flash"
+
+
+# --------------------------------------------------------------------------- #
+# Card Flavour (the Deckbuilder's "Generate deck flavour") is tuned in the
+# game's Options → LLM like every other generation task, and read back out of
+# the one shared settings file by the OTHER app.
+# --------------------------------------------------------------------------- #
+def test_card_flavour_is_a_tunable_task_in_the_llm_settings(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm, "SETTINGS_PATH", tmp_path / "llm_settings.json")
+    assert "flavour" in {t["id"] for t in llm.MODEL_TASKS}
+    # It reaches the Options → LLM panel, which renders `model_tasks` verbatim.
+    assert "flavour" in {t["id"] for t in llm.public_settings()["model_tasks"]}
+    llm.save_settings({"model": "anthropic/claude-opus-5",
+                       "task_models": {"flavour": "google/gemini-3.8-flash"}})
+    assert llm.model_for("flavour") == "google/gemini-3.8-flash"
+    # "" means follow the default, as for every other task.
+    llm.save_settings({"task_models": {"flavour": ""}})
+    assert llm.model_for("flavour") == "anthropic/claude-opus-5"
+    with pytest.raises(ValueError, match="unknown model"):
+        llm.save_settings({"task_models": {"flavour": "no/such-model"}})
+
+
+def test_the_deckbuilder_reads_the_card_flavour_model_from_the_shared_settings(tmp_path):
+    from ltg_deckbuilder import flavour
+    # No settings file at all: the fallback must be a slug that still exists.
+    assert flavour.load_llm_settings(tmp_path)["model"] == flavour.DEFAULT_MODEL
+    assert llm._valid_model(flavour.DEFAULT_MODEL) == flavour.DEFAULT_MODEL
+    path = tmp_path / "llm_settings.json"
+    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5"}))
+    assert flavour.load_llm_settings(tmp_path) == {"api_key": "k", "model": "anthropic/claude-opus-5"}
+    # The per-task pick wins over the default.
+    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5",
+                                "task_models": {"scenarios": "openai/gpt-5.6-sol",
+                                                "flavour": "google/gemini-3.8-flash"}}))
+    assert flavour.load_llm_settings(tmp_path)["model"] == "google/gemini-3.8-flash"
+    # A settings file written BEFORE a rename still holds the retired slug on
+    # disk; the Deckbuilder must not send a dead one to OpenRouter.
+    path.write_text(json.dumps({"api_key": "k", "task_models": {"flavour": "google/gemini-3.7-flash"}}))
+    assert flavour.load_llm_settings(tmp_path)["model"] == "google/gemini-3.8-flash"
+    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-sonnet-5"}))
+    assert flavour.load_llm_settings(tmp_path)["model"] == llm._valid_model("anthropic/claude-sonnet-5")

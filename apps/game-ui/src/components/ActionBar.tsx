@@ -58,16 +58,18 @@ export function ActionBar({ choices, reaction, char }: {
     // mechanical name rides the tooltip so the mechanics stay legible. A stance
     // has REPLACED this ability, so its authored name/label wins instead.
     const entry = flavor ? char?.evergreen?.[flavor] : undefined;
-    let display = isStance
+    const display = isStance
       ? (choice?.label || label)
       : (entry?.name && entry.name !== label ? entry.name : label);
-    // §D23-8: in a reaction window the Mitigate cell says what it would TURN, so
-    // the decision needs no second look at the stack.
-    if (key === "mitigate" && reaction && enabled && char)
-      display = `${display} −${char.mitigate_value}`;
     const closed = enabled ? null : closedReason(char, spec);
+    // A stance has REPLACED this slot: the tooltip says what the replacement
+    // does (its rendered effects), not what the slot used to do.
+    const slotRepl = char?.stance?.slots?.[key];
+    const replText = slotRepl && typeof slotRepl === "object" ? slotRepl.text : undefined;
     const base = isStance
-      ? `${choice?.label ?? label} — ${label} (replaced by your stance)`
+      ? `${(slotRepl && typeof slotRepl === "object" && slotRepl.name) || choice?.label || label} — replaces ${label}`
+        + (char?.stance?.card_name ? ` (${char.stance.card_name})` : "")
+        + (replText ? `\n${replText}` : "")
       : entry
         ? `${label}: ${entry.text}${entry.flavor ? `\n${entry.flavor}` : ""}`
         : label;

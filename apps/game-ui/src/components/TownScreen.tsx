@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../lib/store";
 import { roman } from "../lib/format";
+import { fetchWorld } from "../lib/api";
 import type {
+  ChronicleEntry,
   ConfirmView,
   ConversationView,
+  HookView,
+  InterludeView,
   PartySheetRow,
   QuestLogView,
   TownLocationView,
@@ -35,7 +39,7 @@ function fnLabel(fn: string): string {
  * backdrop + card slots (locations, then a location's NPCs) + inspect + a verb
  * button + splash on entry. Party-wide movement goes through the all-players
  * confirmation server-side; browsing is per-player. */
-export function TownScreen() {
+export function TownScreen({ onNewGame }: { onNewGame?: () => void }) {
   const town = useGame((s) => s.town);
   const sendTown = useGame((s) => s.sendTown);
   const showQuestLog = useGame((s) => s.showQuestLog);
@@ -50,9 +54,10 @@ export function TownScreen() {
 
   if (!town) return null;
 
-  if (town.mode === "complete") return <RunEndScreen town={town} />;
+  if (town.mode === "complete") return <RunEndScreen town={town} onNewGame={onNewGame} />;
 
   const loc = town.location;
+  const interlude = town.scenario.mode === "interlude";
   const backdrop = loc ? loc.art_url : town.town.art_url;
   const sceneText = loc ? loc.scene : town.town.scene;
   const splashKey = town.splash ? `${town.splash.kind}:${town.splash.title}:${town.splash.text}` : "";
@@ -72,7 +77,9 @@ export function TownScreen() {
       <div className="flex items-start justify-between gap-4 px-6 pt-4">
         <div>
           <div className="caps-label text-[10px] tracking-[0.3em] text-mist">
-            {town.town.name} · Scenario {town.scenario.scenario_number} · Act {roman(town.scenario.act_number)} of {roman(town.scenario.acts_total)}
+            {town.town.name} · Scenario {town.scenario.scenario_number}
+            {interlude ? " · Between scenarios" : ` · Act ${roman(town.scenario.act_number)} of ${roman(town.scenario.acts_total)}`}
+            {town.scenario.day ? ` · Day ${town.scenario.day}` : ""}
           </div>
           <div className="caps-label mt-1 text-[16px] tracking-[0.22em] text-brass-hi">
             {loc ? loc.name : town.town.name}
@@ -138,6 +145,8 @@ export function TownScreen() {
       {town.trade && <TradeOffer town={town} />}
       {town.conversation && <DialogueModal town={town} conv={town.conversation} />}
       {showQuestLog && <QuestLogPanel log={town.quest_log} onClose={() => setQuestLog(false)} />}
+      {town.interlude?.rest_screen && <RestScreen town={town} interlude={town.interlude} />}
+      {!!town.notices?.length && !showSplash && <NoticeStrip notices={town.notices} />}
       {showSplash && (
         <TownSplash town={town} onContinue={() => setSplashSeen(splashKey)} />
       )}
@@ -216,6 +225,7 @@ function TownConsole({ town }: { town: TownSnapshot }) {
   const retryJob = useGame((s) => s.retryJob);
   const job = town.adventure_job;
   const busy = !!town.confirm;
+  const interlude = town.scenario.mode === "interlude";
   let startLabel = "Start Adventure";
   let startHint = "";
   if (!town.adventure_unlocked) startHint = "Accept a quest first";
@@ -236,7 +246,16 @@ function TownConsole({ town }: { town: TownSnapshot }) {
         <button className={SMALL_BTN} onClick={() => sendTown("save")} disabled={busy}>Save Game</button>
         <button className={SMALL_BTN} onClick={() => setQuestLog(true)}>Quest Log</button>
         <button className={SMALL_BTN} onClick={() => sendTown("leave")} disabled={!town.location || busy}>Leave Location</button>
-        {job.state === "failed" ? (
+        {interlude ? (
+          <button
+            className={BRASS_BTN}
+            disabled={busy || !!town.interlude?.transit}
+            title="Between scenarios the inn's rest is the only road out: choose where the story goes next"
+            onClick={() => sendTown("rest_screen")}
+          >
+            {town.interlude?.transit ? "On the road…" : "The road ahead"}
+          </button>
+        ) : job.state === "failed" ? (
           <button className={SMALL_BTN + " border-blood/60 text-blood"} onClick={retryJob} title={job.error ?? ""}>
             Generation failed — Retry
           </button>
@@ -485,7 +504,10 @@ function QuestLogPanel({ log, onClose }: { log: QuestLogView; onClose: () => voi
     <div className="absolute inset-y-0 right-0 z-30 flex w-[min(92vw,460px)] flex-col border-l border-line2 bg-ink-2/95 p-5 shadow-2xl backdrop-blur-[2px]">
       <div className="mb-4 flex items-center gap-3">
         <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">Journal</h2>
-        <span className="text-[10px] font-light text-mist">{log.arc_title} · Act {roman(log.act_number)}</span>
+        <span className="text-[10px] font-light text-mist">
+          {log.arc_title} · {log.act_title === "Between scenarios" ? "Between scenarios" : `Act ${roman(log.act_number)}`}
+          {log.day ? ` · Day ${log.day}` : ""}
+        </span>
         <span className="h-px flex-1 bg-line" />
         <button onClick={onClose} className="text-mist hover:text-parch"><IconX size={14} /></button>
       </div>
@@ -540,10 +562,12 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
 }) {
   const sheetFor = useGame((s) => s.sheetFor);
   const setSheetFor = useGame((s) => s.setSheetFor);
+  const [tab, setTab] = useState<"sheet" | "deeds">("sheet");
   const row = rows.find((r) => r.id === sheetFor);
   if (!row) return null;
   const b = row.build;
   const basePower = b.attack_mode === "melee" ? 2 : 1;
+  const brief = row.brief ?? null;
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={() => setSheetFor(null)}>
       <div className="panel-ticks flex max-h-[92vh] w-[min(96vw,1180px)] gap-6 overflow-y-auto border border-line2 bg-ink-2 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -561,12 +585,27 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
               <span>{row.gold} gold</span>
             </div>
             <LevelProgress row={row} />
-            {b.description && <p className="mt-2 text-xs font-light italic leading-relaxed text-mist">{b.description}</p>}
+            {(brief?.concept || b.description) && (
+              <p className="mt-2 text-xs font-light italic leading-relaxed text-mist">{brief?.concept || b.description}</p>
+            )}
+            {row.situation && (
+              <p className="mt-1 text-[11px] font-light leading-relaxed text-parch/80">
+                <span className="caps-label mr-1 text-[9px] tracking-[0.14em] text-mist">Now —</span>{row.situation}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start gap-3">
-            <div className="caps-label text-[14px] tracking-[0.22em] text-brass">Character Sheet</div>
+            <div className="flex gap-3">
+              {(["sheet", "deeds"] as const).map((t) => (
+                <button key={t} onClick={() => setTab(t)}
+                        className={`caps-label pb-0.5 text-[14px] tracking-[0.22em] transition ${
+                          tab === t ? "border-b border-brass text-brass" : "border-b border-transparent text-mist hover:text-parch"}`}>
+                  {t === "sheet" ? "Character Sheet" : "Deeds"}
+                </button>
+              ))}
+            </div>
             <span className="flex gap-1">
               {rows.length > 1 && rows.map((r) => (
                 <button key={r.id} onClick={() => setSheetFor(r.id)}
@@ -578,15 +617,21 @@ export function CharacterSheetModal({ rows, editable = false, inTown = false }: 
             <span className="h-px flex-1 self-center bg-line" />
             <button onClick={() => setSheetFor(null)} className="text-mist hover:text-parch"><IconX size={14} /></button>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm font-light">
-            <Stat label="Hit Points" value={`${row.hp ?? b.hp} / ${b.hp}`} />
-            <Stat label="Attack" value={`${b.attack_mode} ${basePower + b.power_bought}`} />
-            <Stat label="Mana capacity" value={<span className="flex gap-0.5">{b.starting_mana.map((c, i) => <ManaIcon key={i} color={c} size={13} />)}</span>} />
-            <Stat label="Starting cards" value={String(b.starting_cards)} />
-            <Stat label="Keyword" value={b.keyword ?? "—"} />
-            <Stat label="Colours" value={<span className="flex gap-0.5">{b.colors.map((c, i) => <ManaIcon key={i} color={c} size={13} />)}</span>} />
-          </div>
-          <GearSheet row={row} editable={editable} inTown={inTown} party={rows} />
+          {tab === "sheet" ? (
+            <>
+              <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm font-light">
+                <Stat label="Hit Points" value={`${row.hp ?? b.hp} / ${b.hp}`} />
+                <Stat label="Attack" value={`${b.attack_mode} ${basePower + b.power_bought}`} />
+                <Stat label="Mana capacity" value={<span className="flex gap-0.5">{b.starting_mana.map((c, i) => <ManaIcon key={i} color={c} size={13} />)}</span>} />
+                <Stat label="Starting cards" value={String(b.starting_cards)} />
+                <Stat label="Keyword" value={b.keyword ?? "—"} />
+                <Stat label="Colours" value={<span className="flex gap-0.5">{b.colors.map((c, i) => <ManaIcon key={i} color={c} size={13} />)}</span>} />
+              </div>
+              <GearSheet row={row} editable={editable} inTown={inTown} party={rows} />
+            </>
+          ) : (
+            <DeedsTab row={row} />
+          )}
         </div>
       </div>
     </div>
@@ -647,7 +692,9 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 function TownSplash({ town, onContinue }: { town: TownSnapshot; onContinue: () => void }) {
   const sp = town.splash!;
   const art = sp.kind === "town" ? town.town.art_url : town.location?.art_url ?? "";
-  const waiting = town.materializing && !sp.text;
+  // Waits while the act (or the road between scenarios, §D24-5.3) generates —
+  // a transit splash carries the hook's narration and still holds the button.
+  const waiting = town.materializing;
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-ink-0">
       {art && <img src={art} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" />}
@@ -660,8 +707,11 @@ function TownSplash({ town, onContinue }: { town: TownSnapshot; onContinue: () =
           <span className="h-px w-14 bg-gradient-to-l from-transparent to-brass" />
         </div>
         <p className="font-display text-lg font-light leading-relaxed text-parch">
-          {waiting ? "The town stirs as you arrive…" : sp.text}
+          {sp.text || (waiting ? "The town stirs as you arrive…" : "")}
         </p>
+        {waiting && sp.text && (
+          <span className="caps-label text-[10px] tracking-[0.2em] text-mist">The road unwinds ahead of you…</span>
+        )}
         {town.materialize_error && (
           <p className="text-sm font-light text-blood">The chronicle faltered: {town.materialize_error}</p>
         )}
@@ -767,25 +817,242 @@ function mountedAt(id: number): number {
   return t;
 }
 
-function RunEndScreen({ town }: { town: TownSnapshot }) {
+/** The scenario-end menu (Update 24 §D24-4): New Game / Continue Campaign /
+ * Quit. The campaign record is already saved, so Quit never closes the door;
+ * Continue waits on the interlude planner (queued at boss death) with a
+ * spinner when the player is faster than the writer. */
+function RunEndScreen({ town, onNewGame }: { town: TownSnapshot; onNewGame?: () => void }) {
   const disconnect = useGame((s) => s.disconnect);
+  const sendTown = useGame((s) => s.sendTown);
+  const [pressed, setPressed] = useState(false);
   const dead = town.scenario.dead;
+  const ready = !!town.scenario.interlude_ready;
+  const pending = town.scenario.interlude_state === "pending" || (pressed && !ready);
+  const failed = town.scenario.interlude_state === "failed";
+  const quit = () => { disconnect(); const u = new URL(location.href); u.searchParams.delete("s"); history.pushState({}, "", u); };
   return (
     <div className="field-scene relative flex h-full w-full items-center justify-center overflow-hidden">
       {town.town.art_url && <img src={town.town.art_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
       <div className="absolute inset-0 bg-gradient-to-t from-ink-0 via-ink-0/60 to-ink-0/70" />
       <div className="relative z-10 flex max-w-xl flex-col items-center gap-5 px-8 text-center">
-        <div className="caps-label text-[11px] tracking-[0.3em] text-mist">{town.town.name} · {town.scenario.title}</div>
+        <div className="caps-label text-[11px] tracking-[0.3em] text-mist">
+          {town.town.name} · {town.scenario.title}{town.scenario.day ? ` · Day ${town.scenario.day}` : ""}
+        </div>
         <div className="caps-label text-[18px] tracking-[0.25em] text-brass-hi">
-          {dead ? "The Run Is Over" : "Scenario Complete"}
+          {dead ? "The Run Is Over" : `Scenario ${town.scenario.scenario_number} Complete`}
         </div>
         <p className="font-display text-lg font-light leading-relaxed text-parch">
           {dead
-            ? "The party fell, and in Hardcore there is no coming back. The run's saves remain to be read, not continued."
-            : `Three acts, one villain: ${town.scenario.villain}. The town remembers.`}
+            ? "The party fell, and in Hardcore there is no coming back. The campaign's saves remain to be read, not continued."
+            : `Three acts, one villain: ${town.scenario.villain}. The town remembers — and the story goes on.`}
         </p>
-        <button className={BRASS_BTN} onClick={() => { disconnect(); const u = new URL(location.href); u.searchParams.delete("s"); history.pushState({}, "", u); }}>
-          Return to the menu
+        {!dead && failed && (
+          <p className="text-sm font-light text-blood">The chronicle faltered: {town.scenario.interlude_error}</p>
+        )}
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {onNewGame && <button className={GHOST_BTN} onClick={() => { quit(); onNewGame(); }}>New Game</button>}
+          {!dead && (
+            <button
+              className={BRASS_BTN}
+              disabled={pending}
+              onClick={() => { setPressed(true); sendTown("continue_campaign"); }}
+              title={ready ? "Rest in town, then choose where the story goes next" : "The chronicler is still writing the interlude"}
+            >
+              {pending ? "The chronicler writes…" : failed ? "Continue Campaign — retry" : "Continue Campaign"}
+            </button>
+          )}
+          <button className={GHOST_BTN} onClick={quit} title="The campaign is saved; Load Game reopens it here">
+            Quit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Notices from a load — the live-identity refresh (§D24-6): a deck that
+ * followed the character file, a re-rolled pip. Dismissed once read. */
+function NoticeStrip({ notices }: { notices: string[] }) {
+  const sendTown = useGame((s) => s.sendTown);
+  return (
+    <div className="absolute inset-x-0 top-24 z-20 flex justify-center px-6">
+      <div className="panel-ticks flex max-w-2xl items-start gap-4 border border-line2 bg-ink-2/95 px-4 py-3 shadow-2xl">
+        <div className="flex flex-col gap-1 text-[12px] font-light leading-relaxed text-parch">
+          {notices.map((n, i) => <span key={i}>{n.replace(/\*/g, "")}</span>)}
+        </div>
+        <button onClick={() => sendTown("dismiss_notices")} className="text-mist hover:text-parch" title="Dismiss"><IconX size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
+/** The Deeds tab (§D24-7.5): the hero's full chronicle, grouped by scenario. */
+function DeedsTab({ row }: { row: PartySheetRow }) {
+  const rows: ChronicleEntry[] = row.chronicle ?? [];
+  const groups = new Map<number, ChronicleEntry[]>();
+  for (const e of rows) {
+    const g = groups.get(e.scenario) ?? [];
+    g.push(e);
+    groups.set(e.scenario, g);
+  }
+  return (
+    <div className="scroll-thin mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      {rows.length === 0 && <div className="text-xs font-light italic text-dimmed">Nothing written yet — the deeds come with the road.</div>}
+      {[...groups.entries()].sort((a, b) => b[0] - a[0]).map(([scenario, entries]) => (
+        <div key={scenario}>
+          <div className="caps-label border-b border-line pb-1 text-[10px] tracking-[0.2em] text-brass">Scenario {scenario}</div>
+          <div className="mt-1 flex flex-col gap-0.5">
+            {[...entries].reverse().map((e, i) => (
+              <div key={i} className="flex items-baseline gap-2 text-xs font-light leading-relaxed">
+                <span className="w-16 shrink-0 text-[9px] text-dimmed">Act {roman(e.act)} · d{e.day}</span>
+                <span className={`caps-label w-16 shrink-0 text-[9px] tracking-[0.14em] ${
+                  e.kind === "fell" ? "text-blood" : e.kind === "slew" || e.kind === "levelled" ? "text-vigor" : e.kind === "refused" ? "text-mist" : "text-brass"}`}>
+                  {e.kind}
+                </span>
+                <span className="text-parch">{e.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The rest screen (§D24-5.3): the three narrated hooks as cards, plus the
+ * fourth — the player's own stay / travel / somewhere-new with a note — and
+ * a drawer to edit each hero's situation. "Not yet" returns to town; nothing
+ * is committed until a road is chosen (an all-players confirmation). */
+function RestScreen({ town, interlude }: { town: TownSnapshot; interlude: InterludeView }) {
+  const sendTown = useGame((s) => s.sendTown);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [note, setNote] = useState("");
+  const [customKind, setCustomKind] = useState<"stay" | "neighbour" | "new">("stay");
+  const [customTown, setCustomTown] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newLine, setNewLine] = useState("");
+  const [towns, setTowns] = useState<{ town_id: string; name: string }[]>([]);
+  const [drawer, setDrawer] = useState(false);
+  const [situations, setSituations] = useState<Record<string, string>>(interlude.situations);
+  const busy = !!town.confirm || !!interlude.transit;
+  useEffect(() => {
+    fetchWorld().then((w) => setTowns(w.towns.filter((t) => t.town_id !== interlude.town_id))).catch(() => setTowns([]));
+  }, [interlude.town_id]);
+  const customIndex = interlude.hooks.length;
+  const customOk = customKind === "stay" || (customKind === "neighbour" ? !!customTown : !!newName.trim());
+  const choose = () => {
+    if (picked === null) return;
+    if (picked === customIndex) {
+      sendTown("choose_hook", {
+        index: customIndex, note,
+        custom: customKind === "new"
+          ? { kind: "new", name: newName.trim(), line: newLine.trim() }
+          : customKind === "neighbour" ? { kind: "neighbour", town_id: customTown } : { kind: "stay" },
+      });
+    } else {
+      sendTown("choose_hook", { index: picked, note });
+    }
+  };
+  const kindLabel = (h: HookView) => h.kind === "stay" ? `Stay in ${h.town_name}` : h.kind === "neighbour" ? `Travel to ${h.town_name}` : `Somewhere new — ${h.town_name}`;
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col bg-ink-0/95 backdrop-blur-[2px]">
+      <div className="flex items-start gap-3 px-8 pt-6">
+        <div>
+          <div className="caps-label text-[10px] tracking-[0.3em] text-mist">{interlude.town_name} · Day {interlude.day} · the inn</div>
+          <div className="caps-label mt-1 text-[16px] tracking-[0.22em] text-brass-hi">Where the story goes next</div>
+          <div className="mt-1 max-w-2xl text-xs font-light italic text-mist">
+            You have heard all three in town. Pick a road, or write your own; nothing is settled until you do.
+          </div>
+        </div>
+        <span className="h-px flex-1 self-center bg-line" />
+        <button className={SMALL_BTN} onClick={() => setDrawer((v) => !v)}>{drawer ? "Hide the party" : "The party — situations"}</button>
+        <button className={SMALL_BTN} onClick={() => sendTown("rest_back")} disabled={busy}>Not yet</button>
+      </div>
+      <div className="scroll-thin flex min-h-0 flex-1 gap-4 overflow-y-auto px-8 py-5">
+        <div className="grid flex-1 auto-rows-max grid-cols-2 gap-4">
+          {interlude.hooks.map((h) => (
+            <button
+              key={h.index}
+              onClick={() => setPicked(h.index)}
+              disabled={busy}
+              className={`panel-ticks flex flex-col gap-2 border p-4 text-left transition ${
+                picked === h.index ? "border-brass bg-brass/10" : "border-line bg-white/[0.02] hover:border-line2"}`}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="caps-label text-[11px] tracking-[0.16em] text-brass">{kindLabel(h)}</span>
+                <span className="ml-auto text-[9px] font-light text-dimmed">{h.days} days</span>
+              </div>
+              <p className="font-display text-base font-light leading-relaxed text-parch">{h.narration}</p>
+            </button>
+          ))}
+          <div
+            onClick={() => setPicked(customIndex)}
+            className={`panel-ticks flex cursor-pointer flex-col gap-2 border p-4 text-left transition ${
+              picked === customIndex ? "border-aether/70 bg-aether/10" : "border-line bg-white/[0.02] hover:border-line2"}`}
+          >
+            <span className="caps-label text-[11px] tracking-[0.16em] text-aether">Your own road</span>
+            <div className="flex flex-wrap items-center gap-2 text-sm font-light text-parch" onClick={(e) => e.stopPropagation()}>
+              <span>You decide to</span>
+              {(["stay", "neighbour", "new"] as const).map((k) => (
+                <button key={k} type="button"
+                        onClick={() => { setCustomKind(k); setPicked(customIndex); }}
+                        className={`caps-label border px-2 py-0.5 text-[9px] tracking-[0.14em] transition ${
+                          customKind === k ? "border-aether text-aether" : "border-line text-mist hover:text-parch"}`}>
+                  {k === "stay" ? `stay in ${interlude.town_name}` : k === "neighbour" ? "travel to" : "go somewhere new"}
+                </button>
+              ))}
+              {customKind === "neighbour" && (
+                <select value={customTown} onChange={(e) => { setCustomTown(e.target.value); setPicked(customIndex); }}
+                        className="border border-line bg-ink-0 px-2 py-1 text-sm font-light focus:border-aether/70 focus:outline-none">
+                  <option value="">— a town of the world —</option>
+                  {towns.map((t) => <option key={t.town_id} value={t.town_id}>{t.name}</option>)}
+                </select>
+              )}
+              {customKind === "new" && (
+                <>
+                  <input value={newName} onChange={(e) => { setNewName(e.target.value); setPicked(customIndex); }} maxLength={40}
+                         placeholder="its name" className="w-40 border border-line bg-ink-0 px-2 py-1 text-sm font-light focus:border-aether/70 focus:outline-none" />
+                  <input value={newLine} onChange={(e) => setNewLine(e.target.value)} maxLength={140}
+                         placeholder="one line — what it is" className="min-w-[220px] flex-1 border border-line bg-ink-0 px-2 py-1 text-sm font-light focus:border-aether/70 focus:outline-none" />
+                </>
+              )}
+              <span>, but…</span>
+            </div>
+            <textarea value={note} onChange={(e) => { setNote(e.target.value); setPicked(customIndex === picked || picked === null ? customIndex : picked); }}
+                      onClick={(e) => e.stopPropagation()} rows={2} maxLength={280}
+                      placeholder="A note for the chronicler (optional) — what draws you, what you fear, what you owe."
+                      className="w-full border border-line bg-ink-0 px-2 py-1.5 text-sm font-light focus:border-aether/70 focus:outline-none" />
+          </div>
+        </div>
+        {drawer && (
+          <div className="flex w-[320px] shrink-0 flex-col gap-3 border-l border-line pl-4">
+            <div className="caps-label text-[10px] tracking-[0.2em] text-brass">Where each of you stands</div>
+            <div className="text-[10px] font-light italic text-dimmed">Read by the chroniclers; a paragraph at most. Saved as you type.</div>
+            {town.party_sheet.map((p) => (
+              <label key={p.id} className="flex flex-col gap-1">
+                <span className="caps-label text-[10px] tracking-[0.14em] text-parch">{p.name}</span>
+                <textarea
+                  value={situations[p.id] ?? ""}
+                  onChange={(e) => setSituations({ ...situations, [p.id]: e.target.value })}
+                  onBlur={(e) => sendTown("set_situation", { character_id: p.id, text: e.target.value })}
+                  rows={3} maxLength={480}
+                  placeholder="travelling with … since …; low on coin, high on grudge"
+                  className="border border-line bg-ink-0 px-2 py-1.5 text-xs font-light focus:border-brass/70 focus:outline-none"
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-end gap-3 border-t border-line px-8 py-4">
+        {interlude.transit && <span className="caps-label text-[10px] tracking-[0.2em] text-mist">The road unwinds…</span>}
+        <button
+          className={BRASS_BTN}
+          disabled={busy || picked === null || (picked === customIndex && !customOk)}
+          onClick={choose}
+          title={picked === null ? "Pick a road first" : "Every player confirms; the weeks pass and the next scenario is written"}
+        >
+          Take this road
         </button>
       </div>
     </div>

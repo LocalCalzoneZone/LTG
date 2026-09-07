@@ -8,7 +8,7 @@ is made** — crossed with the mechanical chassis and the affix table in code.
 
 - The **lexicon** is frozen onto the arc (``arc["loot_lexicon"]``), so it
   survives saves, reloads and pre-generated scenario files, and so every
-  scenario's spoils sound like that scenario. Everquest's next arc draws a new
+  scenario's spoils sound like that scenario. A continuation's next arc draws a new
   one. It is picked in CODE from theme word-banks matched against the town and
   arc text — no LLM call sits between a boss dying and its loot (§D17-4.5).
 - The **mechanics** come from the same tables merchant rolls use: a chassis

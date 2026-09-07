@@ -199,7 +199,7 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
           className="caps-label text-[10px] tracking-[0.18em] text-mist"
           title={`${town.scenario.title} — ${town.scenario.act_title}`}
         >
-          {town.town.name} · Act {roman(town.scenario.act_number)} / {roman(town.scenario.acts_total)}
+          {town.town.name} · {town.scenario.mode === "interlude" ? "Between scenarios" : `Act ${roman(town.scenario.act_number)} / ${roman(town.scenario.acts_total)}`}
         </span>
       )}
       {/* turn tracker — centred */}

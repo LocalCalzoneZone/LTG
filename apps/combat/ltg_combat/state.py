@@ -752,6 +752,10 @@ class StackItem:
     # channel from ever existing — normal stack interaction.
     starts_channel: bool = False
     component_id: Optional[str] = None
+    # Presentation only (2026-09): WHICH trigger of a card pushed this item
+    # (`ltg_core.schema.trigger_key`), so the panel can play that trigger's own
+    # clip as the ability RESOLVES. "" for anything that is not a trigger.
+    trigger: str = ""
     mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
     x: int = 0                  # the X chosen at cast (0 for a non-X card)

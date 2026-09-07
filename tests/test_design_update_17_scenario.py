@@ -1,6 +1,7 @@
 """Design Update 17 — the scenario runtime (Phase 1 spine): town mode, dialogue
 hooks, Quest Accept → job → adventure, the return to town, defeat/return
-(Normal / Hardcore), Everquest, and scenario saves that reload."""
+(Normal / Hardcore), the scenario's end (Update 24: every scenario game is a
+campaign; Everquest is retired), and scenario saves that reload."""
 
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ def runs(tmp_path):
     return RunManager(root=tmp_path / "saves")
 
 
-def _fake_materializer(town, arc, act_index, party_state, prev=""):
+def _fake_materializer(town, arc, act_index, party_state, prev="", **kw):
     m = materialization_raw()
     m["quests"][0]["title"] = f"Quest {act_index + 1}"
     m["quests"][1]["title"] = f"Quest {act_index + 1}, the other way"
@@ -76,12 +77,6 @@ def _drive(session, kind):
         session.materialize_act()
     elif kind == "adventure_job":
         jobs.AdventureJobRunner(_fake_adventure_generator).start(session, None, None)
-    elif kind == "new_arc":
-        scen = session.scenario
-        arc = sc.validate_arc(arc_raw(), scen.town)
-        arc["title"] = "The Second Siege"
-        session.new_arc(arc)
-        session.materialize_act()
 
 
 def _win_adventure(session):
@@ -378,22 +373,27 @@ def test_hardcore_defeat_ends_the_run(runs):
     assert runs.list_runs()[0]["dead"] is True
 
 
-def test_standard_ends_after_act_three_and_everquest_rolls_a_new_arc(runs):
-    for everquest in (False, True):
-        session, scen, run_id = _start(runs, options={"everquest": everquest})
-        for act in range(3):
-            _accept_quest(session)
-            session.town_verb("c1", "leave", {})
-            session.town_verb("c1", "start_adventure", {})
-            _win_adventure(session)
-            _take_rewards(session)
-        if everquest:
-            assert scen.mode == "town" and scen.scenario_number == 2 and scen.act_index == 0
-            assert scen.arc["title"] == "The Second Siege"
-            assert scen.previous_arcs[0]["title"] == "The Siege of Hollowmere"
-            assert scen.flags.get("act_1_complete") is None
-        else:
-            assert scen.mode == "complete" and session.pending_transition == "scenario_complete"
+def test_the_scenario_ends_after_act_three_and_the_campaign_record_is_saved(runs):
+    """Update 24 §D24-4: Act III's victory ends the SCENARIO, not the campaign —
+    the run reaches the scenario-end menu with a `scenario_complete` save
+    already written, so Quit never closes the door. (Everquest, which rolled a
+    new arc here, is retired; continuing is the interlude's job — see
+    test_design_update_24_campaign.)"""
+    session, scen, run_id = _start(runs)
+    for act in range(3):
+        _accept_quest(session)
+        session.town_verb("c1", "leave", {})
+        session.town_verb("c1", "start_adventure", {})
+        _win_adventure(session)
+        _take_rewards(session)
+    assert scen.mode == "complete" and session.pending_transition == "scenario_complete"
+    assert scen.scenario_number == 1 and scen.flags.get("act_3_complete")
+    saves = runs.run_detail(run_id)["saves"]
+    assert saves[-1]["kind"] == "scenario_complete"
+    assert saves[-1]["label"] == "Hollowmere · Scenario 1 complete"
+    # A run option from before Update 24 is dropped rather than honoured.
+    session2, scen2, _ = _start(runs, options={"everquest": True})
+    assert "everquest" not in scen2.options
 
 
 def test_all_players_confirmation_gates_party_wide_moves(runs):
@@ -611,25 +611,27 @@ def test_the_power_cap_reads_the_level_the_spend_reaches(runs):
     assert adv.banked[ys] == 10 and adv.level_up[ys]["confirmed"] is False
 
 
-def test_the_closing_act_has_an_end_screen_only_in_everquest(runs):
-    for everquest, expected in ((False, False), (True, True)):
-        session, scen, _run_id = _start(runs, options={"everquest": everquest})
-        for _ in range(2):
-            _play_act(session)
-        assert scen.act_index == 2 and scen.is_last_act()
-        assert scen.act_ends_on_screen() is expected
-        _accept_quest(session)
-        session.town_verb("c1", "leave", {})
-        session.town_verb("c1", "start_adventure", {})
-        _win_adventure(session)
-        assert scen.rewards is not None
-        _take_rewards(session)
-        # Points are earned either way; only Everquest gets a screen for them.
-        assert scen.earned["loadout_soren"] == 180
-        if everquest:
-            assert scen.scenario_number == 2 and scen.act_index == 0
-        else:
-            assert scen.mode == "complete"
+def test_the_closing_act_always_has_an_end_screen(runs):
+    """§D24-4: the closing-act exemption went with Everquest — every scenario
+    game is a campaign that may continue, so the last boss's points always
+    have somewhere to go and the level-up screen always shows."""
+    session, scen, _run_id = _start(runs)
+    for _ in range(2):
+        _play_act(session)
+    assert scen.act_index == 2 and scen.is_last_act()
+    assert scen.act_ends_on_screen() is True
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    _win_adventure(session)
+    assert scen.rewards is not None
+    for i in range(len(scen.rewards["items"])):
+        session.economy_verb("c1", "reward_assign", {"index": i, "target": "discard"})
+    session.economy_verb("c1", "reward_accept", {})
+    assert scen.act_wrapup == "levelup" and session.adventure.is_final_gate   # the screen
+    assert _confirm_act_end_level_up(session)
+    assert scen.earned["loadout_soren"] == 180
+    assert scen.mode == "complete"
 
 
 def test_the_sheet_carries_the_level_progress_band(runs):

@@ -129,6 +129,20 @@ function bundle_pick_move(
   return id ? bundle.animations.find((a) => a.id === id) : undefined;
 }
 
+// A triggered ability's clip: the card's pick for THAT trigger
+// ("when this retaliates" can differ from "when this was cast"). Explicit pick
+// only — a trigger has no default clip, so an unwired trigger stays static
+// exactly as it did before per-trigger clips existed.
+function bundle_pick_trigger(
+  bundle: PanelAnimBundle | null | undefined,
+  cardId: string | undefined,
+  trigger: string | undefined,
+): PanelAnimation | undefined {
+  if (!bundle || !cardId || !trigger) return undefined;
+  const id = bundle.triggers?.[cardId]?.[trigger];
+  return id ? bundle.animations.find((a) => a.id === id) : undefined;
+}
+
 // Which clip a hero's panel plays for an action: an explicit per-card /
 // per-stance pick wins; otherwise the first NON-alternate clip wired to the
 // trigger; a Skill / Ultimate with no clip of its own falls back to the
@@ -264,6 +278,15 @@ export function fxFromLog(
           const channeled = d.channeled === true;
           if (kind === "attack") {
             lead(panel(src, "attack"));
+          } else if (kind === "triggered") {
+            // A card's triggered effect (2026-09): it plays the clip wired to
+            // THAT trigger, if the author wired one. No default — an unwired
+            // trigger leaves the panel static, as it always did.
+            const anim = bundle_pick_trigger(partyIds.get(src)?.anims, cardId, str(d.trigger));
+            if (anim) {
+              push("panel", src, { label: anim.id });
+              lead(anim);
+            }
           } else if (kind === "spell") {
             lead(panel(src, channeled ? "channel" : "cast", { cardId }));
           } else if (kind === "activated") {

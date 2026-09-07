@@ -54,6 +54,11 @@ const blankLoadout = () => ({
     ability_flavor: {},
     // Panel animations (Update 16): clips played over the portrait in game.
     animations: [],
+    // The character layers a file owns (Update 24 §D24-7): the brief every
+    // chronicler reads, and the default situation a campaign starts from.
+    brief: null, brief_situation: "",
+    // Lore (any length, pasted in) and how they fight (the deck-flavour writer's source).
+    lore: "", combat_lore: "",
   },
   cards: [],
 });
@@ -271,6 +276,9 @@ function renderAnimations() {
       const scrub = (card) => {
         if (!card) return;
         if (card.animation === gone) card.animation = null;
+        for (const [k, v] of Object.entries(card.trigger_animations || {})) {
+          if (v === gone) delete card.trigger_animations[k];
+        }
         (card.effects || []).forEach((e) => {
           if (e && e.kind === "stance" && e.attack && typeof e.attack === "object" && e.attack.animation === gone) e.attack.animation = null;
         });
@@ -285,6 +293,157 @@ function openAnimations() {
   refreshStagePortrait();
   renderAnimations();
   $("#anim-overlay").classList.remove("hidden");
+}
+
+// ---- Brief & lore (Update 24 §D24-7.2 / §D24-7.3) --------------------------
+// The brief lives on the character; empty fields are dropped and an all-empty
+// brief is stored as null, so a hero with no brief plays exactly as before.
+const BRIEF_LINES = ["concept", "appearance", "wants", "wont", "tell"];
+
+function briefOf() {
+  const b = state.character.brief;
+  return b && typeof b === "object" ? b : {};
+}
+
+function briefIsEmpty(b) {
+  return !BRIEF_LINES.some((k) => (b[k] || "").trim())
+    && !((b.voice || {}).register || "").trim()
+    && !((b.voice || {}).samples || []).length
+    && !(b.ties || []).length;
+}
+
+function briefWordCount() {
+  const b = briefOf();
+  const parts = BRIEF_LINES.map((k) => b[k] || "")
+    .concat([(b.voice || {}).register || ""], (b.voice || {}).samples || [], b.ties || []);
+  return parts.join(" ").split(/\s+/).filter(Boolean).length;
+}
+
+function wordCount(text) {
+  return (text || "").split(/\s+/).filter(Boolean).length;
+}
+
+function renderBriefCount() {
+  const el = $("#brief-count");
+  if (!el) return;
+  const bits = [];
+  const n = briefWordCount();
+  if (n) bits.push(`brief ${n} w`);
+  if (wordCount(state.character.lore)) bits.push(`lore ${wordCount(state.character.lore)} w`);
+  if (wordCount(state.character.combat_lore)) bits.push(`combat ${wordCount(state.character.combat_lore)} w`);
+  el.textContent = bits.join(" · ");
+}
+
+function renderLoreFields() {
+  $("#lore-text").value = state.character.lore || "";
+  $("#combat-text").value = state.character.combat_lore || "";
+  $("#lore-words").textContent = `${wordCount(state.character.lore)} words.`;
+  $("#combat-words").textContent = `${wordCount(state.character.combat_lore)} words.`;
+}
+
+function syncLoreFromInputs() {
+  state.character.lore = $("#lore-text").value;
+  state.character.combat_lore = $("#combat-text").value;
+  $("#lore-words").textContent = `${wordCount(state.character.lore)} words.`;
+  $("#combat-words").textContent = `${wordCount(state.character.combat_lore)} words.`;
+  renderBriefCount();
+}
+
+// GENERATE DECK FLAVOUR: one LLM call over the Abilities & Combat text writes
+// 2–3 lines per card and ability into each card's Flavour field.
+async function generateDeckFlavour() {
+  syncCharacterFromInputs();
+  const targets = [...state.cards, state.character.skill, state.character.ultimate].filter((c) => c && c.id);
+  if (!targets.length) { toast("No cards to write flavour for."); return; }
+  if (!(state.character.combat_lore || "").trim()) {
+    if (!confirm("Abilities & Combat is empty (Brief & Lore → Abilities & Combat). The writer will infer a style from the deck and the concept. Continue?")) return;
+  }
+  const existing = targets.filter((c) => (c.flavor_text || "").trim()).length;
+  if (existing && !confirm(`Replace the flavour already written on ${existing} card${existing > 1 ? "s" : ""}?`)) return;
+  const btn = $("#btn-flavour");
+  btn.disabled = true; btn.textContent = "Writing flavour…";
+  try {
+    const res = await api("POST", "/api/flavour/generate", { loadout: pruneLoadout(state) });
+    let n = 0;
+    for (const c of targets) {
+      if (res.flavours[c.id]) { c.flavor_text = res.flavours[c.id]; n++; }
+    }
+    renderAll();
+    toast(`Flavour written for ${n} of ${targets.length} cards. Save to keep it.`);
+  } catch (e) {
+    alert(`Flavour generation failed:\n${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = "Generate deck flavour";
+  }
+}
+
+function renderBrief() {
+  renderLoreFields();
+  const b = briefOf();
+  $("#brief-concept").value = b.concept || "";
+  $("#brief-appearance").value = b.appearance || "";
+  $("#brief-register").value = (b.voice || {}).register || "";
+  $("#brief-samples").value = ((b.voice || {}).samples || []).join("\n");
+  $("#brief-wants").value = b.wants || "";
+  $("#brief-wont").value = b.wont || "";
+  $("#brief-tell").value = b.tell || "";
+  $("#brief-ties").value = (b.ties || []).join("\n");
+  $("#brief-situation").value = state.character.brief_situation || "";
+  const n = briefWordCount();
+  $("#brief-words").textContent = `${n} words in the brief${n > 180 ? " — about 150 is the budget; the chroniclers read it whole" : ""}.`;
+}
+
+function syncBriefFromInputs() {
+  const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean);
+  const b = {
+    concept: $("#brief-concept").value.trim(),
+    appearance: $("#brief-appearance").value.trim(),
+    voice: { register: $("#brief-register").value.trim(), samples: lines("#brief-samples").slice(0, 3) },
+    wants: $("#brief-wants").value.trim(),
+    wont: $("#brief-wont").value.trim(),
+    tell: $("#brief-tell").value.trim(),
+    ties: lines("#brief-ties"),
+  };
+  state.character.brief = briefIsEmpty(b) ? null : b;
+  state.character.brief_situation = $("#brief-situation").value.trim().split(/\s+/).filter(Boolean).slice(0, 80).join(" ");
+  const n = briefWordCount();
+  $("#brief-words").textContent = `${n} words in the brief${n > 180 ? " — about 150 is the budget; the chroniclers read it whole" : ""}.`;
+  renderBriefCount();
+}
+
+function characterSlug() {
+  return (state.character.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+}
+
+function openBrief(tab = "brief") {
+  renderBrief();
+  showBriefTab(tab);
+  $("#brief-overlay").classList.remove("hidden");
+}
+function closeBrief() {
+  syncBriefFromInputs();
+  syncLoreFromInputs();
+  $("#brief-overlay").classList.add("hidden");
+}
+function showBriefTab(tab) {
+  document.querySelectorAll(".brief-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  $("#brief-pane").classList.toggle("hidden", tab !== "brief");
+  $("#lore-pane").classList.toggle("hidden", tab !== "lore");
+  $("#combat-pane").classList.toggle("hidden", tab !== "combat");
+}
+function bindBrief() {
+  if (!$("#brief-overlay")) return;
+  $("#btn-brief").onclick = () => openBrief("brief");
+  $("#brief-close").onclick = closeBrief;
+  $("#brief-overlay").onclick = (e) => { if (e.target.id === "brief-overlay") closeBrief(); };
+  document.querySelectorAll(".brief-tab").forEach((b) => { b.onclick = () => showBriefTab(b.dataset.tab); });
+  ["#brief-concept", "#brief-appearance", "#brief-register", "#brief-samples", "#brief-wants",
+   "#brief-wont", "#brief-tell", "#brief-ties", "#brief-situation"].forEach((id) => {
+    $(id).oninput = syncBriefFromInputs;
+  });
+  $("#lore-text").oninput = syncLoreFromInputs;
+  $("#combat-text").oninput = syncLoreFromInputs;
+  if ($("#btn-flavour")) $("#btn-flavour").onclick = generateDeckFlavour;
 }
 function closeAnimations() {
   stopStagePlayback();
@@ -312,6 +471,7 @@ function bindAnimationUpload() {
   const status = $("#anim-status");
   if (!input) return;
   $("#btn-animations").onclick = openAnimations;
+  bindBrief();
   $("#anim-close").onclick = closeAnimations;
   $("#anim-overlay").onclick = (e) => { if (e.target.id === "anim-overlay") closeAnimations(); };
   $("#anim-add").onclick = () => startAnimUpload({ trigger: "attack", alternate: true });
@@ -360,6 +520,61 @@ function bindAnimationUpload() {
 
 // The <select> for picking a clip on a card / stance attack: "Default" + every
 // clip (alternates tagged). `current` is the picked id or null.
+// The distinct TRIGGERS a card carries, as {key, label} — mirrors
+// `ltg_core.schema.trigger_key` / `trigger_key_label`, which the engine and
+// the animation bundle use for the same keys.
+const TRIGGER_KEY_LABELS = {
+  channel_start: "When this channel begins",
+  upkeep: "At the start of every turn",
+  capacity_increase: "When mana capacity grows",
+  channel_break: "When this channel ends",
+  after_turns: "When the countdown runs out",
+};
+const TRIGGER_EVENT_LABELS = {
+  attack: ["attack", "attacks"],
+  damage_taken: ["are dealt damage", "is dealt damage"],
+  life_gain: ["gain life", "gains life"],
+  spell_cast: ["cast a spell", "casts a spell"],
+  card_draw: ["draw a card", "draws a card"],
+  death: ["fall", "falls"],
+};
+const TRIGGER_WHO_LABELS = {
+  you: "you", target: "the target", ally: "an ally", enemy: "an enemy", any: "anyone",
+};
+
+function triggerKey(trigger) {
+  if (!trigger) return "";
+  if (typeof trigger === "string") return trigger;
+  if (trigger.event) return `${trigger.event}:${trigger.who || "you"}`;
+  if (trigger.after_turns !== undefined && trigger.after_turns !== null) return "after_turns";
+  return "";
+}
+
+function triggerKeyLabel(key) {
+  if (TRIGGER_KEY_LABELS[key]) return TRIGGER_KEY_LABELS[key];
+  const [event, who = "you"] = key.split(":");
+  const forms = TRIGGER_EVENT_LABELS[event];
+  if (!forms) return key || "(no trigger)";
+  return `Whenever ${TRIGGER_WHO_LABELS[who] || who} ${who === "you" ? forms[0] : forms[1]}`;
+}
+
+/** Every distinct trigger on a card, in the order the effects declare them. */
+function cardTriggers(card) {
+  const out = [];
+  const walk = (effects) => {
+    (effects || []).forEach((e) => {
+      if (!e || typeof e !== "object") return;
+      const key = triggerKey(e.trigger);
+      if (key && !out.includes(key)) out.push(key);
+      // A trigger may sit on a conditional / modal branch's effects too.
+      ["then", "otherwise", "effects"].forEach((k) => Array.isArray(e[k]) && walk(e[k]));
+      (e.modes || []).forEach((m) => walk(m && m.effects));
+    });
+  };
+  walk(card.effects);
+  return out;
+}
+
 function animSelectHtml(cls, dataAttrs, current, defaultLabel) {
   // A default is labelled by its action; an alternate stands on its custom name.
   const opts = animList().map((a) =>
@@ -492,6 +707,7 @@ function renderCharacter() {
   renderTagPick("#class-pick", "classes", CREATURE_CLASSES);
   renderPortrait();
   renderAnimations();
+  renderBriefCount();
 
   const spent = pointsSpent();
   const remaining = CMODEL.budget - spent;
@@ -630,7 +846,7 @@ function newHeroicCard(slot) {
     // to sorcery (and it may never carry a mana cost).
     timing: "sorcery",
     cost: { generic: 0, colors: {}, x: false },
-    translated_text: "", flavor_text: "",
+    translated_text: "", flavor_text: "", trigger_animations: {},
     effects: [], targets: {},
     text_override: false, validated: false,
   };
@@ -1045,6 +1261,10 @@ function normalizeCharacter(ch) {
   if (ch.skill && ch.skill.timing === "instant") ch.skill.timing = "sorcery";  // legacy: skills are no longer instant
   if (ch.ultimate === undefined) ch.ultimate = null;
   if (!ch.ability_flavor || typeof ch.ability_flavor !== "object") ch.ability_flavor = {};
+  if (ch.brief === undefined || (ch.brief !== null && typeof ch.brief !== "object")) ch.brief = null;  // Update 24
+  if (typeof ch.brief_situation !== "string") ch.brief_situation = "";
+  if (typeof ch.lore !== "string") ch.lore = "";
+  if (typeof ch.combat_lore !== "string") ch.combat_lore = "";
   delete ch.archetype;  // retired field
   if (!ch.starting_mana || !ch.starting_mana.length) ch.starting_mana = [ch.colors?.[0] || "U"];
   return ch;
@@ -1835,6 +2055,14 @@ function openDetail(idx) {
       ${animSelectHtml("detail-anim", 'id="detail-anim"', card.animation || null,
         `Default (${idx === "skill" ? "Skill" : idx === "ultimate" ? "Ultimate"
           : card.timing === "channeled" ? "Channel" : "Cast"} clip)`)}
+      ${cardTriggers(card).length ? `
+        <div class="label trig-anim-head">…and when each of its triggers fires</div>
+        <div class="trig-anim-list">${cardTriggers(card).map((key) => `
+          <label class="trig-anim-row">
+            <span>${escapeHtml(triggerKeyLabel(key))}</span>
+            ${animSelectHtml("trig-anim", `data-key="${escapeAttr(key)}"`,
+              (card.trigger_animations || {})[key] || null, "No clip")}
+          </label>`).join("")}</div>` : ""}
     </div>` : ""}
 
     <div class="block">
@@ -1910,6 +2138,13 @@ function wireDetail(idx) {
   $("#detail-flavor").oninput = (e) => { card.flavor_text = e.target.value; };
   const animSel = $("#detail-anim");
   if (animSel) animSel.onchange = () => { card.animation = animSel.value || null; };
+  document.querySelectorAll(".trig-anim").forEach((sel) => {
+    sel.onchange = () => {
+      const table = card.trigger_animations || (card.trigger_animations = {});
+      if (sel.value) table[sel.dataset.key] = sel.value;
+      else delete table[sel.dataset.key];
+    };
+  });
   if ($("#detail-type")) {
     $("#detail-type").onchange = (e) => {
       card.timing = e.target.value;
@@ -2384,6 +2619,7 @@ function pruneLoadout(loadout) {
 function syncCharacterFromInputs() {
   state.character.name = $("#char-name").value;
   state.character.description = $("#char-desc").value;
+  if ($("#brief-overlay") && !$("#brief-overlay").classList.contains("hidden")) { syncBriefFromInputs(); syncLoreFromInputs(); }
 }
 
 function defaultFileName(suffix = "") {
@@ -2547,6 +2783,17 @@ function pickAnim(newPick, oldPick, validIds, tally) {
 function relinkCardAnims(nc, oc, validIds, tally) {
   if (!nc) return;
   nc.animation = pickAnim(nc.animation, oc && oc.animation, validIds, tally);
+  // Per-trigger picks relink the same way, key by key.
+  const oldTrig = (oc && oc.trigger_animations) || {};
+  const newTrig = nc.trigger_animations || {};
+  const keys = new Set([...Object.keys(newTrig), ...Object.keys(oldTrig)]);
+  const merged = {};
+  keys.forEach((k) => {
+    const pick = pickAnim(newTrig[k], oldTrig[k], validIds, tally);
+    if (pick) merged[k] = pick;
+  });
+  if (Object.keys(merged).length) nc.trigger_animations = merged;
+  else delete nc.trigger_animations;
   const stances = (c) => ((c && c.effects) || []).filter((e) => e && e.kind === "stance");
   const olds = stances(oc);
   stances(nc).forEach((eff, i) => {
@@ -2566,6 +2813,8 @@ const CHAR_DIFF_FIELDS = [
   ["starting_cards", "Starting cards"], ["power_bought", "Power bought"],
   ["attack_mode", "Attack"], ["keyword", "Keyword"], ["row", "Row"],
   ["ability_flavor", "Ability flavour"],
+  ["brief", "Brief"], ["brief_situation", "Default situation"],
+  ["lore", "Lore"], ["combat_lore", "Abilities & Combat"],
   ["earned_points", "Earned points"], ["spent_points", "Spent points"],
 ];
 

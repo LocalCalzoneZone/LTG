@@ -1,5 +1,7 @@
 # Work brief 4 — RPG aliveness: characters and a world that remember
 
+> **Delivered by Update 24 (2026-09-06, `ltg_design_update_24_campaigns_and_the_worldbook.md`):** items 4.1.1 (the ledger — `# PREVIOUSLY`), 4.1.6 (the town-state overlay — `town_for_act(town_state=…)`), 4.1.7 (the day counter — unpaid rest, as designed), 4.1.8 (flag hygiene — `_`-prefixed flags never reach a writer, `knows_*` are scenario-scoped) and 4.2.1 (the party profile — briefs, situations and chronicles via `_party_block`; partial: the tactical facts are still to come). The rest of this brief stands.
+
 Source: whole-game review of 2026-09-02 (hands-on playtest plus thirteen subsystem code reads; their findings are folded into this brief). Line numbers were checked at commit `1fba7f4`; re-grep before editing.
 
 ## Session kickoff (read first)

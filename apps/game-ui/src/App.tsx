@@ -97,7 +97,7 @@ export default function App() {
         <div className="relative min-w-0 flex-1">
           {town ? (
             <>
-              <TownScreen />
+              <TownScreen onNewGame={() => setShowNewGame(true)} />
               <CharacterSheetModal rows={town.party_sheet} editable inTown />
             </>
           ) : snapshot ? (
@@ -165,6 +165,10 @@ export default function App() {
               onOptions={() => setShowOptions(true)}
               onStarted={onStarted}
             />
+            {/* A target / mode pick covers only this strip too (its card-grid
+                form — scry, "choose a card" — still opens centred): you pick
+                who to hit while looking at the board you are hitting. */}
+            <CardPickPrompt />
           </div>
         </>
       )}
@@ -181,7 +185,6 @@ export default function App() {
       <InspectModal />
       <ChooseModeModal />
       <ZoneModal />
-      <CardPickPrompt />
       {/* Full-screen combat FX (ultimates, boss enrage) — under the modals */}
       <ScreenFx />
       <PhaseBanner />

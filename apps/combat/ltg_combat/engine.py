@@ -52,6 +52,7 @@ from ltg_core.schema import (
     slot_scope,
     t_chosen,
     t_row,
+    trigger_key,
 )
 
 from .state import (
@@ -411,6 +412,8 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
                                label=f"{name} — trigger", effects=list(fired),
                                target_id=ch.target_id, card=card,
                                x=getattr(ch, "x", 0),
+                               trigger=trigger_key(getattr(fired[0], "trigger", None))
+                                       if fired else "",
                                # Which channel fired: a channel_drop riding the
                                # trigger uses this to end ITS channel (§D22-3).
                                component_id=getattr(ch, "component_id", None)))
@@ -425,7 +428,10 @@ def _fire_channel_effects(st: GameState, holder, side: str, ch, fired) -> None:
     ch.fires = getattr(ch, "fires", 0) + 1
     _log(st, "channel_trigger",
          f"{name}'s trigger goes on the stack.", source=holder.id, label=name,
-         card=getattr(card, "id", None))
+         card=getattr(card, "id", None),
+         # WHICH trigger fired (2026-09): the client plays that trigger's own
+         # panel clip when the card names one (`Card.trigger_animations`).
+         trigger=trigger_key(getattr(fired[0], "trigger", None)) if fired else "")
     _raise_next_trigger_pick(st)
 
 
@@ -3175,7 +3181,7 @@ def _resolve_top(st: GameState) -> StackItem:
          # rules do): what kind of item this was and which card it carried.
          kind=item.kind, side=item.source_side,
          card=item.card_id or (item.card.id if item.card is not None else None),
-         heroic=item.heroic, stance_slot=item.stance_slot,
+         heroic=item.heroic, stance_slot=item.stance_slot, trigger=item.trigger,
          channeled=bool(item.card is not None
                         and item.card.timing == Timing.channeled
                         and (item.kind == "spell" or item.starts_channel)))
@@ -3963,14 +3969,45 @@ def _fire_channel_break(st: GameState, source_id: str, source_side: str, name: s
     item = _push(st, StackItem(kind="triggered", source_id=source_id,
                                source_side=source_side, effects=breaks,
                                label=f"{name} — break trigger",
-                               target_id=target_id, x=x, card=card))
+                               target_id=target_id, x=x, card=card,
+                               trigger="channel_break"))
     if source_side == "party":
         item.needs_mode = any(getattr(e, "kind", None) == "modal" for e in breaks)
         item.needs_target = _trigger_pick_effect(item) is not None
+    _sink_break_under_own_triggers(st, item)
     st.priority = None  # fresh window — re-seeded by _advance
     st.passes = 0
     _log(st, "channel_break_trigger",
-         f"{name}'s break trigger goes on the stack.", source=source_id, label=name)
+         f"{name}'s break trigger goes on the stack.", source=source_id, label=name,
+         card=getattr(card, "id", None), trigger="channel_break")
+
+
+def _sink_break_under_own_triggers(st: GameState, item: StackItem) -> None:
+    """A channel's own CLEANUP resolves after that channel's own triggers that
+    are already waiting on the stack.
+
+    The stack is last-on-first-off, so a break trigger pushed on top of a
+    trigger the SAME card fired a moment earlier would resolve first — and a
+    cleanup that spends the card's own resource ("when this channel ends,
+    remove all charge counters") would strip what the waiting trigger is about
+    to read ("deal damage equal to your charge counters"). The blow that
+    fires a retaliation is very often the same blow that breaks concentration
+    (a hit of ≥25% max HP), so the card would read 0 exactly when it mattered
+    most. Sinking the cleanup below its own card's pending triggers keeps the
+    written order of one card's effects — everything else on the stack keeps
+    strict last-on-first-off."""
+    card_id = getattr(item.card, "id", None)
+    if card_id is None:
+        return
+    here = st.stack.index(item)
+    below = [i for i, other in enumerate(st.stack)
+             if i < here and other.kind == "triggered"
+             and other.source_id == item.source_id
+             and getattr(other.card, "id", None) == card_id]
+    if not below:
+        return
+    st.stack.pop(here)
+    st.stack.insert(below[0], item)
 
 
 def _trigger_pick_effect(item: StackItem):

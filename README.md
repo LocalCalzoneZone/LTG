@@ -79,6 +79,16 @@ All the servers take `--port`, `--host`, `--reload`, and `--no-browser`. They bi
 whatever is already in `apps/game-ui/dist`, `--dev` to serve API/WebSocket only while
 you run `npm run dev` yourself).
 
+**Campaigns (Update 24).** Every scenario game is a **campaign**: one fixed party, one
+continuity, a ledger of what they did. The ladder runs round → encounter → phase →
+adventure → act → scenario → **campaign**. When Act III's villain falls the campaign
+saves itself and offers **New Game / Continue Campaign / Quit**; Continue rests the party
+in town (the *interlude*) and the inn's rest opens three narrated roads — stay, a
+neighbouring town, somewhere new — plus your own. **Load Game lists campaigns** and opens
+each at its newest save (an *older saves* disclosure keeps the branching save list).
+The **worldbook** (`content/world/`, Options → World) is the shared, append-only book of
+what a traveller knows about each town; every generated town writes its own page.
+
 ---
 
 ## How the game is played
@@ -380,6 +390,42 @@ an archetype name.**
 
 A character also carries a **colour identity** (1–3 of W/U/B/R/G), which constrains the
 colours its mana capacity can be locked to and flags off-colour cards in its deck.
+
+### Characters: brief and lore
+
+A hero has five layers (Update 24 §D24-7). The **sheet** is the mechanical character
+above. The other four make the hero a person the chroniclers can write:
+
+- **Brief** — player-written, on the loadout, about 150 words, read by every writer
+  (Deckbuilder → *Brief & Lore*): `concept`, `appearance`, `voice` (`register` +
+  up to three `samples`), `wants`, `wont`, `tell`, `ties`. Nothing is required; a hero
+  with no brief plays exactly as before. Writers may *address* a hero by the brief;
+  they never build a plot on it ("lore may colour a line, never a quest").
+- **Lore** — optional, any length, a plain text field on the loadout (`character.lore`;
+  Deckbuilder → *Brief & Lore* → Lore — paste it in). Headings (`# Title`) and blank lines
+  split it into paragraphs; the names in each paragraph (capitalised words and phrases)
+  are the hooks the world may touch. A paragraph reaches the **act writer only** when the
+  town or arc names one of them — at most two per act, ≤ 120 words each for the writer,
+  never for the player. The arc writer, the interlude planner and the enemy designer
+  never see lore. (Markdown files under `apps/deckbuilder/loadouts/lore/<character_id>/`
+  still load too, with or without front matter — `keys:` / `gate:` are optional there.)
+- **Abilities & Combat** — how the hero fights (`character.combat_lore`; the third tab of
+  *Brief & Lore*): style, weapons, the source of their magic, tells. It may overlap the
+  lore. It is what **Generate deck flavour** (the Deckbuilder's topbar) hands the writer —
+  one LLM call that writes 2–3 lines per card and heroic ability on how it manifests in
+  the world, into each card's Flavour field — and later what the fight's narration will
+  draw on.
+- **Situation** — where the hero stands *right now* in this campaign (≤ 80 words):
+  seeded from the loadout's `brief_situation`, edited on the rest screen between
+  scenarios. This is the one place a player steers characterisation mid-campaign.
+- **Chronicle** — engine-written, append-only, per campaign: who fell, who slew the
+  boss, quests taken and refused, people met, purchases, levels. The writers see the
+  ten most recent lines plus one summary per past scenario; the player sees all of it
+  on the character sheet's **Deeds** tab.
+
+Identity (deck, skill/ultimate, colours, keyword, brief, portrait) is read **live** from
+the character file on every load or continue of a campaign; HP, mana, cards, Power,
+points, level, gear and gold stay the campaign's own.
 
 ---
 

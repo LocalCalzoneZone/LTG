@@ -1,0 +1,20 @@
+{
+  "kind": "world_entry",
+  "town_id": "nalindor",
+  "name": "Nalindor",
+  "region_id": "elderwood_deeps",
+  "gist": "Nalindor is the city in the boughs: six gargantuan ironwoods hung with carved timber halls, swaying rope bridges and plank walkways, the whole of it standing hundreds of feet above the mist and the roots, with not one street that touches ground. Cage-lanterns of glowing green moss and pale star-lilies light the walkways all night, so from below the trees look full of fireflies. The city trades what only the deep forest makes — cured yew bowstaves and star-iron blades, woven amulets of silver thread and river-stone, barks and fungus salves for fever and wound — and hauls every crate of it up by a single great suspension pulley. Ground-travellers are permitted, watched, and expected to be polite: the canopy wardens keep watchtowers above the leaves against manticores and trespassers, and they do not much distinguish between the two.",
+  "notable": [
+    "Faelen Greenmantle at the Roosting Bough, an elf who spent forty years in human river-towns and pours forest-berry wine to anyone who behaves.",
+    "Taenis Sunstrider of the Sunstrider Forge, whose star-iron blades are worth the climb — ask him about the ingots the river bandits took off his pack-drakes.",
+    "Lady Vespera of the Moon-Weaver's Loom, a moon elf older than the trees, who will knock a coin off her price for a clever riddle-answer.",
+    "Orin Copperbraid, a stranded dwarf carpenter who knows every walkway nail by name and complains nightly about the beer."
+  ],
+  "neighbours": [
+    {
+      "town_id": "azure",
+      "how": "Down the brown forest rivers by flat-bottomed barge, six days to the lagoon — fast going out, slow poling back, and wyrm-country the whole first stretch."
+    }
+  ],
+  "added_by": "backfill"
+}

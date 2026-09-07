@@ -31,6 +31,23 @@ function Backdrop({ children, onClose, wide = false }: {
   );
 }
 
+/** A prompt that covers ONLY the bottom action bar (rendered absolute inside
+ * the bar's wrapper in App), the same treatment the game-over and spoils
+ * screens get: the battlefield and log above stay visible and clickable. A
+ * target pick belongs here rather than behind a full-screen scrim — you cannot
+ * choose who to hit if the board you are choosing from is blurred out. */
+function BarPanel({ children }: { children: React.ReactNode }) {
+  // `my-auto` rather than `justify-center`: a centred flex column CLIPS its own
+  // start once the content is taller than the strip, so the title and the first
+  // option would be unreachable above the scroll. With auto margins the panel
+  // centres while it fits and scrolls from the top once it does not.
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-ink-0/95 px-6 py-3">
+      <div className="my-auto w-[min(96%,560px)]">{children}</div>
+    </div>
+  );
+}
+
 function ModalTitle({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="caps-label mb-3 flex items-center gap-3 text-[12px] tracking-[0.25em] text-brass">
@@ -260,8 +277,10 @@ export function CardPickPrompt() {
     );
   }
 
+  // A target / mode pick sits over the BAR, not over the board: the whole
+  // decision is "which of those do I hit", so the battlefield stays in view.
   return (
-    <Backdrop onClose={() => {}}>
+    <BarPanel>
       <ModalTitle>Make a choice</ModalTitle>
       <div className="flex flex-col gap-2">
         {picks.map((p) => (
@@ -270,7 +289,7 @@ export function CardPickPrompt() {
           </button>
         ))}
       </div>
-    </Backdrop>
+    </BarPanel>
   );
 }
 

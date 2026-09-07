@@ -19,8 +19,8 @@ Two words swap meaning relative to Update 10. From this document forward:
 | 3 | **Phase** *(was "act")* | one of the three fights inside an adventure — Phase I gate, Phase II courtyard, Phase III throne room; level-ups happen between phases |
 | 4 | **Adventure** | a three-phase run through one place; one generation call; HP carries across its phases; no town in between |
 | 5 | **Act** *(new meaning)* | one **town visit + one adventure** — the story beat of a scenario ("Act II: The Siege of Hollowmere") |
-| 6 | **Scenario** | a campaign: an **arc** of three acts against one villain, run from one town |
-| 7 | **Everquest** | scenarios chained on one save; a new arc generates when the last completes |
+| 6 | **Scenario** | an **arc** of three acts against one villain, run from one town *(amended by Update 24 §D24-1)* |
+| 7 | **Campaign** | *(Update 24 §D24-1 replaces this row — Everquest is retired)* a sequence of scenarios played by one fixed party in one continuity; between scenarios the party rests in town (the interlude) and chooses where the story goes next |
 
 **Rename errata (Update 10):** every "act" in Design Update 10, the player guide, and game-ui strings becomes "phase" (Phase I/II/III, "Phase I — clear," `phase` fields); the vocabulary word *act* is reserved for the scenario layer. The engine never used the word; this is docs, server field names, and UI copy. Do the rename **first**, as its own commit, before any Scenario work.
 
@@ -35,7 +35,7 @@ A **scenario** = a **town** + an **arc** (villain, stakes, three act outlines) +
 - **Party** — fixed at scenario start; make a new run for a different party.
 - **Difficulty** — easy / standard / hard, applied to every generated adventure.
 - **Normal / Hardcore** — on adventure defeat: Normal returns the party to town with the quest unadvanced (narrative adjustment via flags, §D17-5.4); **Hardcore ends the run**.
-- **Standard / Everquest** — Standard ends after Act III's adventure; **Everquest** generates a new arc from the same town when an arc completes, and continues indefinitely (levels and gear carry). Hardcore + Everquest is allowed — permadeath endless.
+- ~~**Standard / Everquest**~~ — *retired by Update 24 §D24-1: every scenario game is a campaign of length one until the player continues it through the interlude (§D24-5); run options are difficulty and Normal/Hardcore only.*
 - **Content** — a **pre-generated scenario** (town + title, Act I already materialized) or **Town + New** (generate an arc for that town at start).
 
 **Progression is persistent within the run** (levels, gold, gear, consumables, flags) and **never touches the saved character profile** — the Deckbuilder stays creation-only.
@@ -293,8 +293,8 @@ The single trigger for everything the adventure needs. On accept: (1) auto-save;
 
 ## D17-7. Menus and flows
 
-- **New Game modal** gains a fourth column: **Scenarios** (pre-generated scenarios and Town + New). Choosing it reveals the run options (difficulty · Normal/Hardcore · Standard/Everquest). Start creates a **run** and its first auto-save.
-- **Load Game** (top ribbon): runs → saves list → load. Delete on saves; delete on a whole run (double-confirm).
+- **New Game modal** gains a fourth column: **Scenarios** (pre-generated scenarios and Town + New). Choosing it reveals the run options (difficulty · Normal/Hardcore; the Everquest checkbox is gone — Update 24 §D24-4). Start creates a **run** — a campaign — and its first auto-save.
+- **Load Game** (top ribbon): *amended by Update 24 §D24-4* — lists **campaigns**, opens each at its newest save; the save list lives under an *older saves* disclosure. Delete on saves; delete on a whole campaign (double-confirm).
 - **Options → Towns** / **Options → Scenarios** / **Options → Equipment**: lists, Generate/New, per-item art + Generate all missing, hide/delete, inspect (a scenario opens its arc; its Act I adventure opens in the existing adventure editor).
 - **Between-phase flow** (Update 10's, plus the rewards insert): victory splash → **level-up screen** (spend any of the pool or press on; the character sheet's gear tab is available for swaps) → narrative splash → next phase. **After Phase III:** **Rewards modal** → *(unless it is a Standard run's closing act)* **level-up** → **return-to-town splash** → the town map (next act begins; town portion generates under the splash).
 
@@ -332,7 +332,7 @@ The single trigger for everything the adventure needs. On accept: (1) auto-save;
 - **[OPEN] Effective-level budgeting** (T-81) — the `worn points ÷ 30` heuristic is a starting value; the tester should probe whether a fully-geared party at derived level N plays like N+1.
 - **[OPEN] Consumable counters** — a broad ability-counter can stop a potion. If that feels bad in play, an `uncounterable` item flag is a one-line addition.
 - **[OPEN] Content-store GC** — never in v1; revisit if `saves/` growth matters.
-- **[OPEN] Multiple quests per act; town evolution; inter-town travel** — explicitly Phase 3+; the schemas leave room (write-once `accepted_quest`, town as standalone content).
+- **[RESOLVED — Update 24]** Multiple quests per act landed with §D17-13.4; **town evolution** is the campaign's town state (§D24-8.2) and **inter-town travel** is the interlude's neighbour / new hooks (§D24-5) over the worldbook (§D24-8.3).
 - **[OPEN] Party-line generation** — the dialogue modal's attribution click and `speaker: "party"` nodes are the seam; the generator is a later update.
 
 ---

@@ -98,7 +98,7 @@ class Session:
         self.confirm: Optional[Dict[str, Any]] = None
         self._confirm_seq = 0
         # The last scenario transition ("next_act" / "scenario_complete" /
-        # "everquest" / "town" / "dead") — informational, for the app + tests.
+        # "town" / "dead") — informational, for the app + tests.
         self.pending_transition: Optional[str] = None
         self._fleeing = False
         self.state = state  # authoritative (un-settled) engine state (None in town)
@@ -427,7 +427,7 @@ class Session:
     # -- scenarios (Update 17) ------------------------------------------------ #
     def _scenario_transitions(self) -> None:
         """The adventure ended inside a scenario: won → the next act (or the
-        scenario's end / a new Everquest arc); lost → Normal returns to town
+        scenario's end and the scenario-end menu, §D24-4); lost → Normal returns to town
         with `defeated_once`, Hardcore ends the run. The town screen shows the
         return splash while the next act materializes off-thread."""
         sc = self.scenario
@@ -440,6 +440,11 @@ class Session:
             if sc.act_wrapup is None:
                 sc.act_wrapup = "rewards"
                 sc.open_rewards(seed=random.randrange(2**31))
+                if sc.is_last_act():
+                    # §D24-5.1: the villain is dead — queue the interlude planner
+                    # NOW, before the spoils are even shown.
+                    sc.note_boss_death(self.state)
+                    self._request_async("interlude")
                 return
             if sc.act_wrapup == "rewards":
                 if sc.rewards is not None:
@@ -458,11 +463,10 @@ class Session:
             if transition == "next_act":
                 self._enter_town(materialization=None)
                 self._request_async("materialize")
-            elif transition == "everquest":
-                self._enter_town(materialization=None)
-                self._request_async("new_arc")
-            else:  # scenario_complete
+            else:  # scenario_complete — the campaign record is saved BEFORE the
+                # menu shows (§D24-4), so Quit never closes the door.
                 self._enter_town(materialization=None, complete=True)
+                self.save_point("scenario_complete", None)
         elif self.state.result == "defeat":
             if not sc.defeat_pending and not getattr(self, "_fleeing", False):
                 # Hold on the defeat splash: "forced to flee" → the party
@@ -533,17 +537,49 @@ class Session:
             return
         self.save_point("act_start", None)
 
-    def new_arc(self, arc: Dict[str, Any]) -> None:
+    # -- the campaign continues (Update 24 §D24-5) --------------------------- #
+    def continue_campaign(self) -> bool:
+        """Continue Campaign: enter the interlude town with the planner's
+        materialization as the act (§D24-5.2). Returns False (and remembers
+        the request) when the planner has not returned yet — the job hands
+        over the moment it does."""
         sc = self.scenario
         if sc is None:
-            return
-        sc.begin_next_arc(arc)
-        if self.run_id and self.run_manager:
-            try:
-                self.run_manager.set_arc(self.run_id, arc)
-            except Exception:
-                pass
-        sc.arrive(None)
+            raise ValueError("this game is not a scenario")
+        if sc.dead:
+            raise ValueError("this run is over")
+        if sc.mode == "interlude":
+            return True
+        if sc.mode != "complete":
+            raise ValueError("the scenario is not over yet")
+        if sc.pending_interlude is None:
+            if sc.interlude_job.get("state") == "failed":
+                sc.interlude_job = {"state": "idle", "error": sc.interlude_job.get("error")}
+                sc.continue_requested = True
+                self._request_async("interlude")
+                return False
+            sc.continue_requested = True
+            if sc.interlude_job.get("state") == "idle":
+                self._request_async("interlude")
+            return False
+        sc.continue_requested = False
+        sc.begin_interlude()
+        self.state = None
+        self.adventure = None
+        self.seats = {cid: self.seats.get(cid) for cid in sc.character_ids}
+        self.save_point("interlude", None)
+        return True
+
+    def choose_hook(self, index: int, note: str = "",
+                    custom: Optional[Dict[str, Any]] = None) -> None:
+        """The rest screen's choice (§D24-5.3): commit the hook, save, and hand
+        the road ahead to the app's continue path (town + arc generation)."""
+        sc = self.scenario
+        if sc is None:
+            raise ValueError("this game is not a scenario")
+        sc.choose_hook(index, note, custom)
+        self.save_point("hooks_chosen", None)
+        self._request_async("continue")
 
     def start_adventure(self) -> None:
         """Start Adventure (after the all-players confirmation): compose Phase I
@@ -574,12 +610,48 @@ class Session:
         `request_confirm`; per-player ones apply at once. Returns the hooks
         fired (dialogue) so the app can start jobs / saves."""
         sc = self.scenario
-        if sc is None or sc.mode != "town":
+        if sc is None:
             raise ValueError("not in town")
         if sc.dead:
             raise ValueError("this run is over")
+        if verb == "continue_campaign":
+            # The scenario-end menu (§D24-4) — allowed from the end screen only.
+            self.continue_campaign()
+            return []
+        if not sc.in_town:
+            raise ValueError("not in town")
         if verb == "dismiss_splash":
             sc.clear_splash()
+            return []
+        if verb == "dismiss_notices":
+            sc.dismiss_notices()
+            return []
+        # The interlude's own verbs (§D24-5.3): the rest screen, the hooks,
+        # the situation editor.
+        if verb == "rest_screen":
+            sc.open_rest_screen()
+            return []
+        if verb == "rest_back":
+            sc.rest_back()
+            return []
+        if verb == "set_situation":
+            sc.set_situation(str(payload.get("character_id") or ""), str(payload.get("text") or ""))
+            return []
+        if verb == "choose_hook":
+            if sc.mode != "interlude" or not sc.rest_screen:
+                raise ValueError("open the rest screen first")
+            index = int(payload.get("index", -1))
+            note = str(payload.get("note") or "")
+            custom = payload.get("custom") if isinstance(payload.get("custom"), dict) else None
+            hooks = sc.hooks()
+            if 0 <= index < len(hooks):
+                dest = sc._hook_destination_name(hooks[index])
+            elif custom:
+                dest = sc._hook_destination_name(sc._custom_hook(custom, note))
+            else:
+                raise ValueError("no such hook")
+            self.request_confirm(client_id, "hook", f"Take this road — {dest}?",
+                                 lambda: self.choose_hook(index, note, custom))
             return []
         if verb == "visit":
             loc_id = str(payload.get("location_id") or "")
@@ -624,6 +696,8 @@ class Session:
                 return []
             return self._fire_choice(index)
         if verb == "start_adventure":
+            if sc.mode == "interlude":
+                raise ValueError("there is no road to ride between scenarios — rest at the inn")
             if not sc.adventure_ready:
                 raise ValueError("the adventure is not ready yet")
             name = sc.adventure_detail.get("name", "the adventure") if sc.adventure_detail else "the adventure"
@@ -631,7 +705,7 @@ class Session:
                                  self.start_adventure)
             return []
         if verb == "save":
-            self.save_point("town", None, auto=False)
+            self.save_point("interlude" if sc.mode == "interlude" else "town", None, auto=False)
             return []
         return self.economy_verb(client_id, verb, payload)
 
@@ -643,7 +717,7 @@ class Session:
         sc = self.scenario
         if sc is None:
             raise ValueError("this game is not a scenario")
-        in_town = sc.mode == "town" and self.state is None
+        in_town = sc.in_town and self.state is None
         at_gate = (self.adventure is not None and self.adventure.level_up is not None)
         cid = str(payload.get("character_id") or "")
 
@@ -775,7 +849,7 @@ class Session:
             # Quest Accept (§D17-5.4): hooks fired → auto-save → the job.
             self.save_point("quest_accept", None)
             self._request_async("adventure_job")
-        elif "rest" in kinds:
+        elif "rest" in kinds and sc.mode != "interlude":
             self.save_point("inn", None, auto=False)
         return fired
 
@@ -930,7 +1004,7 @@ class Session:
         assert sc is not None
         town = sc.town_snapshot()
         return {
-            "mode": "town" if sc.mode != "complete" else "complete",
+            "mode": "town" if sc.in_town else "complete",
             "session_id": self.id,
             "encounter_id": "",
             "priority": {"holder_character_id": None, "kind": None},

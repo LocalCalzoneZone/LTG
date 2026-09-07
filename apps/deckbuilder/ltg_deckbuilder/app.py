@@ -10,6 +10,7 @@ module owns only app concerns — web routes, persistence, Scryfall ingestion.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import List
 
@@ -48,7 +49,7 @@ from ltg_core.schema import (
 from ltg_core.lints import lint_card
 from ltg_core.translation import render_effects
 
-from . import ingest, scryfall, update
+from . import flavour, ingest, scryfall, update
 
 # app.py lives at apps/deckbuilder/ltg_deckbuilder/app.py; the frontend and the
 # loadout store sit at the deckbuilder app root (one level up from the package).
@@ -341,6 +342,64 @@ def api_save(body: LoadoutBody) -> dict:
     path = _safe_path(name)
     path.write_text(json.dumps(_prune_loadout_dict(loadout.model_dump()), indent=2))
     return {"saved": name}
+
+
+# --------------------------------------------------------------------------- #
+# Lore (Design Update 24 §D24-7.3): player-written Markdown beside the
+# loadouts — loadouts/lore/<character>/<slug>.md, a few lines of front matter
+# each. The Deckbuilder LISTS the folder (a read-only Lore tab with the path to
+# reveal); editing stays in the player's own editor. Import is a file drop.
+# --------------------------------------------------------------------------- #
+_FRONT_MATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+
+
+def _lore_meta(text: str, slug: str) -> dict:
+    meta: dict = {"title": slug.replace("_", " ").replace("-", " ").title(), "keys": [],
+                  "gate": "", "mode": "closed"}
+    body = text
+    m = _FRONT_MATTER_RE.match(text)
+    if m:
+        body = text[m.end():]
+        for line in m.group(1).splitlines():
+            if ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            key, value = key.strip().lower(), value.strip().strip("'\"")
+            if key == "keys":
+                meta["keys"] = [k.strip().strip("'\"") for k in value.strip("[]").split(",")
+                                if k.strip().strip("'\"")]
+            elif key in ("title", "gate", "mode") and value:
+                meta[key] = value
+    meta["mode"] = "open" if meta["mode"].lower() == "open" else "closed"
+    meta["words"] = len(body.split())
+    return meta
+
+
+@app.post("/api/flavour/generate")
+def api_flavour_generate(body: LoadoutBody) -> dict:
+    """GENERATE DECK FLAVOUR: one LLM call writes 2–3 lines per card and
+    heroic ability on how it manifests in the world for this character, from
+    the "Abilities & Combat" text. Returns `{flavours: {card id: text}}`; the
+    client lands them on each card's Flavour field."""
+    try:
+        return {"flavours": flavour.generate_flavours(body.loadout, LOADOUT_DIR)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/lore/{name}")
+def api_lore(name: str) -> dict:
+    """The lore folder of a character: its path and one row per entry."""
+    folder = LOADOUT_DIR / "lore" / _slug(name)
+    entries = []
+    if folder.is_dir():
+        for path in sorted(folder.glob("*.md")):
+            try:
+                entries.append({"slug": path.stem, "file": path.name,
+                                **_lore_meta(path.read_text(encoding="utf-8"), path.stem)})
+            except Exception:
+                continue
+    return {"folder": str(folder), "entries": entries}
 
 
 # Legacy MTG-lineage fields: still accepted on load (the schema defaults them)

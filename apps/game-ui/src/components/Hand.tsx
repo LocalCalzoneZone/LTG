@@ -3,7 +3,7 @@ import type { CardView } from "../lib/types";
 import type { Choices, Choice } from "../lib/choices";
 import { useGame } from "../lib/store";
 import { Pips } from "./Pips";
-import { IconSigil, IconTurnMark } from "./Icons";
+import { IconTurnMark } from "./Icons";
 
 export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | null }) {
   const select = useGame((s) => s.selectChoice);
@@ -77,11 +77,17 @@ export function HandCard({ card, playable, active, spendsTurn, justDrawn, onClic
 }) {
   // h-full + aspect-ratio => every card is the same size and top-aligned; the whole
   // card scales with the (window-sized) hand area. Fonts clamp against viewport height.
+  // The border STYLE says what kind of card this is at a glance: a sorcery is
+  // a plain hairline, an instant is dashed (it can go at any time), a channel
+  // is a double rule (it stays on the board).
+  const timingBorder = card.timing === "instant"
+    ? "border-dashed"
+    : card.timing === "channeled" ? "border-double border-[3px]" : "border-solid";
   return (
     <div
       onClick={onClick}
       title={card.text}
-      className={`relative flex aspect-[2/3] h-full shrink-0 flex-col border bg-gradient-to-b from-ink-3 to-ink-2 p-1.5 text-parch shadow-[0_6px_16px_rgba(0,0,0,0.5)] transition-all duration-150 ${
+      className={`relative flex aspect-[2/3] h-full shrink-0 flex-col border bg-gradient-to-b from-ink-3 to-ink-2 p-1.5 text-parch shadow-[0_6px_16px_rgba(0,0,0,0.5)] transition-all duration-150 ${timingBorder} ${
         playable
           ? active
             ? "-translate-y-1.5 cursor-pointer border-brass shadow-[0_10px_22px_rgba(0,0,0,0.65),0_0_14px_rgba(233,204,130,0.3)]"
@@ -99,18 +105,18 @@ export function HandCard({ card, playable, active, spendsTurn, justDrawn, onClic
           <Pips cost={card.cost} size={15} />
         </div>
       </div>
-      {/* Art slot (3:2) — the card's own art when it has any (a consumable
-          carries its item's, painted at 3:2 for exactly this frame), else the
-          sigil placeholder. */}
-      <div className="relative my-1 flex aspect-[3/2] w-full items-center justify-center overflow-hidden border border-line bg-[radial-gradient(70%_60%_at_50%_40%,rgba(90,110,120,0.22),transparent_75%),linear-gradient(180deg,#1c222c,#141821)] text-[#6f7f8f]">
-        {card.image ? (
+      {/* Art (3:2) only when the card HAS any — a consumable carries its
+          item's, painted for exactly this frame. Cards without art give the
+          whole face to the text instead of a placeholder. */}
+      {card.image && (
+        <div className="relative my-1 flex aspect-[3/2] w-full items-center justify-center overflow-hidden border border-line bg-ink-0">
           <img src={card.image} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <IconSigil className="h-2/5 w-2/5 opacity-50" />
-        )}
-      </div>
+        </div>
+      )}
+      <div className="my-1 h-px w-full bg-line" aria-hidden />
       {/* Effect text (left-aligned, fills) */}
-      <div className="flex-1 overflow-hidden text-[clamp(8px,1.1vh,11px)] font-light leading-snug text-mist">
+      <div className={`flex-1 overflow-hidden font-light leading-snug text-mist ${
+        card.image ? "text-[clamp(8px,1.1vh,11px)]" : "text-[clamp(9px,1.25vh,12.5px)]"}`}>
         {card.text}
       </div>
       {/* Type — with §D23-9's turn mark when casting this card is your turn. */}

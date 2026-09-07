@@ -1405,26 +1405,330 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
 
 
 def panel_anim_bundle(raw: dict) -> dict:
-    """{animations: [...], cards: {card_id: anim_id}, stances: {card_id: {slot: anim_id}}}
-    from a raw loadout dict — an empty bundle when the loadout has no clips, so
-    the client behaves exactly as before. `stances` carries the per-slot clip
-    picks of a stance's replaced abilities (attack/defend/mitigate/move)."""
+    """{animations: [...], cards: {card_id: anim_id}, stances: {card_id: {slot:
+    anim_id}}, triggers: {card_id: {trigger_key: anim_id}}} from a raw loadout
+    dict — an empty bundle when the loadout has no clips, so the client behaves
+    exactly as before. `stances` carries the per-slot clip picks of a stance's
+    replaced abilities (attack/defend/mitigate/move); `triggers` the per-trigger
+    picks of a channeled card (2026-09), so a retaliation can look different
+    from the cast that set it up."""
     char = raw.get("character", {}) or {}
     anims = [a for a in (char.get("animations") or []) if isinstance(a, dict)]
     if not anims:
-        return {"animations": [], "cards": {}, "stances": {}}
+        return {"animations": [], "cards": {}, "stances": {}, "triggers": {}}
     ids = {a.get("id") for a in anims}
     cards: dict = {}
     stances: dict = {}
+    triggers: dict = {}
     for card in list(raw.get("cards") or []) + [char.get("skill"), char.get("ultimate")]:
         if not isinstance(card, dict) or not card.get("id"):
             continue
         if card.get("animation") in ids:
             cards[card["id"]] = card["animation"]
+        for key, anim_id in (card.get("trigger_animations") or {}).items():
+            if anim_id in ids and str(key):
+                triggers.setdefault(card["id"], {})[str(key)] = anim_id
         for eff in card.get("effects") or []:
             if isinstance(eff, dict) and eff.get("kind") == "stance":
                 for slot in ("attack", "defend", "mitigate", "move"):
                     repl = eff.get(slot)
                     if isinstance(repl, dict) and repl.get("animation") in ids:
                         stances.setdefault(card["id"], {})[slot] = repl["animation"]
-    return {"animations": anims, "cards": cards, "stances": stances}
+    return {"animations": anims, "cards": cards, "stances": stances,
+            "triggers": triggers}
+
+
+# --------------------------------------------------------------------------- #
+# Character layers (Design Update 24 §D24-7): lore on disk, live identity
+# --------------------------------------------------------------------------- #
+# Lore is player-written Markdown beside the loadouts — one folder per
+# character, one file per entry, a few lines of front matter each (§D24-7.3).
+# Import is a file drop, not a form.
+LORE_DIR = LOADOUTS_DIR / "lore"
+LORE_MAX_PER_ACT = 2
+LORE_MAX_WORDS = 120
+_FRONT_MATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+
+
+def _parse_front_matter(text: str) -> "tuple[Dict[str, Any], str]":
+    """A hand parser for the four keys the front matter carries (title, keys,
+    gate, mode) — no YAML dependency. Unknown keys are kept as strings."""
+    m = _FRONT_MATTER_RE.match(text)
+    if not m:
+        return {}, text
+    meta: Dict[str, Any] = {}
+    for line in m.group(1).splitlines():
+        if ":" not in line or line.lstrip().startswith("#"):
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip().lower()
+        value = value.split("#", 1)[0].strip() if not value.strip().startswith('"') else value.strip()
+        if key == "keys":
+            inner = value.strip().strip("[]")
+            meta["keys"] = [k.strip().strip("'\"") for k in inner.split(",") if k.strip().strip("'\"")]
+        else:
+            meta[key] = value.strip().strip("'\"")
+    return meta, text[m.end():]
+
+
+_STOP_CAPS = frozenset("""the a an and or but of in on at to for with by from as is was were be
+been are it its he she they them his her their we our you your i this that these those there
+then than when where who what which while into out up down over under not no yes so if
+""".split())
+
+
+def _auto_keys(title: str, text: str) -> List[str]:
+    """The names an entry is about, read off the text itself: capitalised
+    words and runs of them (Salt Shrine, Reed-King), skipping sentence
+    starts that are ordinary words, plus the entry's own title. These are the
+    hooks the world may touch."""
+    keys: List[str] = []
+    for m in re.finditer(r"(?:[A-Z][\w'’-]+)(?:\s+(?:of|the|and|de)?\s*[A-Z][\w'’-]+)*", text):
+        phrase = re.sub(r"[’']s$", "", m.group(0))
+        words = phrase.split()
+        if len(words) == 1:
+            # A lone capital at a sentence start is usually just grammar.
+            before = text[:m.start()].rstrip()
+            at_start = not before or before[-1] in ".!?:;\n"
+            if at_start or words[0].lower() in _STOP_CAPS or len(words[0]) < 4:
+                continue
+        keys.append(phrase.lower())
+    if title:
+        keys.append(title.lower())
+        for w in re.findall(r"[A-Za-z][\w'’-]{3,}", title):
+            if w.lower() not in _STOP_CAPS:
+                keys.append(w.lower())
+    return list(dict.fromkeys(keys))
+
+
+def lore_text_entries(character_id: str, text: str) -> List[Dict[str, Any]]:
+    """The character file's `lore` field (a plain paste-in text, any length)
+    split into entries: a Markdown heading starts one, else each blank-line
+    paragraph is one. Keys are derived from the text — no front matter."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    out: List[Dict[str, Any]] = []
+    blocks: List["tuple[str, List[str]]"] = []
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        m = re.match(r"^#{1,6}\s+(.+?)\s*#*$", line)
+        if m:
+            blocks.append((m.group(1).strip(), []))
+            continue
+        if not blocks:
+            blocks.append(("", []))
+        blocks[-1][1].append(line)
+    for i, (title, lines) in enumerate(blocks, start=1):
+        body = "\n".join(lines).strip()
+        if title and not body:
+            continue
+        paras = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+        for j, para in enumerate(paras, start=1):
+            t = title or (para.split(".")[0][:60].strip() if para else f"Lore {i}")
+            out.append({"character_id": character_id, "slug": f"lore_{i}_{j}", "title": t,
+                        "keys": _auto_keys(title, para), "gate": "", "mode": "closed",
+                        "text": para, "words": len(para.split())})
+    return out
+
+
+def lore_entries_for(character_id: str) -> List[Dict[str, Any]]:
+    """Every lore entry of a character: the `lore` text on the character file
+    (paragraphs as entries, keys derived), plus any Markdown files in the
+    lore folder (front matter optional). ``{character_id, slug, title, keys,
+    gate, mode, text}``. No lore is simply an empty list."""
+    out: List[Dict[str, Any]] = []
+    entry = _character_registry().get(character_id)
+    if entry is not None:
+        out += lore_text_entries(character_id, str((entry["loadout"].get("character") or {}).get("lore") or ""))
+    folder = LORE_DIR / _slug(character_id)
+    if not folder.is_dir():
+        folder = LORE_DIR / character_id
+    if not folder.is_dir():
+        return out
+    for path in sorted(folder.glob("*.md")):
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        meta, body = _parse_front_matter(raw)
+        title = str(meta.get("title") or path.stem.replace("_", " ").replace("-", " ").title())
+        out.append({
+            "character_id": character_id,
+            "slug": path.stem,
+            "title": title,
+            "keys": [k.lower() for k in (meta.get("keys") or [])] or _auto_keys(title, body),
+            "gate": str(meta.get("gate") or "").strip(),
+            "mode": "open" if str(meta.get("mode") or "").strip().lower() == "open" else "closed",
+            "text": body.strip(),
+            "words": len(body.split()),
+        })
+    return out
+
+
+def lore_folder(character_id: str) -> str:
+    """Where a character's lore lives (the Deckbuilder's "reveal folder" path)."""
+    return str(LORE_DIR / _slug(character_id))
+
+
+def _lore_haystack(town: Optional[Dict[str, Any]], arc: Optional[Dict[str, Any]]) -> str:
+    """Everything the world touches this act, lowercased: the town's names,
+    personas and topics; the arc's cast, places, villain and hooks."""
+    parts: List[str] = []
+    for loc in (town or {}).get("locations") or []:
+        parts += [str(loc.get("name", "")), str(loc.get("description", "")),
+                  str(loc.get("interior_scene", "")), str(loc.get("exterior_scene", ""))]
+        for npc in loc.get("npcs") or []:
+            parts += [str(npc.get("name", "")), str(npc.get("role", "")), str(npc.get("persona", ""))]
+            for t in npc.get("topics") or []:
+                parts += [str(t.get("ask", "")), str(t.get("reply", ""))]
+    if town:
+        parts += [str(town.get("name", "")), str(town.get("region_flavor", "")), str(town.get("scene", ""))]
+    if arc:
+        parts += [str(arc.get("title", "")), str(arc.get("villain", "")), str(arc.get("stakes", ""))]
+        for c in arc.get("cast") or []:
+            parts += [str(c.get("name", "")), str(c.get("persona", ""))]
+        for pl in arc.get("places") or []:
+            parts += [str(pl.get("name", "")), str(pl.get("description", ""))]
+        for act in arc.get("acts") or []:
+            parts += [str(act.get("title", "")), str(act.get("hook", "")), str(act.get("adventure_theme", ""))]
+    return "\n".join(parts).lower()
+
+
+def _gate_open(gate: str, flags: Dict[str, Any], act_index: int, town_id: str) -> Optional[bool]:
+    """None when the entry has no gate; else whether the gate is satisfied.
+    Gates: a standing flag name / ``act >= n`` / ``met:<npc_id>`` /
+    ``town:<town_id>``."""
+    g = (gate or "").strip()
+    if not g:
+        return None
+    low = g.lower().replace(" ", "")
+    m = re.match(r"^act(>=|≥)(\d+)$", low)
+    if m:
+        return act_index + 1 >= int(m.group(2))
+    if low.startswith("met:"):
+        npc = low[4:]
+        return bool(flags.get(f"_met_{npc}") or flags.get(f"met:{npc}") or flags.get(f"talked_{npc}"))
+    if low.startswith("town:"):
+        return low[5:] == (town_id or "").lower()
+    return bool(flags.get(g))
+
+
+def select_lore(entries: List[Dict[str, Any]], town: Optional[Dict[str, Any]],
+                arc: Optional[Dict[str, Any]], flags: Optional[Dict[str, Any]] = None,
+                act_index: int = 0, town_id: str = "",
+                limit: int = LORE_MAX_PER_ACT, max_words: int = LORE_MAX_WORDS
+                ) -> List[Dict[str, Any]]:
+    """§D24-7.3: which lore reaches the act writer. An entry qualifies when the
+    world touches it — a `keys` match against the town's names, personas and
+    topics or the arc's cast, places and hooks (case-insensitive substring) —
+    or when its explicit `gate` is open. At most ``limit`` entries, most keys
+    matched first, then title order; each cut to its first paragraph (and
+    ``max_words``) for the writer, never for the player. `mode: open` entries
+    are carried through unchanged — nothing reads the mode yet."""
+    hay = _lore_haystack(town, arc)
+    flags = flags or {}
+    picked: List["tuple[int, str, Dict[str, Any]]"] = []
+    for e in entries:
+        matched = [k for k in e.get("keys") or [] if k and k in hay]
+        gate = _gate_open(e.get("gate", ""), flags, act_index, town_id)
+        if gate is False:
+            continue
+        if not matched and gate is not True:
+            continue
+        text = e.get("text", "")
+        if len(text.split()) > max_words:
+            text = text.split("\n\n", 1)[0].strip()
+            words = text.split()
+            if len(words) > max_words:
+                text = " ".join(words[:max_words]) + "…"
+        picked.append((len(matched), e.get("title", ""), {
+            "character_id": e.get("character_id", ""), "slug": e.get("slug", ""),
+            "title": e.get("title", ""), "mode": e.get("mode", "closed"),
+            "keys_matched": matched, "text": text,
+        }))
+    picked.sort(key=lambda t: (-t[0], t[1].lower()))
+    return [row for _, _, row in picked[:limit]]
+
+
+def lore_in_play(members: List[Dict[str, Any]], town: Optional[Dict[str, Any]],
+                 arc: Optional[Dict[str, Any]], flags: Optional[Dict[str, Any]] = None,
+                 act_index: int = 0, town_id: str = "") -> List[Dict[str, Any]]:
+    """The party's lore, selected together so the ≤ 2-per-act cap holds across
+    the whole party. Each row carries the hero's name for the writer."""
+    entries: List[Dict[str, Any]] = []
+    names: Dict[str, str] = {}
+    for m in members:
+        cid = str(m.get("id") or "")
+        if not cid:
+            continue
+        names[cid] = str(m.get("name") or cid)
+        entries += lore_entries_for(cid)
+    rows = select_lore(entries, town, arc, flags, act_index, town_id)
+    for r in rows:
+        r["hero"] = names.get(r["character_id"], r["character_id"])
+    return rows
+
+
+# Identity is read LIVE from the character file on every load / continue of a
+# campaign (§D24-6): balance changes must flow into campaigns, and a campaign
+# should never be stranded on a stale deck. The points-buy and progression
+# fields are the instance's own and are never touched.
+IDENTITY_FIELDS = ("name", "description", "portrait", "animations", "colors", "keyword",
+                   "attack_mode", "row", "types", "classes", "skill", "ultimate",
+                   "ability_flavor", "brief", "brief_situation", "lore", "combat_lore")
+PROGRESSION_FIELDS = ("hp", "starting_cards", "power_bought", "earned_points", "spent_points",
+                      "level", "legacy", "preset")
+
+
+def refresh_instance(instanced: Dict[str, Any], live: Optional[Dict[str, Any]]) -> List[str]:
+    """Refresh a campaign's instanced loadout from the live character file, in
+    place. Replaced: the deck (`cards`), skill and ultimate, colours, keyword,
+    description and brief, portrait, art and animation references. Kept:
+    HP, starting mana / cards, bought Power, points, level, gear. Reconciled:
+    a `starting_mana` pip in a colour the live deck no longer covers is
+    re-rolled to a live colour. Returns the notices for the load splash; a
+    missing character file (``live`` None) is a silent no-op."""
+    if not live or not isinstance(instanced, dict):
+        return []
+    notices: List[str] = []
+    inst_ch = instanced.setdefault("character", {})
+    live_ch = live.get("character") or {}
+    name = str(live_ch.get("name") or inst_ch.get("name") or "A hero")
+    # The deck.
+    old_cards = instanced.get("cards") or []
+    new_cards = copy.deepcopy(live.get("cards") or [])
+    old_names = {str(c.get("name") or c.get("id")) for c in old_cards if isinstance(c, dict)}
+    new_names = {str(c.get("name") or c.get("id")) for c in new_cards if isinstance(c, dict)}
+    instanced["cards"] = new_cards
+    lost = sorted(old_names - new_names)
+    gained = sorted(new_names - old_names)
+    if lost or gained:
+        bits = []
+        if lost:
+            bits.append("lost " + ", ".join(f"*{n}*" for n in lost[:4]) + (" …" if len(lost) > 4 else ""))
+        if gained:
+            bits.append("gained " + ", ".join(f"*{n}*" for n in gained[:4]) + (" …" if len(gained) > 4 else ""))
+        notices.append(f"{name}'s deck follows the character file: " + "; ".join(bits) + ".")
+    # Identity fields.
+    for key in IDENTITY_FIELDS:
+        if key in live_ch:
+            inst_ch[key] = copy.deepcopy(live_ch[key])
+        elif key in inst_ch and key not in ("name",):
+            inst_ch.pop(key, None)
+    # Starting mana: every pip must be a live colour.
+    live_colors = [str(c) for c in (live_ch.get("colors") or []) if c]
+    pips = [str(c) for c in (inst_ch.get("starting_mana") or [])]
+    if live_colors and pips and any(p not in live_colors for p in pips):
+        rerolled = []
+        i = 0
+        for p in pips:
+            if p in live_colors:
+                rerolled.append(p)
+            else:
+                rerolled.append(live_colors[i % len(live_colors)])
+                i += 1
+        inst_ch["starting_mana"] = rerolled
+        notices.append(f"{name}'s starting mana was re-rolled to the deck's colours "
+                       f"({'/'.join(rerolled)}).")
+    return notices

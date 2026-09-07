@@ -41,6 +41,9 @@ export function TownsPanel() {
   const [towns, setTowns] = useState<TownOption[] | null>(null);
   const [open, setOpen] = useState<TownDetail | null>(null);
   const [note, setNote] = useState("");
+  // §D24-9.1: where the new town is placed — beside a known town, so the
+  // writer joins its region and names it as a neighbour.
+  const [anchor, setAnchor] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
@@ -58,7 +61,7 @@ export function TownsPanel() {
   const gen = async () => {
     setBusy(true); setErr(null);
     try {
-      const meta = await generateTown(note);
+      const meta = await generateTown(note, anchor);
       await refresh(meta.id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -119,6 +122,10 @@ export function TownsPanel() {
       <div className="mb-3 flex flex-wrap items-center gap-2 border border-line bg-black/25 p-3">
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note, e.g. “a bell-foundry town under a glacier”"
                className={`${FIELD} min-w-[280px] flex-1`} />
+        <select value={anchor} onChange={(e) => setAnchor(e.target.value)} className={FIELD} title="Place the new town beside a known one — it joins that region and the worldbook links them">
+          <option value="">— placed on its own (founds a region) —</option>
+          {towns?.map((t) => <option key={t.id} value={t.id}>beside {t.name}</option>)}
+        </select>
         <button className={GHOST_BTN} onClick={gen} disabled={busy}>{busy ? "Generating…" : "Generate town"}</button>
       </div>
       {err && <div className="mb-2 border border-blood/50 bg-blood/10 px-3 py-2 text-sm font-light text-blood">{err}</div>}

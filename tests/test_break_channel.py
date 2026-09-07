@@ -233,3 +233,104 @@ def test_a_channel_break_trigger_still_springs():
     st = _drive(st, lambda s: not s.stack)
     assert st.enemies[0].channels == []
     assert st.character("p").hp == hp_before - 4        # the sting landed
+
+
+# --------------------------------------------------------------------------- #
+# A card's own cleanup resolves after its own pending triggers
+# --------------------------------------------------------------------------- #
+# Playtest 2026-09 (Lasarre's "Glintblades"): a retaliation reading a resource
+# ("deal damage equal to your charge counters") landed for 0 whenever the blow
+# that fired it ALSO broke concentration. The stack is last-on-first-off, so
+# the break trigger — pushed after the retaliation — resolved first and its
+# cleanup ("when this channel ends, remove all charge counters") emptied the
+# counters the waiting trigger was about to read. Since the breaking hit is a
+# hit of >=25% max HP, the card failed exactly when it mattered most.
+RETALIATOR = {
+    "id": "glint", "name": "Glintblades", "source_name": "Glintblades",
+    "rarity": "uncommon", "level": 2, "type": "Enchantment", "timing": "channeled",
+    "cost": {"generic": 0, "colors": {}},
+    "effects": [
+        {"trigger": "channel_start", "kind": "charge", "op": "add", "amount": 3,
+         "target": {"mode": "self"}},
+        {"trigger": {"event": "damage_taken", "who": "you"}, "kind": "deal_damage",
+         "amount": {"ref": "caster_charge"},
+         "target": {"mode": "chosen", "side": "any", "targeted": True}},
+        {"trigger": "channel_break", "kind": "charge", "op": "remove", "amount": "all",
+         "target": {"mode": "self"}},
+    ],
+    "validated": True,
+}
+
+
+def _swing_at_the_channeler(hero_hp, enemy_power):
+    """Channel the retaliator, then let one enemy swing land on the holder.
+    Returns (state, enemy hp before the swing)."""
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "p", "hp": hero_hp, "power": 2, "hand_size": 1,
+                   "identity": ["U"], "row": "front", "attack_mode": "melee",
+                   "capacity": 4,
+                   "library": [copy.deepcopy(RETALIATOR), _filler("x1"), _filler("x2")]}],
+        "enemies": [{"id": "ogre", "name": "ogre", "hp": 40, "level": 3,
+                     "power": enemy_power, "row": "front", "components": [],
+                     "intent": {"name": "Hit", "amount": enemy_power,
+                                "action_type": "attack", "intent_type": "attack",
+                                "targeting": "lowest_hp_party", "mode": "melee"}}],
+    })
+    st.party[0].pool = ["U", "U", "U", "U"]
+    cast = next(a for a in legal_actions(st) if a.kind == "cast" and a.card_id == "glint")
+    st = apply_action(st, cast)[0]
+    st = _settle(st)
+    assert st.party[0].charge == 3 and st.party[0].channels
+    before = st.enemies[0].hp
+    for _ in range(400):
+        acts = legal_actions(st)
+        if not acts:
+            break
+        a = (next((x for x in acts if x.kind == "choose_target"), None)
+             or next((x for x in acts if x.kind == "pass"), None)
+             or next((x for x in acts if x.kind == "end_turn"), None) or acts[0])
+        st = apply_action(st, a)[0]
+        if st.party[0].hp < hero_hp:
+            return _settle(st), before
+    return st, before
+
+
+def _settle(st):
+    """Pass priority, answering any pick a pushed trigger owes."""
+    for _ in range(300):
+        acts = legal_actions(st)
+        a = (next((x for x in acts if x.kind == "choose_target"), None)
+             or next((x for x in acts if x.kind == "choose_mode"), None)
+             or next((x for x in acts if x.kind == "pass"), None))
+        if a is None:
+            return st
+        st = apply_action(st, a)[0]
+    return st
+
+
+def test_a_retaliation_reads_its_counters_even_when_the_blow_broke_the_channel():
+    # A small hit: the channel survives the blow, so nothing races the trigger.
+    st, before = _swing_at_the_channeler(hero_hp=30, enemy_power=3)
+    assert st.enemies[0].hp == before - 3, "the ordinary retaliation should land"
+
+    # A hit of >=25% max HP breaks concentration in the same beat. The
+    # retaliation must still read the 3 counters it was fired with.
+    st, before = _swing_at_the_channeler(hero_hp=30, enemy_power=12)
+    assert st.party[0].channels == []          # the channel did break
+    assert st.party[0].charge == 0             # and its cleanup still ran
+    assert st.enemies[0].hp == before - 3, "the breaking hit must not zero the retaliation"
+
+
+def test_the_cleanup_still_beats_an_unrelated_channels_triggers():
+    # The sink is scoped to ONE card: a break trigger keeps strict
+    # last-on-first-off against everything else on the stack.
+    from ltg_combat.engine import _fire_channel_break, _push
+    from ltg_combat.state import StackItem
+    st = state_from_dict({"party": [_hero([_filler("x")])], "enemies": [_enemy()]})
+    other = _push(st, StackItem(kind="triggered", source_id="p", source_side="party",
+                                label="Someone else — trigger", effects=[],
+                                card=_card([{"kind": "draw", "amount": 1}], id="other")))
+    card = _card([{"trigger": "channel_break", "kind": "draw", "amount": 1}],
+                 id="mine", type="Enchantment", timing="channeled")
+    _fire_channel_break(st, "p", "party", "Mine", list(card.effects), None, card=card)
+    assert [i.card.id for i in st.stack] == ["other", "mine"]   # on top, as usual

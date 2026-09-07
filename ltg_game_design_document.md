@@ -33,6 +33,8 @@ A player's abilities are **real MTG cards translated into LTG's effect vocabular
 3. **LTG Combat** *(being built now — this document's primary consumer)* — the runtime: ingests a validated loadout JSON plus an encounter, executes the rules deterministically, emits a structured event log. No Scryfall, no editing, no translation, **no LLM at runtime.**
 4. **Generation engine** *(planned)* — produces enemies/encounters at runtime within the bounded schema.
 5. **Narrator** *(planned)* — an LLM that turns the engine's event log into prose; it reads events, never changes them.
+6. **Scenario Mode writers** *(built — Updates 17, 20, 24)* — generation-time authors, never runtime adjudicators: the town generator, the arc writer, the act writer, the enemy designer, and (Update 24) the **interlude planner**, one call at a scenario's victory that writes the post-victory town and three hooks for where the story goes next. What they read is fixed by the reader matrix (Update 24 §D24-7.6): the party's brief and situation, the campaign's ledger and chronicles, the town as the campaign knows it, and the worldbook.
+7. **The worldbook** *(built — Update 24)* — a content store beside towns (`content/world/`): one brief page per town (region, gist, notable names, neighbours) plus `regions.json`, append-only in play, edited under Options → World. Geography sticks to the world; history sticks to the campaign (`run.json`: ledger, town state, chronicles); identity sticks to the character file (brief, lore, deck).
 
 The **validated loadout JSON is the contract** between Deckbuilder and Combat. Code is a **monorepo**: a shared `core` package owns the effect vocabulary, the translation/keyword registry, and the validator; the apps (`deckbuilder`, `combat`) each depend on `core`, never on each other.
 
@@ -316,6 +318,14 @@ The set is **extensible** but deliberately small. The engine implements one hand
 
 ## 13. Glossary
 
+- **Campaign** — the unit of continuity (Update 24): one fixed party, one sequence of scenarios, one ledger, one set of chronicles. Every scenario game is a campaign of length one until continued.
+- **Interlude** — the town after a scenario's victory, before the next scenario is chosen; act-shaped with no quest; rest is the only exit.
+- **Hook** — one of the three proposed premises for the next scenario (stay / neighbour / somewhere new), plus the player's own fourth card.
+- **Bridge** — the prose that carries the party from one scenario to the next; the arc writer's Act I honours it.
+- **Brief / Lore / Situation / Chronicle** — the four non-mechanical layers of a character (Update 24 §D24-7): player-written on the file / player-written on disk / campaign-scoped and player-edited between scenarios / engine-written and append-only.
+- **Worldbook** — the shared, append-only book of what a traveller knows about each town and region (`content/world/`).
+- **Ledger** — the campaign's structured memory of what happened, per act and per scenario; rendered to the writers as `# PREVIOUSLY`.
+- **Everquest** — retired (Update 24); continuing a story is the interlude.
 - **Action** — something a character does proactively on its turn, spending its turn (§4.6/§D23-1).
 - **Reaction** — a free, mana-limited response made outside the normal turn flow; never touches the turn.
 - **Active / reactive** — whether an action spends the turn (active) or is a free response/auto-trigger (reactive).

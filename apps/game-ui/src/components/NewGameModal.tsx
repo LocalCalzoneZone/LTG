@@ -76,7 +76,6 @@ export function NewGameModal({ onClose, onStarted }: {
   const [picked, setPicked] = useState<string[]>([]);
   const [pick, setPick] = useState<Pick>(null);
   const [tab, setTab] = useState<Tab>("encounters");
-  const [everquest, setEverquest] = useState(false);
   const [difficulty, setDifficulty] = useState("standard");
   const [note, setNote] = useState("");
   // Update 17 §D17-3: play the adventure inside a RUN (auto-saved at every
@@ -123,11 +122,12 @@ export function NewGameModal({ onClose, onStarted }: {
     setErr(null);
     try {
       if (pick.kind === "scenario" || pick.kind === "town") {
-        // Scenario Mode (Update 17 §D17-7): always a run.
+        // Scenario Mode (Update 17 §D17-7): always a run — a CAMPAIGN of
+        // length one until the player continues it (Update 24 §D24-1).
         setStatus(pick.kind === "town"
           ? "Writing the arc for this town… (a short model call)"
           : "Entering town…");
-        const run: RunOptions = { difficulty: difficulty as RunOptions["difficulty"], hardcore, everquest };
+        const run: RunOptions = { difficulty: difficulty as RunOptions["difficulty"], hardcore };
         onStarted(await createGame(picked, {
           scenarioId: pick.kind === "scenario" ? pick.id : undefined,
           townId: pick.kind === "town" ? pick.id : undefined,
@@ -144,7 +144,7 @@ export function NewGameModal({ onClose, onStarted }: {
         }
         setStatus("Starting adventure…");
         const run: RunOptions | undefined = asRun
-          ? { difficulty: difficulty as RunOptions["difficulty"], hardcore, everquest: false }
+          ? { difficulty: difficulty as RunOptions["difficulty"], hardcore }
           : undefined;
         onStarted(await createGame(picked, { adventureId, run }));
         return;
@@ -444,12 +444,6 @@ export function NewGameModal({ onClose, onStarted }: {
                             {d}
                           </button>
                         ))}
-                        <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
-                          <input type="checkbox" className="accent-[#c9b37e]" checked={everquest}
-                                 onChange={(e) => setEverquest(e.target.checked)} />
-                          <span className="caps-label text-[10px] tracking-[0.16em] text-parch">Everquest</span>
-                          <span className="text-dimmed">— a new arc when the last completes</span>
-                        </label>
                       </>
                     )}
                     {(asRun || tab === "scenarios") && (

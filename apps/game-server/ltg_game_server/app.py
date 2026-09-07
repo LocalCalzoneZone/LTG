@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import appctl, art, content, jobs, llm, scenario_content
+from . import appctl, art, content, jobs, llm, scenario_content, world
 from .adventure import AdventureRun
 from .runs import RunManager
 from .scenario import ScenarioRun
@@ -48,7 +48,6 @@ class RunOptionsBody(BaseModel):
     start == play it inside a NEW run (saved, resumable, forkable)."""
     difficulty: str = "standard"      # easy / standard / hard
     hardcore: bool = False            # defeat ends the run
-    everquest: bool = False           # (scenario layer — recorded, unused in Phase 0)
     name: str = ""
 
 
@@ -194,11 +193,15 @@ def _scenario_async(session, kind: str) -> None:
             session.materialize_act()
         else:
             loop.create_task(_materialize_task(session))
-    elif kind == "new_arc":
+    elif kind == "interlude":
+        # §D24-5.1: the planner, queued at boss death.
+        jobs.INTERLUDE.start(session, _broadcast)
+    elif kind == "continue":
+        # §D24-5.3: the road ahead — town (if new) + arc generation, then Act I.
         if loop is None:
-            _new_arc_sync(session)
+            _continue_sync(session)
         else:
-            loop.create_task(_new_arc_task(session))
+            loop.create_task(_continue_task(session))
     elif kind == "adventure_job":
         sc = session.scenario
         if sc is None:
@@ -225,23 +228,61 @@ async def _materialize_task(session) -> None:
     _queue_cast_art(session)       # …and the arc's cast/places (§D20-2)
 
 
-def _new_arc_sync(session) -> None:
+def _continue_sync(session) -> None:
+    """The chosen hook becomes the next scenario (§D24-5.3): a `new` hook
+    generates its town (with the seed and the worldbook placement); the arc
+    is generated for the destination with the ledger, the party's layers, the
+    world block and the hook; then Act I materializes under the entry splash
+    exactly as a new game does. Blocking — the task runs it in a thread."""
     sc = session.scenario
-    party = llm.party_summary_from_loadouts(sc.loadouts, sc.levels())
-    prev = sc.previous_arcs + [{"title": sc.arc["title"], "villain": sc.arc["villain"],
-                                "outcome": "defeated"}]
-    arc = sc.arc_generator(sc.town, party, sc.options.get("difficulty", "standard"), prev)
-    session.new_arc(arc)
-    session.materialize_act()
-
-
-async def _new_arc_task(session) -> None:
+    if sc is None:
+        return
+    hook = sc.chosen_hook()
+    if hook is None:
+        return
     try:
-        await asyncio.to_thread(_new_arc_sync, session)
+        if hook.get("kind") == "new" and hook.get("town_seed"):
+            seed = dict(hook["town_seed"])
+            seed.setdefault("bridge", hook.get("bridge", ""))
+            anchor = seed.get("anchor_town_id") or sc.town_id
+            ctx = world.placement_context(anchor)
+            meta = sc.town_generator(seed.get("line", ""), 3, ctx, seed,
+                                     added_by=f"scenario:{session.run_id or ''}")
+            town_id = meta["id"]
+        elif hook.get("kind") == "neighbour" and hook.get("town_id"):
+            town_id = hook["town_id"]
+        else:
+            town_id = sc.town_id
+        town = scenario_content.town_detail(town_id)
+        if town is None:
+            raise ValueError(f"the road leads to a town that is missing: {town_id}")
+        party = llm.party_summary_from_loadouts(sc.loadouts, sc.levels())
+        prev = sc.previous_arcs + [{"title": sc.arc["title"], "villain": sc.arc["villain"],
+                                    "outcome": "defeated"}]
+        arc = sc.arc_generator(town, party, sc.options.get("difficulty", "standard"), prev,
+                               hook.get("note", ""),
+                               party_state=sc.party_state(), ledger=sc.ledger_for_writers(),
+                               world_ctx=world.context_for(town_id), hook=hook)
+        sc.begin_next_scenario(arc, town, town_id)
+        if session.run_id and session.run_manager:
+            try:
+                session.run_manager.set_arc(session.run_id, arc)
+                session.run_manager.update_campaign(session.run_id, sc)
+            except Exception:
+                pass
+        sc.arrive(None)
+        session.materialize_act()
     except ValueError as exc:
-        if session.scenario is not None:
-            session.scenario.materialize_error = f"new arc: {exc}"
-            session.scenario.materializing = False
+        sc.materialize_error = f"the road ahead: {exc}"
+        sc.materializing = False
+        raise
+
+
+async def _continue_task(session) -> None:
+    try:
+        await asyncio.to_thread(_continue_sync, session)
+    except ValueError:
+        pass
     await _broadcast(session)
     _queue_spoils_art(session)
     _queue_cast_art(session)       # a fresh arc brings a fresh cast (§D20-2)
@@ -354,11 +395,29 @@ def run_detail(run_id: str) -> Dict[str, Any]:
         raise HTTPException(404, str(exc))
 
 
+@app.post("/api/runs/{run_id}/continue")
+def continue_run(run_id: str) -> Dict[str, Any]:
+    """Load Game → open a campaign (§D24-4): its NEWEST save by timestamp.
+    Mid-scenario resumes; the interlude resumes in town; a campaign left at
+    the scenario-end menu runs the continue path into the interlude."""
+    try:
+        newest = RUNS.newest_save(run_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    if newest is None:
+        raise HTTPException(404, "this campaign has no saves")
+    return _open_save(run_id, newest["save_id"], continue_campaign=True)
+
+
 @app.post("/api/runs/{run_id}/saves/{save_id}/load")
 def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
     """Rebuild the save's session (the exact adventure + party it points at)
     and return its id; continuing appends new saves — a fork when this save
     was not the newest (§D17-3.1)."""
+    return _open_save(run_id, save_id)
+
+
+def _open_save(run_id: str, save_id: str, continue_campaign: bool = False) -> Dict[str, Any]:
     try:
         meta, adventure, state, portraits, game_art, encounter_id = RUNS.load_save(run_id, save_id)
         scenario = (RUNS.load_scenario_save(run_id, save_id)
@@ -381,9 +440,11 @@ def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
                                  adventure=adventure, run_id=run_id, run_manager=RUNS,
                                  scenario=scenario)
     else:
-        scenario.mode = "town" if scenario.mode != "complete" else "complete"
+        if scenario.mode not in ("complete", "interlude"):
+            scenario.mode = "town"
         session = MANAGER.create(None, name=meta["name"], run_id=run_id,
                                  run_manager=RUNS, scenario=scenario)
+        session.async_hook = _scenario_async
         # A town save whose act never materialized (a crash mid-generation)
         # resumes the generation; a pending adventure job resumes too.
         if scenario.act is None and scenario.mode == "town":
@@ -393,6 +454,13 @@ def load_save(run_id: str, save_id: str) -> Dict[str, Any]:
         if scenario.adventure_unlocked and job in ("pending", "failed", "idle") \
                 and scenario.adventure_detail is None:
             _scenario_async(session, "adventure_job")
+        # Update 24 §D24-4: a campaign opened at the scenario-end menu runs the
+        # continue path; one whose road was chosen resumes the generation.
+        if scenario.mode == "complete" and not scenario.dead and continue_campaign:
+            session.continue_campaign()
+        elif scenario.mode == "interlude" and scenario.chosen_hook() is not None:
+            scenario.materializing = True
+            _scenario_async(session, "continue")
     session.async_hook = _scenario_async
     # A save taken inside an act's WRAP-UP (§D17-2.3) — the spoils modal or the
     # act-end level-up screen — resumes where it stopped instead of stalling in
@@ -664,6 +732,10 @@ class SaveTownBody(BaseModel):
 
 class GenerateTownBody(BaseModel):
     note: str = ""
+    # §D24-9.1: where the town is placed — beside a known town (its region and
+    # neighbours are shown to the writer) or in a named region. Both optional.
+    anchor_town_id: str = ""
+    region_id: str = ""
 
 
 class TownArtBody(BaseModel):
@@ -711,10 +783,67 @@ def delete_town(town_id: str) -> Dict[str, Any]:
 @app.post("/api/towns/generate")
 async def generate_town(body: GenerateTownBody) -> Dict[str, Any]:
     try:
-        meta = await asyncio.to_thread(llm.generate_town, body.note)
+        ctx = world.placement_context(body.anchor_town_id, body.region_id)
+        meta = await asyncio.to_thread(llm.generate_town, body.note, 3, ctx)
     except ValueError as exc:
         raise HTTPException(502, str(exc))
     return {"town": meta}
+
+
+# --------------------------------------------------------------------------- #
+# REST: the worldbook (Update 24 §D24-8.3 — Options → World)
+# --------------------------------------------------------------------------- #
+class WorldEntryBody(BaseModel):
+    name: Optional[str] = None
+    region_id: Optional[str] = None
+    new_region: Optional[Dict[str, Any]] = None
+    gist: Optional[str] = None
+    notable: Optional[List[str]] = None
+    neighbours: Optional[List[Dict[str, Any]]] = None
+
+
+class RegionBody(BaseModel):
+    name: str
+    gist: str = ""
+
+
+@app.get("/api/world")
+def get_world() -> Dict[str, Any]:
+    """Regions with their towns, plus the towns still without an entry."""
+    return world.overview()
+
+
+@app.get("/api/world/regions")
+def get_world_regions() -> Dict[str, Any]:
+    return {"regions": world.regions()}
+
+
+@app.put("/api/world/regions/{region_id}")
+def put_world_region(region_id: str, body: RegionBody) -> Dict[str, Any]:
+    try:
+        return {"region": world.add_region({"id": region_id, "name": body.name, "gist": body.gist},
+                                           force=True)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.get("/api/world/{town_id}")
+def get_world_entry(town_id: str) -> Dict[str, Any]:
+    entry = world.entry_for(town_id)
+    if entry is None:
+        raise HTTPException(404, "no worldbook entry for that town")
+    return world.context_for(town_id)
+
+
+@app.put("/api/world/{town_id}")
+def put_world_entry(town_id: str, body: WorldEntryBody) -> Dict[str, Any]:
+    if scenario_content.town_detail(town_id) is None and world.entry_for(town_id) is None:
+        raise HTTPException(404, "no such town")
+    try:
+        entry = world.update_entry(town_id, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"entry": entry}
 
 
 @app.post("/api/towns/{town_id}/topics")

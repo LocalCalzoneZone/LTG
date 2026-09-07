@@ -125,3 +125,79 @@ class AdventureJobRunner:
 
 
 RUNNER = AdventureJobRunner()
+
+
+class InterludeJobRunner:
+    """Update 24 §D24-5.1: the ONE planner call, queued the moment the closing
+    act's boss falls — before the spoils are even shown — so by the time gear
+    is assigned it is usually done. The result lands on
+    `ScenarioRun.pending_interlude`, in the run's content store, and
+    `interlude_ready` is broadcast so the scenario-end menu can show a spinner
+    when the player is faster than the writer. A Continue pressed early is
+    honoured the moment the planner returns."""
+
+    def __init__(self) -> None:
+        self.runner: Optional[Callable[[Any], Dict[str, Any]]] = None   # tests swap it
+
+    def generate_sync(self, session: Any) -> None:
+        sc = session.scenario
+        if sc is None:
+            return
+        try:
+            if self.runner is not None:
+                sc.pending_interlude = self.runner(sc)
+                sc.interlude_job = {"state": "ready", "error": None}
+            else:
+                sc.generate_interlude()
+            if session.run_id and session.run_manager:
+                try:
+                    session.run_manager.update_campaign(session.run_id, sc)
+                except Exception:
+                    pass
+        except Exception as exc:
+            sc.pending_interlude = None
+            sc.interlude_job = {"state": "failed", "error": str(exc)}
+        if sc.interlude_job.get("state") == "ready" and sc.continue_requested:
+            try:
+                session.continue_campaign()
+            except ValueError:
+                pass
+
+    async def run(self, session: Any, broadcast: Callable[[Any], Awaitable[None]]) -> None:
+        sc = session.scenario
+        if sc is None:
+            return
+        async with session.lock():
+            sc.interlude_job = {"state": "pending", "error": None}
+        await broadcast(session)
+        await asyncio.to_thread(self._generate_locked, session)
+        await broadcast(session)
+
+    def _generate_locked(self, session: Any) -> None:
+        # The generation itself runs off-thread; only the hand-over back into
+        # the session (a Continue pressed meanwhile) needs the lock, which the
+        # sync path takes for the whole call — cheap, since the call is the
+        # slow part and nothing else moves the session at the scenario's end.
+        self.generate_sync(session)
+
+    def start(self, session: Any, broadcast: Optional[Callable[[Any], Awaitable[None]]]) -> None:
+        sc = session.scenario
+        if sc is None or sc.interlude_job.get("state") == "pending":
+            return
+        if sc.pending_interlude is not None:
+            sc.interlude_job = {"state": "ready", "error": None}
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            sc.interlude_job = {"state": "pending", "error": None}
+            self.generate_sync(session)
+            return
+        loop.create_task(self.run(session, broadcast or _noop_broadcast))
+
+
+async def _noop_broadcast(_session: Any) -> None:
+    return None
+
+
+INTERLUDE = InterludeJobRunner()

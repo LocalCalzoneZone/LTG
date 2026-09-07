@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LTG — Deck Builder</title>
-  <link rel="stylesheet" href="/styles.css?v=20" />
+  <link rel="stylesheet" href="/styles.css?v=23" />
 </head>
 <body>
   <header class="topbar">
@@ -17,6 +17,7 @@
       <input type="file" id="file-update" accept="application/json,.json" hidden />
       <button id="btn-import-custom">Import Deck</button>
       <button id="btn-save">Save</button>
+      <button id="btn-flavour" title="One LLM call writes 2–3 lines per card and ability on how it manifests in the world for this character, from the Abilities &amp; Combat text (Brief &amp; Lore → Abilities &amp; Combat). Lands on each card's Flavour field.">Generate deck flavour</button>
       <button id="btn-export-engine" class="primary">Export engine loadout</button>
       <button id="btn-quit" title="Stop the deckbuilder and close">Quit</button>
     </div>
@@ -32,6 +33,7 @@
         <input type="file" id="portrait-file" accept="image/*" hidden />
       </div>
       <button id="btn-animations" class="anim-open" title="Panel animations — clips played over the portrait when an action resolves">Animations<span id="anim-count" class="anim-count"></span></button>
+      <button id="btn-brief" class="anim-open brief-open" title="Who this hero is in the world — the brief every chronicler reads (Update 24) — and the lore folder beside the loadout">Brief &amp; Lore<span id="brief-count" class="anim-count"></span></button>
 
       <section class="panel" id="character-panel">
         <input id="char-name" class="char-name" type="text" placeholder="Name" />
@@ -150,6 +152,54 @@
     </div>
   </div>
 
+  <div id="brief-overlay" class="overlay hidden">
+    <div class="detail-card brief-card">
+      <h3>Brief &amp; Lore</h3>
+      <div class="brief-tabs">
+        <button class="brief-tab on" data-tab="brief">Brief</button>
+        <button class="brief-tab" data-tab="lore">Lore</button>
+        <button class="brief-tab" data-tab="combat">Abilities &amp; Combat</button>
+      </div>
+      <div id="brief-pane" class="brief-pane">
+        <div class="sub">Who this hero is in the world, in about 150 words. Every chronicler reads it — the arc writer, the act writer, the interlude planner — and may <b>address</b> the hero by it (the scar, the ring, the accent) but never <b>explain a plot</b> by it. Nothing here is required; a hero with no brief plays exactly as before.</div>
+        <div class="brief-grid">
+          <label>Concept <span class="hint">one line — who this is in the world (≤ 20 words)</span>
+            <input type="text" id="brief-concept" maxlength="160" placeholder="a kettle-priest turned road-warden" /></label>
+          <label>Appearance <span class="hint">one sentence</span>
+            <input type="text" id="brief-appearance" maxlength="240" placeholder="Broad, soot-marked, a brass ring on a cord." /></label>
+          <label>Voice <span class="hint">one line — how they speak</span>
+            <input type="text" id="brief-register" maxlength="160" placeholder="plain, slow, asks before he tells" /></label>
+          <label>Says things like <span class="hint">up to three lines, one per row</span>
+            <textarea id="brief-samples" rows="3" placeholder="Hm.&#10;Say it again, slower.&#10;That'll do."></textarea></label>
+          <label>Wants <span class="hint">one line</span>
+            <input type="text" id="brief-wants" maxlength="160" placeholder="the Kettle house rebuilt" /></label>
+          <label>Won't <span class="hint">one line — what they will not do</span>
+            <input type="text" id="brief-wont" maxlength="160" placeholder="leave a debt unpaid" /></label>
+          <label>Tell <span class="hint">a flaw, habit or tic</span>
+            <input type="text" id="brief-tell" maxlength="160" placeholder="counts coins twice" /></label>
+          <label>Ties <span class="hint">people, factions, places — other heroes by name; one per row</span>
+            <textarea id="brief-ties" rows="3" placeholder="Lasarre — owes her his life&#10;the Order of the Kettle"></textarea></label>
+          <label class="wide">Default situation <span class="hint">where they stand when they first join a campaign (≤ 80 words); the campaign owns it from then on, editable on the rest screen</span>
+            <textarea id="brief-situation" rows="2" placeholder="travelling with Lasarre since the fall of the Kettle house; low on coin, high on grudge"></textarea></label>
+        </div>
+        <div class="meta" id="brief-words"></div>
+      </div>
+      <div id="lore-pane" class="brief-pane hidden">
+        <div class="sub">Lore is optional and any length — paste it in. It never generates plot: when the world touches a name in it (a place, a person, an order), at most two paragraphs reach the act writer to colour a line. Headings (<code># Title</code>) and blank lines split it into paragraphs; that is all the structure it needs.</div>
+        <textarea id="lore-text" class="lore-text" rows="18" placeholder="# The Order of the Kettle&#10;The Order kept the Salt Shrine before the priestesses did…&#10;&#10;# The Reed-King's debt&#10;…"></textarea>
+        <div class="meta" id="lore-words"></div>
+      </div>
+      <div id="combat-pane" class="brief-pane hidden">
+        <div class="sub">How this character <b>fights</b>: their style, their weapons, where their magic comes from, what it looks like when it lands, their tells and habits in a brawl. May overlap the lore — this is the text the <b>Generate deck flavour</b> button hands the writer, and later what the fight's narration will draw on. Any length.</div>
+        <textarea id="combat-text" class="lore-text" rows="18" placeholder="Bort fights like a smith: short, heavy swings from the shoulder, the brass ring on its cord swinging with them. His fire is kettle-fire — coals, not lightning — and it smells of pine smoke…"></textarea>
+        <div class="meta" id="combat-words"></div>
+      </div>
+      <div class="detail-actions">
+        <button id="brief-close">Done</button>
+      </div>
+    </div>
+  </div>
+
   <div id="import-custom-overlay" class="overlay hidden">
     <div class="detail-card">
       <h3>Import deck</h3>
@@ -203,6 +253,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/app.js?v=31"></script>
+  <script src="/app.js?v=34"></script>
 </body>
 </html>

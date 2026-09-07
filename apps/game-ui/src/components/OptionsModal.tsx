@@ -9,6 +9,7 @@ import {
 import type { CharacterOption, EncounterDetail, EncounterOption } from "../lib/types";
 import { AdventurePanel } from "./AdventurePanel";
 import { EquipmentPanel, ScenariosPanel, TownsPanel } from "./ScenarioPanels";
+import { WorldPanel } from "./WorldPanel";
 import { ArtQueueButton } from "./ArtQueueButton";
 import { DifficultyTag } from "./DifficultyTag";
 import { EncounterEditor } from "./EncounterEditor";
@@ -17,12 +18,13 @@ import { SettingsPanel } from "./SettingsPanel";
 import { ManaIcon } from "./Pips";
 import { IconEdit, IconPlus, IconSigil, IconUpload, IconX } from "./Icons";
 
-type Tab = "characters" | "encounters" | "adventures" | "towns" | "scenarios" | "equipment" | "llm" | "settings";
+type Tab = "characters" | "encounters" | "adventures" | "towns" | "world" | "scenarios" | "equipment" | "llm" | "settings";
 const TAB_LABELS: Record<Tab, string> = {
   characters: "Characters",
   encounters: "Encounters",
   adventures: "Adventures",
   towns: "Towns",
+  world: "World",
   scenarios: "Scenarios",
   equipment: "Equipment",
   llm: "LLM",
@@ -168,13 +170,13 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={onClose}>
       <div
         className={`panel-ticks flex max-h-[85vh] flex-col border border-line2 bg-ink-2 p-5 shadow-2xl ${
-          ["characters", "towns", "scenarios", "equipment"].includes(tab) ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
+          ["characters", "towns", "world", "scenarios", "equipment"].includes(tab) ? "w-[min(94vw,1180px)]" : "w-[min(94vw,860px)]"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center gap-3">
           <div className="flex gap-4">
-            {(["characters", "encounters", "adventures", "towns", "scenarios", "equipment", "llm", "settings"] as Tab[]).map((t) => (
+            {(["characters", "encounters", "adventures", "towns", "world", "scenarios", "equipment", "llm", "settings"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -371,6 +373,7 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
         )}
 
         {tab === "towns" && <TownsPanel />}
+        {tab === "world" && <WorldPanel />}
         {tab === "scenarios" && <ScenariosPanel />}
         {tab === "equipment" && <EquipmentPanel />}
         {tab === "llm" && <LlmSettingsPanel />}

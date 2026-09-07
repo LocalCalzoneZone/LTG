@@ -16,6 +16,8 @@ That is the whole change.
 
 from __future__ import annotations
 
+import warnings
+
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -315,6 +317,70 @@ class AfterTurnsTrigger(BaseModel):
 # A trigger is one of the fixed channel-lifecycle triggers, an event watch, or
 # a turn countdown.
 Trigger = Union[TriggerType, EventTrigger, AfterTurnsTrigger]
+
+
+def trigger_key(trigger: Any) -> str:
+    """A stable string naming ONE trigger of a card, shared by everything that
+    has to agree on it: the Deckbuilder's per-trigger animation picker, the
+    panel-animation bundle, and the engine's log when the trigger fires
+    (Update 16 amendment, 2026-09 — triggered effects get their own clip).
+
+    `channel_start` / `upkeep` / `channel_break` / `capacity_increase` are
+    their own names; an event watch is `<event>:<who>` ("damage_taken:you");
+    a countdown is `after_turns`. Effects that share a key share a clip —
+    which is what an author means by "when this card retaliates"."""
+    if trigger is None:
+        return ""
+    if isinstance(trigger, str):
+        return trigger
+    event = getattr(trigger, "event", None)
+    if event is None and isinstance(trigger, dict):
+        event = trigger.get("event")
+    if event:
+        who = getattr(trigger, "who", None)
+        if who is None and isinstance(trigger, dict):
+            who = trigger.get("who")
+        return f"{event}:{who or 'you'}"
+    after = getattr(trigger, "after_turns", None)
+    if after is None and isinstance(trigger, dict):
+        after = trigger.get("after_turns")
+    return "after_turns" if after is not None else ""
+
+
+# How a trigger key reads in the Deckbuilder's picker and the card editor.
+TRIGGER_KEY_LABELS: Dict[str, str] = {
+    "channel_start": "When this channel begins",
+    "upkeep": "At the start of every turn",
+    "capacity_increase": "When mana capacity grows",
+    "channel_break": "When this channel ends",
+    "after_turns": "When the countdown runs out",
+}
+# Per event: (how it reads after "you", how it reads after a third party).
+TRIGGER_EVENT_LABELS: Dict[str, "tuple"] = {
+    "attack": ("attack", "attacks"),
+    "damage_taken": ("are dealt damage", "is dealt damage"),
+    "life_gain": ("gain life", "gains life"),
+    "spell_cast": ("cast a spell", "casts a spell"),
+    "card_draw": ("draw a card", "draws a card"),
+    "death": ("fall", "falls"),
+}
+TRIGGER_WHO_LABELS: Dict[str, str] = {
+    "you": "you", "target": "the target", "ally": "an ally",
+    "enemy": "an enemy", "any": "anyone",
+}
+
+
+def trigger_key_label(key: str) -> str:
+    """The picker's human label for a trigger key."""
+    if key in TRIGGER_KEY_LABELS:
+        return TRIGGER_KEY_LABELS[key]
+    event, _, who = key.partition(":")
+    forms = TRIGGER_EVENT_LABELS.get(event)
+    if forms:
+        who = who or "you"
+        subject = TRIGGER_WHO_LABELS.get(who, who)
+        return f"Whenever {subject} {forms[0] if who == 'you' else forms[1]}"
+    return key or "(no trigger)"
 
 
 class Ref(BaseModel):
@@ -1711,6 +1777,13 @@ class Card(BaseModel):
     # the default for the card's timing ("channel" for channeled, else "cast";
     # a Skill / Ultimate falls back to its own trigger type).
     animation: Optional[str] = None
+    # Presentation only (2026-09): a clip per TRIGGER of a channeled card —
+    # `{trigger_key(): animation id}` (see `trigger_key`). A triggered effect
+    # used to play nothing; now "when this card retaliates" can have its own
+    # look, distinct from the clip the card played when it was cast. A key with
+    # no entry falls back to the card's `animation`, then to the trigger-type
+    # default, exactly as before.
+    trigger_animations: Dict[str, str] = Field(default_factory=dict)
     # Update 17 §D17-4.4: set when this card IS a carried consumable — an
     # always-in-hand, mana-free card that stacks as an ACTIVATED ABILITY and is
     # consumed (exiled) on use. The value is the belt item's id.
@@ -2101,9 +2174,64 @@ class PanelAnimation(BaseModel):
         return v
 
 
+# --------------------------------------------------------------------------- #
+# The character BRIEF (Design Update 24 §D24-7.2): player-written, on the
+# loadout, always visible to every writer. About 150 words; nothing required —
+# a hero with no brief plays exactly as before. `description` stays the sheet's
+# one-liner (the picker, the Inspect view); `brief.concept` may default from it.
+# --------------------------------------------------------------------------- #
+MAX_VOICE_SAMPLES = 3
+
+
+# `register` shadows ABCMeta.register on the class — the virtual-subclass hook,
+# which nothing here calls — so the shadowing warning is silenced rather than
+# the design's key renamed.
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", UserWarning)
+
+    class BriefVoice(BaseModel):
+        register: str = ""                              # one line — how they speak
+        samples: List[str] = Field(default_factory=list)  # up to three lines in their voice
+
+        @field_validator("samples")
+        @classmethod
+        def _cap_samples(cls, v: List[str]) -> List[str]:
+            return [str(x).strip() for x in v if str(x).strip()][:MAX_VOICE_SAMPLES]
+
+
+class Brief(BaseModel):
+    concept: str = ""        # one line — who this is in the world (≤ 20 words)
+    appearance: str = ""     # one sentence
+    voice: BriefVoice = Field(default_factory=BriefVoice)
+    wants: str = ""          # one line
+    wont: str = ""           # one line — what they will not do
+    tell: str = ""           # one line — a flaw, habit or tic
+    ties: List[str] = Field(default_factory=list)  # people, factions, places; other heroes by name
+
+    @field_validator("ties")
+    @classmethod
+    def _clean_ties(cls, v: List[str]) -> List[str]:
+        return [str(x).strip() for x in v if str(x).strip()]
+
+    def is_empty(self) -> bool:
+        return not any([self.concept, self.appearance, self.voice.register, self.voice.samples,
+                        self.wants, self.wont, self.tell, self.ties])
+
+
 class Character(BaseModel):
     name: str
     description: str = ""
+    # Update 24 §D24-7: the non-mechanical layers that live on the character
+    # file — the brief (who this is) and the DEFAULT situation (where they
+    # stand when they first join a campaign; the campaign then owns it).
+    brief: Optional[Brief] = None
+    brief_situation: str = ""
+    # Lore is a plain text field on the file (any length, paste it in); the
+    # act writer receives at most two key-matched paragraphs of it per act.
+    # `combat_lore` is the "Abilities & Combat" text: how this hero fights,
+    # for the deck-flavour writer (and, later, the fight narration).
+    lore: str = ""
+    combat_lore: str = ""
     # Optional portrait, stored inline as a data URL (or any image URL) so a
     # saved loadout stays self-contained. Empty when unset.
     portrait: str = ""

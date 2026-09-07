@@ -62,7 +62,7 @@ def test_run_created_with_first_autosave_and_frozen_adventure(runs):
     run_id, adv, _state = _start(runs)
     listing = runs.list_runs()
     assert [r["run_id"] for r in listing] == [run_id]
-    assert listing[0]["options"] == {"difficulty": "hard", "hardcore": False, "everquest": False}
+    assert listing[0]["options"] == {"difficulty": "hard", "hardcore": False}
     assert [p["id"] for p in listing[0]["party"]] == ["loadout_soren", "loadout_ys"]
     detail = runs.run_detail(run_id)
     assert len(detail["saves"]) == 1

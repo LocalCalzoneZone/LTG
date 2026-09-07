@@ -569,6 +569,9 @@ def _stance_block(char) -> Optional[Dict[str, Any]]:
                 v = getattr(e, slot)
                 slots[slot] = v if isinstance(v, str) else {
                     "name": v.name or "replaced",
+                    # What the replacement DOES — the ActionBar's tooltip
+                    # reads it in place of the slot's default line.
+                    "text": render_effects(list(v.effects), ch.card.targets),
                 }
             return {"card_id": ch.card.id, "card_name": ch.card.name,
                     "slots": slots}
