@@ -44,7 +44,7 @@
           "id": "grukka_ashpot",
           "name": "Grukka Ashpot",
           "role": "baker and cook",
-          "persona": "An orc woman who came up the pass with a mercenary company thirty years ago, stayed to nurse a broken ankle, and never got round to leaving. She speaks slowly and softly, mostly about temperatures and timings, and has an alarming gentleness with small breakable things. She is proud that the old forge-vent under the kitchen keeps her ovens at exactly the heat she wants and treats the vent almost as a colleague. She hums marching songs while shaping loaves and has taught the tunes to half the children in town, words carefully omitted.",
+          "persona": "An orc woman who came up the pass with a mercenary company thirty years ago, stayed to nurse a broken ankle, and never got round to leaving. She speaks slowly and softly, mostly about temperatures and timings, and has an alarming gentleness with small breakable things. She is proud that the old forge-vent under the kitchen keeps her ovens at exactly the heat she wants and treats the vent almost as a colleague. Her daughter Nabi is apprenticed to Vasla Grimhelt at the forge, and Grukka salves the girl's burns each night without comment and sends a bun up for the smith. She hums marching songs while shaping loaves and has taught the tunes to half the children in town, words carefully omitted.",
           "portrait_desc": "A tall, heavy-shouldered orc woman in her fifties, grey-green skin, tusks filed short, black hair in a tight braid with a bone pin. She wears a scorched leather apron over a sleeveless linen shirt, flour to the wrists, and carries a long wooden peel across one shoulder like a halberd.",
           "art_url": "/art/towns/karzum/npc-grukka_ashpot-a987b212.png",
           "topics": [
@@ -55,6 +55,10 @@
             {
               "ask": "How did you end up in Karzum?",
               "reply": "Turned my ankle on the Sky Stair in a hailstorm and Poppy put me by the fire with a bowl of soup. Fire was warm. Soup was bad. I fixed the soup, and here I am."
+            },
+            {
+              "ask": "Is the girl at the forge yours?",
+              "reply": "Nabi, yes — she works Vasla's bellows, and when the wind sits east I can hear her through the vent. She comes down at dark with a new burn and I put goose-fat on it and a bun in her. Vasla says she is too fast; I tell her bread forgives a hurry and bronze does not, and she nods and goes on being fast."
             }
           ],
           "vendor": false
@@ -77,7 +81,7 @@
           "id": "vasla_grimhelt",
           "name": "Vasla Grimhelt",
           "role": "smith",
-          "persona": "A dwarf smith of the fourth Grimhelt generation to work this forge, and she will make sure you know the number. She is loud, proud, and entirely without small talk, preferring to grade a visitor by their bootnails and grip before she says anything friendly. Her long feud is with the Aldmere Caravan Guild, who buy cheap lowland blades in bulk and then complain when the cold snaps them at the tang; she keeps a barrel of their broken merchandise by the door as an argument. She is fiercely fond of her apprentice and hides it behind bark and criticism, and she sharpens the town's kitchen knives for free every Frostmoon because her mother did.",
+          "persona": "A dwarf smith of the fourth Grimhelt generation to work this forge, and she will make sure you know the number. She is loud, proud, and entirely without small talk, preferring to grade a visitor by their bootnails and grip before she says anything friendly. Her long feud is with the Aldmere Caravan Guild, who buy cheap lowland blades in bulk and then complain when the cold snaps them at the tang; she keeps a barrel of their broken merchandise by the door as an argument. She is fiercely fond of her apprentice, Nabi Ashpot, and hides it behind bark and criticism; her niece Dilla she sent along the terrace to Nib Tallowmar, on the grounds that small hands belong with brass and not near her fire, and she asks Nib after the girl every week. She sharpens the town's kitchen knives for free every Frostmoon because her mother did.",
           "portrait_desc": "A broad dwarf woman of a hundred and ten, barely five feet and built like a door-post, with copper-red hair shaved at the sides and a plaited beard clipped short and singed at the ends. She wears a scarred leather apron over a sleeveless mail-lined jerkin, both forearms wrapped in stained linen, and stands square with a hammer resting on her shoulder.",
           "art_url": "/art/towns/karzum/npc-vasla_grimhelt-67ab783a.png",
           "topics": [
@@ -111,6 +115,10 @@
             {
               "ask": "What happened to your bells?",
               "reply": "Two cracked cooling and one came out sounding like a cough. The fourth's poured and sitting in the sand out back, and if it rings true I'm hanging it at the shrine whether Hedda says yes or not. She'll say yes. She likes noise, she just pretends the coals need quiet."
+            },
+            {
+              "ask": "Where did your first bell end up?",
+              "reply": "Master Nib has it. He cut the sound bit out and made a tuning-fork that sits in his pigeonholes and hums whenever the Deep Barracks vents draw, and he says it means nothing. I go down and stand in front of it anyway, because it was mine and it is still making a noise."
             }
           ],
           "vendor": false
@@ -167,6 +175,10 @@
             {
               "ask": "Isn't the forge the family trade?",
               "reply": "Auntie Vasla says my hands are too small and my mouth is too big for the forge. Master Nib says small hands are the whole profession, so I've decided he's right and she's cross about it."
+            },
+            {
+              "ask": "Does anybody believe you about the Deep Barracks?",
+              "reply": "Old Torgrim at the gate does — he says something has been drinking at the cistern since before I was born and every captain tells him bears. I take the tin down to his stool and he turns each thing over with his stick-hand and says hm, which is a yes from a dwarf that old. Auntie Vasla says I'm not to pester him, but he keeps barley sugar in his coat for when I come, so I don't think I am."
             }
           ],
           "vendor": false
@@ -264,6 +276,10 @@
             {
               "ask": "What's the horn for?",
               "reply": "One blast, gate opening. Two, storm coming and get inside. Three, everyone with hands comes to the Stair with rope. We have blown three twice in my time and both times we got them all back, and Poppy fed forty-one people in one hall on the strength of it."
+            },
+            {
+              "ask": "Why are there sea-charts on the wall?",
+              "reply": "Lagoon charts, from Azure. The mule-masters who bring the pepper up leave me the season's channel-marks when they book in, and I hang them beside the pass-maps, because half the names in my ledger have been to both ends of that road. A man six weeks up from the wharves likes to see where he started."
             }
           ],
           "vendor": false
@@ -343,6 +359,10 @@
             {
               "ask": "How do you pick a good mule for the pass?",
               "reply": "Look at the hind feet and the ears, not the shoulders. A mule that flicks one ear at a rockfall will carry you over Kholdrun's Bridge; a mule that flicks both will take you and the cargo into the Wyrmthroat. Merchants always buy the pretty broad ones and I always get the work of fishing their crates out of the gorge."
+            },
+            {
+              "ask": "Where do the long trains come from?",
+              "reply": "Azure, most of them — six weeks of barge and Greatway with Sadiya's pepper and Nib's lamp-oil, and mules that have stood on a deck for a fortnight and forgotten what a slope is. I walk the string before it goes up to the Bridge and put a hand on every hock. The wharf-men brand them well and shoe them badly, and Vasla reshoes six in ten before I'll let them near the Stair."
             }
           ],
           "vendor": false
@@ -365,7 +385,7 @@
           "id": "hedda_emberkeep",
           "name": "Hedda Emberkeep",
           "role": "priestess of the forge-saint",
-          "persona": "A dwarf priestess whose entire office is that the coals do not go out, a duty she has kept for sixty years and treats as both trivial and sacred. She is soft-spoken, practical and given to a slow, sly humour, and she counsels travellers by handing them a shovel and letting them talk while they bank the fire. She stamps an iron token with the name of anyone who asks and nails it to the wall, and she can find any of them in the dark by touch. Her one grievance is that Karzum has no bells and the hours are marked by shouting, so she is privately hoping the smith's apprentice succeeds.",
+          "persona": "A dwarf priestess whose entire office is that the coals do not go out, a duty she has kept for sixty years and treats as both trivial and sacred. She is soft-spoken, practical and given to a slow, sly humour, and she counsels travellers by handing them a shovel and letting them talk while they bank the fire. She stamps an iron token with the name of anyone who asks and nails it to the wall, and she can find any of them in the dark by touch. Her one grievance is that Karzum has no bells and the hours are marked by shouting, so she is privately hoping Nabi Ashpot, the smith's apprentice, succeeds with her fourth bell.",
           "portrait_desc": "A dwarf woman of a hundred and forty, small and round, with white hair in a coiled bun and cheeks permanently flushed from the brazier. She wears a plain grey robe belted with a leather strap of stamping-punches, a soot-marked cloth over one shoulder, and iron-soled sandals over thick socks.",
           "art_url": "/art/towns/karzum/npc-hedda_emberkeep-71ad036b.png",
           "topics": [
