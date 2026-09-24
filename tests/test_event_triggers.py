@@ -108,6 +108,7 @@ def test_render_covers_all_whos():
     for who, expect in [("you", "Whenever you attack"),
                         ("target", "Whenever the target attacks"),
                         ("ally", "Whenever an ally attacks"),
+                        ("other_ally", "Whenever another ally attacks"),
                         ("enemy", "Whenever an enemy attacks"),
                         ("any", "Whenever anyone attacks")]:
         card = Card.model_validate(_channel("c", {"event": "attack", "who": who}))
@@ -423,3 +424,23 @@ def test_ward_cancels_the_enemy_attack_that_fired_it():
         st = apply_action(st, a)[0]
     assert any(e.type == "countered" for e in st.log)
     assert st.character("p").hp == hp  # the cancelled swing dealt nothing
+
+
+# --- "any other ally": the holder's side without the holder ------------------ #
+def test_other_ally_excludes_the_holder_and_the_enemy():
+    from ltg_combat.engine import _event_who_matches
+    st = _state([])
+    holder, ogre = st.character("p"), st.enemy("ogre")
+    class _Mate:  # a party-mate: only `.id` (and not being an enemy) is read
+        id = "q"
+    assert _event_who_matches("other_ally", holder, "party", None, _Mate) is True
+    assert _event_who_matches("other_ally", holder, "party", None, holder) is False
+    assert _event_who_matches("other_ally", holder, "party", None, ogre) is False
+    # …where plain "ally" counts the holder's own events too.
+    assert _event_who_matches("ally", holder, "party", None, holder) is True
+
+
+def test_other_ally_is_offered_to_the_deckbuilder_and_labelled():
+    from ltg_core.schema import TRIGGER_WHO, trigger_key_label
+    assert "other_ally" in TRIGGER_WHO
+    assert trigger_key_label("attack:other_ally") == "Whenever another ally attacks"

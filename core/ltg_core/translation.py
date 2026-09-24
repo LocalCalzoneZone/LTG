@@ -1364,7 +1364,8 @@ def _upkeep_clause(e, targets) -> str:
 def _event_lead(trig) -> str:
     """The lead-in for an event trigger: 'Whenever <who> <does the event>'."""
     who = {"you": "you", "target": "the target", "ally": "an ally",
-           "enemy": "an enemy", "any": "anyone"}.get(trig.who, trig.who)
+           "other_ally": "another ally", "enemy": "an enemy",
+           "any": "anyone"}.get(trig.who, trig.who)
     you = trig.who == "you"  # second person conjugates differently
     if trig.event == "attack":
         return f"Whenever {who} attack{'' if you else 's'}"

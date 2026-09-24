@@ -277,13 +277,14 @@ TriggerType = Literal["channel_start", "upkeep", "capacity_increase", "channel_b
 # Combat events a channeled effect can watch (EventTrigger below), and whose
 # events count — relative to the channel's HOLDER: "you" = the holder,
 # "target" = the channel's chosen target, "ally" = anyone on the holder's side
-# (including the holder), "enemy" = anyone opposing, "any" = anyone at all.
+# (including the holder), "other_ally" = anyone on the holder's side EXCEPT the
+# holder, "enemy" = anyone opposing, "any" = anyone at all.
 # "death" covers both forms of falling: an enemy/token dying and a player
 # character being incapacitated (a holder's own channels break on their
 # incapacitation, but the trigger fires first — a death rattle).
 TRIGGER_EVENTS = ["attack", "damage_taken", "life_gain", "spell_cast", "card_draw",
                   "death"]
-TRIGGER_WHO = ["you", "target", "ally", "enemy", "any"]
+TRIGGER_WHO = ["you", "target", "ally", "other_ally", "enemy", "any"]
 
 
 class EventTrigger(BaseModel):
@@ -294,7 +295,7 @@ class EventTrigger(BaseModel):
 
     event: Literal["attack", "damage_taken", "life_gain", "spell_cast", "card_draw",
                    "death"]
-    who: Literal["you", "target", "ally", "enemy", "any"] = "you"
+    who: Literal["you", "target", "ally", "other_ally", "enemy", "any"] = "you"
     # spell_cast only: fire only for this card type (instant/sorcery/channeled).
     spell_type: Optional[Timing] = None
 
@@ -366,7 +367,7 @@ TRIGGER_EVENT_LABELS: Dict[str, "tuple"] = {
 }
 TRIGGER_WHO_LABELS: Dict[str, str] = {
     "you": "you", "target": "the target", "ally": "an ally",
-    "enemy": "an enemy", "any": "anyone",
+    "other_ally": "another ally", "enemy": "an enemy", "any": "anyone",
 }
 
 

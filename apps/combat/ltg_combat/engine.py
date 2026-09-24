@@ -474,7 +474,8 @@ def _event_who_matches(who: str, holder, holder_side: str,
                        channel_target_id: Optional[str], actor) -> bool:
     """Whether `actor`'s event counts for an EventTrigger, relative to the channel's
     holder: you = the holder · target = the channel's chosen target · ally = anyone
-    on the holder's side (including the holder) · enemy = anyone opposing · any."""
+    on the holder's side (including the holder) · other_ally = the holder's side
+    without the holder · enemy = anyone opposing · any."""
     aid = getattr(actor, "id", None)
     if who == "you":
         return aid == holder.id
@@ -483,6 +484,8 @@ def _event_who_matches(who: str, holder, holder_side: str,
     actor_side = "enemy" if isinstance(actor, EnemyState) else "party"
     if who == "ally":
         return actor_side == holder_side
+    if who == "other_ally":
+        return actor_side == holder_side and aid != holder.id
     if who == "enemy":
         return actor_side != holder_side
     return True  # "any"

@@ -132,19 +132,26 @@ export function ActionBar({ choices, reaction, char }: {
 
   return (
     <div className="flex h-full flex-col gap-1.5">
-      {reaction && (
-        <div className="caps-label border border-brass/40 bg-brass/10 py-0.5 text-center text-[10px] tracking-[0.3em] text-brass-hi">
-          Reaction Window
-        </div>
-      )}
       {/* §D23-9 — the turn GROUPS, read left-to-right in two columns.
           Left: the turn-spending verbs (Attack, Skill — the Ultimate is the same
           group, in its own gauge column). Right: the pair (Defend, Move).
           A brass hairline bracket spans each, with one diamond over the left and
-          two half-diamonds over the right; the words are in the tooltips. */}
-      <div className="grid grid-cols-2 gap-1.5">
-        <GroupBracket Mark={IconTurnMark} label="one of these is your turn" />
-        <GroupBracket Mark={IconPairMark} label="these two go together" />
+          two half-diamonds over the right; the words are in the tooltips.
+          A reaction window's banner takes this same slot — it REPLACES the
+          brackets rather than stacking above them, and the slot's height is
+          fixed, so the buttons below sit at exactly the same place and size
+          whether it is your turn or a window. */}
+      <div className="h-4 shrink-0">
+        {reaction ? (
+          <div className="caps-label flex h-full items-center justify-center border border-brass/40 bg-brass/10 text-[10px] leading-none tracking-[0.3em] text-brass-hi">
+            Reaction Window
+          </div>
+        ) : (
+          <div className="grid h-full grid-cols-2 items-center gap-1.5">
+            <GroupBracket Mark={IconTurnMark} label="one of these is your turn" />
+            <GroupBracket Mark={IconPairMark} label="these two go together" />
+          </div>
+        )}
       </div>
       {/* Attack | Defend · Skill | Move · Mitigate | Pass/Delay */}
       <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-3 gap-1.5">

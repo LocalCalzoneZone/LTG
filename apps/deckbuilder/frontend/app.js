@@ -539,7 +539,8 @@ const TRIGGER_EVENT_LABELS = {
   death: ["fall", "falls"],
 };
 const TRIGGER_WHO_LABELS = {
-  you: "you", target: "the target", ally: "an ally", enemy: "an enemy", any: "anyone",
+  you: "you", target: "the target", ally: "an ally", other_ally: "another ally",
+  enemy: "an enemy", any: "anyone",
 };
 
 function triggerKey(trigger) {
@@ -1524,7 +1525,7 @@ const EVENT_LABEL = { attack: "attacks", damage_taken: "is dealt damage",
                       life_gain: "gains life", spell_cast: "casts a spell",
                       card_draw: "draws a card", death: "dies / is incapacitated" };
 const WHO_LABEL = { you: "you", target: "the target", ally: "any ally",
-                    enemy: "any enemy", any: "anyone" };
+                    other_ally: "any other ally", enemy: "any enemy", any: "anyone" };
 const SPELL_TYPE_LABEL = { instant: "an instant", sorcery: "a sorcery",
                            channeled: "a channeled spell" };
 
