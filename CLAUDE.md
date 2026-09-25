@@ -25,7 +25,10 @@ LTG (Langelier Tactical Game) is a personal project: a tactical card-combat RPG.
 npm --prefix apps/game-ui run dev               # client dev server :5173, proxies /api and /ws to :8020
 npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → apps/game-ui/dist/
 .venv/bin/python -m ltg_combat harness          # the scripted §A/§C proof fights
+.venv/bin/python -m ltg_game_server.devstates interlude --town karzum   # jump-to campaign state (M3.1)
 ```
+
+- **Playtest tools (M3).** The playtest profile (Options → LLM → Playtest, or `LTG_PLAYTEST=1`) routes every text task to a cheap model, idles automatic art, and unlocks Autopilot fights and New Game's *start at* jump-to states. The tape (`LTG_LLM_TAPE=record|replay|replay_only`) replays recorded replies; `replay_only` never spends. Jump-to states with stand-in writers write only to `saves/`. None of it is balance evidence.
 
 - **Tests run in a sandbox.** `tests/conftest.py` points `LTG_CONTENT_DIR` / `LTG_LOADOUTS_DIR` / `LTG_SAVES_DIR` at a temp copy (content without art; empty loadouts and saves, like a clean clone) before any app import. So the suite is safe beside a live server, and tests must not rely on per-install characters: use `examples/` (`loadout_soren`…) or `tests/fixtures/`.
 - **CI** (`.github/workflows/ci.yml`) runs pytest on Python 3.9 and 3.14, the client build with a `dist/` drift check, and `ruff check .` (unused imports; a new blind `except Exception` needs a reason and `# noqa: BLE001`).
@@ -41,7 +44,7 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 2. **LLMs author content at generation time only.** At runtime nothing asks an LLM to adjudicate a rule. Town dialogue is closed-vocabulary trees walked deterministically. Generated content crosses into code through bounded vocabularies (effect verbs, dialogue hooks, objective kinds) and must pass the validators. Motto: *infinite nouns, finite verbs.*
 3. **Data directories have fixed roles.**
    - `content/` is git-tracked and is also the **live write target** for shared content: encounters, adventures, towns, `world/`, and generated art in `art/`. Editors and generators write and delete there, and a commit ships it. `content/equipment/` is the tracked base item catalogue, which the game only reads.
-   - `apps/deckbuilder/loadouts/` is gitignored and per-install: characters, `llm_settings.json` (contains the API key — never print it), hidden-id files, user-made `equipment/`, lore, animations, and run-scoped art (spoils, cast, places).
+   - `apps/deckbuilder/loadouts/` is gitignored and per-install: characters, `llm_settings.json` (contains the API key — never print it), hidden-id files, user-made `equipment/`, lore, animations, the LLM tape (`llm_tape/`), and run-scoped art (spoils, cast, places).
    - `saves/` is gitignored and holds campaign runs.
    - Never write per-install data (characters, keys, saves) into `content/`. Content *generated* during play is the exception, on purpose (ruled 2026-09-25, M1.15): quest-accept adventures, their art, and campaign towns and worldbook edits write to `content/`. The owner generates and commits them; the keyless Windows install only pulls.
 4. **Identity lives on the character file, history on the campaign, geography in the worldbook** (§D24-2). Deck, skills, and art are read live from the character file whenever a campaign save loads and at an in-session Continue. Levels, gear, purse, chronicle, and the priced keyword and attack mode live in the campaign's instanced copy.
@@ -70,6 +73,7 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 - **Autoplay harness numbers are not balance evidence.** Keep the harness working and versioned (bump the policy `version` on heuristic changes). Use it for crash/anomaly detection and A/B deltas within one run. Don't cite its win rates as balance evidence or gate work on a run.
 - **No quests hooked to hero backstory.** Knowledge is party-level. Party composition is fixed per campaign.
 - **M2 rulings (2026-09-25):** the hand's turn diamond stays on every sorcery and channel card, brass only while the card is castable (grey otherwise). No dashed threat lines or dashed outlines on the battlefield (clutter); threat and shields live on the cards.
+- **M3 rulings (2026-09-25):** a boss without pressure dials is given `enrage_round` 4 / `neglect` 1 at build (T-88). The worldbook is no longer a star: Millhaven links Karzum and Nalindor. The encounter and adventure library was purged for regeneration; towns, the worldbook and the equipment catalogue stay.
 - **M1 rulings (2026-09-25),** recorded in the canon and the roadmap's M1 rows: generated play content stays in `content/`; an enemy's turn-scoped lockdown on a hero holds through that hero's next turn; a taunt respects the wall; enemy deathtouch downs heroes; enemies aim at party tokens; each struck hero may Mitigate their own hit; keyword and attack mode stay as the campaign bought them.
 
 ## Gotchas
@@ -80,6 +84,6 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 - `starting_cards` is an INT (opening-hand size), not a card list. Decks are 20 cards (1 mythic / 3 rare / 6 uncommon / 10+ common), advisory only.
 - The dev venv is **Python 3.9.6**; CI also runs 3.14, and the Windows install uses a current Python. Don't use 3.10+ syntax (`match`, `X | Y` types at runtime), and never seed `random.Random` with a tuple (TypeError on 3.11+).
 - Ultimates are `kind="activated"` on the stack. An Ultimate counter must use filter `action`, `ability` or `activated`; a `"spell"` filter is rejected at load (T-70).
-- `content/scenarios/` is empty right now. Scenario mode generates on demand and needs an OpenRouter key in Options → LLM. Installs without a key play standalone encounters and adventures only.
+- **The encounter and adventure library is empty** (purged for regeneration on 2026-09-25; only towns, the worldbook and the equipment catalogue remain), and `content/scenarios/` is empty too. Scenario mode generates on demand and needs an OpenRouter key in Options → LLM. Until the library is regenerated and committed, an install without a key has only the bundled `examples/` encounters.
 - The design docs in `docs/design/` still contain stale "not yet built" status lines; trust `docs/design/README.md` and the roadmap instead.
 - Before changing a rule, check [docs/roadmap.md](docs/roadmap.md) M1: many rules behave differently from their design docs, and those rows say which way the owner still needs to rule.

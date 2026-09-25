@@ -14,6 +14,10 @@
     {
       "town_id": "azure",
       "how": "Six weeks of Greatway and river-barge apart, but the same road: the pepper, cardamom and lamp-oil in Karzum's Long Hall Market come up from Azure's wharves by mule-train, and lagoon charts hang beside pass-maps in the watch-room."
+    },
+    {
+      "town_id": "millhaven",
+      "how": "Twelve days north by the drove road along the downs to the Ironjaw Gate. Mule-trains carry Millhaven meal up for Karzum's all-hours bread and come back down with cold-forged pass-picks."
     }
   ],
   "added_by": "backfill"

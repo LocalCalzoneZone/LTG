@@ -53,6 +53,9 @@ ENEMY_ABILITY_BONUS = 2
 BOSS_ABILITY_BONUS = 4
 ROW_ABILITY_BONUS = 2
 _HOSTILE_DAMAGE_VERBS = ("deal_damage", "lose_life")
+# T-88: the boss pressure dials a dial-less boss is given at build. Keep in sync
+# with ltg_game_server.content.DEFAULT_BOSS_DIALS.
+DEFAULT_BOSS_DIALS = {"enrage_round": 4, "neglect": 1}
 
 # Difficulty at RUN time: content is treated as authored at "standard", so
 # "standard" is the identity and the other difficulties apply the generation
@@ -203,12 +206,18 @@ def prepare_scenario(content: Dict[str, Any], party_size: int,
                      power_bump: bool = True) -> Dict[str, Any]:
     """One phase/encounter shaped exactly as the server's build path shapes it:
     difficulty HP ratio → per-size layout resolution (objectives included) →
-    the T-64 Power bump."""
+    the T-64 Power bump → the T-88 boss dials."""
     scenario = copy.deepcopy(content)
     _scale_difficulty(scenario, difficulty)
     scenario = scale_encounter(scenario, party_size)
     if power_bump:
         _bump_enemy_power(scenario, party_size)
+    # T-88: a boss without pressure dials gets the server's defaults.
+    for e in scenario.get("enemies", []):
+        if isinstance(e, dict) and e.get("is_boss"):
+            for key, value in DEFAULT_BOSS_DIALS.items():
+                if e.get(key) is None:
+                    e[key] = value
     return scenario
 
 

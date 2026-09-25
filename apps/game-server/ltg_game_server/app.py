@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import appctl, art, content, jobs, llm, scenario_content, world
+from . import appctl, art, content, devstates, jobs, llm, scenario_content, world
 from .adventure import AdventureRun
 from .runs import RunManager
 from .scenario import ScenarioRun, opening_party_state
@@ -120,7 +120,39 @@ async def create_game(body: CreateGameBody) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 def _scenario_setup_options() -> Dict[str, Any]:
     return {"scenarios": scenario_content.list_scenarios(),
-            "towns": scenario_content.list_towns()}
+            "towns": scenario_content.list_towns(),
+            # The playtest tools (roadmap M3.1): Town + New may start at a
+            # fabricated campaign state instead of Act I.
+            "playtest": llm.playtest_on(),
+            "jump_states": list(devstates.STATES)}
+
+
+class JumpBody(BaseModel):
+    town_id: str
+    character_ids: List[str]
+    state: str
+    act: int = 1
+    difficulty: str = "standard"
+    hardcore: bool = False
+    writers: str = "stub"
+    fights: str = "instant"
+
+
+@app.post("/api/playtest/jump")
+async def playtest_jump(body: JumpBody) -> Dict[str, Any]:
+    """Roadmap M3.1 (a playtest tool): build a campaign run at a chosen
+    state through the real scenario code (`devstates.build`), then open its
+    newest save exactly as Load Game would."""
+    if not llm.playtest_on():
+        raise HTTPException(403, "jump-to states are a playtest tool — turn on the "
+                                 "playtest profile in Options → LLM first")
+    try:
+        out = await asyncio.to_thread(
+            devstates.build, body.state, body.town_id, body.character_ids, body.act,
+            body.difficulty, body.hardcore, body.writers, body.fights, "", RUNS)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return _open_save(out["run_id"], out["save"]["save_id"])
 
 
 async def _create_scenario_game(body: CreateGameBody) -> Dict[str, Any]:
@@ -343,6 +375,7 @@ def _after_town_change(session) -> None:
     pacer so the opening auto-passes drain visibly."""
     if session.state is not None:
         session.start_pacer(_broadcast)
+        session.start_autopilot(_broadcast)
     _queue_spoils_art(session)
 
 
@@ -353,8 +386,8 @@ def _queue_spoils_art(session) -> None:
     out to work in. Idempotent: only drops still without a picture are queued,
     and one already on disk is adopted rather than repainted."""
     sc = getattr(session, "scenario", None)
-    if sc is None or not sc.spoils():
-        return
+    if sc is None or not sc.spoils() or llm.playtest_on():
+        return  # the playtest profile pauses the automatic art queues (M3.3)
     key = f"spoils:{session.run_id or id(session)}:{sc.scenario_number}:{sc.act_index}"
 
     async def _refresh(_key: str) -> None:
@@ -379,7 +412,7 @@ def _queue_cast_art(session) -> None:
     scenario paints them, later runs (and reloads) adopt from disk. Idempotent —
     only entries still without a picture are queued."""
     sc = getattr(session, "scenario", None)
-    if sc is None or not (sc.arc.get("cast") or sc.arc.get("places")):
+    if sc is None or not (sc.arc.get("cast") or sc.arc.get("places")) or llm.playtest_on():
         return
     key = f"cast:{session.run_id or id(session)}:{sc.scenario_number}"
 
@@ -647,6 +680,9 @@ class LlmSettingsBody(BaseModel):
     art_backend: Optional[str] = None
     comfyui_url: Optional[str] = None
     comfyui_workflow: Optional[str] = None
+    playtest: Optional[bool] = None       # the playtest profile (M3.3)
+    playtest_model: Optional[str] = None
+    tape: Optional[str] = None            # off | record | replay | replay_only (M3.4)
 
 
 class GenerateEncounterBody(BaseModel):
@@ -1200,6 +1236,17 @@ async def _dispatch(session, ws: WebSocket, client_id: str, msg: Dict[str, Any])
             _scenario_async(session, "adventure_job")
         await _broadcast(session)
 
+    elif mtype == "autopilot":
+        # Roadmap M3.2 (a playtest tool): the autoplay policy plays the party's
+        # fights for this session until switched off.
+        async with session.lock():
+            try:
+                session.set_autopilot(bool(msg.get("on")))
+            except ValueError as exc:
+                await _send(ws, {"type": "error", "message": str(exc)})
+                return
+        await _broadcast(session)
+
     elif mtype == "confirm_level_up":
         # The between-phases gate (Update 10 §D10-3.3): one confirmation
         # per controlled character; the last confirmation composes the
@@ -1256,6 +1303,8 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                 continue
             try:
                 await _dispatch(session, ws, client_id, msg)
+                # Autopilot (M3.2) picks up any fight a message just opened.
+                session.start_autopilot(_broadcast)
             except WebSocketDisconnect:
                 raise
             except Exception as exc:  # noqa: BLE001 — any fault answers, never drops seats

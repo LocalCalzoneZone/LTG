@@ -185,7 +185,7 @@ Damage that **connects** = temp HP soaked + HP lost. Lifelink, infect, deathtouc
 
 **Death is permanent.** Death removes the creature from the board. The End Step reaps creatures **before** resetting temporary layers, so an expiring −X/−X never hands back the toughness that killed them; characters are judged after the reset. Deathtouch executes any creature its damage connects with: an enemy (a boss only within its execute window, ≤ 25% HP; §9.5), a party token, or a hero, who is downed as by any blow to 0 (ruled 2026-09-25, M1.30). `indestructible` stops damage, life loss and poison at 1 HP and is immune to destroy and deathtouch; only exile, wounds and negative counters kill it (ruled 2026-09-25, M1.31).
 
-*Sources: GDD §4.3 · §R-7, §R-10, §R-11 · §X-2.3, §X-3.2 · §D10-2 (T-59) · §D23-7.3, §D23-7.6 · engine `_deal_damage`, `_after_damage`, `_kill_enemy`, `_heal`, `_r_revive`, `_party_pool`, `_end_step`; `state.CharacterState.alive`.*
+*Sources: GDD §4.3 · §R-7, §R-10, §R-11, §R-13.1 (the wound-expiry stand-up, confirmed and pinned by `tests/test_wound_recovery.py`, roadmap M3.12) · §X-2.3, §X-3.2 · §D10-2 (T-59) · §D23-7.3, §D23-7.6 · engine `_deal_damage`, `_after_damage`, `_kill_enemy`, `_heal`, `_r_revive`, `_party_pool`, `_end_step`; `state.CharacterState.alive`.*
 
 ### §4.4 Mana
 
@@ -1119,7 +1119,7 @@ All results round up, and the telegraph is rewritten to match. For example, "+2/
 The second pass never forces the cadence swing. Slot 1's spent cooldown stops the same rule firing twice, and the basic attack backstops slot 2. Both slots execute in order during the boss's turn, each as its own stack action. A stun suppresses one slot. A chosen strip removes the slot the player picks, and a side-wide strip removes both. The intents window and the inspect panel show both lines.
 
 
-**Pressure dials** (required on generated bosses):
+**Pressure dials** (required on generated bosses). A boss that carries neither dial, such as legacy or hand-authored content, is given `enrage_round: 4` and `neglect: 1` when its fight is built (T-88, ruled 2026-09-25, roadmap M3.11). An authored value, including 0, is kept.
 - **Timed enrage**, `enrage_round: R` (generated 3–5). If the boss has not enraged by the Upkeep of its own round R, it enrages there: the same hard reset, with its Enrage component on the stack in the same beat. This does not open the execute window, which stays HP-based.
 - **Neglect**, `neglect: N` (generated 1–2), **bosses only**. At each End Step from the body's own round 2 onward, a boss that lost no HP to the **party** that round permanently gains +N Power, +N max HP and +N HP, as counters. Any party-caused HP drop counts as a hit: damage (even a blow soaked by temp HP), a poison tick, life loss, or a wound that eats toughness. An enemy's own blow, or its side's, does not (ruled 2026-09-25, roadmap M1.26).
 - **Counted from arrival.** Both dials count from the turn the body arrived. A reserve body deployed on turn 6 treats turn 6 as its round 1.
@@ -1133,7 +1133,7 @@ The second pass never forces the cadence swing. Slot 1's spent cooldown stops th
 
 Load rejects anything else. The party can answer the counter.
 
-*Sources: v1 GDD §9.5 · §F-9, §E6-4, §D9-4, §D12-2.3, §D18-2, §D19-2, §D23-5, T-39, T-54, T-70 · engine `_after_damage`, `_enrage_boss`, `_begin_turn`, `_end_step`, `_own_turn`; scenario `_check_ultimate_answer_guardrail`; content `enrage_scale`, `apply_boss_difficulty`.*
+*Sources: v1 GDD §9.5 · §F-9, §E6-4, §D9-4, §D12-2.3, §D18-2, §D19-2, §D23-5, T-39, T-54, T-70, T-88 · engine `_after_damage`, `_enrage_boss`, `_begin_turn`, `_end_step`, `_own_turn`; scenario `_check_ultimate_answer_guardrail`; content `enrage_scale`, `apply_boss_difficulty`, `apply_boss_dials`.*
 
 ### §9.6 Tokens & autonomous allies
 
@@ -2037,7 +2037,7 @@ Current meanings only. The § points to the full rule.
 | **Attack mode** | `melee` or `ranged`. It sets reach and the free base Power (§4.7, §10.1). |
 | **Basic attack** | The Attack verb: deal your current Power to one reachable enemy (§4.7). |
 | **Boss** | An enemy immune to removal until its execute window. It enrages there and declares two intents per round (§9.4–§9.5). |
-| **Boss dials** | `enrage_round` (a timed enrage) and `neglect` (grows while unhurt), required on generated bosses (§9.5). |
+| **Boss dials** | `enrage_round` (a timed enrage) and `neglect` (grows while unhurt), required on generated bosses and defaulted on the rest (T-88, §9.5). |
 | **Break (concentration)** | Ending a held channel: a hit of ≥ 25% max HP, incapacitation, or a voluntary drop (§8.1). |
 | **Bridge** | The prose that carries a campaign's party to its next scenario; Act I's arrival honours it (§14.6). |
 | **Brief / lore / combat lore / situation / chronicle** | The character layers: player-written identity, player-written background, how the hero fights, where they stand in this campaign, and what the engine recorded them doing (§10.3). |

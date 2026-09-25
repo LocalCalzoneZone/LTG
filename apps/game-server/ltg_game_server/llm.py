@@ -14,6 +14,7 @@ so the key never enters version control and survives restarts.
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 from math import ceil
@@ -23,7 +24,7 @@ import httpx
 
 from ltg_core.schema import ENEMY_SUPERTYPES, ENEMY_TYPES
 
-from . import content
+from . import content, tape
 from ltg_combat.scenario import _slug
 
 # --------------------------------------------------------------------------- #
@@ -66,6 +67,24 @@ MODEL_TASKS: List[Dict[str, str]] = [
     # Options → LLM is the single place every generation task is tuned.
     {"id": "flavour", "label": "Card Flavour (Deckbuilder)"},
 ]
+
+
+# The PLAYTEST profile (roadmap M3.3): one switch that routes every text task
+# to a volume model, for flow testing (premium models stay for judging
+# quality), and pauses the automatic art queues. `LTG_PLAYTEST=1` turns it on
+# from the environment without touching the settings file (the CLI tools use
+# it). Luna Pro is the best quality-per-cent pick of the 2026-08 bake-off;
+# Gemini Flash is faster but fails the closed-list gates more often.
+PLAYTEST_MODEL = "openai/gpt-5.6-luna-pro"
+
+
+def _env_playtest() -> Optional[bool]:
+    raw = (os.environ.get("LTG_PLAYTEST") or "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return None
 
 
 def _valid_model(mid: Any) -> Optional[str]:
@@ -1018,12 +1037,13 @@ def _default_settings() -> Dict[str, Any]:
             "task_models": {t["id"]: "" for t in MODEL_TASKS},
             "instructions": DEFAULT_INSTRUCTIONS, "art_style": DEFAULT_ART_STYLE,
             "scenario_tone": DEFAULT_SCENARIO_TONE,
-            "art_backend": "openrouter", "comfyui_url": "", "comfyui_workflow": ""}
+            "art_backend": "openrouter", "comfyui_url": "", "comfyui_workflow": "",
+            "playtest": False, "playtest_model": PLAYTEST_MODEL, "tape": "off"}
 
 
-def load_settings() -> Dict[str, Any]:
-    """The full settings dict (including the raw api_key), defaults merged in.
-    Retired model slugs are mapped to their successors on the way in."""
+def _stored_settings() -> Dict[str, Any]:
+    """The settings file with defaults merged in — no environment overrides
+    (this is what `save_settings` writes back)."""
     out = _default_settings()
     try:
         data = json.loads(SETTINGS_PATH.read_text())
@@ -1036,17 +1056,51 @@ def load_settings() -> Dict[str, Any]:
             if isinstance(tm, dict):
                 for t in MODEL_TASKS:
                     out["task_models"][t["id"]] = _valid_model(tm.get(t["id"])) or ""
+            if isinstance(data.get("playtest"), bool):
+                out["playtest"] = data["playtest"]
+            out["playtest_model"] = _valid_model(data.get("playtest_model")) or PLAYTEST_MODEL
+            if data.get("tape") in tape.TAPE_MODES:
+                out["tape"] = data["tape"]
     except (OSError, json.JSONDecodeError):
         pass
     out["model"] = _valid_model(out["model"]) or MODELS[0]["id"]
     return out
 
 
+def load_settings() -> Dict[str, Any]:
+    """The full settings dict (including the raw api_key), defaults merged in.
+    Retired model slugs are mapped to their successors on the way in. The
+    environment may force the playtest profile (`LTG_PLAYTEST`) and the tape
+    mode (`LTG_LLM_TAPE`) for this process."""
+    out = _stored_settings()
+    forced = _env_playtest()
+    if forced is not None:
+        out["playtest"] = forced
+    if tape.env_mode() is not None:
+        out["tape"] = tape.env_mode()
+    return out
+
+
 def model_for(task: str, settings: Optional[Dict[str, Any]] = None) -> str:
     """The model to call for a generation task (encounters / adventures /
-    towns / scenarios): the per-task pick, else the default `model`."""
+    towns / scenarios): the playtest model while the playtest profile is on
+    (M3.3), else the per-task pick, else the default `model`."""
     s = settings or load_settings()
+    if s.get("playtest"):
+        return s.get("playtest_model") or PLAYTEST_MODEL
     return (s.get("task_models") or {}).get(task) or s["model"]
+
+
+def playtest_on() -> bool:
+    """The playtest profile is on: the automatic art queues stay idle."""
+    return bool(load_settings().get("playtest"))
+
+
+def require_key(settings: Dict[str, Any]) -> None:
+    """Raise unless a call can be answered: a key is set, or the tape
+    replays (a keyless install can replay recorded replies)."""
+    if not settings["api_key"] and settings.get("tape") not in ("replay", "replay_only"):
+        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
 
 
 def public_settings() -> Dict[str, Any]:
@@ -1067,6 +1121,15 @@ def public_settings() -> Dict[str, Any]:
         "models": MODELS,
         "has_key": bool(s["api_key"]),
         "difficulties": list(DIFFICULTY.keys()),
+        # The playtest tools (roadmap M3.2–M3.4). `*_forced` says the
+        # environment set the value for this process, so the toggle is moot.
+        "playtest": bool(s["playtest"]),
+        "playtest_model": s["playtest_model"],
+        "playtest_forced": _env_playtest() is not None,
+        "tape": s["tape"],
+        "tape_forced": tape.env_mode() is not None,
+        "tape_modes": [{"id": m, "label": tape.TAPE_MODE_LABELS[m]} for m in tape.TAPE_MODES],
+        "tape_counts": tape.summary(),
     }
 
 
@@ -1080,7 +1143,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     upgrades to DEFAULT_INSTRUCTIONS reach every user who hasn't customised —
     an earlier build froze the default text into the file; writing "" here heals
     those files on the next save."""
-    cur = load_settings()
+    cur = _stored_settings()
     if "model" in patch and isinstance(patch["model"], str) and patch["model"]:
         mid = _valid_model(patch["model"])
         if mid is None:
@@ -1125,6 +1188,17 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
         if k in patch:
             v = patch[k]
             cur[k] = v.strip() if isinstance(v, str) else ""
+    if isinstance(patch.get("playtest"), bool):
+        cur["playtest"] = patch["playtest"]
+    if "playtest_model" in patch and isinstance(patch["playtest_model"], str) and patch["playtest_model"]:
+        mid = _valid_model(patch["playtest_model"])
+        if mid is None:
+            raise ValueError(f"unknown model: {patch['playtest_model']}")
+        cur["playtest_model"] = mid
+    if "tape" in patch and patch["tape"] is not None:
+        if patch["tape"] not in tape.TAPE_MODES:
+            raise ValueError(f"unknown tape mode: {patch['tape']}")
+        cur["tape"] = patch["tape"]
     if "api_key" in patch:
         key = patch["api_key"]
         if key is None:
@@ -1857,7 +1931,34 @@ def _sameness_problems(encounter: Dict[str, Any]) -> List[str]:
 
 def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
           max_tokens: Optional[int] = None,
-          timeout: float = 120.0) -> str:
+          timeout: float = 120.0, kind: str = "") -> str:
+    """One chat completion; returns the assistant message text. With the tape
+    on (M3.4) a recorded reply may answer instead, and a live reply may be
+    recorded; ``kind`` names the writer (town, arc, act, adventure …) the
+    tape files it under."""
+    mode = load_settings().get("tape", "off")
+    if mode in ("replay", "replay_only"):
+        hit = tape.lookup(kind, messages)
+        if hit is not None:
+            return hit["reply"]
+        if mode == "replay_only":
+            raise ValueError(
+                f"the tape has no recorded {kind or 'LLM'} reply close to this prompt "
+                "(tape mode: replay only). Record one, or switch the tape to Replay "
+                "in Options → LLM.")
+    if not api_key:
+        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    reply = _live_chat(api_key, model, messages, max_tokens, timeout)
+    if mode in ("record", "replay"):
+        try:
+            tape.record(kind, model, messages, reply)
+        except OSError:
+            pass  # a full disk must not cost the player a paid reply
+    return reply
+
+
+def _live_chat(api_key: str, model: str, messages: List[Dict[str, str]],
+               max_tokens: Optional[int], timeout: float) -> str:
     """One OpenRouter chat completion; returns the assistant message text.
 
     ``max_tokens`` is set explicitly for adventure generation (T-63): three full
@@ -1933,8 +2034,7 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
     saving — nothing enters the game's picker.
     """
     settings = load_settings()
-    if not settings["api_key"]:
-        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    require_key(settings)
     if difficulty not in DIFFICULTY:
         difficulty = "standard"
 
@@ -1949,7 +2049,7 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
     last_err = ""
     for attempt in range(max(1, attempts)):
         reply = _chat(settings["api_key"], model_for("encounters", settings), messages,
-                      max_tokens=ENCOUNTER_MAX_TOKENS)
+                      max_tokens=ENCOUNTER_MAX_TOKENS, kind="encounter")
         try:
             encounter = _normalize(_extract_json(reply))
             _scale_hp(encounter, difficulty)  # floor enemy HP so they aren't one-shot
@@ -2325,8 +2425,7 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
     level; ``context`` is the scenario block (§D17-6.3); ``run_only`` marks the
     saved adventure as a run's (kept out of the New Game picker)."""
     settings = load_settings()
-    if not settings["api_key"]:
-        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    require_key(settings)
     if difficulty not in DIFFICULTY:
         difficulty = "standard"
 
@@ -2342,7 +2441,8 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
     last_err = ""
     for _attempt in range(max(1, attempts)):
         reply = _chat(settings["api_key"], model_for("adventures", settings), messages,
-                      max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT)
+                      max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT,
+                      kind="adventure")
         try:
             raw = _extract_json(reply)
             phases = raw.get("phases")
@@ -3194,8 +3294,7 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
     """The shared repair loop: call, validate via ``fix(raw) -> cleaned``, feed the
     error back, up to ``attempts``. ``task`` picks the model (towns / scenarios)."""
     settings = load_settings()
-    if not settings["api_key"]:
-        raise ValueError("No OpenRouter API key set. Add one in Options → LLM.")
+    require_key(settings)
     system = system.replace("%TONE%", settings.get("scenario_tone") or DEFAULT_SCENARIO_TONE)
     system = system.replace("%CONCRETE%", CONCRETENESS_RULE)
     system = system.replace("%VOICE%", VOICE_RULE)
@@ -3206,7 +3305,8 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
     last_err = ""
     for _ in range(max(1, attempts)):
         reply = _chat(settings["api_key"], model_for(task, settings), messages,
-                      max_tokens=SCENARIO_MAX_TOKENS, timeout=SCENARIO_TIMEOUT)
+                      max_tokens=SCENARIO_MAX_TOKENS, timeout=SCENARIO_TIMEOUT,
+                      kind=what)
         try:
             return fix(_extract_json(reply))
         except ValueError as exc:

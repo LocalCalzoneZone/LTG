@@ -6,7 +6,7 @@ Every tunable magnitude in LTG carries a register ID, a **T-number** (`T-57`), s
 
 **The code is authoritative.** Where documents disagree, the later one wins. Where a document and the code disagree, *Current value* shows the code and the row is flagged `doc≠code`. Some rulings exist only in code comments.
 
-**To add a tunable:** take the next free ID (**T-88**), implement it as a named constant (not a bare literal or prompt prose), cite `T-NN` in a comment beside it, and add a row here with the § that decided it. **To change one:** edit the constant and its row in the same commit.
+**To add a tunable:** take the next free ID (**T-89**), implement it as a named constant (not a bare literal or prompt prose), cite `T-NN` in a comment beside it, and add a row here with the § that decided it. **To change one:** edit the constant and its row in the same commit.
 
 ## Register
 
@@ -104,6 +104,7 @@ Every tunable magnitude in LTG carries a register ID, a **T-number** (`T-57`), s
 | T-85 | Gold earning rate | 1 gold per point earned (10 / 20 / 30 a phase) | `scenario.GOLD_PER_POINT` | §D17-2.3, §D17-5.3 | — |
 | T-86 | Merchant pricing | Buy at ×1.25 of `points_price` (rounded, min 1). Sell at ×0.5 (floored) | `schema.BUY_MULT`, `SELL_MULT`; `items.buy_price`, `sell_price` | §D17-5.3 | — |
 | T-87 | Starting purse | 15 gold per character | `scenario.STARTING_GOLD` | §D17-5.3 | Missing from the §D17-11 table |
+| T-88 | Default boss pressure dials | `enrage_round` 4, `neglect` 1, for a boss that carries neither (an authored value, 0 included, is kept) | `content.DEFAULT_BOSS_DIALS` / `apply_boss_dials` (in `build_state_from_loadouts`); mirrored in `autoplay.runner.DEFAULT_BOSS_DIALS` | §D23-5; roadmap M3.11 (ruled 2026-09-25) | The middle of the generated ranges. Every legacy boss in the library had none |
 | T5-01 | Creation budget | 70 pts | `schema.CREATION_BUDGET` | §P-1 | — |
 | T5-02 | Creation price: +2 HP | — (5 flat) | — | §P-2 | **retired**. Superseded by T-79 |
 | T5-03 | Creation price: +1 mana | — (15 flat) | — | §P-2 | **retired**. Superseded by T-79, whose 1st purchase is still 15 |
@@ -194,7 +195,7 @@ The doc's HP row (§D17-2.2, §D17-11) is 5 / 5 / 5 / 5 / 6 / 6 / 7 / 7 / 8 / 8.
 | `DOUBLE_INTENT_DIFFICULTIES` | {standard, hard} | `content` | On these difficulties, bosses declare 2 intents from round 1 (see T-54) |
 | `_lockdown_budget` | Party size 1 / 2 / 3 / 4 → 0 / 1 / 2 / 3 pieces. Easy −1 (min 0), hard +1 | `llm` | Lockdown pieces (stun, taunt, silence, hamstring, discard, sap, drain-ult, strip-reach) per layout. From 2026-08-21 |
 | Variety floor / copy cap | ≥ party size + 1 distinct designs; ≤ 3 copies of one design | `llm` layout validation | Stops a layout outnumbering the party with clones (beta playtest, 2026-08) |
-| Boss pressure dials | `enrage_round` 3–5 (the validator accepts 2–6). `neglect` 1–2 | `llm._boss_pressure_problems` | Required on generated bosses: a timed enrage fuse, and +N/+N for each round the boss goes unhurt (2026-08-30) |
+| Boss pressure dials | `enrage_round` 3–5 (the validator accepts 2–6). `neglect` 1–2 | `llm._boss_pressure_problems` | Required on generated bosses: a timed enrage fuse, and +N/+N for each round the boss goes unhurt (2026-08-30). A boss built without them takes T-88's defaults |
 | Objective gates | `race` needs 1–2 guards. `survive` needs ≥ 2 reinforcements. `deadline` runs 4–6 rounds | `llm._objective_problems` | Generation-side requirements for objectives (2026-08-30) |
 | `_break_threshold` | ceil(max HP / 4) | `engine` | A single hit of ≥ 25 % max HP breaks a channel (GDD §8) |
 | `in_execute_window` | effective HP × 4 ≤ max HP | `state.EnemyState` | At ≤ 25 % HP a boss becomes removable and enrages (GDD §9.4 / §9.5, §F-9) |
@@ -234,6 +235,6 @@ These need a decision or a fix, and each is tracked in [roadmap.md](roadmap.md):
 - **About 40 values are prompt-only (M4.8, M4.10).** T-01–T-24, T-26, T-28–T-32, T-34–T-36, T-39, T-47, T-53, T-65, T-67 and the prices in T-51 and T-56 are taught to the enemy designer as prose. No code prices an enemy or checks its Level against B(L), and a saved Options → LLM override can replace them.
 - **The prompt contradicts itself on single-target damage.** Its magnitude table says L+2 (T-20, §D18-2), but its T-55 line still says "single target = L+1". `enemy_analysis.LEVERS` also still quotes L+1 and Drain ceil(L/2)+1.
 - **Literals without constants (M9.7).** T-52 (`// 2`, twice) and T-45/T-46 (1 per counter).
-- **Tunables without T-ids (M9.7).** Updates 18–24 added none. Candidates for T-88 onward: the stat buffs, the ability and row bonuses, `enrage_scale`, `ATTACK_CADENCE`, `EMERGENCY_BAND`, `DOUBLE_INTENT_DIFFICULTIES`, the lockdown budget, `GAUGE_LEVEL_STEP`, the boss-dial ranges, the variety floor, `_defend_value`, the later archetype costs, and the `lose_life` / `sap` / `drain_ultimate` magnitudes.
+- **Tunables without T-ids (M9.7).** Updates 18–24 added none. Candidates for T-89 onward: the stat buffs, the ability and row bonuses, `enrage_scale`, `ATTACK_CADENCE`, `EMERGENCY_BAND`, `DOUBLE_INTENT_DIFFICULTIES`, the lockdown budget, `GAUGE_LEVEL_STEP`, the boss-dial ranges (their build-time default is T-88), the variety floor, `_defend_value`, the later archetype costs, and the `lose_life` / `sap` / `drain_ultimate` magnitudes.
 - **The history's own register tables are stale** (T-40, T-78, T-79, T-81 rows in §X-7 and §D17-11). This page supersedes them.
 

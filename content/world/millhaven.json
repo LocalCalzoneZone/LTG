@@ -14,6 +14,14 @@
     {
       "town_id": "azure",
       "how": "No road — a week's coasting under sail; Millhaven's flour barrels go south to the lagoon and come back as salt, spice and eel."
+    },
+    {
+      "town_id": "karzum",
+      "how": "Twelve days north by the drove road along the downs to the Ironjaw Gate. Mule-trains carry Millhaven meal up for Karzum's all-hours bread and come back down with cold-forged pass-picks."
+    },
+    {
+      "town_id": "nalindor",
+      "how": "Nine days inland over the blue hill-marches on the wardens' old paths, which skirt the barrows, then down to the forest's edge. Sailcloth and meal go in; yew staves and fever-tonic come out to the harbour."
     }
   ],
   "added_by": "backfill"

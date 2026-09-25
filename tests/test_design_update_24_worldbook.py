@@ -116,7 +116,7 @@ def test_generate_town_writes_town_and_entry_in_one_call(monkeypatch):
                              "neighbours": [{"town_id": "karzum", "how": "two days east"}]}}
     calls = []
 
-    def fake_chat(api_key, model, messages, max_tokens=None, timeout=None):
+    def fake_chat(api_key, model, messages, max_tokens=None, timeout=None, **kw):
         calls.append(messages[-1]["content"])
         return json.dumps(reply)
 
@@ -141,7 +141,7 @@ def test_backfill_is_idempotent(monkeypatch):
     sc.save_town(town_raw("Nalindor"))
     n_calls = {"n": 0}
 
-    def fake_chat(api_key, model, messages, max_tokens=None, timeout=None):
+    def fake_chat(api_key, model, messages, max_tokens=None, timeout=None, **kw):
         n_calls["n"] += 1
         return json.dumps({"world_entry": {
             "new_region": {"id": "r", "name": "R", "gist": "g"},

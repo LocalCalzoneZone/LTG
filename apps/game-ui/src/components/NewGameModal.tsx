@@ -4,6 +4,7 @@ import {
   fetchSetupOptions,
   generateAdventure,
   generateEncounter,
+  jumpTo,
 } from "../lib/api";
 import type { RunOptions } from "../lib/api";
 import type { SetupOptions } from "../lib/types";
@@ -17,6 +18,16 @@ const GENERATE_ADV = "__generate_adventure__";
 const DIFFICULTIES = ["easy", "standard", "hard"];
 
 const SECTION = "caps-label mb-2 text-[10px] tracking-[0.25em] text-brass";
+// Roadmap M3.1: the jump-to states, as the Start-at picker names them.
+const JUMP_LABELS: Record<string, string> = {
+  act: "Act N — just arrived",
+  ready: "Act N — quest taken, ready to ride",
+  defeat: "Act N — after a defeat",
+  between: "Scenario over — the end menu",
+  interlude: "The interlude — choose the road",
+  scenario2: "Scenario 2 — Act I",
+};
+const JUMP_NEEDS_ACT = new Set(["act", "ready", "defeat"]);
 
 /** The selection is the mode (§D10-6.2): one encounter OR one adventure. */
 type Pick =
@@ -82,6 +93,11 @@ export function NewGameModal({ onClose, onStarted }: {
   // phase boundary; resumable / forkable from Load Game). Off == today's
   // throwaway session, byte-identical.
   const [hardcore, setHardcore] = useState(false);
+  // Playtest jump (M3.1): "" == start a new scenario at Act I as usual.
+  const [jump, setJump] = useState("");
+  const [jumpAct, setJumpAct] = useState(1);
+  const [jumpFights, setJumpFights] = useState<"instant" | "autopilot">("instant");
+  const [jumpWriters, setJumpWriters] = useState<"stub" | "llm">("stub");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null); // busy sub-status
   const [err, setErr] = useState<string | null>(null);
@@ -120,6 +136,18 @@ export function NewGameModal({ onClose, onStarted }: {
     setBusy(true);
     setErr(null);
     try {
+      if (pick.kind === "town" && jump) {
+        setStatus(jumpFights === "autopilot"
+          ? "Building the campaign — the autopilot is playing the fights…"
+          : "Building the campaign state…");
+        onStarted(await jumpTo({
+          town_id: pick.id, character_ids: picked, state: jump,
+          act: JUMP_NEEDS_ACT.has(jump) ? jumpAct : 1, difficulty,
+          hardcore: jump === "defeat" ? false : hardcore,
+          writers: jumpWriters, fights: jumpFights,
+        }));
+        return;
+      }
       if (pick.kind === "scenario" || pick.kind === "town") {
         // Scenario Mode (Update 17 §D17-7): always a run — a CAMPAIGN of
         // length one until the player continues it (Update 24 §D24-1).
@@ -446,6 +474,57 @@ export function NewGameModal({ onClose, onStarted }: {
                     )}
                   </div>
                 )}
+                {/* Playtest (roadmap M3.1): Town + New may start partway into a
+                    campaign, built through the real scenario code. */}
+                {tab === "scenarios" && opts.playtest && pick?.kind === "town" && (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-2">
+                    <span className="caps-label text-[10px] tracking-[0.16em] text-mist">Playtest · start at</span>
+                    <select
+                      value={jump}
+                      onChange={(e) => setJump(e.target.value)}
+                      className="border border-line bg-ink-0 px-2 py-1 text-xs font-light focus:border-brass/60 focus:outline-none"
+                    >
+                      <option value="">Act I — a new scenario</option>
+                      {(opts.jump_states ?? []).map((st) => (
+                        <option key={st} value={st}>{JUMP_LABELS[st] ?? st}</option>
+                      ))}
+                    </select>
+                    {jump && JUMP_NEEDS_ACT.has(jump) && (
+                      <select
+                        value={jumpAct}
+                        onChange={(e) => setJumpAct(Number(e.target.value))}
+                        className="border border-line bg-ink-0 px-2 py-1 text-xs font-light focus:border-brass/60 focus:outline-none"
+                      >
+                        {[1, 2, 3].map((n) => <option key={n} value={n}>Act {["I", "II", "III"][n - 1]}</option>)}
+                      </select>
+                    )}
+                    {jump && (
+                      <>
+                        <select
+                          value={jumpFights}
+                          onChange={(e) => setJumpFights(e.target.value as "instant" | "autopilot")}
+                          className="border border-line bg-ink-0 px-2 py-1 text-xs font-light focus:border-brass/60 focus:outline-none"
+                        >
+                          <option value="instant">Fights won outright</option>
+                          <option value="autopilot">Fights played by the autopilot</option>
+                        </select>
+                        <select
+                          value={jumpWriters}
+                          onChange={(e) => setJumpWriters(e.target.value as "stub" | "llm")}
+                          className="border border-line bg-ink-0 px-2 py-1 text-xs font-light focus:border-brass/60 focus:outline-none"
+                        >
+                          <option value="stub">Stand-in writing (free)</option>
+                          <option value="llm">Real writers (the playtest model)</option>
+                        </select>
+                        <span className="w-full text-[11px] font-light text-dimmed">
+                          Stand-in writing builds every act from this town with placeholder lines and
+                          rides library adventures; nothing is written to the content library. Play
+                          after the jump is live.
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
 
@@ -464,7 +543,8 @@ export function NewGameModal({ onClose, onStarted }: {
                   : "bg-gradient-to-b from-brass-hi to-brass text-ink-0 hover:from-brass-hi hover:to-brass-hi"
               }`}
             >
-              {busy ? "Working…" : generating ? "Generate & Start" : "Start Game"}
+              {busy ? "Working…" : generating ? "Generate & Start"
+                : pick?.kind === "town" && jump ? "Jump In" : "Start Game"}
             </button>
           </>
         )}

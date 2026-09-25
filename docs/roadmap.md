@@ -1,6 +1,6 @@
 # LTG roadmap — milestones & objectives
 
-**As of 2026-09-25** (M1 merged; M2 done on branch `Milestone-M2`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
+**As of 2026-09-25** (M1 and M2 merged; M3's tooling done on branch `Milestone-M3`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
 
 - the design history (v1 GDD, Updates 01–24);
 - the 2026-09-02 review briefs;
@@ -42,7 +42,7 @@ Proposals that come from no design document are marked *Proposed*. They need a d
 | **M0** | Foundations | Make the project cheap and safe to work on: docs, tests, CI, environment | 6 |
 | **M1** | Make it correct | **Done 2026-09-25**: every row fixed or ruled, each with a test. | 37 |
 | **M2** | Legibility | **Done 2026-09-25** except M2.22's clip coverage (owner). | 22 |
-| **M3** | The playtest loop | Make the RPG layer cheap to test, then run the playtests that are owed | 12 |
+| **M3** | The playtest loop | **Tooling done 2026-09-25** (M3.1–M3.4, M3.12); M3.8 and M3.11 ruled and done. The owed playtests and M3.5 remain. | 12 |
 | **M4** | Generation pipeline | Faster, cheaper, sturdier, less samey generation, with gates that match the prompts | 18 |
 | **M5** | The world remembers | NPCs and towns react at runtime, not only in the next act's writing | 11 |
 | **M6** | Economy & progression | Gold, gear and the deck get a job | 10 |
@@ -184,18 +184,18 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M3.1 | **Jump-to states.** Fabricate campaign states for testing: "Act III boss down with a plausible ledger" → interlude, mid-act, after a defeat, a `between` campaign. | Proposed | M | advisory |
-| M3.2 | **Autopilot fights** in scenario mode. The existing policy plays the combat phases while a human plays the towns. | Proposed | M | advisory |
-| M3.3 | **Cheap-model dev profile.** One switch routes every task to a volume model (Luna Pro or Gemini Flash) for flow testing; premium models are kept for judging quality. | Proposed | S | advisory |
-| M3.4 | **Record and replay LLM responses**, keyed by prompt hash, so UI and flow iteration doesn't regenerate. | Proposed | M | advisory |
+| M3.1 | **Jump-to states.** Built: `ltg_game_server/devstates.py`. It drives the real scenario verbs to `act`, `ready` or `defeat` (Act N), `between` (Act III's boss down, a true ledger, the interlude planned), `interlude` or `scenario2`, and leaves an ordinary run in `saves/` (1–2 s; about 6 s with autopilot fights). Stand-in writers need no key and write nothing to `content/`; `--writers llm` uses the real ones. New Game → Scenarios → Town + New → *Playtest · start at* (playtest profile), or `python -m ltg_game_server.devstates <state>`. | Done | M | advisory |
+| M3.2 | **Autopilot fights.** Built: the ribbon's Autopilot toggle (playtest profile) lets `GreedyPolicy` play every party decision, a chunk at a time, off the lock; level-ups, spoils and towns stay with the players. A fight takes seconds. Its results are not balance evidence. | Done | M | advisory |
+| M3.3 | **Cheap-model dev profile.** Built: Options → LLM → Playtest (or `LTG_PLAYTEST=1`) routes every text task, the Deckbuilder's flavour included, to `playtest_model` (Luna Pro by default) and idles the automatic art queues. | Done | S | advisory |
+| M3.4 | **Record and replay LLM responses.** Built: `ltg_game_server/tape.py` inside `llm._chat`. Record, replay (a miss goes live and is recorded) and replay-only (never calls out, needs no key). A miss on the exact prompt hash replays the closest same-kind prompt. Stored in `loadouts/llm_tape/`. | Done | M | advisory |
 | M3.5 | **Regenerate the scenario library** (`content/scenarios/` is empty). Do M4.5 (the avoid-list) first. Decide whether library scenarios bring back a pre-baked Act I adventure, which gives an instant start and lets a keyless install play Act I. | Not built / Decide | S–M | C-05, C-04, B-52 |
-| M3.6 | **Play the campaign loop.** Finish a scenario, Continue, and choose each hook kind once (stay / neighbour / new). Kholdrun is deleted, so start from Town + New in Karzum. Needs M1.1–M1.9. | Untested | M | C-42; §D24 Part E |
-| M3.7 | **Regenerate Karzum Act I with a briefed party** and judge the `# THE PARTY` block. The baseline is in git at `1ae6620^`. | Untested | S | C-41 |
-| M3.8 | **Review the four backfilled worldbook entries.** All edges run through Azure as a hub, and Karzum sits in `frostcap_peaks`. | Untested | S | C-43 |
-| M3.9 | **Retune watch-list at the table.** Five open checks:<br>• §M-A.7 made 72 shipped components mitigatable<br>• Defend = base Power magnitude<br>• Enrage at party size 4<br>• gauge c = 20<br>• boss round-1 double intent<br>The lockdown budget is watched too, but only to push control pressure up; never tune it down. | Untested | M | C-01, C-02, C-39, C-40; T-54 |
-| M3.10 | **Economy across a multi-scenario campaign:** T-79 prices, T-81 effective level, gold income versus sinks, and the free rest. | Untested | M | B-36, B-40, B-57, A-33 |
-| M3.11 | **Legacy content.** None of the 21 shipped bosses has boss dials. 136 of 243 enemies lack types and classes, so grudges and type-gated cards read nothing. Regenerate, or default the dials at load. | Decide | S–M | C-23, C-13 |
-| M3.12 | **A rule for A-20:** a hero downed by a turn-scoped wound stands back up when it expires. Pin the ruling with a test. | Untested | S | A-20; §R-13.1 |
+| M3.6 | **Play the campaign loop.** Now cheap: jump to `interlude` (or `between`), rest at the inn, and choose each hook kind once (stay / neighbour / new). After the jump, play is live: a neighbour or new hook generates town, arc and Act I (use the playtest profile and the tape for flow; a premium model to judge). Kholdrun is deleted, so start from Karzum. | Untested | M | C-42; §D24 Part E |
+| M3.7 | **Regenerate Karzum Act I with a briefed party** and judge the `# THE PARTY` block. The baseline is in git at `1ae6620^`. Judge on the premium model, not the playtest one. | Untested | S | C-41 |
+| M3.8 | **Review the four backfilled worldbook entries.** Reviewed 2026-09-25: each notable matches its town file, and Karzum in `frostcap_peaks` agrees with the town's own text (the doc example was only stale prose). The book was a star through Azure, so a neighbour hook from Karzum, Millhaven or Nalindor could only name Azure. **Ruled 2026-09-25: add links.** Millhaven now joins Karzum (twelve days by the drove road) and Nalindor (nine days over the hill-marches). Karzum–Nalindor was dropped: the regions put the Frostcaps in the north and the Elderwood in the south. Still open: Karzum–Azure reads "six weeks", while a hook's `days` usually runs 4–14. | Done | S | C-43 |
+| M3.9 | **Retune watch-list at the table.** Five open checks:<br>• §M-A.7 made the shipped components mitigatable<br>• Defend = base Power magnitude<br>• Enrage at party size 4<br>• gauge c = 20<br>• boss round-1 double intent<br>The lockdown budget is watched too, but only to push control pressure up; never tune it down. Jump to `ready` at the act you want and play the fight by hand (Autopilot results are not evidence). | Untested | M | C-01, C-02, C-39, C-40; T-54 |
+| M3.10 | **Economy across a multi-scenario campaign:** T-79 prices, T-81 effective level, gold income versus sinks, and the free rest. `scenario2` jumps arrive levelled (spent through the policy's balanced plan) with spoils assigned, but no gold spent: shop for real. | Untested | M | B-36, B-40, B-57, A-33 |
+| M3.11 | **Legacy content.** None of the library's 7 bosses had boss dials, and none of its 56 enemies had types or classes. **Ruled 2026-09-25:** a dial-less boss gets `enrage_round` 4 and `neglect` 1 at build (T-88, GDD §9.5), and the encounter and adventure library was purged for regeneration (towns, the worldbook and the equipment catalogue kept). Regenerated content passes the current gates, types and dials included. Until the owner regenerates and commits, a keyless install has only the bundled examples, and the jump-to builder's stand-in writers ride adventures strung from them. | Done | S–M | C-23, C-13 |
+| M3.12 | **A-20:** a hero downed only by a turn-scoped wound stands back up when it expires (GDD v2 §4.2 step 5, §4.3). Pinned by `tests/test_wound_recovery.py`: the fall is real while it lasts (the others are paid their gauge), and a hero still at 0 HP once it lifts stays down. | Done | S | A-20; §R-13.1 |
 
 ## M4 · Generation pipeline
 
@@ -288,7 +288,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 | M8.6 | **Close the drive-by hole.** CORS only in `--dev`; a host token for quit, update, deletes, LLM settings and the worldbook PUTs; Origin/Host checks. | Not built | S–M | R3.2.7, C-65 |
 | M8.7 | **Tests for the release paths:** a two-socket WebSocket test (claim, submit, confirm race, garbage frame, rejoin) and a `selfupdate` test over a temp bare repo. | Not built | M | R3.2.3 |
 | M8.8 | **Shipped vs local content.** A gitignored `content_local/` searched first, so play never dirties the tracked tree, plus a "reset shipped content" path. **Mostly retired by the M1.15 ruling (2026-09-25):** play-time generated content belongs in tracked `content/`. What is left: a way for the keyless install to recover if a local edit dirties its tree. | Decide | S | R3.2.6, C-62 |
-| M8.9 | **Art out of git's growth path.** WebP on save; delete the 69 orphaned town-art files (`medusel`, `windmill_town`); decide on LFS or a release asset (the tracked PNGs are ≈918 MB, and `.git` is 1.0 GB). | Not built | M–L | R3.2.5 |
+| M8.9 | **Art out of git's growth path.** WebP on save; the orphaned town art went in the 2026-09-25 purge; decide on LFS or a release asset (the tracked PNGs are ≈918 MB, and `.git` is 1.0 GB). | Not built | M–L | R3.2.5 |
 | M8.10 | **Deckbuilder "Update Game Character"** keeps draft cards (or a sibling `.draft.json`); loadout errors return 422, not a raw 500. | Not built | S | R3.2.9 |
 | M8.11 | **Panel clips travel with a character** (loadout export/import), which matters for the Windows install. | Not built | M | B-28 |
 | M8.12 | **A view-only mode for a fallen Hardcore run's saves.** | Partial | S | B-53 |
@@ -364,7 +364,7 @@ Deferred on purpose or waiting for a need. Promote a row into a milestone when i
 
 ## Decisions needed
 
-M3.5, M3.11, M5.11, M6.8, M6.9. Also:
+M3.5, M5.11, M6.8, M6.9. Also:
 - whether the Deckbuilder's Import Deck should keep reading MTG-worded rules text (`CUSTOM_CARD_SCHEMA.md`) now that cards are authored in LTG's own vocabulary;
 - whether `shroud` stays in the rules at all.
 
@@ -391,6 +391,7 @@ M3.5, M3.11, M5.11, M6.8, M6.9. Also:
 - M0 Foundations (2026-09-25): the test sandbox, CI, pinned dependencies, doc and comment debt; M0.3 awaits its first green run and branch protection.
 - **M1 Make it correct (2026-09-25):** all 37 rows fixed or ruled (see the M1 table).
 - **M2 Legibility (2026-09-25):** 21 of 22 rows done; M2.22 waits on clip generation.
+- **M3 tooling (2026-09-25):** jump-to states, autopilot fights, the playtest profile and the LLM tape (M3.1–M3.4); A-20 pinned (M3.12); worldbook links (M3.8); default boss dials, T-88, and the library purged for regeneration (M3.11).
 - Update 23 in full.
 - Update 24 in full.
 - The `Ref` validator (R3.3.1, partial).

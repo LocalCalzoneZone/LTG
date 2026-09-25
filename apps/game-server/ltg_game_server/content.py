@@ -169,6 +169,25 @@ def apply_boss_difficulty(scen: Dict[str, Any], difficulty: str) -> None:
             e["double_intent"] = double
 
 
+# T-88: the boss pressure dials (§D23-5) for a boss that carries none. The
+# generator's gate requires both on every generated boss, but legacy and
+# hand-authored bosses predate them, so they never enraged on a clock or grew
+# while ignored (roadmap M3.11, ruled 2026-09-25: default them at build). The
+# middle of the generated ranges: enrage_round 3–5, neglect 1–2. An authored 0
+# (or any value) is left alone; only a missing dial is filled.
+DEFAULT_BOSS_DIALS = {"enrage_round": 4, "neglect": 1}
+
+
+def apply_boss_dials(scen: Dict[str, Any]) -> None:
+    """Fill each boss's missing pressure dials with `DEFAULT_BOSS_DIALS` (T-88).
+    In place, on the build path's copy; the content file is never touched."""
+    for e in scen.get("enemies", []) or []:
+        if isinstance(e, dict) and e.get("is_boss"):
+            for key, value in DEFAULT_BOSS_DIALS.items():
+                if e.get(key) is None:
+                    e[key] = value
+
+
 # --------------------------------------------------------------------------- #
 # Balance register (Update 18): the global enemy pressure bump. Applied at build
 # time in `build_state_from_loadouts`, the one choke point every real game passes
@@ -1414,6 +1433,8 @@ def build_state_from_loadouts(loadouts: List[Dict[str, Any]], encounter_id: str,
     # layer stamps this from the RUN's difficulty before we get here; this covers
     # a plain encounter, which carries only the difficulty it was made at.
     apply_boss_difficulty(scenario, str(scenario.get("difficulty") or "standard"))
+    # T-88: a boss without pressure dials (legacy content) gets the defaults.
+    apply_boss_dials(scenario)
     spec = compose_spec(loadouts, scenario)
     state = state_from_dict(spec, seed=seed)
     # spec["party"] keeps loadouts' order (compose_spec only dedupes ids in place),

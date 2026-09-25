@@ -28,6 +28,8 @@ from ltg_combat.engine import (
 from ltg_combat.serialize import phase_step
 from ltg_combat.state import GameState
 
+from . import autopilot as _autopilot
+from . import llm
 from .adventure import AdventureRun
 from .snapshot import build_snapshot
 
@@ -157,6 +159,13 @@ class Session:
         self._lock: Optional[asyncio.Lock] = None
         # The one live pacing task draining synthetic steps (ws path only).
         self._pacer: Optional["asyncio.Task[None]"] = None
+        # Autopilot (roadmap M3.2, a playtest tool): while on, the autoplay
+        # policy makes every party decision in every fight this session plays;
+        # `autopilot_note` says why it last handed back to the players.
+        self.autopilot = False
+        self.autopilot_note: Optional[str] = None
+        self._autopilot_task: Optional["asyncio.Task[None]"] = None
+        self._autopilot_actions = 0
 
     def lock(self) -> asyncio.Lock:
         if self._lock is None:
@@ -412,6 +421,83 @@ class Session:
             await asyncio.sleep(dwell)
         else:
             _warn_auto_cap("paced drain", self.state)
+
+    # -- autopilot (roadmap M3.2) --------------------------------------------- #
+    def set_autopilot(self, on: bool) -> None:
+        """Turn Autopilot on or off for this session's fights. A playtest
+        tool: it is offered only while the playtest profile is on."""
+        if on and not llm.playtest_on():
+            raise ValueError("Autopilot is a playtest tool: turn on the playtest "
+                             "profile in Options → LLM first")
+        self.autopilot = bool(on)
+        self.autopilot_note = None
+        self._autopilot_actions = 0
+
+    def autopilot_view(self) -> Dict[str, Any]:
+        return {"on": self.autopilot, "available": self.autopilot or llm.playtest_on(),
+                "note": self.autopilot_note}
+
+    def _autopilot_commit(self, before: GameState, after: GameState, made: int) -> bool:
+        """Adopt a chunk the policy played from ``before`` — unless someone
+        acted meanwhile, in which case the chunk is discarded and replanned."""
+        if self.state is not before:
+            return False
+        self.state = after
+        self._autopilot_actions += made
+        if self.adventure is not None:
+            self.adventure.on_state_change(self.state)
+            self._run_hooks()
+        return True
+
+    def start_autopilot(self, broadcast: Any) -> None:
+        """Ensure the autopilot task runs while Autopilot is on and a fight is
+        live. Idempotent, like the pacer; called after every client message."""
+        if not self.autopilot or self.state is None or self.state.result is not None:
+            return
+        if self._autopilot_task is not None and not self._autopilot_task.done():
+            return
+        self._autopilot_task = asyncio.get_running_loop().create_task(
+            self._drive_autopilot(broadcast))
+
+    async def _drive_autopilot(self, broadcast: Any) -> None:
+        """Play the fight chunk by chunk: the policy runs on a worker thread
+        from a snapshot of the state (the engine never mutates its input);
+        each chunk is committed under the lock and broadcast."""
+        seed = random.randrange(2**31)
+        self._autopilot_actions = 0       # the action cap is per fight
+        try:
+            while self.autopilot:
+                async with self.lock():
+                    before = self.state
+                if before is None or before.result is not None:
+                    return
+                after, made, stop = await asyncio.to_thread(
+                    _autopilot.play_chunk, before, seed)
+                async with self.lock():
+                    # Switched off while the chunk was thinking: the players
+                    # have the fight back, so the chunk is dropped.
+                    committed = self.autopilot and self._autopilot_commit(before, after, made)
+                    if committed and (stop is not None
+                                      or self._autopilot_actions >= _autopilot.ACTION_CAP):
+                        self.autopilot = False
+                        self.autopilot_note = (
+                            "Autopilot handed the fight back: "
+                            + {"round_cap": f"it passed round {_autopilot.ROUND_CAP}.",
+                               "no_actions": "the engine offered no action."}.get(
+                                   stop or "", "it hit its action cap."))
+                if committed:
+                    await broadcast(self)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — a policy fault must hand the fight back, not freeze it
+            import traceback
+            traceback.print_exc()
+            self.autopilot = False
+            self.autopilot_note = "Autopilot hit an error and handed the fight back."
+            try:
+                await broadcast(self)
+            except Exception:  # noqa: BLE001 — nothing left to tell anyone
+                pass
 
     # -- runs (Update 17 §D17-3) ---------------------------------------------- #
     def save_point(self, kind: str, seed: Optional[int], auto: bool = True) -> None:
@@ -1048,6 +1134,7 @@ class Session:
             snap["adventure_name"] = (self.scenario.adventure_detail or {}).get("name", "")
             snap["gear_editable"] = bool(self.adventure is not None and self.adventure.level_up is not None)
         snap["confirm"] = self.confirm_payload(client_id)
+        snap["autopilot"] = self.autopilot_view()
         return snap
 
     def _town_snapshot(self, client_id: str) -> Dict[str, Any]:

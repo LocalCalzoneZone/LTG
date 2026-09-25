@@ -14,6 +14,10 @@
     {
       "town_id": "azure",
       "how": "Down the brown forest rivers by flat-bottomed barge, six days to the lagoon — fast going out, slow poling back, and wyrm-country the whole first stretch."
+    },
+    {
+      "town_id": "millhaven",
+      "how": "Nine days inland over the blue hill-marches on the wardens' old paths, which skirt the barrows, then down to the forest's edge. Sailcloth and meal go in; yew staves and fever-tonic come out to the harbour."
     }
   ],
   "added_by": "backfill"
