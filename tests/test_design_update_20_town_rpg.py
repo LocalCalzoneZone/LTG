@@ -235,7 +235,7 @@ def test_a_new_arc_sends_the_old_cast_home():
     run.arrive(sc.validate_materialization(m, sc.town_for_act(town, arc, 0),
                                            arc["acts"][0]))
     assert sc.find_npc(run.town, "serel_of_the_ninth_lamp") is not None
-    run.begin_next_arc(sc.validate_arc(arc_raw(), town))    # no cast this time
+    run.begin_next_scenario(sc.validate_arc(arc_raw(), town))    # no cast this time
     run.arrive(sc.validate_materialization(materialization_raw(), town,
                                            run.arc["acts"][0]))
     assert sc.find_npc(run.town, "serel_of_the_ninth_lamp") is None

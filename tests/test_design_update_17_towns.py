@@ -383,9 +383,15 @@ def mocked_llm(monkeypatch):
     return replies
 
 
-def test_generate_town_arc_and_act(mocked_llm):
-    mocked_llm["Design\nONE TOWN"] = town_raw("Bellhollow")
+def test_generate_town_arc_and_act(mocked_llm, tmp_path, monkeypatch):
+    from ltg_game_server import world
+    monkeypatch.setattr(world, "WORLD_DIR", tmp_path / "world")
+    # §D24-9.1: the town arrives with its worldbook page in the same reply.
+    mocked_llm["Design\nONE TOWN"] = {**town_raw("Bellhollow"),
+                                     "world_entry": {"new_region": {"id": "fens", "name": "The Fens", "gist": "Wet."},
+                                                     "gist": "A bell town.", "notable": [], "neighbours": []}}
     meta = llm.generate_town("a bell-foundry town")
+    assert world.entry_for("bellhollow")["region_id"] == "fens"
     assert meta["id"] == "bellhollow"
     town = sc.town_detail("bellhollow")
     mocked_llm["write the ARC of one"] = arc_raw()

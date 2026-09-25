@@ -44,7 +44,7 @@
           "id": "old_bramble",
           "name": "Old Bramble",
           "role": "retired canal-ranger and hearth-fixture",
-          "persona": "A weathered human of seventy who spent his life patrolling the reed-flats outside the sea-wall for smugglers and marsh-drakes, and now occupies the bench nearest the stove with the authority of a magistrate. He talks in short, dry sentences and finds most modern dangers overrated, though he has genuine respect for the big grey herons and the tides. He is teaching himself to carve decoy ducks and has produced eleven that all look slightly angry. Anyone who buys him a mug of the dark beer gets a lesson in reading the lagoon's channel-marks, whether they asked or not.",
+          "persona": "A weathered human of seventy who spent forty years patrolling the reed-flats outside the sea-wall for smugglers and marsh-drakes, and now holds the bench nearest Perrinelle's stove from the first pie to the last lamp. He talks in short plain sentences, mostly about water, and has real respect for exactly two things: the big grey herons and the tides. He carves decoy ducks with a knife that has taken the end off his thumb, and has finished eleven, every one of them scowling. Ilenya Sarn was harbourmistress when he was a new ranger, and she still sends a tally-slip across to the Eel when she wants his count of the blocks gone from the eastern arm. Anyone who buys him the dark beer gets a lesson in channel-marks, asked for or not.",
           "portrait_desc": "An old human man, lean and brown as a boot, white stubble and a bald crown, in a faded oilskin coat far too good to throw away. A knife-scarred thumb, a carving in one hand, and boots dried stiff by thirty years of stove-heat.",
           "art_url": "/art/towns/azure/npc-old_bramble-091b6a39.png",
           "topics": [
@@ -54,7 +54,15 @@
             },
             {
               "ask": "What are you carving?",
-              "reply": "A duck. It is a duck. I know it looks like it owes somebody money — the twelfth one won't."
+              "reply": "A duck, for the reed-flats. Eleven done and every one of them scowls; Perrinelle says it's because I carve with my teeth set. The twelfth I'm doing with the real birds in front of me, out the boat-arch, and it's coming out kinder."
+            },
+            {
+              "ask": "What about the sea-wall?",
+              "reply": "The eastern arm. I walked the top of it forty years and you could hear the sea working under the blocks even then, a knock like a boat at a gate. Ilenya writes to the Council; I go out at spring tide and count what's gone. Nine since spring, and the tenth is loose."
+            },
+            {
+              "ask": "What's a marsh-drake?",
+              "reply": "Twelve feet of mud-coloured lizard that lies under the reeds with only its nostrils up and takes a dog off a jetty faster than you can shout. A ranger keeps them out on the flats with a burning reed-bundle on a pole and a loud voice. I lost one dog and one apprentice's boot in forty years, both to the same big pale one the eel-men called the Abbess."
             }
           ],
           "vendor": false
@@ -100,17 +108,25 @@
           "id": "pip_ansel",
           "name": "Pip Ansel",
           "role": "apprentice, age eleven",
-          "persona": "A human child apprenticed to Hedda since she was nine, small, sooty, and appallingly well-informed about everything happening on the Iron Quay. She asks three questions for every one she answers and keeps a notebook of every blade that leaves the shop, including who bought it and what they were wearing. She is convinced something very large lives in the sunken cellar under the old fish market, because she has heard a shell-scraping sound down there twice at low tide. She works the bellows with total seriousness and has recently been promoted to tying the paper tags, which she considers the making of her career.",
+          "persona": "A human child apprenticed to Hedda since she was nine, small, sooty, and appallingly well-informed about everything happening on the Iron Quay. She asks three questions for every one she answers and keeps a notebook of every blade that leaves the shop, ruled in straight lines the way Wren Ossily at the Archive showed her. She is convinced something very large lives in the sunken cellar under the old fish market, because she has heard a shell-scraping sound down there twice at low tide, and she paid Toma Quickstep a copper to pole her under and listen. She works the bellows with total seriousness and has recently been promoted to tying the paper tags, which she considers the making of her career.",
           "portrait_desc": "A skinny human girl of eleven with a shaved-short crop of black hair and soot in the creases of her neck. She wears a cut-down leather apron that reaches her shins and clutches a fat, greasy notebook.",
           "art_url": "/art/towns/azure/npc-pip_ansel-eada89e5.png",
           "topics": [
             {
               "ask": "What's under the fish market?",
-              "reply": "Something with a shell. I heard it scraping at low tide, twice, and nobody believes me because I am eleven. Hedda says if it were a crab that big somebody would have eaten it by now, but I say maybe it eats them first."
+              "reply": "Something with a shell. I heard it scraping at low tide, twice, and nobody believes me because I am eleven. Hedda says if it were a crab that big somebody would have eaten it by now, but I say maybe it eats them first. Toma Quickstep poled me under for a copper and came out very quiet and says he heard nothing."
             },
             {
               "ask": "What's in the notebook?",
               "reply": "Every blade we've sold since spring. Name, length, buyer, and what colour their coat was. If one of them ever turns up somewhere it shouldn't, I'll be the only person in Azure who can prove it."
+            },
+            {
+              "ask": "What's Hedda like to work for?",
+              "reply": "She checks my tags with her thumb and if the knot's wrong she doesn't say anything, she just holds it out. Four held out since spring. When the Council letter comes back about her bell she lets me tap the little model on the bench, and it's come back no every time so far, so I've had a lot of taps."
+            },
+            {
+              "ask": "Who comes in?",
+              "reply": "Bargemen mostly, and the Sarn house boat-guards for their hooks. Old Bramble came in to have his carving knife ground and told me the thing under the fish market is an oyster-drake, so I wrote that down and underlined it. Hedda says he was having me on. He wasn't smiling."
             }
           ],
           "vendor": false
@@ -133,7 +149,7 @@
           "id": "vessa_quillingham",
           "name": "Vessa Quillingham",
           "role": "artificer",
-          "persona": "A gnome in her sixties, small, brisk and delighted by problems, who talks quickly and with her hands and cannot let an unbalanced thing stay unbalanced. She sells tide-rings that warn of the flood, lamp-charms that will not blow out in sea wind, and compasses that point at whatever you last held longest — and she explains exactly how each works, at length, because she is proud of them. She distrusts the fashion for masked business among the merchant houses, on the grounds that a mask is a badly designed object with no adjustment for the nose. Every night she winds the shop's nine clocks deliberately wrong, so that thieves listening at the wall can never tell what hour she keeps.",
+          "persona": "A gnome in her sixties, small, brisk and delighted by problems, who talks quickly and with her hands and cannot let an unbalanced thing stay unbalanced. She sells tide-rings that warn of the flood, lamp-charms that will not blow out in sea wind, and compasses that point at whatever you last held longest, and explains how each works, at length, out of pride. Captain Vane's astrolabe has lain on her felt mat since midsummer; she has finished it twice and taken it apart twice because the alidade sits a hair off true, and has decided he may as well fetch her pie from the Eel while he waits. She distrusts the masked business of the merchant houses, because a mask has no hinge and no allowance for the nose, and she will not make hinges for Nio Fessari. Every night she winds the shop's nine clocks deliberately wrong.",
           "portrait_desc": "A tiny gnome woman with white hair scraped into a bun skewered by two thin screwdrivers, and a brass loupe strapped over one eye. She wears a slate-grey coat covered in small tool-pockets and mismatched buttons, each button an ornament in itself.",
           "art_url": "/art/towns/azure/npc-vessa_quillingham-f41952f9.png",
           "topics": [
@@ -143,11 +159,15 @@
             },
             {
               "ask": "Why are all the clocks wrong?",
-              "reply": "Deliberately. Two doors down, a very patient man once counted my chimes for a month to learn when I shut the shop. Now they strike nonsense and he has taken up fishing instead."
+              "reply": "Deliberately. Two doors down, a very patient man once counted my chimes for a month to learn when I shut the shop. Now they strike nine different hours and nobody listening at the wall learns anything. It took me a month to stop hearing them; the Captain is on his third."
             },
             {
               "ask": "Do you make masks?",
-              "reply": "I do not. A mask is a poorly engineered object — no hinge, no adjustment, no allowance for the nose — and the merchant houses wear them to say things they'd never sign. Give me a lock, a lens or a lamp; those at least admit what they are for."
+              "reply": "I do not. A mask is a poorly engineered object — no hinge, no adjustment, no allowance for the nose — and the merchant houses wear them to say things they'd never sign. Nio Fessari asks me for hinges twice a year and gets the same answer. Give me a lock, a lens or a lamp; those at least admit what they are for."
+            },
+            {
+              "ask": "What about the Captain's astrolabe?",
+              "reply": "Rete's done, mater's done, and the alidade sits a hair off true, and I will not hand a Vane an instrument that lies about the stars. His grandfather's brass is Sunward alloy and it moves when the weather does. He can wait; I told him so in the first week and he has not asked since, which is why he gets the good chair."
             }
           ],
           "vendor": true
@@ -156,7 +176,7 @@
           "id": "captain_orsolo_vane",
           "name": "Captain Orsolo Vane",
           "role": "half-elf sea captain, waiting on a repair",
-          "persona": "A half-elf shipmaster of indeterminate middle age who has been waiting eleven weeks for Vessa to rebuild his grandfather's astrolabe and now essentially lives in the shop's one good chair. He is courteous, gossipy and unhurried, with a voice like a warm evening, and he knows the sailing gossip of six ports and the marriage gossip of nine merchant houses. He carries the astrolabe's empty case everywhere as though a widower with a locket. He insists he is not idle but on shore leave, a distinction he defends with great feeling and no evidence.",
+          "persona": "A half-elf shipmaster of indeterminate middle age who has been waiting eleven weeks for Vessa to rebuild his grandfather's astrolabe and now essentially lives in the shop's one good chair. He is courteous, gossipy and unhurried, with a voice like a warm evening, and he knows the sailing gossip of six ports and the marriage gossip of nine merchant houses. He carries the astrolabe's empty case everywhere as though a widower with a locket, fetches Vessa's pie from the Eel at noon, and eats most nights on his cousin Bertola's barge under Coriander Bridge, where she chalks what he owes her on the same slate as the pepper. He insists he is not idle but on shore leave, a distinction he defends with great feeling and no evidence.",
           "portrait_desc": "A tall, elegant half-elf man with silver-streaked black hair tied back, a close beard, and a faded blue captain's coat with good buttons and a mended cuff. He sits with one boot crossed over the other, a battered wooden instrument case balanced on his knee.",
           "art_url": "/art/towns/azure/npc-captain_orsolo_vane-f84a3139.png",
           "topics": [
@@ -167,6 +187,14 @@
             {
               "ask": "What's the harbour talk?",
               "reply": "The Vantorres have bought a fourth warehouse on the Iron Quay and pretend they haven't; the spice barges are three weeks late out of the southern run; and someone has been buying every scrap of green glass in Azure at twice its worth. Make of that what you like — I make an evening's conversation of it."
+            },
+            {
+              "ask": "Where's your ship?",
+              "reply": "The Grey Heron, hauled out on the Iron Quay having her seams paid, which is honest work I am not needed to watch. My grandfather took her to the Sunward ports thirty years by that astrolabe and never once put her on the eastern arm. I mean to keep both records."
+            },
+            {
+              "ask": "Bertola's your cousin?",
+              "reply": "By my grandfather's second marriage, and she has never let me forget which side of the family the barges came from. I eat on her deck most nights; she puts long pepper on everything and the plate on the slate with the rest of what I owe her, and I would not eat anywhere else."
             }
           ],
           "vendor": false
@@ -212,17 +240,25 @@
           "id": "doctor_ambrose_fennel",
           "name": "Doctor Ambrose Fennel",
           "role": "elderly physician, permanent guest",
-          "persona": "A human physician of eighty-two, retired from the Guild of Barber-Surgeons and utterly unretired in spirit, who occupies the stool by the still and comments on all of Sula's work. He is courtly, twinkling, and a fanatical believer in leeches, which he keeps in a lidded jar on his lap and will offer to anyone who admits to a headache. He and Sula have argued about the four humours for nineteen years and would each be desolate without the other. He remembers the great lagoon fever of his youth in exact detail and will tell you which streets it spared.",
+          "persona": "A human physician of eighty-two, retired from the Guild of Barber-Surgeons and entirely unretired in spirit, who occupies the stool by Sula's still and comments on all of her work. He is courtly and old-fashioned, addresses everyone as young person, and holds to leeches and the four humours with the certainty of a man who was taught them by candlelight. He keeps his leeches in a lidded jar on his lap and offers them to anyone who admits to a headache. He and Sula have argued about the humours for nineteen years and would each be desolate without the other; she lifts Ledger out of the scale-pan, he holds the jar. He was six the year the sea-wall broke and the fever came, and Maelen Thistlebar at the Archive asks him every Midsummer what he remembers of it.",
           "portrait_desc": "A very old human man, pink-scalped with a fringe of white hair, in a dusty black coat with velvet cuffs worn shiny. Half-moon spectacles low on his nose, and a corked glass jar of dark water cradled in his lap.",
           "art_url": "/art/towns/azure/npc-doctor_ambrose_fennel-1b69d326.png",
           "topics": [
             {
               "ask": "Do those leeches work?",
-              "reply": "Better than anything in her blue jars, young person. Two behind the ear and a headache leaves like an unwanted cousin. Sula calls it superstition; Sula has never had my headaches."
+              "reply": "Better than anything in her blue jars, young person. Two behind the ear, twenty minutes, and the pressure goes out of the head like water from a cracked jug. Sula calls it superstition. Sula has never had my headaches."
             },
             {
               "ask": "You've lived here long?",
               "reply": "Eighty-two years, and I remember the fever of the year the sea-wall broke. It took the low houses on Cobble Reach and never crossed the Ropewalk bridge, and no one has ever explained why to my satisfaction. I still won't drink water from the eastern wells."
+            },
+            {
+              "ask": "What's your quarrel with Sula?",
+              "reply": "Nineteen years of it and no quarrel at all. She says the body is a garden and I say it is four rivers, and the fact is we send the same people home better. I hold the jar while she weighs, she lifts the cat out of the pan for me, and that is medicine."
+            },
+            {
+              "ask": "The Archive asks you about the fever?",
+              "reply": "Maelen Thistlebar comes every Midsummer with the flood-year ledger open and asks who rang the Salt Bell all that night. I was six. I remember the bell, and my mother's hand over my ear, and I do not remember who rang it. He asks anyway. He is a patient man."
             }
           ],
           "vendor": false
@@ -245,7 +281,7 @@
           "id": "harbourmistress_ilenya_sarn",
           "name": "Harbourmistress Ilenya Sarn",
           "role": "harbourmistress",
-          "persona": "An elf of some three hundred years who has held the Salt Stair for four human generations and regards the merchant houses as weather — predictable, seasonal, not to be argued with. She is dry, precise and quietly funny, and she notices everything that comes ashore, including things that arrive in coffins, barrels and diplomatic luggage. She cares most about the sea-wall, which is crumbling on its eastern arm, and she petitions the Council about it with the persistence of a dripping tap. She keeps a jar of foreign coins skimmed from the mud at low tide and can date each one to the decade.",
+          "persona": "An elf of some three hundred years who has held the Salt Stair for four human generations and regards the merchant houses as weather — predictable, seasonal, not to be argued with. She is dry, precise and quietly funny, and she notices everything that comes ashore, including things that arrive in coffins, barrels and diplomatic luggage. She knows the far towns by their cargo: Millhaven by flour barrels, Nalindor by star-iron off the river barges, Karzum by the mule-trains that leave her quay with pepper. She cares most about the sea-wall, crumbling on its eastern arm, petitions the Council with the persistence of a dripping tap, and sends Old Bramble at the Eel a tally-slip when she wants a ranger's count of the blocks. She keeps a jar of foreign coins skimmed from the mud at low tide and can date each one to the decade.",
           "portrait_desc": "A tall, straight-backed elf woman with close-cropped grey-blonde hair and pale grey eyes, ageless of face and unhurried of movement. She wears a long slate coat with the harbour's brass anchor pinned at the throat and carries a bundle of tally-slips like a bouquet.",
           "art_url": "/art/towns/azure/npc-harbourmistress_ilenya_sarn-957900b4.png",
           "topics": [
@@ -260,6 +296,10 @@
             {
               "ask": "Anything strange landed lately?",
               "reply": "A crate of green glass with no port-mark, addressed to a warehouse that has been empty two years. I sealed it, logged it, and I am waiting with great patience to see who comes to collect."
+            },
+            {
+              "ask": "Where does it all go?",
+              "reply": "Bertola Vane's pepper goes up the Cinnamere and six weeks of Greatway to Karzum on mules that have stood on a deck a fortnight; Millhaven's flour comes down under sail and goes home as salt and eel; Nalindor's star-iron comes down the brown rivers on flat barges in six days, and the bargemen arrive thin and say nothing about the first stretch. I seal it, I weigh it, I chalk it on the wall. The wall is the honest part of this building."
             }
           ],
           "vendor": false
@@ -268,7 +308,7 @@
           "id": "toma_quickstep",
           "name": "Toma Quickstep",
           "role": "halfling eel-boat ferryman",
-          "persona": "A halfling in his twenties who poles a narrow black eel-boat for hire and knows every water-door, back canal and low bridge in Azure, most of them by nickname. He is talkative, boastful, entirely good-hearted, and will name a price twice and settle for the first. He earns half his living carrying passengers and the other half carrying messages between people who would rather not be seen writing to each other, a service he considers an art form. He is saving up for a second boat and has already painted the name on a plank: Quickstep the Second.",
+          "persona": "A halfling in his twenties who poles a narrow black eel-boat for hire and knows every water-door, back canal and low bridge in Azure, most of them by nickname. He is talkative, boastful, entirely good-hearted, and will name a price twice and settle for the first. He earns half his living carrying passengers and the other half carrying messages between people who would rather not be seen writing to each other, a service he considers an art form; he cannot read, and when a customs slip needs reading he takes it to Wren Ossily at the Archive and pays her in ferry rides. He ties up nights under the Eel's boat-arch, where Perrinelle feeds him the pies that broke in the oven. He is saving for a second boat and has already painted the name on a plank: Quickstep the Second.",
           "portrait_desc": "A wiry young halfling with sun-bleached brown curls, bare feet, and a red sash knotted at the waist over rolled canvas trousers. He balances easily on one heel with a long ash pole across his shoulders.",
           "art_url": "/art/towns/azure/npc-toma_quickstep-78b96558.png",
           "topics": [
@@ -279,6 +319,14 @@
             {
               "ask": "You carry messages too?",
               "reply": "Sealed ones, for a copper, no questions and no reading — I can't read, which is why I'm the best courier in the city. Half the marriages and two of the trade treaties in Azure went in my boat."
+            },
+            {
+              "ask": "Where do you tie up?",
+              "reply": "Under the Eel's boat-arch, beside the green skiff, and I tap the copper eel going in and out like everyone else. Perrinelle gives me the pies that broke in the oven and I fetch her cheap white up from Coriander Bridge, so nobody has paid anybody in two years and we're both ahead."
+            },
+            {
+              "ask": "What's the second boat for?",
+              "reply": "Passengers. The Quickstep takes the sealed packets and the Second will take people, so nobody has to sit on a Vantorre letter the length of the Ropewalk. I've the plank painted and eleven silver towards the hull. Old Bramble says get a flatter one for the reed-flats, and I say the Second is for the canals; the reed-flats can keep their drakes."
             }
           ],
           "vendor": false
@@ -301,7 +349,7 @@
           "id": "bertola_vane",
           "name": "Bertola Vane",
           "role": "spice barge trader",
-          "persona": "A stout human woman of forty-five who inherited three spice barges and doubled them by never once losing an argument about weight. She is loud, warm, generous with samples and utterly unsentimental about money, and she can tell a bad peppercorn by the sound it makes in the sack. She is aunt to half the market and lends money at rates she calls friendly and everyone else calls Bertola's rates. Her great grievance is the bridge toll the Council levied last spring, which she pays in the smallest coins she can find, counted out slowly.",
+          "persona": "A stout human woman of forty-five who inherited three spice barges and doubled them by never once losing an argument about weight. She is loud, warm, generous with samples and utterly unsentimental about money, and she can tell a bad peppercorn by the sound it makes in the sack. Her long pepper goes up the Salt Stair onto mules bound six weeks up the Greatway to Karzum, where a drover named Barrelfoot writes yearly to complain about how the wharf-men shoe. She is aunt to half the market and cousin to Captain Orsolo Vane, who eats on her deck most nights and owes her for it, and she lends money at rates she calls friendly and everyone else calls Bertola's rates. Her great grievance is the bridge toll the Council levied last spring, which she pays in the smallest coins she can find.",
           "portrait_desc": "A broad human woman with sun-dark arms, gold hoops in both ears, and a green headscarf knotted over black hair going grey at the temple. She wears a leather money-apron with six pockets and stands braced on a rocking deck like it were bedrock.",
           "art_url": "/art/towns/azure/npc-bertola_vane-b52a714c.png",
           "topics": [
@@ -312,6 +360,14 @@
             {
               "ask": "What's this bridge toll?",
               "reply": "Two coppers to cross my own bridge to my own barge, for the upkeep of a bridge that has stood four hundred years without help. I pay it in half-farthings, counted one at a time, and I intend to keep doing so until the toll-man retires or weeps."
+            },
+            {
+              "ask": "Where does the pepper go?",
+              "reply": "Up. Onto the Salt Stair, onto mules, and six weeks up the Greatway to Karzum, where a woman called Sadiya sells it in the Long Hall Market at three times my price and a drover named Barrelfoot writes once a year about our farriers. The Millhaven coasters bring flour down and take my cardamom home. That's my year: flour down, spice up, and the toll-man in between."
+            },
+            {
+              "ask": "The Captain's your cousin?",
+              "reply": "Orsolo, by my grandfather's second wife, and that astrolabe he moons over on Vessa's mat was bought with pepper money, whatever the Vane side says. He eats here most nights. I put his plate on the slate with the rest, and I'll have it out of him when the Grey Heron sails, which at Vessa's pace is never."
             }
           ],
           "vendor": false
@@ -357,7 +413,7 @@
           "id": "archivist_maelen_thistlebar",
           "name": "Archivist Maelen Thistlebar",
           "role": "chief archivist",
-          "persona": "An elf of four hundred and some years, courteous and slightly amused by everything, who has read every harbour ledger in the building and remembers most of them. He believes fiercely that a city's memory is its only real wall and that a lost ledger is a lost year, and he will help absolutely anyone who asks a specific question. He conducts a decades-long courtship of the Council's budget committee with the patience of a man who intends to outlive them. He drinks pale tea, never over paper, and keeps a chart of the lagoon's changing channels going back three hundred years, which he considers the most beautiful object in Azure.",
+          "persona": "An elf of four hundred and some years, courteous and exact, who has read every harbour ledger in the building and remembers most of them. He believes a city's memory is its only real wall, that a lost ledger is a lost year, and that anyone with a specific question deserves an answer. He reads the far towns in the tallies — Millhaven's flour by the barrel, Nalindor's star-iron by the weight — and a thin river season shows in his columns months before it shows in the prices on Coriander Bridge. He has told Wren Ossily that the cut pages in the Vantorre register are a clerk's error, and has moved that register to his own desk. He drinks pale tea, never over paper, and keeps a chart of the lagoon's changing channels going back three hundred years, which he considers the most beautiful object in Azure.",
           "portrait_desc": "A slender elf with long white hair bound in a black ribbon, olive-pale skin and fine lines only at the eyes. He wears a scholar's grey robe with cuffs guarded in leather against ink, and moves with the unhurried grace of someone who has never once run in this building.",
           "art_url": "/art/towns/azure/npc-archivist_maelen_thistlebar-8ce3754f.png",
           "topics": [
@@ -372,6 +428,10 @@
             {
               "ask": "Why so much fuss over ledgers?",
               "reply": "Because a city that forgets what it owned last year can be robbed of it this year, politely, on paper. Azure's real wall is not the giants' stonework; it is shelf nine, gallery two."
+            },
+            {
+              "ask": "What do the ledgers say about the rivers?",
+              "reply": "That the Nalindor barges came down forty-one times last year and twenty-six the year before, star-iron by weight and yew by the bundle, and that a wet season in the Deeps reaches this room as a short column long before it reaches Hedda Stromm's prices. I have Wren copy the river tallies first, because they are the pages the merchant houses come asking to see, and the ones that go missing."
             }
           ],
           "vendor": false
@@ -380,7 +440,7 @@
           "id": "wren_ossily",
           "name": "Wren Ossily",
           "role": "junior clerk and copyist",
-          "persona": "A young half-elf clerk of about twenty, ferociously neat, who copies water-damaged ledgers back into fresh volumes and takes an almost surgical pride in matching old handwriting. She is shy with strangers until the subject is paper, at which point she becomes unstoppable. She has noticed that three pages are missing from the Vantorre warehouse registers of forty years ago, cut out with a very sharp knife, and she mentions it to anyone who will stand still. She keeps a saucer of milk for the archive's mouser and has named him Marginalia.",
+          "persona": "A young half-elf clerk of about twenty, ferociously neat, who copies water-damaged ledgers back into fresh volumes and takes an almost surgical pride in matching old handwriting. She is shy with strangers until the subject is paper, at which point she becomes unstoppable. She reads customs slips aloud for Toma Quickstep, who pays her in ferry rides, and she showed Pip Ansel from the forge how to rule a page straight, which Pip has taken to with alarming seriousness. She has noticed that three pages are missing from the Vantorre warehouse registers of forty years ago, cut out with a very sharp knife, and she mentions it to anyone who will stand still. She keeps a saucer of milk for the archive's mouser and has named him Marginalia.",
           "portrait_desc": "A slight half-elf woman with straight brown hair cut level at the jaw and ink on the side of her hand. She wears a plain dove-grey dress with black sleeve-guards and holds a pen as though it were a scalpel.",
           "art_url": "/art/towns/azure/npc-wren_ossily-b037f340.png",
           "topics": [
@@ -391,6 +451,14 @@
             {
               "ask": "Found anything odd?",
               "reply": "Three pages cut out of the Vantorre warehouse register from forty years back — cut, not torn, by someone with a good knife and a steady hand. Maelen says it is probably a clerk's error. It is not a clerk's error."
+            },
+            {
+              "ask": "Who's Marginalia?",
+              "reply": "The mouser. Grey, one white foot, sleeps on whatever page I need next. He came off a Millhaven flour barge as a kitten, and he is the only reason the flood-year ledgers still have corners."
+            },
+            {
+              "ask": "Do you ever leave the Archive?",
+              "reply": "On Toma's boat, mostly. I read him his customs slips and his boat-licence, and he poles me to the Iron Quay to see Pip's notebook, which she rules straighter than I do now. Under the Weaver's Arch you lie flat on the boards and the bricks go past a hand's breadth from your nose."
             }
           ],
           "vendor": false

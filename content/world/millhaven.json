@@ -1,0 +1,20 @@
+{
+  "kind": "world_entry",
+  "town_id": "millhaven",
+  "name": "Millhaven",
+  "region_id": "ardsmere_downs",
+  "gist": "Millhaven is the mill-town of the Ardsmere coast: tiers of whitewashed cottages with slate-blue roofs stacked down a green headland to a crescent harbour, and above them forty windmill towers turning forty white sails in slow unison, some on the cliff and some out among the barley. Carts of grain go up the hill and carts of meal come down, so the streets are dusted pale with flour and the whole town smells of bread, tar and sea. The barley of the downs is ground here and shipped out as flour and meal from Coalhaul Quay, which means news from the whole coast lands in Millhaven first, usually shouted. Travellers remember the chowder, the gull-cries, the boom of the Mill Bell over the harbour, and the blue hills inland that nobody sensible walks alone.",
+  "notable": [
+    "The Sail and Sheaf — a retired mill turned inn, where Bessa Cobblewick serves the best chowder on the coast and the sails turn overhead all night.",
+    "Grendorn's Ironworks, wedged against the cliff, where a dwarf smith has trapped the sea wind in a pipe and made it feed his forge.",
+    "The Cog and Cormorant, half clockmaker and half curiosity shop, whose elven keeper Ilvenna Wrys tends the Mill Bell's clockwork for free.",
+    "The Shrine of the Turning Wind on the headland, where millers and sailors leave a knot of ribbon before any journey."
+  ],
+  "neighbours": [
+    {
+      "town_id": "azure",
+      "how": "No road — a week's coasting under sail; Millhaven's flour barrels go south to the lagoon and come back as salt, spice and eel."
+    }
+  ],
+  "added_by": "backfill"
+}

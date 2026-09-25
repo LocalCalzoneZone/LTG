@@ -16,6 +16,9 @@ import type {
   SetupOptions,
   TownDetail,
   TownOption,
+  WorldEntry,
+  WorldOverview,
+  WorldRegion,
 } from "./types";
 
 export async function fetchSetupOptions(): Promise<SetupOptions> {
@@ -84,7 +87,6 @@ export async function deleteEncounter(id: string): Promise<void> {
 export interface RunOptions {
   difficulty: "easy" | "standard" | "hard";
   hardcore: boolean;
-  everquest: boolean;
   name?: string;
 }
 
@@ -121,12 +123,21 @@ export interface RunSummary {
   run_id: string;
   name: string;
   party: { id: string; name: string; portrait: string }[];
-  options: { difficulty: string; hardcore: boolean; everquest: boolean };
+  options: { difficulty: string; hardcore: boolean };
   created_at: string;
   updated_at: string;
   dead: boolean;
   save_count?: number;
   latest_label?: string;
+  // Update 24 §D24-3: the campaign's shape for the Load list.
+  kind?: "campaign" | "adventure";
+  state?: "in_scenario" | "interlude" | "between" | "";
+  scenario_count?: number;
+  current_scenario?: number;
+  current_town_id?: string;
+  current_town_name?: string;
+  day?: number;
+  newest_save_id?: string | null;
 }
 export interface SaveRow {
   save_id: string;
@@ -162,6 +173,18 @@ export async function loadSave(runId: string, saveId: string): Promise<string> {
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail.detail || `load failed: ${res.status}`);
+  }
+  return (await res.json()).session_id as string;
+}
+
+// Update 24 §D24-4: open a campaign at its NEWEST save (mid-scenario resumes;
+// the interlude resumes in town; a campaign left at the scenario-end menu runs
+// the continue path).
+export async function continueRun(runId: string): Promise<string> {
+  const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/continue`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `continue failed: ${res.status}`);
   }
   return (await res.json()).session_id as string;
 }
@@ -386,9 +409,10 @@ export async function fetchTown(id: string): Promise<TownDetail> {
   if (!res.ok) throw new Error(`town load failed: ${res.status}`);
   return res.json();
 }
-export async function generateTown(note: string): Promise<TownOption> {
+export async function generateTown(note: string, anchorTownId = "", regionId = ""): Promise<TownOption> {
   const res = await fetch("/api/towns/generate", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }),
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note, anchor_town_id: anchorTownId, region_id: regionId }),
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
@@ -493,4 +517,32 @@ export async function generateItemArt(id: string): Promise<{ url: string }> {
     throw new Error(detail.detail || `art failed: ${res.status}`);
   }
   return res.json();
+}
+
+
+// ---- The worldbook (Update 24 §D24-8.3 — Options → World) ------------------ //
+export async function fetchWorld(): Promise<WorldOverview> {
+  const res = await fetch("/api/world");
+  if (!res.ok) throw new Error(`world load failed: ${res.status}`);
+  return res.json();
+}
+export async function saveWorldEntry(townId: string, patch: Partial<WorldEntry> & { new_region?: WorldRegion }): Promise<WorldEntry> {
+  const res = await fetch(`/api/world/${encodeURIComponent(townId)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : `save failed: ${res.status}`);
+  }
+  return (await res.json()).entry;
+}
+export async function saveWorldRegion(regionId: string, name: string, gist: string): Promise<WorldRegion> {
+  const res = await fetch(`/api/world/regions/${encodeURIComponent(regionId)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, gist }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : `save failed: ${res.status}`);
+  }
+  return (await res.json()).region;
 }

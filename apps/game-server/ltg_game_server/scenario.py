@@ -15,8 +15,8 @@ scenario adds around the adventure layer:
   reflected on the greyed Start Adventure button;
 - Start Adventure → an `AdventureRun` composed from the run's party copies;
   adventure end / defeat → back to town (Normal: `defeated_once`, the same
-  quest re-offered; Hardcore: the run dies); Act III complete → Standard ends,
-  Everquest generates a new arc for the same town.
+  quest re-offered; Hardcore: the run dies); Act III complete → the scenario
+  ends and the campaign may continue through the interlude (Update 24).
 
 Progression (levels, points, gold, flags) is persistent within the run and
 never touches the saved profiles. The combat engine is untouched.
@@ -32,7 +32,7 @@ from ltg_core.schema import (LEVEL_THRESHOLDS, LEVEL_UP_POINTS, MAX_LEVEL, PHASE
                              level_band, level_for_points, level_progress,
                              points_to_next_level)
 
-from . import content, items, llm, loot, scenario_content as sc
+from . import content, items, llm, loot, scenario_content as sc, world
 from .adventure import AdventureRun, HP_FLOOR_PCT
 from .dialogue import MAX_CHOICES, Conversation
 
@@ -67,6 +67,37 @@ DEFAULT_COMMITTED_REPLY = ("Then I will not press you. See your business through
 DEFAULT_SWORN_LABEL = "We have given you our word. We are seeing to it."
 DEFAULT_SWORN_REPLY = "Then I will keep you no longer. Go — and come back whole."
 FAREWELL_LABEL = "Farewell."
+# Update 24 §D24-7.5: the chronicle's kinds — engine-written, append-only,
+# campaign-scoped per hero. `stance` is reserved for a later update's party
+# lines; the kind exists so the schema does not change when they arrive.
+CHRONICLE_KINDS = ("fell", "slew", "refused", "accepted", "spent", "bought", "met",
+                   "stance", "levelled", "scarred")
+# What the WRITERS see of a chronicle: the ten most recent lines (plus one
+# summary line per past scenario, from the ledger).
+CHRONICLE_RECENT = 10
+# The day counter (§D24-10): +1 per ride-out; the interlude and the chosen
+# hook add their own days.
+DAYS_PER_RIDE_OUT = 1
+# The custom fourth card on the rest screen covers this much road when the
+# player writes their own premise.
+CUSTOM_HOOK_DAYS = 7
+HOOK_KINDS = ("stay", "neighbour", "new")
+
+
+def _knows_prose(flag: str) -> str:
+    """`knows_orc_camp` → "the orc camp" — what was learned, as prose."""
+    body = flag[len("knows_"):].replace("_", " ").strip()
+    return f"the {body}" if body else flag
+
+
+def _boss_name(detail: Optional[Dict[str, Any]]) -> str:
+    """The Phase III boss's name, off a frozen adventure detail."""
+    for phase in reversed((detail or {}).get("phases") or []):
+        enc = phase.get("encounter") or phase
+        for e in enc.get("enemies") or []:
+            if isinstance(e, dict) and e.get("is_boss"):
+                return str(e.get("name") or e.get("id") or "")
+    return ""
 
 
 def _spent_points_of(ch: Dict[str, Any]) -> int:
@@ -103,7 +134,27 @@ class ScenarioRun:
         # without one (hand-written, or pre-dating the forge) draws one now.
         loot.lexicon_of(self.arc, self.town)
         self.scenario_id = scenario_id           # the pre-generated scenario, if any
-        opts = {"difficulty": "standard", "hardcore": False, "everquest": False}
+        # The CAMPAIGN (Update 24 §D24-3): the run, extended — one fixed party,
+        # one continuity. Everything here survives a scenario's end; it rides
+        # run.json and every save snapshot (so a fork keeps its own history).
+        self.campaign: Dict[str, Any] = self._fresh_campaign(character_ids, loadouts, self.town_id)
+        # Per-act bookkeeping for the current scenario (§D24-8.1): what the
+        # ledger entry is assembled from when the scenario closes.
+        self.act_logs: List[Dict[str, Any]] = []
+        self.scenario_day_start = 1
+        # The interlude (§D24-5): the planner's result waiting for Continue,
+        # its job state, the rest screen, and the road between scenarios.
+        self.pending_interlude: Optional[Dict[str, Any]] = None
+        self.interlude_ref: Optional[str] = None
+        self.interlude_job: Dict[str, Any] = {"state": "idle", "error": None}
+        self.continue_requested = False
+        self.rest_screen = False
+        self.transit: Optional[Dict[str, Any]] = None
+        # Notices for the entry splash (a live-identity refresh, §D24-6).
+        self.notices: List[str] = []
+        # Update 24 §D24-1: Everquest is retired — difficulty and Normal/Hardcore
+        # are the only run options (an old save's `everquest` key is dropped).
+        opts = {"difficulty": "standard", "hardcore": False}
         opts.update({k: v for k, v in (options or {}).items() if k in opts})
         self.options = opts
         # Party (run copies; the profiles never see any of this).
@@ -124,7 +175,7 @@ class ScenarioRun:
         # Progression
         self.scenario_number = 1
         self.act_index = 0
-        self.mode = "town"                      # town | adventure | complete
+        self.mode = "town"                      # town | adventure | complete | interlude
         self.location_id: Optional[str] = None  # None == the town map
         self.conversation: Optional[Conversation] = None
         self.flags: Dict[str, bool] = {}
@@ -166,6 +217,146 @@ class ScenarioRun:
         # Pluggable generators (tests swap them; the app uses llm.*).
         self.materializer: Callable[..., Dict[str, Any]] = llm.generate_act
         self.arc_generator: Callable[..., Dict[str, Any]] = llm.generate_arc
+        self.interlude_generator: Callable[..., Dict[str, Any]] = llm.generate_interlude
+        self.town_generator: Callable[..., Dict[str, Any]] = llm.generate_town
+        self.town = self._compose_town()
+
+    # -- the campaign (Update 24 §D24-3) ----------------------------------- #
+    @staticmethod
+    def _fresh_campaign(character_ids: List[str], loadouts: List[Dict[str, Any]],
+                        town_id: str) -> Dict[str, Any]:
+        heroes: Dict[str, Any] = {}
+        for cid, lo in zip(character_ids, loadouts):
+            ch = (lo or {}).get("character", {}) or {}
+            heroes[cid] = {"situation": str(ch.get("brief_situation") or "").strip(),
+                           "chronicle": []}
+        return {"ledger": [], "towns_visited": [town_id] if town_id else [],
+                "current_town_id": town_id, "town_state": {}, "heroes": heroes,
+                "hooks": None, "day": 1}
+
+    @property
+    def in_town(self) -> bool:
+        return self.mode in ("town", "interlude")
+
+    @property
+    def day(self) -> int:
+        return int(self.campaign.get("day", 1) or 1)
+
+    def advance_days(self, days: int) -> None:
+        self.campaign["day"] = self.day + max(0, int(days or 0))
+
+    def current_town_state(self) -> Dict[str, Any]:
+        return self.campaign.setdefault("town_state", {}).setdefault(
+            self.town_id, {"flags": {}, "overrides": {}, "met": [], "talked": []})
+
+    def _compose_town(self, act_index: Optional[int] = None) -> Dict[str, Any]:
+        """The town as this act sees it: base + the arc's cast/places (§D20-2)
+        + the campaign's memory of the place (§D24-8.2)."""
+        idx = self.act_index if act_index is None else act_index
+        state = (self.campaign.get("town_state") or {}).get(self.town_id)
+        return sc.town_for_act(self.base_town, self.arc, idx, town_state=state)
+
+    def _hero(self, cid: str) -> Dict[str, Any]:
+        return self.campaign.setdefault("heroes", {}).setdefault(
+            cid, {"situation": "", "chronicle": []})
+
+    def hero_name(self, cid: str) -> str:
+        try:
+            return str(self.loadouts[self.slot_of(cid)].get("character", {}).get("name") or cid)
+        except (ValueError, IndexError):
+            return cid
+
+    def chronicle_add(self, cid: str, kind: str, text: str) -> None:
+        """Append one deed to a hero's chronicle (§D24-7.5): engine-written,
+        append-only, campaign-scoped. Duplicate of the last line is dropped."""
+        if kind not in CHRONICLE_KINDS:
+            raise ValueError(f"unknown chronicle kind: {kind}")
+        text = (text or "").strip()
+        if not text or cid not in self.character_ids:
+            return
+        entry = {"scenario": self.scenario_number, "act": self.act_index + 1,
+                 "day": self.day, "kind": kind, "text": text}
+        rows = self._hero(cid)["chronicle"]
+        if rows and rows[-1] == entry:
+            return
+        rows.append(entry)
+
+    def chronicle_of(self, cid: str) -> List[Dict[str, Any]]:
+        return [dict(e) for e in self._hero(cid).get("chronicle") or []]
+
+    def chronicle_view(self, cid: str) -> Dict[str, Any]:
+        """What the writers see: the ten most recent lines plus one summary
+        line per past scenario (the ledger's one-liner)."""
+        rows = self._hero(cid).get("chronicle") or []
+        summaries = [e.get("one_liner", "") for e in self.campaign.get("ledger") or []
+                     if int(e.get("scenario", 0)) < self.scenario_number and e.get("one_liner")]
+        return {"recent": [dict(e) for e in rows[-CHRONICLE_RECENT:]], "summaries": summaries}
+
+    def situation_of(self, cid: str) -> str:
+        return str(self._hero(cid).get("situation") or "")
+
+    def set_situation(self, cid: str, text: str) -> None:
+        """The rest screen's situation editor (§D24-7.4): the one place a
+        player steers characterisation between sessions."""
+        if cid not in self.character_ids:
+            raise ValueError("unknown character")
+        words = (text or "").strip().split()
+        self._hero(cid)["situation"] = " ".join(words[:80])
+
+    # -- the ledger (§D24-8.1) --------------------------------------------- #
+    def _act_log(self) -> Dict[str, Any]:
+        while len(self.act_logs) <= self.act_index:
+            n = len(self.act_logs)
+            title = self.arc["acts"][n]["title"] if n < len(self.arc.get("acts") or []) else ""
+            self.act_logs.append({"act": n + 1, "title": title, "accepted": None, "refused": [],
+                                  "adventure": "", "boss": "", "fallen": [], "defeats": 0,
+                                  "met": [], "learned": [], "gold_spent": {}, "items_bought": []})
+        return self.act_logs[self.act_index]
+
+    def _ledger_entry(self, outcome: str) -> Dict[str, Any]:
+        town_name = self.town.get("name", self.town_id)
+        villain = self.arc.get("villain", "")
+        title = self.arc.get("title", "")
+        if outcome == "victory":
+            one = f'In {town_name} the party defeated {villain} — "{title}".'
+        elif outcome == "in progress":
+            one = f'In {town_name} the party is set against {villain} — "{title}".'
+        else:
+            one = f'In {town_name} the party {outcome} against {villain} — "{title}".'
+        fallen = sorted({h for log in self.act_logs for h in log.get("fallen") or []})
+        if fallen and outcome == "victory":
+            one += f" {', '.join(fallen)} fell along the way."
+        return {"scenario": self.scenario_number, "title": title, "villain": villain,
+                "town_id": self.town_id, "town_name": town_name, "outcome": outcome,
+                "days": max(0, self.day - self.scenario_day_start), "one_liner": one,
+                "acts": copy.deepcopy(self.act_logs)}
+
+    def _close_scenario_ledger(self, outcome: str = "victory") -> Dict[str, Any]:
+        """Write (or rewrite) this scenario's ledger entry. Idempotent per
+        scenario number, so the provisional entry the planner reads at boss
+        death and the final one written at the scenario's end agree."""
+        entry = self._ledger_entry(outcome)
+        ledger = self.campaign.setdefault("ledger", [])
+        if ledger and int(ledger[-1].get("scenario", 0)) == self.scenario_number:
+            ledger[-1] = entry
+        else:
+            ledger.append(entry)
+        return entry
+
+    def ledger_for_writers(self) -> List[Dict[str, Any]]:
+        """The ledger as the writers read it: every closed scenario plus the
+        current one in progress (so the act writer of Act II knows Act I)."""
+        rows = copy.deepcopy(self.campaign.get("ledger") or [])
+        if not rows or int(rows[-1].get("scenario", 0)) != self.scenario_number:
+            if self.act_logs:
+                rows.append(self._ledger_entry("in progress"))
+        return rows
+
+    def world_context(self) -> Dict[str, Any]:
+        try:
+            return world.context_for(self.town_id)
+        except Exception:
+            return {"entry": None, "region": None, "neighbours": []}
 
     # -- helpers ------------------------------------------------------------ #
     @property
@@ -205,13 +396,28 @@ class ScenarioRun:
         return self.act_tier() + 1
 
     def party_state(self) -> Dict[str, Any]:
+        """What the writers are told about the party (§D24-7.6): per hero the
+        brief, the situation, the recent chronicle and the past scenarios'
+        summaries; the run's PUBLIC flags (`_`-prefixed bookkeeping never
+        reaches a writer — §D24-7.7) with `knows_*` moved to a `knows` list."""
         members = []
         for cid, lo, lvl in zip(self.character_ids, self.loadouts, self.levels()):
             ch = lo.get("character", {}) or {}
+            brief = ch.get("brief") if isinstance(ch.get("brief"), dict) else {}
+            view = self.chronicle_view(cid)
             members.append({"id": cid, "name": ch.get("name", cid), "level": lvl,
-                            "gold": self.gold.get(cid, 0)})
-        return {"members": members, "flags": dict(self.flags),
-                "gold": {m["name"]: m["gold"] for m in members}}
+                            "gold": self.gold.get(cid, 0),
+                            "colors": list(ch.get("colors") or []),
+                            "concept": str(brief.get("concept") or ch.get("description") or ""),
+                            "brief": copy.deepcopy(brief),
+                            "situation": self.situation_of(cid),
+                            "chronicle_recent": view["recent"],
+                            "chronicle_summaries": view["summaries"]})
+        flags = {k: v for k, v in self.flags.items()
+                 if not k.startswith("_") and not k.startswith("knows_")}
+        knows = sorted(k for k, v in self.flags.items() if k.startswith("knows_") and v)
+        return {"members": members, "flags": flags, "knows": knows,
+                "gold": {m["name"]: m["gold"] for m in members}, "day": self.day}
 
     def _sync_levels_into_loadouts(self) -> None:
         for cid, lo in zip(self.character_ids, self.loadouts):
@@ -221,12 +427,16 @@ class ScenarioRun:
             ch["level"] = level_for_points(ch["spent_points"])
 
     # -- arrival & materialization (§D17-6.2) ------------------------------ #
-    def arrive(self, materialization: Optional[Dict[str, Any]] = None) -> None:
+    def arrive(self, materialization: Optional[Dict[str, Any]] = None,
+               interlude: bool = False) -> None:
         """Begin the act in town: reset the act's per-visit state and either
         take a supplied materialization (a pre-generated Act I, or a reload) or
-        mark the act as needing one (`materialize` then runs off-thread)."""
-        self.mode = "town"
-        self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
+        mark the act as needing one (`materialize` then runs off-thread).
+        ``interlude`` (§D24-5.2): the town after victory — act-shaped, no quest."""
+        self.mode = "interlude" if interlude else "town"
+        self.transit = None
+        self.rest_screen = False
+        self.town = self._compose_town()
         self.location_id = None
         self.conversation = None
         self.adventure = None
@@ -248,8 +458,10 @@ class ScenarioRun:
             self._take_materialization(materialization)
         else:
             self.materializing = True
+        subtitle = (f"Between scenarios — the Interlude · day {self.day}" if interlude
+                    else f"Act {self.act_index + 1} — {self.outline['title']}")
         self.splash = {"kind": "town", "title": self.town["name"],
-                       "subtitle": f"Act {self.act_index + 1} — {self.outline['title']}",
+                       "subtitle": subtitle,
                        "text": (self.act or {}).get("arrival", "")}
 
     def _take_materialization(self, m: Dict[str, Any]) -> None:
@@ -274,12 +486,19 @@ class ScenarioRun:
         # whole town visit and the whole ride out to paint them. What the boss
         # drops is settled before the party ever leaves town; only the reveal
         # waits. (Frozen, so a reload shows the same spoils and reuses the art.)
-        if not self.act.get("spoils"):
+        if not self.act.get("spoils") and self.mode != "interlude":
             self.act["spoils"] = [it.model_dump(mode="json", exclude_none=True)
                                   for it in loot.forge_drops(
                                       len(self.character_ids), self.spoils_tier(),
                                       loot.lexicon_of(self.arc, self.town),
                                       seed=random.randrange(2**31))]
+        if self.mode == "interlude":
+            # No quest between scenarios: rest is the only exit (§D24-5).
+            self.quest = {"status": "none", "id": "", "title": "", "text": "",
+                          "adventure_theme": "", "direct_to": None}
+            if self.splash and self.splash.get("kind") == "town":
+                self.splash["text"] = m.get("arrival", "")
+            return
         first = (self.quest_options or [{"id": "", "title": m.get("quest", {}).get("title", ""),
                                          "text": m.get("quest", {}).get("text", ""),
                                          "adventure_theme": ""}])[0]
@@ -297,13 +516,33 @@ class ScenarioRun:
         prev = self.act_summaries[-1] if self.act_summaries else ""
         try:
             m = self.materializer(self.town, self.arc, self.act_index,
-                                  self.party_state(), prev)
+                                  self.party_state(), prev,
+                                  ledger=self.ledger_for_writers(),
+                                  world_ctx=self.world_context())
         except ValueError as exc:
             self.materializing = False
             self.materialize_error = str(exc)
             raise
         self._take_materialization(m)
+        self._apply_town_state_delta(m.get("town_state_delta"))
         return m
+
+    def _apply_town_state_delta(self, delta: Optional[Dict[str, Any]]) -> None:
+        """A writer's `town_state_delta` (§D24-8.2): one or two location
+        overrides tied to what happened, kept on the campaign and composed
+        onto the town from now on."""
+        if not delta:
+            return
+        state = self.current_town_state()
+        overrides = state.setdefault("overrides", {})
+        for loc_id, patch in delta.items():
+            if not isinstance(patch, dict):
+                continue
+            row = overrides.setdefault(loc_id, {})
+            for k in ("description", "exterior_scene", "interior_scene"):
+                if patch.get(k):
+                    row[k] = str(patch[k]).strip()
+        self.town = self._compose_town()
 
     # -- town movement (§D17-5.2) ------------------------------------------- #
     def visit(self, location_id: str) -> None:
@@ -568,7 +807,12 @@ class ScenarioRun:
     def _apply_hook(self, h: Dict[str, Any]) -> None:
         kind = h["kind"]
         if kind == "set_flag":
-            self.flags[h["flag"]] = bool(h.get("value", True))
+            flag = str(h["flag"])
+            self.flags[flag] = bool(h.get("value", True))
+            if flag.startswith("knows_") and self.flags[flag]:
+                learned = self._act_log()["learned"]
+                if _knows_prose(flag) not in learned:
+                    learned.append(_knows_prose(flag))
         elif kind == "grant_quest":
             # WHICH offer the party took decides the act — and, with it, what
             # the adventure generator is handed (§D17-5.4).
@@ -580,6 +824,17 @@ class ScenarioRun:
             if self.quest.get("status") in ("none", "offered"):
                 self.quest["status"] = "accepted"
             self.flags["quest_accepted"] = True
+            # The ledger and the chronicles (§D24-8.1, §D24-7.5): the offer
+            # taken, and every offer left on the table — refused, and remembered.
+            log = self._act_log()
+            taken = option or {"id": self.quest.get("id", ""), "title": self.quest.get("title", "")}
+            log["accepted"] = {"id": taken.get("id", ""), "title": taken.get("title", "")}
+            log["refused"] = [{"id": q["id"], "title": q["title"]} for q in self.quest_options
+                              if q["id"] != taken.get("id")]
+            for cid in self.character_ids:
+                self.chronicle_add(cid, "accepted", f'Took on "{taken.get("title", "")}".')
+                for q in log["refused"]:
+                    self.chronicle_add(cid, "refused", f'Turned down "{q["title"]}".')
             for flag in [f for f in self.flags if f.startswith(DEFERRED_PREFIX)]:
                 self.flags.pop(flag, None)
             self.add_journal("quest", f'We took on "{self.quest.get("title", "")}". {self.quest.get("text", "")}')
@@ -603,7 +858,12 @@ class ScenarioRun:
         elif kind == "give_item":
             self.flags[f"item_{h.get('item')}"] = True  # Phase 2 lands the item itself
         elif kind == "rest":
-            self.rest()
+            if self.mode == "interlude":
+                # Between scenarios the inn opens the REST SCREEN (§D24-5.3);
+                # nothing heals until a hook is chosen.
+                self.rest_screen = True
+            else:
+                self.rest()
         elif kind == "open_shop":
             self.flags["_shop_open"] = True    # Phase 2: the shop modal (stub now)
         elif kind == "direct_to":
@@ -640,6 +900,16 @@ class ScenarioRun:
         if self.flags.get(flag):
             return
         self.flags[flag] = True
+        log = self._act_log()
+        if npc["id"] not in log["met"]:
+            log["met"].append(npc["id"])
+        state = self.current_town_state()
+        if npc["id"] not in state.setdefault("met", []) and not npc.get("_scenario"):
+            state["met"].append(npc["id"])
+        for cid in self.character_ids:
+            self.chronicle_add(cid, "met", f"Met {npc['name']}"
+                               + (f", {npc.get('role')}" if npc.get("role") else "")
+                               + f", at {loc['name']}.")
         persona = str(npc.get("persona") or "").strip()
         if not persona:
             return
@@ -726,10 +996,10 @@ class ScenarioRun:
 
     def act_ends_on_screen(self) -> bool:
         """Does this act's boss get a level-up screen behind the spoils? Every
-        boundary offers one (§D17-2.3) — except the closing boss of a STANDARD
-        scenario, where the run ends and the points have nowhere to go.
-        Everquest always gets one, because the next arc is coming."""
-        return bool(self.options.get("everquest")) or not self.is_last_act()
+        boundary offers one (§D17-2.3) — the closing act included, now that
+        every scenario game is a campaign that may continue (§D24-4): the
+        points always have somewhere to go."""
+        return True
 
     def phase_budget_levels(self) -> List[float]:
         """The level each phase of THIS act is budgeted at (T-62, §D17-2.3):
@@ -766,6 +1036,8 @@ class ScenarioRun:
         state, portraits, art, eid = run.start(self.character_ids, seed=seed,
                                                loadouts=self.loadouts)
         self.add_journal("event", f'We rode out for {self.adventure_detail.get("name", "the road")}.')
+        self.advance_days(DAYS_PER_RIDE_OUT)
+        self._act_log()["adventure"] = str(self.adventure_detail.get("name") or "")
         # Pools carry across acts (a lone adventure re-derives them; a run knows).
         for cid, live in zip(self.character_ids, run.live_ids):
             run.banked[live] = int(self.banked.get(cid, 0))
@@ -788,6 +1060,11 @@ class ScenarioRun:
         """Pull the leveled builds, pools, gold, and HP back out of a finished
         (or lost) adventure into the run's party."""
         party_states = {c.id: c for c in (getattr(state, "party", []) or [])}
+        won = getattr(state, "result", None) == "victory" and run.complete
+        boss = _boss_name(self.adventure_detail)
+        place = (self.adventure_detail or {}).get("name", "the road")
+        log = self._act_log()
+        levels_before = dict(zip(self.character_ids, self.levels()))
         # HP bought at the act-end level-up heals what it adds (§D10-2), exactly
         # as it would have across a phase boundary — there is no next phase to
         # apply it in, so it lands on the HP the party carries into town.
@@ -816,13 +1093,30 @@ class ScenarioRun:
             live_hp = int(getattr(cst, "hp", max_hp)) + heals.get(live, 0)
             floor = -(-max_hp * HP_FLOOR_PCT // 100)
             self.hp[cid] = min(max_hp, max(live_hp, floor)) if max_hp else None
+            # The chronicle (§D24-7.5): who fell, who slew the boss.
+            name = self.hero_name(cid)
+            fell = cst is not None and int(getattr(cst, "hp", 1)) <= 0
+            if fell:
+                if name not in log["fallen"]:
+                    log["fallen"].append(name)
+                self.chronicle_add(cid, "fell", f"Fell at {place}"
+                                   + (f" before {boss}" if boss and won else "") + ".")
+            if won:
+                if boss:
+                    log["boss"] = boss
+                if not fell:
+                    self.chronicle_add(cid, "slew", f"Slew {boss} at {place}." if boss
+                                       else f"Cleared {place}.")
         self._sync_levels_into_loadouts()
+        for cid, lvl in zip(self.character_ids, self.levels()):
+            if lvl > levels_before.get(cid, lvl):
+                self.chronicle_add(cid, "levelled", f"Reached level {lvl}.")
 
     def on_adventure_complete(self, state: Any) -> str:
         """The act's adventure is won: harvest, mark the act complete, and move
-        to the next act (or end the scenario / roll the next arc). Returns the
-        transition: "next_act" | "scenario_complete" | "everquest".
-        The caller then calls `arrive()` (after any new arc is generated)."""
+        to the next act (or end the scenario). Returns the transition:
+        "next_act" | "scenario_complete". The caller then calls `arrive()`
+        (or, at the scenario's end, offers the scenario-end menu — §D24-4)."""
         run = self.adventure
         if run is not None:
             self._harvest(run, state)
@@ -844,23 +1138,54 @@ class ScenarioRun:
         if n < len(self.arc["acts"]):
             self.act_index = n
             return "next_act"
-        if self.options.get("everquest"):
-            return "everquest"
         self.mode = "complete"
+        self._close_scenario_ledger("victory")
         return "scenario_complete"
 
-    def begin_next_arc(self, arc: Dict[str, Any]) -> None:
-        """Everquest: the previous arc is done; a fresh arc for the same town.
-        The old arc's cast and places leave with it (the recompose on the next
-        arrival drops them)."""
+    def begin_next_scenario(self, arc: Dict[str, Any], town: Optional[Dict[str, Any]] = None,
+                            town_id: str = "") -> None:
+        """The campaign continues (§D24-5.3): the previous scenario is done; a
+        fresh arc — in this town or another. The old arc's cast and places
+        leave with it (the recompose on the next arrival drops them)."""
+        self._close_scenario_ledger("victory")
         self.previous_arcs.append({"title": self.arc["title"], "villain": self.arc["villain"],
                                    "outcome": "defeated"})
+        # The town left keeps what the party did there (§D24-8.2): its custom
+        # flags under the campaign's town state; scenario-scoped knowledge and
+        # bookkeeping are cleared (§D24-7.7) — the ledger carries them as prose.
+        old_state = self.current_town_state()
+        for k, v in self.flags.items():
+            if (k.startswith("_") or k.startswith("knows_") or k.startswith(DEFERRED_PREFIX)
+                    or k.startswith("town:") or k in STANDING_FLAGS):
+                continue
+            old_state.setdefault("flags", {})[k] = bool(v)
+        self.flags = {}
+        if town is not None:
+            self.base_town = copy.deepcopy(town)
+            self.base_town.pop("id", None)
+            self.town_id = town_id or town.get("id", "") or self.town_id
+        visited = self.campaign.setdefault("towns_visited", [])
+        if self.town_id not in visited:
+            visited.append(self.town_id)
+        self.campaign["current_town_id"] = self.town_id
+        new_state = self.current_town_state()
+        for k, v in (new_state.get("flags") or {}).items():
+            self.flags[f"town:{k}"] = bool(v)
+        for npc_id in new_state.get("met") or []:
+            self.flags[f"_met_{npc_id}"] = True
         self.arc = copy.deepcopy(arc)
-        loot.lexicon_of(self.arc, self.town)   # a new arc draws new loot verbiage
         self.scenario_number += 1
         self.act_index = 0
-        for f in ("act_1_complete", "act_2_complete", "act_3_complete"):
-            self.flags.pop(f, None)
+        self.act_logs = []
+        self.scenario_day_start = self.day
+        self.mode = "town"
+        self.pending_interlude = None
+        self.interlude_ref = None
+        self.interlude_job = {"state": "idle", "error": None}
+        self.continue_requested = False
+        self.rest_screen = False
+        self.town = self._compose_town()
+        loot.lexicon_of(self.arc, self.town)   # a new arc draws new loot verbiage
         self.completed_acts = []
         self.act_summaries.append(f'A new arc begins: "{arc["title"]}" — {arc["villain"]}.')
 
@@ -879,9 +1204,197 @@ class ScenarioRun:
             self.mode = "complete"
             return "dead"
         self.flags["defeated_once"] = True
-        self.add_journal("event", f'You were beaten at {(self.adventure_detail or {}).get("name", "the road")} '
+        self._act_log()["defeats"] = int(self._act_log().get("defeats", 0)) + 1
+        self.add_journal("event", f'We were beaten at {(self.adventure_detail or {}).get("name", "the road")} '
                                   "and forced to flee back to town.")
         return "town"
+
+    # -- the interlude (Update 24 §D24-5) ---------------------------------- #
+    def note_boss_death(self, state: Any) -> None:
+        """The closing act's boss just fell (before the spoils and the
+        level-up screen): note the boss and who lies fallen on the act log so
+        the planner, queued this instant, reads a true ledger (§D24-5.1)."""
+        log = self._act_log()
+        boss = _boss_name(self.adventure_detail)
+        if boss:
+            log["boss"] = boss
+        if not log.get("adventure"):
+            log["adventure"] = str((self.adventure_detail or {}).get("name") or "")
+        run = self.adventure
+        live_ids = list(run.live_ids) if run is not None else []
+        for cid, live in zip(self.character_ids, live_ids):
+            cst = next((c for c in (getattr(state, "party", []) or []) if c.id == live), None)
+            if cst is not None and int(getattr(cst, "hp", 1)) <= 0:
+                name = self.hero_name(cid)
+                if name not in log["fallen"]:
+                    log["fallen"].append(name)
+
+    def dismiss_notices(self) -> None:
+        self.notices = []
+
+    def interlude_town(self) -> Dict[str, Any]:
+        """The town the interlude plays in: the closing act's composition (the
+        arc's cast is still about) with the campaign's town state applied."""
+        return self._compose_town(len(self.arc["acts"]) - 1)
+
+    def generate_interlude(self) -> Dict[str, Any]:
+        """The ONE planner call (§D24-5.1), started at boss death (blocking;
+        the job runs it off-thread). Reads the ledger, the party, this town as
+        the campaign knows it, and the worldbook (this town + neighbours).
+        Stores and returns `{interlude, hooks}`."""
+        if not self.act_logs or not self.act_logs[-1].get("boss"):
+            pass  # the provisional entry still names the villain
+        ledger = self.ledger_for_writers()
+        if not ledger or int(ledger[-1].get("scenario", 0)) != self.scenario_number:
+            ledger.append(self._ledger_entry("victory"))
+        else:
+            ledger[-1] = self._ledger_entry("victory")
+        result = self.interlude_generator(self.interlude_town(), self.arc, ledger,
+                                          self.party_state(), self.world_context())
+        self.pending_interlude = copy.deepcopy(result)
+        self.interlude_job = {"state": "ready", "error": None}
+        return result
+
+    def begin_interlude(self, result: Optional[Dict[str, Any]] = None) -> None:
+        """Continue Campaign (§D24-5.2): the party arrives in the post-victory
+        town with the interlude as the act — dialogue for the cast in the
+        light of what happened, shops open, the hooks foreshadowed as topics.
+        Rest is the only exit."""
+        result = result or self.pending_interlude
+        if not result:
+            raise ValueError("the interlude has not been written yet")
+        self.pending_interlude = copy.deepcopy(result)
+        m = result["interlude"]
+        self.act_index = len(self.arc["acts"]) - 1
+        self._apply_town_state_delta(m.get("town_state_delta"))
+        self.advance_days(int(m.get("days", 0) or 0))
+        self.campaign["hooks"] = {"hooks": copy.deepcopy(result.get("hooks") or []),
+                                  "chosen": None, "note": "", "custom": None}
+        self.rewards = None
+        self.act_wrapup = None
+        self.adventure = None
+        self.arrive(m, interlude=True)
+        self.materializing = False
+        self.act = copy.deepcopy(m)
+
+    def open_rest_screen(self) -> None:
+        if self.mode != "interlude":
+            raise ValueError("the rest screen belongs to the interlude")
+        self.rest_screen = True
+
+    def rest_back(self) -> None:
+        """Not yet — back to town; nothing was committed."""
+        self.rest_screen = False
+
+    def hooks(self) -> List[Dict[str, Any]]:
+        return list((self.campaign.get("hooks") or {}).get("hooks") or [])
+
+    def chosen_hook(self) -> Optional[Dict[str, Any]]:
+        """The hook the party chose (proposed or custom), or None."""
+        h = self.campaign.get("hooks") or {}
+        idx = h.get("chosen")
+        if idx is None:
+            return None
+        if idx < len(h.get("hooks") or []):
+            return copy.deepcopy(h["hooks"][idx])
+        return copy.deepcopy(h.get("custom"))
+
+    def choose_hook(self, index: int, note: str = "",
+                    custom: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """The rest screen's choice (§D24-5.3): one of the three narrated hooks,
+        or the fourth card — the player's own stay / travel / somewhere-new
+        with a note. Applies the days, heals (the time skip), journals the
+        bridge, and records the choice; the app then generates the road
+        ahead. Returns the chosen hook."""
+        if self.mode != "interlude":
+            raise ValueError("there is no road to choose outside the interlude")
+        proposed = self.hooks()
+        if 0 <= index < len(proposed):
+            hook = copy.deepcopy(proposed[index])
+            custom_row = None
+        elif index == len(proposed) and custom:
+            hook = self._custom_hook(custom, note)
+            custom_row = hook
+        else:
+            raise ValueError("no such hook")
+        hook["note"] = (note or "").strip()
+        self.campaign["hooks"] = {"hooks": proposed, "chosen": index, "note": hook["note"],
+                                  "custom": custom_row}
+        self.rest()                                  # the interlude rest heals fully
+        self.advance_days(int(hook.get("days", 0) or 0))
+        bridge = str(hook.get("bridge") or hook.get("narration") or "").strip()
+        if bridge:
+            self.add_journal("event", bridge)
+        self.rest_screen = False
+        self.conversation = None
+        self.location_id = None
+        self.materializing = True
+        dest = self._hook_destination_name(hook)
+        self.transit = {"title": dest, "narration": str(hook.get("narration") or ""),
+                        "kind": hook.get("kind", "stay")}
+        self.splash = {"kind": "town", "title": dest,
+                       "subtitle": f"Scenario {self.scenario_number + 1} — the road · day {self.day}",
+                       "text": str(hook.get("narration") or bridge)}
+        return hook
+
+    def _custom_hook(self, custom: Dict[str, Any], note: str) -> Dict[str, Any]:
+        kind = str(custom.get("kind") or "stay")
+        if kind not in HOOK_KINDS:
+            raise ValueError("the fourth card is stay, travel, or somewhere new")
+        town_id = str(custom.get("town_id") or "")
+        seed = None
+        if kind == "neighbour":
+            if not town_id or town_id == self.town_id:
+                raise ValueError("choose a town to travel to")
+            if world.entry_for(town_id) is None and sc.town_detail(town_id) is None:
+                raise ValueError(f"unknown town: {town_id}")
+        elif kind == "new":
+            name = str(custom.get("name") or "").strip()
+            if not name:
+                raise ValueError("name the new town")
+            seed = {"name": name, "line": str(custom.get("line") or "").strip(),
+                    "anchor_town_id": self.town_id}
+            town_id = ""
+        else:
+            town_id = self.town_id
+        here = self.town.get("name", self.town_id)
+        if kind == "stay":
+            narration = f"You decide to stay in {here}"
+        elif kind == "neighbour":
+            dest = (world.entry_for(town_id) or sc.town_detail(town_id) or {}).get("name", town_id)
+            narration = f"You decide to travel to {dest}"
+        else:
+            narration = f"You decide to travel somewhere new — {seed['name']}"
+        narration += f", but… {note.strip()}" if note.strip() else "."
+        return {"id": "custom", "kind": kind, "town_id": town_id or None, "town_seed": seed,
+                "narration": narration, "bridge": narration, "days": CUSTOM_HOOK_DAYS,
+                "foreshadow": [], "custom": True}
+
+    def _hook_destination_name(self, hook: Dict[str, Any]) -> str:
+        kind = hook.get("kind")
+        if kind == "neighbour" and hook.get("town_id"):
+            return (world.entry_for(hook["town_id"]) or sc.town_detail(hook["town_id"]) or {}
+                    ).get("name", hook["town_id"])
+        if kind == "new" and hook.get("town_seed"):
+            return str(hook["town_seed"].get("name") or "somewhere new")
+        return self.town.get("name", self.town_id)
+
+    def interlude_view(self) -> Optional[Dict[str, Any]]:
+        """The client's interlude block: the rest screen's hooks (narration
+        only — the bridge is the writers'), the day, each hero's situation."""
+        if self.mode != "interlude":
+            return None
+        h = self.campaign.get("hooks") or {}
+        rows = []
+        for i, hook in enumerate(h.get("hooks") or []):
+            rows.append({"index": i, "id": hook.get("id", f"hook_{i}"), "kind": hook.get("kind", "stay"),
+                         "town_id": hook.get("town_id"),
+                         "town_name": self._hook_destination_name(hook),
+                         "narration": hook.get("narration", ""), "days": int(hook.get("days", 0) or 0)})
+        return {"rest_screen": self.rest_screen, "hooks": rows, "day": self.day,
+                "chosen": h.get("chosen"), "transit": copy.deepcopy(self.transit),
+                "town_name": self.town.get("name", self.town_id), "town_id": self.town_id,
+                "situations": {cid: self.situation_of(cid) for cid in self.character_ids}}
 
     # -- rewards (§D17-4.5) ------------------------------------------------- #
     def open_rewards(self, seed: Optional[int] = None) -> None:
@@ -931,7 +1444,7 @@ class ScenarioRun:
             for pl in self.arc.get("places") or []:
                 if pl.get("id") == entry_id:
                     pl[field] = url
-        self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
+        self.town = self._compose_town()
 
     def assign_reward(self, index: int, target: Optional[str]) -> None:
         if self.rewards is None:
@@ -1030,6 +1543,12 @@ class ScenarioRun:
         items.add_item(lo, raw)     # raises when full
         self.gold[character_id] -= price
         stock.remove(raw)
+        log = self._act_log()
+        log["gold_spent"][location_id] = int(log["gold_spent"].get(location_id, 0)) + price
+        log["items_bought"].append(str(item.name))
+        loc = sc.find_location(self.town, location_id) or {}
+        self.chronicle_add(character_id, "bought",
+                           f"Bought {item.name} for {price} gold at {loc.get('name', location_id)}.")
 
     def sell(self, character_id: str, item_id: str) -> None:
         if character_id not in self.character_ids:
@@ -1087,10 +1606,11 @@ class ScenarioRun:
         return {
             "arc_title": self.arc["title"],
             "act_number": self.act_index + 1, "acts_total": len(self.arc["acts"]),
-            "act_title": self.outline["title"],
+            "act_title": "Between scenarios" if self.mode == "interlude" else self.outline["title"],
             "quest": q, "direct_to": pointer,
             "completed": list(self.completed_acts),
             "scenario_number": self.scenario_number,
+            "day": self.day,
             "journal": [dict(e) for e in self.journal],
         }
 
@@ -1123,6 +1643,11 @@ class ScenarioRun:
                 "gear": self._gear_view(lo),
                 "worn_points": items.worn_points(lo),
                 "effective_level": lvl + items.effective_level_bonus(lo),
+                # Update 24: the character layers the player owns — the brief,
+                # this campaign's situation, and the full chronicle (the Deeds tab).
+                "brief": copy.deepcopy(ch.get("brief")) if isinstance(ch.get("brief"), dict) else None,
+                "situation": self.situation_of(cid),
+                "chronicle": self.chronicle_of(cid),
             })
         return out
 
@@ -1195,10 +1720,20 @@ class ScenarioRun:
             "scenario": {
                 "title": self.arc["title"], "villain": self.arc["villain"],
                 "act_number": self.act_index + 1, "acts_total": len(self.arc["acts"]),
-                "act_title": outline["title"], "scenario_number": self.scenario_number,
+                "act_title": ("Between scenarios" if self.mode == "interlude" else outline["title"]),
+                "scenario_number": self.scenario_number,
                 "options": dict(self.options), "mode": self.mode, "dead": self.dead,
                 "scenario_id": self.scenario_id,
+                # Update 24: the campaign's clock and the interlude's readiness
+                # (the scenario-end menu shows a spinner until the planner is done).
+                "day": self.day,
+                "interlude_ready": self.interlude_job.get("state") == "ready"
+                                   or self.pending_interlude is not None,
+                "interlude_state": self.interlude_job.get("state", "idle"),
+                "interlude_error": self.interlude_job.get("error"),
             },
+            "interlude": self.interlude_view(),
+            "notices": list(self.notices),
             "adventure_job": dict(self.adventure_job),
             "adventure_unlocked": self.adventure_unlocked,
             "adventure_ready": self.adventure_ready,
@@ -1252,6 +1787,13 @@ class ScenarioRun:
             "rewards": copy.deepcopy(self.rewards),
             "act_wrapup": self.act_wrapup,
             "journal": copy.deepcopy(self.journal),
+            # Update 24: the campaign rides every snapshot (a fork keeps its
+            # own history) as well as run.json (the Load list reads it there).
+            "campaign": copy.deepcopy(self.campaign),
+            "act_logs": copy.deepcopy(self.act_logs),
+            "scenario_day_start": self.scenario_day_start,
+            "rest_screen": self.rest_screen,
+            "interlude_job": dict(self.interlude_job),
         }
 
     def restore(self, block: Dict[str, Any], act: Optional[Dict[str, Any]],
@@ -1285,8 +1827,17 @@ class ScenarioRun:
         self.journal = copy.deepcopy(block.get("journal") or [])
         self.conversation = None
         self.splash = None
+        if isinstance(block.get("campaign"), dict):
+            fresh = self._fresh_campaign(self.character_ids, self.loadouts, self.town_id)
+            self.campaign = {**fresh, **copy.deepcopy(block["campaign"])}
+            for cid, row in fresh["heroes"].items():
+                self.campaign.setdefault("heroes", {}).setdefault(cid, row)
+        self.act_logs = copy.deepcopy(block.get("act_logs") or [])
+        self.scenario_day_start = int(block.get("scenario_day_start", 1) or 1)
+        self.rest_screen = bool(block.get("rest_screen"))
+        self.interlude_job = dict(block.get("interlude_job") or self.interlude_job)
         # The saved act may not be act 0 — recompose the town for it (§D20-2).
-        self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
+        self.town = self._compose_town()
         if act is not None:
             self.act = copy.deepcopy(act)
             self.materializing = False
@@ -1305,7 +1856,7 @@ class ScenarioRun:
         if fresh:
             fresh.pop("id", None)
             self.base_town = fresh
-            self.town = sc.town_for_act(self.base_town, self.arc, self.act_index)
+            self.town = self._compose_town()
 
 
 # --------------------------------------------------------------------------- #

@@ -20,22 +20,26 @@
         {
           "id": "faelen_greenmantle",
           "name": "Faelen Greenmantle",
-          "role": "Innkeeper",
-          "persona": "Faelen is one of the few elves in Nalindor who genuinely welcomes outsiders, having spent forty years wandering human river-towns in his youth. He speaks in a smooth, rhythmic baritone and laughs easily, though he keeps a keen eye on every traveler to ensure they do not cause trouble with the tree wardens. He takes immense pride in his cellar of fermented forest-berry wines and his roasted acorn bread. He collects coin from foreign kingdoms as a hobby, storing them in a carved maple chest beneath the counter.",
+          "role": "innkeeper",
+          "persona": "A wood elf who left Nalindor at sixty to see what the rivers were for and came back forty years later with a chest of foreign coin, a lagoon baker's recipe for acorn bread, and a habit of talking to strangers as though he has been waiting for them. He speaks in a warm, unhurried baritone and tells stories in long loops that always come back round to the hearth. He cares that ground-travellers are fed, dried out and kept off the lower boughs after dark, and he presses the elderberry cider and roasts the acorn loaves himself. The maple chest under his counter holds a coin from every town he slept in, and inside its lid is a chalk tally of what Orin Copperbraid owes for two seasons on the hearth couch, which Faelen has never once mentioned aloud.",
           "portrait_desc": "A slender wood elf of middle years with amber eyes, long honey-colored hair tied in braided loops, and laugh-lines around his mouth. He wears an emerald-green wool vest over an ivory linen tunic, with an embroidered apron depicting singing birds.",
           "art_url": "/art/towns/nalindor/npc-faelen_greenmantle-5a78ce12.png",
           "topics": [
             {
-              "ask": "How do the locals feel about travelers staying here?",
-              "reply": "They prefer you stay above the lower boughs and pay in honest silver. Treat the living bark with respect, do not light torches near dry moss, and Captain Sylva's wardens will leave you in peace."
+              "ask": "Room for the night?",
+              "reply": "Second tier, the couch under the chamomile, and hang your boots on the rail or the damp will have them by morning. Supper is acorn loaf and hot elderberry cider, and if the dwarf at the hearth tells you the bridges are unsafe, he has been saying so for two seasons and sleeping on them every night."
             },
             {
-              "ask": "What is the secret to this spiced cider?",
-              "reply": "Wild crabapples pressed with simmered ginger-root and three drops of dew collected from night-blooming moonflowers. It keeps the autumn chill from settling in your bones."
+              "ask": "You've been down the rivers?",
+              "reply": "Forty years of them. I poled barges down to Azure and back more times than I counted, six days out and twelve poling home through wyrm-water, and the acorn bread is a lagoon baker's recipe with our acorns where she used chestnuts. She would say I've ruined it. She would eat two."
             },
             {
-              "ask": "Have you seen the giant spiders down in the low brush?",
-              "reply": "The weaver-spiders stay below the fog line unless someone drops salted meat near the root ladders. Keep your boots off the bottom rungs after sunset and you will keep your ankles."
+              "ask": "What's in the chest under the counter?",
+              "reply": "A coin from every town I slept in. Lagoon salt-pennies, Frostcap iron bits, a square brass thing I still can't name. Kaelen from the forge comes to look at them on rest-days and asks what the buildings stamped on them are made of, and I tell him stone, and he doesn't believe me."
+            },
+            {
+              "ask": "Something for a chill?",
+              "reply": "Cider hot with ginger, and if you're still shivering by the second cup I'll send up to Bramble & Spore. Orodan says my cider is too sweet to be medicine. I say that's why people drink it, and he takes a jug home at midwinter all the same."
             }
           ],
           "vendor": false
@@ -43,18 +47,26 @@
         {
           "id": "orin_copperbraid",
           "name": "Orin Copperbraid",
-          "role": "Stranded Carpenter",
-          "persona": "Orin is a stubborn mountain dwarf mason and carpenter who came to Nalindor two seasons ago to repair the main suspension pulley and never managed to leave. He speaks in a rasping grumble, constantly complaining about living in a tree while secretly admiring the elven joinery. He spends his evenings at the hearth whittling spruce whistle-flutes and grumbling about the lack of proper dark beer. He knows the structural strength of every walkway in the city down to the last iron nail.",
+          "role": "stranded carpenter",
+          "persona": "A mountain dwarf who came up the river on a barge two springs ago to re-rope the Great Pulley, found the counterweight basket a third short of stones and the sheave-post split, and has not managed to leave since, because every time he mends one thing the next shows him its rot. He speaks in a low rasp, measures everything in spans and loads, and grumbles about bark-glue, rope bridges and beer that tastes of berries. He respects the elven joinery more than he will say and has copied three of their scarf-joints into a notebook. His running fight is with Captain Sylva, who will not let him drive iron into living bark, so the south hoist stands on oak pegs he does not trust. He sleeps on Faelen's hearth couch, pays in whittled spruce whistles, and has hung eleven of them over the fire, one for each month.",
           "portrait_desc": "A stout, broad-shouldered dwarf with a fiery copper beard woven into two thick ringed braids and steel-gray eyes. He wears sturdy leather work overalls reinforced with brass studs, stained with pitch and cedar sap.",
           "art_url": "/art/towns/nalindor/npc-orin_copperbraid-023e85f7.png",
           "topics": [
             {
-              "ask": "Why are you still living up in the canopy?",
-              "reply": "Because these long-eared tree-climbers use bark-glue where they ought to use three-inch forged iron spikes! If I leave, the south cargo hoist will dump thirty crates of turnips right into the swamp below."
+              "ask": "Why are you still here?",
+              "reply": "Because the Great Pulley lifts every crate this town eats off the ground, and its counterweight is a basket of river-stones somebody has been quietly borrowing from for a hundred years. I've put back forty stones and spliced the main rope twice. The day it takes a full load in a wet wind without groaning, I'm on the barge."
             },
             {
-              "ask": "Do you ever get used to the swaying bridges?",
-              "reply": "Never look through the floor slats on a windy afternoon. Look straight at the trunk in front of you, keep one hand on the guide rope, and say a prayer to the Stone Father."
+              "ask": "The bridges sway a lot.",
+              "reply": "They're meant to. Ironwood moves and the rope moves with it, which is cleverer than I like to admit. Keep your eyes on the trunk ahead, one hand on the guide-rope, and don't stop in the middle to admire the mist. That's when they bounce."
+            },
+            {
+              "ask": "What are the whistles over the hearth?",
+              "reply": "Rent. Faelen won't take coin for the couch, so he gets a spruce whistle a month and I've made eleven. The smith's boy Kaelen has been after me to teach him the cut, and he'd be better at it than the bellows if his master let him near a knife."
+            },
+            {
+              "ask": "Trouble with the wardens?",
+              "reply": "Captain Sylva says no iron in the living bark, and I say a three-inch forged spike would hold the south hoist through a gale. So it stands on oak pegs, and I go up and look at them every morning like a man visiting a sick relative. She looks at them after me. Neither of us mentions it."
             }
           ],
           "vendor": false
@@ -65,7 +77,7 @@
       "id": "sunstrider_forge",
       "name": "Sunstrider Forge",
       "function": "weaponsmith",
-      "description": "A smoke-cowl workshop jutting out over open air, where master smiths temper star-iron and shape flexible bowstaves of cured yew.",
+      "description": "A stone terrace hung out over open air on iron braces, where Taenis Sunstrider folds star-iron from the pit under the roots and cures yew bowstaves in the smoke-loft.",
       "exterior_scene": "A stone-floored terrace cantilevered on heavy iron braces between two great branches, sheltered by a peaked copper roof green with patina. A rack of blackened tongs and iron anvils sits visible behind an archway framed with hanging iron wind-chimes.",
       "exterior_art_url": "/art/towns/nalindor/ext-sunstrider_forge-5936d3af.png",
       "interior_scene": "A heavy stone furnace glows cherry-red against the rear rock-shelf, drawing draft from an intake pipe that vents sparks into the open sky. Neat timber racks line the walls, displaying re-curved yew bows, silver-inlaid leaf-blade swords, and quivers of fletched ash arrows. The scent of hot charcoal, quenching oil, and scorched iron fills the air above the rhythmic ping of hammer on anvil.",
@@ -76,22 +88,26 @@
         {
           "id": "taenis_sunstrider",
           "name": "Taenis Sunstrider",
-          "role": "Master Fletcher and Bladesmith",
-          "persona": "Taenis is a stern, traditionalist elven armorer who believes steel forged outside the deep forest is brittle and poorly balanced. He speaks curtly, judging warriors by how they hold a weapon's balance rather than their words or wealth. He holds a bitter grudge against the river bandits who stole a shipment of star-iron ingots from his pack-drakes last spring. Despite his haughty demeanor, he will spend hours adjusting a bow grip for a buyer who shows genuine skill.",
+          "role": "smith",
+          "persona": "A wood elf smith who has worked the cantilevered forge for ninety years and speaks perhaps forty words in a day, most of them about weight. He looks at a customer's hands before their face, will put a blade in a stranger's grip and say nothing until they set it down, and how they set it down decides the price. He works star-iron dug from the meteor-pit under the roots of the fourth tree, folds it seven times and quenches it in rainwater from the trunk-cisterns, and he has no patience for lowland steel. The loss of twelve stamped ingots to river thieves at Red Oak Ford last spring is a matter he does not discuss and thinks about every day. He buys silver wire from Lady Vespera for his inlay and pays her late, which she writes down and he knows.",
           "portrait_desc": "A tall, silver-haired elf with soot-smudged bronze skin, piercing hazel eyes, and muscular arms scarred by forge sparks. He wears a heavy split-leather smithing apron over dark gray trousers and steel-toed boots.",
           "art_url": "/art/towns/nalindor/npc-taenis_sunstrider-d810aa10.png",
           "topics": [
             {
-              "ask": "What makes your blades different from highland steel?",
-              "reply": "Highland smiths quench their metal in salt water; we fold star-iron seven times and quench it in cold mountain runoff infused with birch bark. Our edges do not chip when striking bone or scale."
+              "ask": "What's different about star-iron?",
+              "reply": "It comes out of the ground already knowing how to be hard. Seven folds, a cistern quench, and the edge will not chip on boar-scale or bone. Lowland steel is quenched in salt water by men in a hurry."
             },
             {
-              "ask": "Can you craft a bow strong enough to bring down a forest boar?",
-              "reply": "A Sunstrider bow shaved from heart-yew will punch through a boar's armored shoulder-plate at sixty paces. The bow will not fail you; the only question is whether your aim will."
+              "ask": "That bow on the rack?",
+              "reply": "Heart-yew off the south face of the third tree, cured two winters in the smoke-loft. Draw it. If your back arm shakes I will show you a lighter one, and in a year you will thank me."
             },
             {
-              "ask": "What happened to your shipment of star-iron?",
-              "reply": "Those mud-footed brigands at Red Oak Ford ambushed my runner and took twelve stamped ingots. If someone brought those bars back to my forge, they would have their pick of my wall-racks."
+              "ask": "Where does the iron come from?",
+              "reply": "The pit under the fourth tree's roots, where something fell before the trees were planted. Four men and a rope go down, two baskets of ore come up on the Great Pulley, and Orin Copperbraid stands at the top counting the counterweight stones the whole time."
+            },
+            {
+              "ask": "Your apprentice?",
+              "reply": "Kaelen can hold a temper and cannot hold his tongue. He wants a manticore quill on a hilt before he can draw a straight bevel. Give him five years. He drew the last bevel on a skinning knife in spring and I did not touch it after."
             }
           ],
           "vendor": true
@@ -99,18 +115,22 @@
         {
           "id": "kaelen",
           "name": "Kaelen",
-          "role": "Smith's Apprentice",
-          "persona": "Kaelen is a wide-eyed young elf who was sent from the lower groves to learn metalworking, though his true passion is collecting monster claws to turn into dagger hilts. He speaks quickly with nervous enthusiasm, often asking customers about castles and stone walls he has only seen in picture books. He gets into trouble for sneaking off to test throwing knives against rotting stumps in the lower canopy. He treats every foreign adventurer like a legendary hero from an ancient song.",
+          "role": "smith's apprentice",
+          "persona": "A wood elf boy of sixteen sent up from the lower groves to learn the forge, two years in the canopy and still stopping on the bridges to look down. He talks fast and in pieces, one thought running into the next while he pumps the bellows, and asks ground-travellers questions he half knows the answers to: what a stone floor feels like, whether a castle wall sways. He can read a heat by its colour now. Under his cot, wrapped in oilcloth, is a manticore quill a warden gave him for carrying her spears up the ladder; he means to make a hilt of it when Master Taenis lets him. He sneaks down to the Low Ladders to throw knives at a stump and has twice been caught by Captain Sylva and set counting lantern-moss. Orin Copperbraid is teaching him to whittle on rest-days.",
           "portrait_desc": "A wiry elven youth with messy copper curls, large inquisitive green eyes, and a smudge of soot across the bridge of his freckled nose. He wears a loose linen smock cinched with a raw-hide tool belt holding small files and pliers.",
           "art_url": "/art/towns/nalindor/npc-kaelen-f21f9333.png",
           "topics": [
             {
               "ask": "Is Master Taenis hard to work for?",
-              "reply": "If you drop an iron blank, he makes you pump the leather bellows until your arms feel like damp willow sticks! But he knows how to balance a spear better than anyone in the province."
+              "reply": "He doesn't say much, so you learn to read the back of his neck. Drop a blank and it's the bellows until your arms are wet string. But he let me draw the last bevel on a skinning knife in spring and didn't touch it after, and I've looked at that knife on the rack every day since."
             },
             {
-              "ask": "Have you ever seen a real stone castle?",
-              "reply": "Only the drawings in the Elder Archives! It seems impossible that you can stack rock upon rock without branches to hold them together against the autumn wind."
+              "ask": "Ever been on the ground?",
+              "reply": "I grew up on it, in the lower groves, where you can put your hand flat on the earth. Up here the floor moves. Is it true a stone floor doesn't, not even in wind? Faelen has coins with buildings on them and I still don't see how the top stones stay on."
+            },
+            {
+              "ask": "What's the quill for?",
+              "reply": "A hilt, one day. A warden brought it back from the crags and gave it to me for carrying her spears up the ladder, and Master Taenis says it waits till I can draw a straight bevel. Orin says that's five years. I say three."
             }
           ],
           "vendor": false
@@ -121,7 +141,7 @@
       "id": "the_moon_weaver_s_loom",
       "name": "The Moon-Weaver's Loom",
       "function": "artificer",
-      "description": "A tranquil sanctuary filled with crystal prisms, silver thread, and enchanted amulets that hum with gentle forest magic.",
+      "description": "A wisteria-domed shop of silver wire and crown-spider silk, where Lady Vespera winds warding cords on a birch loom and keeps a jar of sand beside every candle.",
       "exterior_scene": "A dome-shaped arbor woven from living wisteria vines and flowering jasmine, marked by a swinging sign of polished silver slate. Glass globes containing tiny suspended glowing crystals hang from the door lintel, catching every breeze.",
       "exterior_art_url": "/art/towns/nalindor/ext-the_moon_weaver_s_loom-a73feef4.png",
       "interior_scene": "Soft blue light filters through stained-glass lenses set into the domed ceiling, illuminating velvet-lined cases of carved amber rings and silver torque bracelets. A tall standing loom made of polished birch sits in the corner, strung with glistening silk spun by crown-spiders. The room is quiet save for the gentle tinkling of glass chimes, smelling of crushed lavender and pure beeswax.",
@@ -132,22 +152,26 @@
         {
           "id": "lady_vespera",
           "name": "Lady Vespera",
-          "role": "Star-Weaver Artificer",
-          "persona": "Lady Vespera is an ancient moon elf who remembers when the great trees of Nalindor were mere saplings. She moves with quiet, gliding grace and speaks in a hushed, melodic whisper that demands absolute attention. She is deeply suspicious of arcane sorcery that burns or corrupts the land, preferring subtle magic bound into woven cord, polished jade, and river-stone. She has a soft spot for riddle games and will knock a coin off her price for a clever answer.",
+          "role": "amulet-weaver",
+          "persona": "A moon elf of considerable and unstated age who has kept the wisteria-domed shop longer than the town's records reach, and who speaks in a low, even voice that makes people lower theirs. She is exact in everything: her silver wire is drawn to a gauge she checks by ear, her crown-spiders are fed at dusk from a lidded basket she tends herself, and her prices are fixed except for one indulgence, a coin off for a riddle she has not heard before. She distrusts anything that burns, in magic or in lamps, and keeps a jar of sand beside every candle. She and Master Orodan have argued for eighty years over whether a woven charm or a boiled root does more good, and each buys from the other without saying so. Taenis Sunstrider owes her for three coils of wire; she has written it down.",
           "portrait_desc": "An ageless moon elf with snow-white hair that falls to her waist, porcelain skin, and luminous violet eyes beneath slender arched brows. She wears layered robes of midnight-blue silk embroidered with crescent moons and silver stars.",
           "art_url": "/art/towns/nalindor/npc-lady_vespera-f4a8362b.png",
           "topics": [
             {
-              "ask": "How do you capture star-magic in silk?",
-              "reply": "We wash the spider-silk in water drawn from the High Pool on moonless nights, then weave it under the light of the sister stars. The silver catches the light and holds the warding charm."
+              "ask": "How are the amulets made?",
+              "reply": "Crown-spider silk, washed in the High Pool on a moonless night and wound on the birch loom with silver drawn to the thickness of a hair. The charm is in the winding, not in any words. People want words. I sell them silk."
             },
             {
-              "ask": "What trinket would you recommend for travel through the bog?",
-              "reply": "Take the jade frog pendant on the cedar tray. It warms against your skin whenever swamp-leaping vipers or marsh gas draw near your boots."
+              "ask": "That lacquered mask on the wall?",
+              "reply": "From Azure. A barge-woman brought it up the river the year the lagoon's eastern sea-wall cracked and traded it for a warding cord for her pole-boy. He is a grandfather now, I am told. The cord, I am also told, still holds."
             },
             {
-              "ask": "Why do you distrust fire-wizards so much?",
-              "reply": "A single careless flame can turn five hundred years of living wood to black cinder in an hour. Magic should preserve and protect, not consume everything it touches."
+              "ask": "Do you and the herbalist get along?",
+              "reply": "Orodan calls my work thread and superstition. I call his work dirt in a jar. He has bought a sleeping charm from me every winter for eighty years, and I take his willow bark for my hands, and neither of us has mentioned it."
+            },
+            {
+              "ask": "I heard you take riddles.",
+              "reply": "Riddles I have not heard. Four times in ninety years the price has moved, and one of those was a halfling bargewoman I suspect of inventing hers on the stair. You may try. The price will most likely not move."
             }
           ],
           "vendor": true
@@ -169,22 +193,26 @@
         {
           "id": "master_orodan",
           "name": "Master Orodan",
-          "role": "Canopy Herbalist",
-          "persona": "Orodan is a prickly, sharp-tongued herbalist who spends more time talking to his potted carnivorous plants than to other elves. He considers city doctors to be quacks who rely on leeches and stale chalk, while boasting that the forest provides a cure for every ailment known to flesh. He hates when customers touch his delicate glass pipettes with dirty hands. Despite his bad temper, he will stay up all night boiling fever-tonics if a child or ranger falls ill.",
+          "role": "herbalist",
+          "persona": "A wood elf herbalist of middle years, gaunt and short-tempered, who keeps three pitcher-plants on the sill and speaks to them more civilly than to customers. He talks fast and sharp, snaps at anyone who touches his glass pipettes with unwashed hands, and gives medical advice as a list of orders with the reasons left out. He gathers his own bark and fungus below the fog line at Blackroot Marsh with a long hooked pole, and his grudge is against the barge-doctors from Azure who buy his fever-salve by the crate and sell it at the lagoon under their own label at three times the price. He will boil tonic all night for a sick child or a scorched warden and deny it in the morning. Every tenth day he carries willow bark to Elder Althea for her knees and tells her the shrine is damp.",
           "portrait_desc": "A gaunt, middle-aged wood elf with short graying brown hair, bushy eyebrows, and green eyes behind round brass reading spectacles. His hands are permanently stained with purple berry juice and yellow pollen, and he wears an earth-stained leather tunic.",
           "art_url": "/art/towns/nalindor/npc-master_orodan-8a486e2b.png",
           "topics": [
             {
-              "ask": "Do you have something for deep puncture wounds?",
-              "reply": "Mallow-root paste mixed with crushed pine sap. Slap it directly into the hole, bind it tight with clean linen, and don't whine when it stings like five hornets."
+              "ask": "Something for a wound?",
+              "reply": "Mallow-root and pine-sap paste, pushed into the hole, linen over it, tight. It stings like a nest of hornets for a count of forty and then it stops, and you keep the leg. Wash your hands before you touch anything else in here."
             },
             {
-              "ask": "Where do you find those glowing purple mushrooms?",
-              "reply": "In the hollow rot of drowned willow logs near Blackroot Marsh. The bog-trolls feed on them, which is why you must bring three jars of sulfur-ash if you plan to gather your own."
+              "ask": "Where do the purple mushrooms come from?",
+              "reply": "Drowned willow logs at Blackroot Marsh, below the fog line, gathered with a hooked pole so I needn't put my boots in the water. Anyone who says they gather them by hand is lying or short a hand."
             },
             {
-              "ask": "Why do your potions taste so foul?",
-              "reply": "Medicine is meant to heal your liver and knit your sinews, not satisfy a sweet tooth! If you want sugar, go buy honey-cakes at the tavern."
+              "ask": "Do you sell down the river?",
+              "reply": "To barge-doctors from Azure who scrape my mark off the jar and stamp on theirs. Same salve, three times the price, and a lagoon fever cured by a forest nobody thanks. I still sell to them. Children in the reed-flats don't care whose name is on the jar."
+            },
+            {
+              "ask": "What are the plants on the sill?",
+              "reply": "Pitcher-plants from the low bog. They eat the flies, they don't talk back, and not one of them has ever asked me whether the tonic could be made to taste of honey. If you want honey, Faelen's is up the trunk."
             }
           ],
           "vendor": true
@@ -195,7 +223,7 @@
       "id": "the_high_watch_hollow",
       "name": "The High Watch Hollow",
       "function": "guard_post",
-      "description": "A fortified watch-post overlooking the canopy bridges, where the city wardens track forest movements and guard against invaders.",
+      "description": "The wardens' gatehouse in the fork of two limbs: a painted map of the canopy, a slate of days since the last rain, and the crown-hawk mews beyond.",
       "exterior_scene": "A heavy red-oak gatehouse built into the fork of two massive limbs, reinforced with thick ironwood palisades and arrow-slits. Bundles of green-fletched signaling arrows sit in brass quivers along the outer battlements beneath a fluttering emerald pennant.",
       "exterior_art_url": "/art/towns/nalindor/ext-the_high_watch_hollow-9642dcdd.png",
       "interior_scene": "A wide, utilitarian command room paneled in pale ash, with a large painted map of the surrounding canopy and forest floor spread across a central timber table. Racks of longbows, heavy boar-spears, and bronze horn-trumpets line the perimeter walls under hanging shields bearing the silver leaf crest. The smell of gun-oil, boot leather, and cedar shavings hangs in the breezy room.",
@@ -206,22 +234,26 @@
         {
           "id": "captain_sylva",
           "name": "Captain Sylva",
-          "role": "Canopy Warden Captain",
-          "persona": "Sylva is an unyielding, battle-hardened commander tasked with the defense of Nalindor's heights. She speaks with clipped military precision and views every ground-dweller as a potential arsonist or spy until they prove their worth. She has hunted manticores across the cloud-crags and tracked bandit cart-trains through dense underbrush for over a century. She respects direct answers, bravery, and discipline, and will instantly expel any troublemaker from the canopy.",
+          "role": "warden captain",
+          "persona": "A wood elf who has captained the canopy wardens for thirty-one years and walks every bridge in Nalindor before dawn checking the cage-lanterns for dry moss. She speaks briefly and evenly, and gives numbers rather than opinions. Her real enemy is a hot dry week in late summer, not the manticores, and she keeps a slate in the Hollow with the days since the last rain chalked on it. She flies crown-hawks from the mews and knows each one by the sound of its bell. Her long argument is with Orin Copperbraid, whose iron spikes she will not allow in living bark and whose oak pegs she checks every morning after he does. She has caught the smith's boy Kaelen on the Low Ladders twice, and she takes a carved acorn from Elder Althea each time she goes up to the crags and returns it to the soil after.",
           "portrait_desc": "A stern, athletic wood elf with a sharp jawline, close-cropped raven hair, and cold gray eyes marked by a thin scar across her left cheekbone. She wears form-fitting armor of hardened stag-beetle chitin over dark green tunic and bracers.",
           "art_url": "/art/towns/nalindor/npc-captain_sylva-de9c96ef.png",
           "topics": [
             {
-              "ask": "What threats are lurking beneath the trees right now?",
-              "reply": "A warband of moss-goblins has settled in the old logging trenches, and a winged manticore was spotted roosting on the eastern crags yesterday. Walk the central marked paths or carry a very good spear."
+              "ask": "What do the wardens watch for?",
+              "reply": "Fire first, then weather, then manticores, in that order. The crags have taken four wardens in thirty years; dry moss in one cage-lantern could take the whole third tree in an hour. Nine days since rain, this morning. I would like it to be fewer."
             },
             {
-              "ask": "How do your wardens patrol such a vast forest?",
-              "reply": "Rope gliders and trained crown-hawks. From three hundred feet up, we can spot the campfire smoke of poachers before they even finish boiling their kettle."
+              "ask": "How do you patrol a forest this size?",
+              "reply": "Crown-hawks from the mews, and gliders off the high platforms when the wind is right. A hawk with a bell on her leg will find a poacher's kettle-smoke ten miles out and come back to tell me about it. The rest is walking."
             },
             {
-              "ask": "What is the penalty for starting an open fire on the bridges?",
-              "reply": "Immediate disarmament, a heavy fine in star-silver, and being escorted to the lowest ladder by two wardens who will not care if you drop your baggage on the way down."
+              "ask": "Any rules for us up here?",
+              "reply": "No open flame on the bridges, no salted meat near the root ladders, no boots on the Low Ladders after dark, and nothing driven into the bark that isn't wood. The dwarf at the inn will tell you his spikes would hold. They would. The tree would not."
+            },
+            {
+              "ask": "That acorn on your belt?",
+              "reply": "Elder Althea's. You take one when you go up to the crags and put it back in the soil when you come down. I've brought back twenty-two. There is one she is still holding for a warden who didn't, and I look at it every time I go in."
             }
           ],
           "vendor": false
@@ -243,22 +275,26 @@
         {
           "id": "elder_althea",
           "name": "Elder Althea",
-          "role": "Keeper of the Root",
-          "persona": "Althea is a serene, gentle priestess who tends the sacred canopy garden and offers quiet blessings of safe travel. She speaks with a soft, comforting warmth, seeing the great forest as a living family that must be nourished through kindness and patience. She spends her mornings sprinkling dew on rare orchids and listening to the worries of younger elves. She carries a carved wooden staff topped with a dormant acorn that she claims will sprout when the world needs peace.",
+          "role": "keeper of the root",
+          "persona": "A wood elf woman of great age who has tended the silver-leaved sapling in the Whispering Glade for sixty years. She speaks slowly and warmly, almost always about something she can touch: the depth of the soil bed, the rain-channel that silts every autumn, whether the blue lilies are early. She is the person young elves come to when they have done something they cannot tell their parents, and she listens while pulling weeds so they need not look at her. She carves acorns from fallen ironwood and gives one to anyone going to the crags or the marsh, and keeps a bowl of the ones brought back; she can say whose is whose, and one has waited forty years. Her knees are bad, and Master Orodan brings willow bark for them and complains about the damp. Captain Sylva was once a girl stealing lilies from this bed.",
           "portrait_desc": "An elderly wood elf woman with hair like spun silver piled in an elegant coronet, warm dark brown eyes, and smooth, graceful posture. She wears flowing ivory vestments bordered with gold leaf embroidery and carries a polished hazel staff.",
           "art_url": "/art/towns/nalindor/npc-elder_althea-1df26aa4.png",
           "topics": [
             {
-              "ask": "What is the meaning of the silver sapling in the center?",
-              "reply": "It was grown from a single seed of the First Mother Oak before the Great Shattering. As long as its silver leaves catch the morning sunlight, Nalindor's boughs will never rot or break."
+              "ask": "What is the sapling?",
+              "reply": "A seed of the First Mother Oak, planted before the town, and it has grown perhaps the height of a man in three hundred years. It wants deep dark earth, rain from the channel and nobody's hands on the leaves. I have spent sixty years keeping hands off the leaves."
             },
             {
-              "ask": "Will the spirits of the wood protect us on the road?",
-              "reply": "The forest honors those who take only deadwood for fires and leave the young deer in peace. Take a cup of clear water from the basin, pour half to the roots, and carry the rest for your road."
+              "ask": "What are the carved acorns?",
+              "reply": "A promise. Take one when you go out to the crags or down to the marsh, and put it back in the soil when you come home. I keep the ones that come back in that bowl. Captain Sylva's are the smooth ones; she worries them in her pocket the whole way up and the whole way down."
             },
             {
-              "ask": "Why do people leave carved acorns at the altar?",
-              "reply": "A promise made to the root is a promise that cannot be forgotten. When a hunter returns safely from the wild crags, they return their acorn to the soil as thanks."
+              "ask": "Is there one that didn't come back?",
+              "reply": "One, forty years now. A warden called Iolen, who went up after a manticore in a dry summer. I keep his in the crook of the sapling where the rain reaches it, and Sylva looks at it every time she comes in, and neither of us says his name aloud."
+            },
+            {
+              "ask": "You know the young folk here?",
+              "reply": "They come and pull weeds with me when they have something to say. The smith's boy Kaelen sat on that bench for an hour in spring and told me he had dropped a blank in the quench and not confessed. I told him Taenis has dropped a hundred. He went and confessed anyway."
             }
           ],
           "vendor": false

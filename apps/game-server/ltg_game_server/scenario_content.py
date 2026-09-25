@@ -280,7 +280,12 @@ def town_detail(town_id: str) -> Optional[Dict[str, Any]]:
     return {"id": town_id, **copy.deepcopy(raw)}
 
 
-def save_town(raw: Dict[str, Any], town_id: Optional[str] = None) -> Dict[str, Any]:
+def save_town(raw: Dict[str, Any], town_id: Optional[str] = None,
+              world_entry: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Persist a town — and, when the caller hands one, its WORLDBOOK entry in
+    the same step (§D24-9.1: `generate_town` writes both). An entry the book
+    already holds is left alone (the book is append-only in play)."""
+    from . import world
     cleaned = validate_town(raw)
     tid = town_id or _slug(cleaned["name"]) or "town"
     _write(TOWNS_DIR, tid, cleaned)
@@ -288,6 +293,9 @@ def save_town(raw: Dict[str, Any], town_id: Optional[str] = None) -> Dict[str, A
     if tid in hidden:
         hidden.discard(tid)
         _set_hidden(TOWN_HIDDEN_FILE, hidden)
+    if world_entry and world.entry_for(tid) is None:
+        world.append_entry({**world_entry, "town_id": tid,
+                            "name": world_entry.get("name") or cleaned["name"]})
     return _town_meta(tid, cleaned)
 
 
@@ -438,14 +446,24 @@ def _validate_cast_and_places(raw: Dict[str, Any], town: Dict[str, Any]
     return cast, places
 
 
+# §D24-8.2: which location fields a campaign's town state may override.
+OVERRIDE_FIELDS = ("description", "exterior_scene", "interior_scene")
+MAX_TOWN_STATE_DELTA = 2
+
+
 def town_for_act(town: Dict[str, Any], arc: Dict[str, Any],
-                 act_index: int) -> Dict[str, Any]:
+                 act_index: int, town_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """§D20-2: the town AS THIS ACT SEES IT — the base town plus the arc's
     places and cast present this act, merged as ordinary locations/NPCs (marked
     ``"_scenario": True``) so every downstream reader (the town screen, the
     dialogue validators, the journal) needs no new cases. Idempotent: previously
     merged entries are stripped first, so it can run on an already-composed
-    town."""
+    town.
+
+    ``town_state`` (§D24-8.2) is the CAMPAIGN's memory of this town, composed
+    on in the same pass: ``overrides`` replace a location's description and
+    scenes (the burned waystation stays burned). Applied after the cast/places
+    merge so an arc place can be overridden too."""
     out = copy.deepcopy(town)
     locs = [l for l in out.get("locations") or [] if not l.get("_scenario")]
     for l in locs:
@@ -473,6 +491,40 @@ def town_for_act(town: Dict[str, Any], arc: Dict[str, Any],
         entry.update({"_scenario": True, "vendor": False})
         loc["npcs"] = list(loc.get("npcs") or []) + [entry]
     out["locations"] = locs
+    for loc_id, patch in ((town_state or {}).get("overrides") or {}).items():
+        loc = by_id.get(loc_id)
+        if loc is None or not isinstance(patch, dict):
+            continue
+        for k in OVERRIDE_FIELDS:
+            if patch.get(k):
+                loc[k] = str(patch[k])
+        if patch.get("interior_scene"):
+            loc["scene"] = str(patch["interior_scene"])   # legacy alias
+    return out
+
+
+def validate_town_state_delta(raw: Any, town: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    """A writer's ``town_state_delta``: at most two location overrides, ids
+    that exist in the (composed) town, the three scene fields only."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("town_state_delta must be a map of location id → {description, exterior_scene, interior_scene}")
+    out: Dict[str, Dict[str, str]] = {}
+    for loc_id, patch in raw.items():
+        loc = find_location(town, _slug(str(loc_id)))
+        if loc is None:
+            loc = next((l for l in town.get("locations") or []
+                        if l.get("name", "").lower() == str(loc_id).lower()), None)
+        if loc is None:
+            raise ValueError(f"town_state_delta names '{loc_id}', which is not a location of this town")
+        if not isinstance(patch, dict):
+            raise ValueError(f"town_state_delta['{loc_id}'] must be an object")
+        row = {k: str(patch[k]).strip() for k in OVERRIDE_FIELDS if str(patch.get(k) or "").strip()}
+        if row:
+            out[loc["id"]] = row
+    if len(out) > MAX_TOWN_STATE_DELTA:
+        raise ValueError(f"town_state_delta may change at most {MAX_TOWN_STATE_DELTA} locations")
     return out
 
 
@@ -776,7 +828,9 @@ def _bind_quest_hooks(dialogues: Dict[str, Dict[str, Any]],
 
 def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
                              act_outline: Dict[str, Any],
-                             flags_known: Optional[set] = None) -> Dict[str, Any]:
+                             flags_known: Optional[set] = None,
+                             quests_required: bool = True,
+                             forbidden_hooks: "tuple[str, ...]" = ()) -> Dict[str, Any]:
     """``{quests: [{id, title, text, adventure_theme?}, …], arrival: str,
     dialogues: {npc_id: tree}, flavor: {npc_id: line}, topics: {npc_id:
     [{ask, reply}]}, reask: {npc_id: line}, accepted/declined/committed:
@@ -791,7 +845,9 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
     from .dialogue import check_flag_consistency, validate_dialogue  # local: dialogue imports nothing here
     if not isinstance(raw, dict):
         raise ValueError("materialization must be an object")
-    quests = _clean_quests(raw)
+    # §D24-5.2: the interlude is act-shaped with NO quest — `quests` is absent
+    # and the quest hooks are forbidden (payment hooks are fine).
+    quests = _clean_quests(raw) if quests_required else []
     arrival = str(raw.get("arrival") or "").strip()
     if not arrival:
         raise ValueError("materialization needs the arrival paragraph")
@@ -808,8 +864,16 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
         except ValueError as exc:
             raise ValueError(f"dialogue for {found[1]['name']}: {exc}") from exc
     qnpc = act_outline.get("questgiver_npc")
-    if qnpc not in dialogues:
+    if quests_required and qnpc not in dialogues:
         raise ValueError(f"the questgiver ({qnpc}) has no dialogue tree")
+    if forbidden_hooks:
+        for npc_id, tree in dialogues.items():
+            for nid, node in tree["nodes"].items():
+                for ch in node["choices"]:
+                    bad = [h["kind"] for h in ch["effects"] if h["kind"] in forbidden_hooks]
+                    if bad:
+                        raise ValueError(f"{npc_id}: node '{nid}' choice '{ch['label']}' uses "
+                                         f"{', '.join(bad)} — there is no quest between scenarios")
     # The narration floor (beta playtest): dialogue that only ever SPEAKS reads
     # as a chat log — every physical fact (the splinted arm, the drawn seam)
     # stays invisible, and the player can't follow who is doing what. A tree of
@@ -831,7 +895,8 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
                 "the NPC does with their hands, what the party notices, what a "
                 "name just used refers to. Put one after each major reveal so "
                 "the scene reads like a novel, not a transcript")
-    _bind_quest_hooks(dialogues, quests)
+    if quests_required:
+        _bind_quest_hooks(dialogues, quests)
     flavor: Dict[str, str] = {}
     for npc_id, line in (raw.get("flavor") or {}).items():
         found = _resolve_npc(town, str(npc_id))
@@ -881,10 +946,11 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
         raise ValueError("these townsfolk have nothing to say this act: "
                          + ", ".join(silent)
                          + " — give each one a line in \"flavor\" or an exchange in \"topics\"")
-    return {
+    out = {
         "quests": quests,
         # Legacy readers (and the journal before a choice is made) see the first.
-        "quest": {"title": quests[0]["title"], "text": quests[0]["text"]},
+        "quest": ({"title": quests[0]["title"], "text": quests[0]["text"]} if quests
+                  else {"title": "", "text": ""}),
         "arrival": arrival,
         "dialogues": dialogues,
         "flavor": flavor,
@@ -895,3 +961,129 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
         "committed": committed,
         "stock": copy.deepcopy(raw.get("stock") or {}),
     }
+    # §D24-8.2: a writer may leave one or two marks on the town.
+    delta = validate_town_state_delta(raw.get("town_state_delta"), town)
+    if delta:
+        out["town_state_delta"] = delta
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# The interlude (Update 24 §D24-5.1 / §D24-9.4): the planner's one reply
+# --------------------------------------------------------------------------- #
+HOOK_COUNT = 3
+HOOK_KINDS = ("stay", "neighbour", "new")
+QUEST_HOOKS = ("grant_quest", "unlock_adventure", "defer_quest", "advance_quest")
+MAX_FORESHADOW = 2
+
+
+def validate_interlude(raw: Dict[str, Any], town: Dict[str, Any], town_id: str,
+                       world_towns: Optional[set] = None,
+                       flags_known: Optional[set] = None) -> Dict[str, Any]:
+    """``{interlude: {arrival, dialogues, flavor, topics, town_state_delta?,
+    days}, hooks: [×3]}``. Checks: exactly three hooks; the placement rule (at
+    least one stays, at least one leaves); `neighbour` hooks name a worldbook
+    town; `new` hooks carry a seed (name + one line) and a known anchor; every
+    hook has a narration, a bridge and days; foreshadow exchanges name NPCs
+    present in the interlude town (they are merged into the topics so the
+    party has already heard every hook before the rest screen); the dialogue
+    portion passes `validate_materialization` with no quests and no quest
+    hooks (payment hooks allowed)."""
+    if not isinstance(raw, dict):
+        raise ValueError("the interlude must be an object with interlude and hooks")
+    inter_raw = raw.get("interlude")
+    if not isinstance(inter_raw, dict):
+        raise ValueError("missing \"interlude\" — the town after victory (arrival, dialogues, flavor, topics, days)")
+    hooks_raw = raw.get("hooks")
+    if not isinstance(hooks_raw, list) or len(hooks_raw) != HOOK_COUNT:
+        raise ValueError(f"exactly {HOOK_COUNT} hooks are required — got "
+                         f"{len(hooks_raw) if isinstance(hooks_raw, list) else 'none'}")
+    known = set(world_towns or ())
+    hooks: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+    for i, h in enumerate(hooks_raw, start=1):
+        if not isinstance(h, dict):
+            raise ValueError(f"hook {i} must be an object")
+        kind = str(h.get("kind") or "").strip().lower()
+        if kind not in HOOK_KINDS:
+            raise ValueError(f"hook {i}: kind must be one of {', '.join(HOOK_KINDS)}")
+        narration = str(h.get("narration") or "").strip()
+        bridge = str(h.get("bridge") or "").strip()
+        if not narration or not bridge:
+            raise ValueError(f"hook {i} needs a narration (the rest-screen card) and a bridge (the arrival the arc writer honours)")
+        try:
+            days = int(h.get("days", 0) or 0)
+        except (TypeError, ValueError):
+            raise ValueError(f"hook {i}: days must be a number")
+        if days < 0:
+            raise ValueError(f"hook {i}: days must be ≥ 0")
+        hid = _slug(str(h.get("id") or f"hook_{i}")) or f"hook_{i}"
+        while hid in seen_ids:
+            hid = f"{hid}_{i}"
+        seen_ids.add(hid)
+        target: Optional[str] = None
+        seed: Optional[Dict[str, Any]] = None
+        if kind == "neighbour":
+            target = _slug(str(h.get("town_id") or ""))
+            if not target:
+                raise ValueError(f"hook {i} (neighbour) must name a town_id from the worldbook")
+            if target == town_id:
+                raise ValueError(f"hook {i} (neighbour) names this town — that is a \"stay\" hook")
+            if known and target not in known:
+                raise ValueError(f"hook {i} (neighbour): '{target}' is not in the worldbook "
+                                 f"(known: {', '.join(sorted(known))})")
+        elif kind == "new":
+            seed_raw = h.get("town_seed")
+            if not isinstance(seed_raw, dict) or not str(seed_raw.get("name") or "").strip():
+                raise ValueError(f"hook {i} (new) needs a town_seed with a name and one line")
+            anchor = _slug(str(seed_raw.get("anchor_town_id") or h.get("anchor_town_id") or town_id))
+            if known and anchor not in known and anchor != town_id:
+                raise ValueError(f"hook {i} (new): anchor town '{anchor}' is not in the worldbook")
+            seed = {"name": str(seed_raw["name"]).strip(),
+                    "line": str(seed_raw.get("line") or seed_raw.get("gist") or "").strip(),
+                    "anchor_town_id": anchor}
+        else:
+            target = town_id
+        fores: List[Dict[str, str]] = []
+        for f in (h.get("foreshadow") or [])[:MAX_FORESHADOW]:
+            if not isinstance(f, dict):
+                raise ValueError(f"hook {i}: each foreshadow exchange is {{npc_id, ask, reply}}")
+            found = _resolve_npc(town, str(f.get("npc_id") or f.get("npc") or ""))
+            if found is None:
+                raise ValueError(f"hook {i}: foreshadow names '{f.get('npc_id')}', who is not in town")
+            ask = str(f.get("ask") or "").strip()
+            reply = str(f.get("reply") or "").strip()
+            if not ask or not reply:
+                raise ValueError(f"hook {i}: a foreshadow exchange needs an ask and a reply")
+            fores.append({"npc_id": found[1]["id"], "ask": ask, "reply": reply})
+        hooks.append({"id": hid, "kind": kind, "town_id": target, "town_seed": seed,
+                      "narration": narration, "bridge": bridge, "days": days,
+                      "foreshadow": fores})
+    stays = sum(1 for h in hooks if h["kind"] == "stay")
+    if stays == 0:
+        raise ValueError("placement rule: at least one hook stays in this town")
+    if stays == len(hooks):
+        raise ValueError("placement rule: at least one hook leaves this town (neighbour or new)")
+    # The dialogue portion: no quest, and the hooks foreshadowed as topics.
+    inter = dict(inter_raw)
+    inter.pop("quests", None)
+    inter.pop("quest", None)
+    topics_raw = dict(inter.get("topics") or {}) if isinstance(inter.get("topics"), dict) else {}
+    for h in hooks:
+        for f in h["foreshadow"]:
+            rows = list(topics_raw.get(f["npc_id"]) or [])
+            rows.insert(0, {"ask": f["ask"], "reply": f["reply"]})
+            topics_raw[f["npc_id"]] = rows
+    inter["topics"] = topics_raw
+    try:
+        days = int(inter.get("days", 0) or 0)
+    except (TypeError, ValueError):
+        raise ValueError("interlude.days must be a number")
+    cleaned = validate_materialization(inter, town, {"questgiver_npc": None},
+                                       flags_known=flags_known, quests_required=False,
+                                       forbidden_hooks=QUEST_HOOKS)
+    cleaned.pop("quests", None)
+    cleaned.pop("quest", None)
+    cleaned["days"] = max(0, days)
+    cleaned["interlude"] = True
+    return {"interlude": cleaned, "hooks": hooks}

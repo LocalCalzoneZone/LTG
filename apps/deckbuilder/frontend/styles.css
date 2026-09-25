@@ -513,3 +513,41 @@ label.inline.mini { font-size: 11px; gap: 3px; }
 }
 .tag-chip:hover { border-color: var(--accent, #b08d57); }
 .tag-add { font-size: 11px; max-width: 110px; }
+
+
+/* Per-trigger panel clips (2026-09): one row per distinct trigger a card
+   carries, under the card's own animation pick. */
+.trig-anim-head { margin-top: 10px; }
+.trig-anim-list { display: flex; flex-direction: column; gap: 4px; }
+.trig-anim-row { display: flex; align-items: center; gap: 10px; margin: 0; }
+.trig-anim-row > span { flex: 1; color: var(--muted); font-size: 12px; }
+.trig-anim-row > select { width: 260px; }
+
+/* The brief & lore modal (Update 24 §D24-7): the seven brief fields and the
+   default situation, and a read-only listing of the lore folder. */
+.brief-open { margin-top: 6px; }
+.brief-card { width: min(920px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+.brief-tabs { display: flex; gap: 16px; margin: 0 0 12px; border-bottom: 1px solid var(--line); }
+.brief-tab {
+  background: transparent; border: 0; border-bottom: 1px solid transparent; border-radius: 0;
+  padding: 0 0 6px; margin-bottom: -1px; color: var(--muted); cursor: pointer;
+  font: 400 10px var(--display); text-transform: uppercase; letter-spacing: 0.25em;
+}
+.brief-tab.on { color: var(--accent-hi); border-bottom-color: var(--accent); }
+.brief-tab:hover { color: var(--text); }
+.brief-pane.hidden { display: none; }
+.brief-grid { display: grid; grid-template-columns: 1fr; gap: 4px 18px; }
+.brief-grid label.wide { grid-column: 1 / -1; }
+.brief-grid input[type=text], .brief-grid textarea { font-size: 14px; }
+.lore-text { width: 100%; min-height: 320px; resize: vertical; font: inherit; line-height: 1.5; }
+.brief-grid .hint { display: block; color: var(--dim); font-size: 11px; margin-top: 1px; }
+.lore-example {
+  margin: 0 0 12px; padding: 10px 12px; white-space: pre; overflow-x: auto;
+  background: var(--field); border: 1px solid var(--line); color: var(--muted); font-size: 11px;
+}
+.lore-list { display: flex; flex-direction: column; gap: 4px; }
+.lore-row { display: flex; gap: 12px; align-items: baseline; padding: 6px 8px; border: 1px solid var(--line); }
+.lore-row .title { color: var(--text); }
+.lore-row .keys { color: var(--muted); font-size: 11px; flex: 1; }
+.lore-row .meta { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.lore-empty { color: var(--dim); font-style: italic; font-size: 12px; padding: 6px 0; }

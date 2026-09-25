@@ -107,6 +107,10 @@ export interface PanelAnimBundle {
   cards: Record<string, string>; // card id -> animation id (per-card pick)
   // stance card id -> per-slot animation picks for its replaced abilities
   stances: Record<string, Partial<Record<StanceSlotName, string>>>;
+  // card id -> per-TRIGGER animation picks (2026-09): the key is the engine's
+  // `trigger_key` ("channel_start", "damage_taken:you", "channel_break", …),
+  // so a card's retaliation can look different from its cast.
+  triggers?: Record<string, Record<string, string>>;
 }
 
 /** One standing damage shield on a combatant — what the ward aura draws.
@@ -165,7 +169,7 @@ export interface CharacterView {
   stance: {
     card_id: string;
     card_name: string;
-    slots: Record<string, "unchanged" | "removed" | { name: string }>;
+    slots: Record<string, "unchanged" | "removed" | { name: string; text?: string }>;
   } | null;
   mitigate_value: number;
   acted_mode: string | null;
@@ -774,6 +778,7 @@ export interface QuestLogView {
   direct_to: { npc: string | null; location: string | null } | null;
   completed: { act: number; title: string; quest: string; adventure: string }[];
   scenario_number: number;
+  day?: number;
 }
 export interface PartySheetRow {
   id: string;
@@ -798,6 +803,19 @@ export interface PartySheetRow {
   gear: GearView;
   worn_points?: number;
   effective_level?: number;
+  // Update 24 §D24-7: the character layers the player owns — the brief (on
+  // the character file), this campaign's situation, the full chronicle.
+  brief?: CharacterBrief | null;
+  situation?: string;
+  chronicle?: ChronicleEntry[];
+}
+export interface CharacterBrief {
+  concept?: string; appearance?: string;
+  voice?: { register?: string; samples?: string[] };
+  wants?: string; wont?: string; tell?: string; ties?: string[];
+}
+export interface ChronicleEntry {
+  scenario: number; act: number; day: number; kind: string; text: string;
 }
 // Items (Update 17 §D17-4)
 export interface ItemView {
@@ -858,10 +876,32 @@ export interface ScenarioInfo {
   acts_total: number;
   act_title: string;
   scenario_number: number;
-  options: { difficulty: string; hardcore: boolean; everquest: boolean };
-  mode: "town" | "adventure" | "complete";
+  options: { difficulty: string; hardcore: boolean };
+  mode: "town" | "adventure" | "complete" | "interlude";
   dead: boolean;
   scenario_id: string;
+  // Update 24: the campaign's clock and the interlude planner's state (the
+  // scenario-end menu spins until the planner is done).
+  day?: number;
+  interlude_ready?: boolean;
+  interlude_state?: "idle" | "pending" | "ready" | "failed";
+  interlude_error?: string | null;
+}
+// Update 24 §D24-5.3: the interlude block — the rest screen's hooks (their
+// narrations), the day, each hero's situation, the road in transit.
+export interface HookView {
+  index: number; id: string; kind: "stay" | "neighbour" | "new";
+  town_id: string | null; town_name: string; narration: string; days: number;
+}
+export interface InterludeView {
+  rest_screen: boolean;
+  hooks: HookView[];
+  day: number;
+  chosen: number | null;
+  transit: { title: string; narration: string; kind: string } | null;
+  town_name: string;
+  town_id: string;
+  situations: Record<string, string>;
 }
 export interface ConfirmView {
   id: number;
@@ -909,6 +949,20 @@ export interface TownSnapshot {
   shop: ShopView | null;
   trade: TradeView | null;
   gear_editable: boolean;
+  interlude?: InterludeView | null;
+  notices?: string[];
+}
+
+// The worldbook (Update 24 §D24-8.3): Options → World.
+export interface WorldEntry {
+  town_id: string; name: string; region_id: string; gist: string;
+  notable: string[]; neighbours: { town_id: string; how: string }[]; added_by?: string;
+}
+export interface WorldRegion { id: string; name: string; gist: string; }
+export interface WorldOverview {
+  regions: (WorldRegion & { towns: WorldEntry[] })[];
+  missing: { id: string; name: string }[];
+  towns: { town_id: string; name: string }[];
 }
 
 export interface TownDetail {

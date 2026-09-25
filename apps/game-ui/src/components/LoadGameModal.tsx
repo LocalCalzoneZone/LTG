@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  continueRun,
   deleteRun,
   deleteSave,
   fetchRun,
@@ -16,6 +17,9 @@ const SMALL_BTN =
 const DANGER_BTN =
   "caps-label border border-blood/60 bg-blood/15 px-2.5 py-1 text-[9px] tracking-[0.14em] text-blood transition " +
   "hover:bg-blood hover:text-parch";
+const BRASS_BTN =
+  "chamfer-x caps-label bg-gradient-to-b from-brass-hi to-brass px-6 py-2 text-[10px] tracking-[0.25em] text-ink-0 transition " +
+  "hover:from-brass-hi hover:to-brass-hi disabled:cursor-not-allowed disabled:from-white/[0.06] disabled:to-white/[0.06] disabled:text-dimmed";
 
 function when(iso: string): string {
   if (!iso) return "";
@@ -27,14 +31,29 @@ function when(iso: string): string {
 }
 
 function optionsLabel(o: RunSummary["options"]): string {
-  const parts = [o.difficulty, o.hardcore ? "Hardcore" : "Normal", o.everquest ? "Everquest" : "Standard"];
+  const parts = [o.difficulty, o.hardcore ? "Hardcore" : "Normal"];
   return parts.join(" · ");
 }
 
-/** Load Game (Update 17 §D17-3 / §D17-7): runs → the run's saves (oldest →
- * newest, each loadable / deletable) → load. Loading an older save and
- * continuing appends new rows — a fork; nothing is ever pruned. A whole run
- * can be deleted (double-confirm). */
+/** The campaign's state, as the Load list says it (§D24-3 / §D24-4). */
+function stateLabel(r: RunSummary): { text: string; tone: string } {
+  if (r.dead) return { text: "Fallen", tone: "text-blood" };
+  switch (r.state) {
+    case "between":
+      return { text: `Victory in ${r.current_town_name || "town"} — continue`, tone: "text-brass" };
+    case "interlude":
+      return { text: `Between scenarios · ${r.current_town_name || "the interlude"}`, tone: "text-brass" };
+    default:
+      return { text: `Scenario ${r.current_scenario ?? 1}${r.current_town_name ? ` · ${r.current_town_name}` : ""}`, tone: "text-mist" };
+  }
+}
+
+/** Load Game (Update 17 §D17-3 / Update 24 §D24-4): campaigns only. Opening
+ * a campaign takes its NEWEST save by timestamp — mid-scenario resumes, the
+ * interlude resumes in town, a campaign left at the scenario-end menu
+ * continues into the interlude. The Update 17 save list stays under an
+ * "older saves" disclosure: load an earlier point and continuing branches
+ * from it (a newer save is then the newest, and Continue follows it). */
 export function LoadGameModal({ onClose, onStarted }: {
   onClose: () => void;
   onStarted: (sessionId: string) => void;
@@ -45,10 +64,11 @@ export function LoadGameModal({ onClose, onStarted }: {
   const [err, setErr] = useState<string | null>(null);
   const [confirmSave, setConfirmSave] = useState<string | null>(null);
   const [confirmRun, setConfirmRun] = useState<0 | 1 | 2>(0);
+  const [showSaves, setShowSaves] = useState(false);
 
   const refresh = async (keepRun?: string) => {
     try {
-      const list = await fetchRuns();
+      const list = (await fetchRuns()).filter((r) => (r.kind ?? "campaign") === "campaign");
       setRuns(list);
       if (keepRun && list.some((r) => r.run_id === keepRun)) {
         setSelected(await fetchRun(keepRun));
@@ -66,10 +86,23 @@ export function LoadGameModal({ onClose, onStarted }: {
     setErr(null);
     setConfirmRun(0);
     setConfirmSave(null);
+    setShowSaves(false);
     try {
       setSelected(await fetchRun(r.run_id));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const doContinue = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onStarted(await continueRun(selected.run_id));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
     }
   };
 
@@ -114,6 +147,10 @@ export function LoadGameModal({ onClose, onStarted }: {
     }
   };
 
+  const newest = selected?.saves.length
+    ? [...selected.saves].sort((a, b) => (a.saved_at + a.save_id < b.saved_at + b.save_id ? 1 : -1))[0]
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-[2px]" onClick={onClose}>
       <div
@@ -122,6 +159,7 @@ export function LoadGameModal({ onClose, onStarted }: {
       >
         <div className="mb-4 flex items-center gap-3">
           <h2 className="caps-label text-[13px] tracking-[0.25em] text-brass">Load Game</h2>
+          <span className="text-[10px] font-light text-dimmed">Campaigns</span>
           <span className="h-px flex-1 bg-line" />
           <button onClick={onClose} className="text-mist hover:text-parch" title="Close">
             <IconX size={14} />
@@ -133,19 +171,20 @@ export function LoadGameModal({ onClose, onStarted }: {
         )}
 
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-5">
-          {/* Runs */}
+          {/* Campaigns */}
           <section className="flex min-h-0 flex-col">
-            <div className="caps-label mb-2 text-[10px] tracking-[0.25em] text-brass">Runs</div>
+            <div className="caps-label mb-2 text-[10px] tracking-[0.25em] text-brass">Campaigns</div>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
               {runs === null && <div className="text-xs font-light text-dimmed">Loading…</div>}
               {runs !== null && runs.length === 0 && (
                 <div className="px-1 py-2 text-xs font-light text-dimmed">
-                  No runs yet. Start an adventure from New Game with “Save as a run” to begin one.
+                  No campaigns yet. Start one from New Game → Scenario.
                 </div>
               )}
               <div className="flex flex-col gap-1.5">
                 {runs?.map((r) => {
                   const on = selected?.run_id === r.run_id;
+                  const st = stateLabel(r);
                   return (
                     <button
                       key={r.run_id}
@@ -172,9 +211,7 @@ export function LoadGameModal({ onClose, onStarted }: {
                           r.dead ? "text-dimmed line-through" : "text-parch"}`}>
                           {r.name}
                         </span>
-                        {r.dead && (
-                          <span className="caps-label ml-auto shrink-0 text-[9px] tracking-[0.14em] text-blood">Fallen</span>
-                        )}
+                        <span className={`caps-label ml-auto shrink-0 text-[9px] tracking-[0.14em] ${st.tone}`}>{st.text}</span>
                       </div>
                       <div className="text-[11px] font-light text-mist">
                         {r.party.map((p) => p.name).join(", ")}
@@ -190,20 +227,20 @@ export function LoadGameModal({ onClose, onStarted }: {
             </div>
           </section>
 
-          {/* Saves */}
+          {/* The campaign: continue, or an older save */}
           <section className="flex min-h-0 flex-col">
             <div className="mb-2 flex items-center gap-3">
-              <span className="caps-label text-[10px] tracking-[0.25em] text-brass">Saves</span>
+              <span className="caps-label text-[10px] tracking-[0.25em] text-brass">Campaign</span>
               {selected && (
                 <span className="text-[10px] font-light text-dimmed">{optionsLabel(selected.options)}</span>
               )}
               <span className="h-px flex-1 bg-line" />
               {selected && confirmRun === 0 && (
-                <button className={SMALL_BTN} onClick={() => setConfirmRun(1)} disabled={busy}>Delete run</button>
+                <button className={SMALL_BTN} onClick={() => setConfirmRun(1)} disabled={busy}>Delete campaign</button>
               )}
               {selected && confirmRun === 1 && (
                 <>
-                  <span className="text-[10px] font-light text-mist">Delete the whole run and every save?</span>
+                  <span className="text-[10px] font-light text-mist">Delete the whole campaign and every save?</span>
                   <button className={DANGER_BTN} onClick={() => setConfirmRun(2)}>Yes</button>
                   <button className={SMALL_BTN} onClick={() => setConfirmRun(0)}>No</button>
                 </>
@@ -218,48 +255,78 @@ export function LoadGameModal({ onClose, onStarted }: {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
               {!selected && (
-                <div className="px-1 py-2 text-xs font-light text-dimmed">Select a run to see its saves.</div>
+                <div className="px-1 py-2 text-xs font-light text-dimmed">Select a campaign.</div>
               )}
-              {selected && selected.saves.length === 0 && (
-                <div className="px-1 py-2 text-xs font-light text-dimmed">This run has no saves left.</div>
-              )}
-              <div className="flex flex-col gap-1">
-                {selected?.saves.map((s, i) => (
-                  <div key={s.save_id}
-                       className="flex items-center gap-3 border border-line bg-white/[0.02] px-2 py-1.5">
-                    <span className="w-6 shrink-0 text-right text-[10px] font-light text-dimmed">{i + 1}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-light text-parch">{s.label}</span>
-                      <span className="block text-[10px] font-light text-dimmed">
-                        {when(s.saved_at)}{s.auto ? " · auto" : " · manual"}
-                      </span>
-                    </span>
-                    {confirmSave === s.save_id ? (
-                      <>
-                        <span className="text-[10px] font-light text-mist">Delete this save?</span>
-                        <button className={DANGER_BTN} onClick={() => doDeleteSave(s.save_id)} disabled={busy}>Delete</button>
-                        <button className={SMALL_BTN} onClick={() => setConfirmSave(null)}>Keep</button>
-                      </>
-                    ) : (
-                      <>
-                        <button className={SMALL_BTN} onClick={() => setConfirmSave(s.save_id)} disabled={busy}>Delete</button>
-                        <button
-                          className="caps-label border border-brass/70 bg-brass/10 px-3 py-1 text-[9px] tracking-[0.16em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-40"
-                          onClick={() => doLoad(s.save_id)}
-                          disabled={busy || selected.dead}
-                          title={selected.dead ? "A fallen Hardcore run can be viewed, not continued" : "Load this save (continuing forks from here)"}
-                        >
-                          {busy ? "…" : "Load"}
-                        </button>
-                      </>
+              {selected && (
+                <div className="mb-3 border border-line bg-white/[0.02] p-3">
+                  <div className="caps-label text-[11px] tracking-[0.14em] text-parch">{selected.name}</div>
+                  <div className="mt-1 text-[11px] font-light text-mist">
+                    {stateLabel(selected).text}
+                    {selected.scenario_count && selected.scenario_count > 1 ? ` · ${selected.scenario_count} scenarios` : ""}
+                    {selected.day ? ` · day ${selected.day}` : ""}
+                  </div>
+                  {newest && (
+                    <div className="mt-1 text-[10px] font-light text-dimmed">Newest save: {newest.label} · {when(newest.saved_at)}</div>
+                  )}
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      className={BRASS_BTN}
+                      onClick={doContinue}
+                      disabled={busy || selected.dead || !newest}
+                      title={selected.dead ? "A fallen Hardcore campaign can be viewed, not continued" : "Open the campaign at its newest save"}
+                    >
+                      {busy ? "…" : selected.state === "between" ? "Continue Campaign" : "Continue"}
+                    </button>
+                    {selected.saves.length > 0 && (
+                      <button className={SMALL_BTN} onClick={() => setShowSaves((v) => !v)}>
+                        {showSaves ? "Hide older saves" : `Older saves (${selected.saves.length})`}
+                      </button>
                     )}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+              {selected && selected.saves.length === 0 && (
+                <div className="px-1 py-2 text-xs font-light text-dimmed">This campaign has no saves left.</div>
+              )}
+              {selected && showSaves && (
+                <div className="flex flex-col gap-1">
+                  {selected.saves.map((s, i) => (
+                    <div key={s.save_id}
+                         className="flex items-center gap-3 border border-line bg-white/[0.02] px-2 py-1.5">
+                      <span className="w-6 shrink-0 text-right text-[10px] font-light text-dimmed">{i + 1}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12px] font-light text-parch">{s.label}</span>
+                        <span className="block text-[10px] font-light text-dimmed">
+                          {when(s.saved_at)}{s.auto ? " · auto" : " · manual"}
+                        </span>
+                      </span>
+                      {confirmSave === s.save_id ? (
+                        <>
+                          <span className="text-[10px] font-light text-mist">Delete this save?</span>
+                          <button className={DANGER_BTN} onClick={() => doDeleteSave(s.save_id)} disabled={busy}>Delete</button>
+                          <button className={SMALL_BTN} onClick={() => setConfirmSave(null)}>Keep</button>
+                        </>
+                      ) : (
+                        <>
+                          <button className={SMALL_BTN} onClick={() => setConfirmSave(s.save_id)} disabled={busy}>Delete</button>
+                          <button
+                            className="caps-label border border-brass/70 bg-brass/10 px-3 py-1 text-[9px] tracking-[0.16em] text-brass transition hover:bg-brass hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={() => doLoad(s.save_id)}
+                            disabled={busy || selected.dead}
+                            title={selected.dead ? "A fallen Hardcore campaign can be viewed, not continued" : "Load this save (continuing forks from here)"}
+                          >
+                            {busy ? "…" : "Load"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {selected && selected.saves.length > 0 && (
+            {selected && showSaves && selected.saves.length > 0 && (
               <div className="mt-2 text-[10px] font-light text-dimmed">
-                Loading an older save and playing on branches from it — new saves append; nothing here is ever overwritten.
+                Loading an older save and playing on branches from it — new saves append, and Continue follows the newest; nothing here is ever overwritten.
               </div>
             )}
           </section>

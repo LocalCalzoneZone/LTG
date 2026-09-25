@@ -44,6 +44,28 @@ body {
   letter-spacing: 0.25em;
 }
 
+/* A hand card's drawn plate (Hand.tsx CardFrame). The frame colour and the
+   shadow follow the card's state; the shadow is a drop-shadow so it hugs the
+   plate's cut or scalloped corners rather than a square box. */
+.card-plate {
+  --frame: rgba(214, 197, 160, 0.3);
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.5));
+}
+.card-plate.is-dead {
+  --frame: rgba(214, 197, 160, 0.13);
+}
+.card-plate.is-playable:hover {
+  --frame: rgba(201, 179, 126, 0.7);
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.65));
+}
+.card-plate.is-active {
+  --frame: #c9b37e;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 14px rgba(233, 204, 130, 0.3));
+}
+.card-frame-ink {
+  transition: stroke 150ms ease;
+}
+
 /* Panel with brass corner ticks (top-left / bottom-right). */
 .panel-ticks {
   position: relative;

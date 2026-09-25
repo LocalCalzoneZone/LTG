@@ -270,4 +270,4 @@ Checklist for any new UI:
 
 Related docs: the approval mockup (self-contained HTML with the original visual
 spec) was delivered in the 2026-07-06 design session; engine↔UI field contracts
-are in [`INTERFACE_NOTES.md`](../../INTERFACE_NOTES.md).
+are in [`INTERFACE_NOTES.md`](../../docs/design/INTERFACE_NOTES.md) (historical; the current contract is [docs/architecture.md](../../docs/architecture.md) §8).

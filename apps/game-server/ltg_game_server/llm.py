@@ -35,7 +35,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Selectable models. `id` is the exact OpenRouter slug sent in the request; edit
 # these if a slug 404s (OpenRouter slugs drift). `label` is the dropdown display.
 MODELS: List[Dict[str, str]] = [
-    {"id": "google/gemini-3.7-flash", "label": "Gemini 3.7 Flash (Google)"},
+    {"id": "google/gemini-3.8-flash", "label": "Gemini 3.8 Flash (Google)"},
     {"id": "anthropic/claude-opus-5", "label": "Claude Opus 5 (Anthropic)"},
     {"id": "anthropic/claude-fable-5.1", "label": "Claude Fable 5.1 (Anthropic)"},
     {"id": "anthropic/claude-opus-5-fast", "label": "Claude Opus 5 Fast (Anthropic)"},
@@ -45,10 +45,11 @@ MODELS: List[Dict[str, str]] = [
 # Retired slugs → their successors, so a saved settings file keeps working.
 _MODEL_ALIASES = {
     # Pruned 2026-08: GLM removed for latency; their nearest fast stand-in.
-    "z-ai/glm-5.2": "google/gemini-3.7-flash",
-    "z-ai/glm-5.3": "google/gemini-3.7-flash",
-    "z-ai/glm-5.3-flash": "google/gemini-3.7-flash",
-    "google/gemini-3.5-flash": "google/gemini-3.7-flash",
+    "z-ai/glm-5.2": "google/gemini-3.8-flash",
+    "z-ai/glm-5.3": "google/gemini-3.8-flash",
+    "z-ai/glm-5.3-flash": "google/gemini-3.8-flash",
+    "google/gemini-3.5-flash": "google/gemini-3.8-flash",
+    "google/gemini-3.7-flash": "google/gemini-3.8-flash",
     "anthropic/claude-opus-4.8": "anthropic/claude-opus-5",
     # Pruned 2026-08: mid-tier niche now covered by Sol (see model tests).
     "anthropic/claude-sonnet-5": "openai/gpt-5.6-sol",
@@ -60,6 +61,10 @@ MODEL_TASKS: List[Dict[str, str]] = [
     {"id": "adventures", "label": "Adventures"},
     {"id": "towns", "label": "Towns"},
     {"id": "scenarios", "label": "Scenarios (arcs & acts)"},
+    # The Deckbuilder's "Generate deck flavour" — a different app, but the
+    # setting lives here with the rest (one shared llm_settings.json) so
+    # Options → LLM is the single place every generation task is tuned.
+    {"id": "flavour", "label": "Card Flavour (Deckbuilder)"},
 ]
 
 
@@ -1157,10 +1162,14 @@ def party_summary_from_loadouts(loadouts: List[Dict[str, Any]],
         level = int(char.get("level", 1) or 1)
         if levels is not None and i < len(levels):
             level = int(levels[i])
+        brief = char.get("brief") if isinstance(char.get("brief"), dict) else {}
         members.append({
             "name": char.get("name", f"hero {i + 1}"),
             "level": level,
             "colors": char.get("colors", []),
+            # §D24-9.5: the enemy designer sees the brief's CONCEPT and nothing
+            # else of the character layers.
+            "concept": str(brief.get("concept") or "").strip(),
         })
     if not members:
         raise ValueError("choose at least one character")
@@ -1341,6 +1350,7 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     roster = "; ".join(
         f'{m["name"]} (level {m["level"]}'
         + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
+        + (f' — {m["concept"]}' if m.get("concept") else "")
         for m in party["members"]
     )
     size_lines = []
@@ -2186,6 +2196,7 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     roster = "; ".join(
         f'{m["name"]} (level {m["level"]}'
         + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
+        + (f' — {m["concept"]}' if m.get("concept") else "")
         for m in party["members"]
     )
     base_level = max(1, int(base_level))
@@ -2511,6 +2522,23 @@ Rules:
 - NO dialogue, NO shop inventories, NO quests here — those come per campaign.
 - "region_flavor": one sentence on the land the town sits in.
 - "scene": 2–3 sentences of the town seen whole (the map backdrop).
+- THE WORLDBOOK ENTRY ("world_entry"): the town's page in the shared book of
+  what a traveller knows — read by every campaign that ever visits. The # WORLD
+  block below tells you where this town is being placed: the region it joins
+  (or that you must found one), and the known towns it sits beside.
+  * "region_id": the id of the region it joins, OR "new_region": {"id":
+    snake_case, "name", "gist": one paragraph — climate, peoples, what the land
+    is known for} when you found one. A region is named once; join the given
+    one unless the town clearly belongs to different country.
+  * "gist": ONE paragraph — what a traveller knows of this place: what it is,
+    what it makes, what it is known for. No history, no politics beyond a
+    sentence, NO plot. The book is brief on purpose.
+  * "notable": 2–4 short lines naming things a traveller would have heard of
+    (a person, a landmark, a trade) — e.g. "Poppy, keeper of the Kettle and
+    Anvil", "the Ninth Slag Company's adit".
+  * "neighbours": 1–2 of the KNOWN towns named in # WORLD (their ids, exactly),
+    each with "how" — one line on the road between ("three days north by the
+    Greatway"). Only towns from the # WORLD block; never invent one.
 
 Output contract:
 {"name": "...", "region_flavor": "...", "scene": "...",
@@ -2518,7 +2546,10 @@ Output contract:
                 "exterior_scene": "...", "interior_scene": "...",
                 "npcs": [{"name": "...", "role": "...", "persona": "...", "portrait_desc": "...",
                           "vendor": true,
-                          "topics": [{"ask": "...", "reply": "..."}, ...]}]}, ...]}
+                          "topics": [{"ask": "...", "reply": "..."}, ...]}]}, ...],
+ "world_entry": {"region_id": "<id>" | "new_region": {"id": "...", "name": "...", "gist": "..."},
+                 "gist": "...", "notable": ["...", "..."],
+                 "neighbours": [{"town_id": "<known town id>", "how": "..."}]}}
 """
 
 TOPICS_INSTRUCTIONS = r"""
@@ -2606,6 +2637,20 @@ Rules:
   the inn's and merchants' NPCs mostly out of quest-giving unless the persona
   begs for it.
 - Respect every persona verbatim: a coward stays a coward.
+- THE PARTY (when a # THE PARTY block is given): the heroes are PEOPLE with
+  briefs and a situation. They may be ADDRESSED by their briefs — an NPC who
+  notices the scar, a cast member who knows the family name — but never
+  EXPLAINED by them: hero backstory is NOT a plot source. No quest hooks to a
+  hero's past, no villain from a hero's history, no "this is about you". The
+  trouble belongs to the town and the villain; the party is who happens to
+  answer it.
+- PREVIOUSLY (when given): this party has a history here. The villain must be
+  NEW unless the ledger says one escaped; refused quests and fallen heroes are
+  what townsfolk bring up; a town or a person named in the ledger or in the
+  world block may be referred to, but the arc STAYS IN THIS TOWN.
+- HOW WE GOT HERE (when given): the party arrives by that road. Act I's hook
+  and its arrival must honour the bridge — the same season, the same reason
+  for being here, the same state of the road.
 - "stakes": what is lost if the party fails (2 sentences). "title": the
   scenario's title.
 
@@ -2625,8 +2670,9 @@ Output contract:
 ACT_INSTRUCTIONS = r"""
 You write the TOWN PORTION of one act for LTG, a painterly tactical fantasy card
 game. You get the town (NPC personas — reuse them verbatim in spirit and voice),
-the arc, THIS act's outline, the party's state, and what happened in the previous
-act. Return ONLY JSON.
+the arc, THIS act's outline, THE PARTY (each hero's brief, situation and recent
+deeds), what happened PREVIOUSLY (the campaign's ledger), and sometimes a line
+or two of a hero's LORE. Return ONLY JSON.
 
 TONE:
 %TONE%
@@ -2788,6 +2834,22 @@ Write:
      you beside their persona), honour it: write them as the persona presents
      and let the secret steer what they steer. Never reveal a secret before the
      outline calls for it; foreshadow in word choice, not in fact.
+   - THE PARTY ARE PEOPLE. When a line is attributed to a hero ("speaker":
+     "party"), write it in THAT hero's register from their brief — their
+     words, their tell. NPCs may address a hero by what the brief shows (the
+     scar, the accent, the order's ring) and by what the ledger says they did
+     here; the party's SITUATION is the mood they walk in with. But a hero's
+     past is never the plot: no quest built on a backstory, no villain from a
+     brief. "Lore may colour a line, never a quest."
+   - LORE IN PLAY (when given): a hero's private canon the world happens to
+     touch this act. What you may do with it: one line in that hero's voice,
+     an NPC who recognises a name, a detail on a wall. What you may NOT do:
+     make it the trouble, the reward, or the reason anyone asks for help.
+   - PREVIOUSLY (when given) is what this party actually did in this campaign:
+     the quests they took and the ones they REFUSED, who fell, what they
+     learned, what they bought. Let one or two townsfolk remember — the
+     refused plea, the hero who fell — in one plain sentence each. Never
+     contradict the ledger.
    - NO other keys. No "freeform". No mechanics or numbers in text.
 4. "flavor": a map of NPC id → ONE fresh line of greeting, in their voice, for
    EVERY NPC of the town who has no tree above. Nobody is a closed door.
@@ -2809,6 +2871,11 @@ Write:
    "committed" when the party explains they are already sworn to someone
    else's task this act and cannot take this one. Each is spoken once and the
    conversation ends on it. Omit a map and a plain default is used.
+8. "town_state_delta" (optional): ONE or TWO location overrides tied to what
+   PREVIOUSLY says happened — the burned waystation stays burned, the cistern
+   runs again. A map of location id → {"description", "exterior_scene",
+   "interior_scene"} (any subset; each replaces the town's text from now on,
+   for this campaign only). Omit when nothing has changed.
 
 Output contract:
 {"quests": [{"id": "...", "title": "...", "text": "...", "adventure_theme": "..."}, ×2–4],
@@ -2819,7 +2886,91 @@ Output contract:
  "reask": {"<npc id>": "..."},
  "accepted": {"<npc id>": "..."},
  "declined": {"<npc id>": "..."},
- "committed": {"<npc id>": "..."}}
+ "committed": {"<npc id>": "..."},
+ "town_state_delta": {"<location id>": {"description": "...", "exterior_scene": "...", "interior_scene": "..."}}}
+"""
+
+
+INTERLUDE_INSTRUCTIONS = r"""
+You are the campaign planner for LTG, a painterly tactical fantasy card game.
+The party has just defeated a scenario's villain. You write the INTERLUDE — the
+town after victory, act-shaped with NO quest — and propose exactly THREE HOOKS
+for where the story goes next. Return ONLY JSON.
+
+TONE:
+%TONE%
+
+%CONCRETE%
+
+%VOICE%
+
+You get: the town as this campaign knows it (NPC personas — reuse them in
+spirit and voice), the arc that just ended, PREVIOUSLY (the campaign's ledger —
+every scenario, most recent in full), THE PARTY (briefs, situations, recent
+deeds), and THE WORLD HERE (this town's page of the worldbook and its
+neighbours' one-liners).
+
+RULES:
+- You PROPOSE PREMISES, never outcomes. You read the world and what the party
+  DID; you never touch hero backstory. Lore is not among your inputs and a
+  hero's past is never a hook.
+- The interlude is the town in the light of what just happened: relief, debts,
+  the payment an NPC promised, the townsfolk's view of the party, the hero who
+  fell. Shops are open; the inn's `rest` is the only exit.
+
+Write:
+1. "interlude": the same shape an act's town portion has, MINUS quests:
+   * "arrival": ONE paragraph, second person, present tense — the party back in
+     town after the victory, some days on.
+   * "days": how many days the party has been back (a number, 1–14).
+   * "dialogues": NPC id → dialogue tree (same shape and rules as an act's:
+     acyclic, 2–4 nodes per path, narration beats for any tree of four or
+     more nodes, {"speaker": "npc" | "party" | "narration"}). Write trees for
+     2–4 people whose personas or the ledger earn a word: the questgiver of
+     Act III, someone who promised pay, the innkeeper. HOOKS ALLOWED: set_flag,
+     give_gold (the promised payment), rest (the innkeeper — "Take a room."),
+     open_shop (the vendor only), direct_to. FORBIDDEN: grant_quest,
+     unlock_adventure, defer_quest, advance_quest — there is no quest here.
+   * "flavor": NPC id → ONE fresh greeting line for EVERY NPC without a tree.
+   * "topics": NPC id → 1–2 exchanges [{"ask", "reply"}] about the victory and
+     its aftermath, for NPCs without a tree.
+   * "town_state_delta" (optional): one or two location overrides tied to the
+     victory — the relit hall, the cleared adit. Location id → {"description",
+     "exterior_scene", "interior_scene"} (any subset).
+2. "hooks": EXACTLY THREE, each {"id": snake_case, "kind": "stay" | "neighbour"
+   | "new", "town_id": <the worldbook town id for neighbour, else null>,
+   "town_seed": {"name", "line"} for new (else null), "narration", "bridge",
+   "days", "foreshadow": [{"npc_id", "ask", "reply"}, ×1–2]}.
+   * PLACEMENT RULE: at least one hook STAYS in this town, at least one LEAVES;
+     the third goes where the ledger points. A "neighbour" hook names a town
+     from THE WORLD HERE (its id, exactly — never invent one). A "new" hook
+     carries a town_seed: a name and ONE line for the town generator, placed
+     beside this town.
+   * "narration": 3–5 sentences in the second-person narrator voice of the rest
+     screen ("You spend the next few weeks in Karzum…") — the weeks of rest and
+     travel, ending as the next trouble shows its face. It is the card the
+     player reads and picks.
+   * "bridge": the arrival paragraph the next arc writer will honour — how the
+     party gets there and what has changed since; for "stay" it is the morning
+     the trouble arrives.
+   * "days": the elapsed time the bridge covers (a number).
+   * "foreshadow": 1–2 topic exchanges per hook, spoken by NPCs PRESENT IN THIS
+     TOWN, so the party has already HEARD every hook in town before the rest
+     screen: the fisherman's talk of sails to the south, the trader's
+     complaint about the shut library, the innkeeper's late daughter.
+   * Each hook is a CONCRETE trouble with a body and a place, a painter could
+     paint. The three must differ in kind, not just in address.
+
+Output contract:
+{"interlude": {"arrival": "...", "days": 6,
+               "dialogues": {"<npc id>": {tree}}, "flavor": {"<npc id>": "..."},
+               "topics": {"<npc id>": [{"ask": "...", "reply": "..."}]},
+               "town_state_delta": {"<location id>": {"description": "..."}}},
+ "hooks": [{"id": "...", "kind": "stay", "town_id": null, "town_seed": null,
+            "narration": "...", "bridge": "...", "days": 21,
+            "foreshadow": [{"npc_id": "...", "ask": "...", "reply": "..."}]},
+           {"id": "...", "kind": "neighbour", "town_id": "<worldbook id>", "town_seed": null, ...},
+           {"id": "...", "kind": "new", "town_id": null, "town_seed": {"name": "...", "line": "..."}, ...}]}
 """
 
 
@@ -2862,6 +3013,171 @@ def _arc_block(arc: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------- #
+# Update 24 §D24-9.6: the shared PARTY / PREVIOUSLY / WORLD renderers. One
+# place enforces the four-hero budget: five lines per hero at depth "full",
+# two at "summary". Chronicle: "none" | "summaries" | "recent" (recent 10 +
+# summaries).
+# --------------------------------------------------------------------------- #
+PARTY_LINES_FULL = 5
+PARTY_LINES_SUMMARY = 2
+
+
+def _party_block(members: List[Dict[str, Any]], depth: str = "full",
+                 chronicle: str = "recent") -> str:
+    lines = ["# THE PARTY — the heroes as PEOPLE (address them by these; never explain a plot by them)"]
+    for m in members:
+        brief = m.get("brief") if isinstance(m.get("brief"), dict) else {}
+        name = m.get("name", "a hero")
+        head = f'- {name} (level {m.get("level", 1)}'
+        if m.get("colors"):
+            head += f', {"/".join(m["colors"])}'
+        head += ")"
+        concept = str(brief.get("concept") or m.get("concept") or "").strip()
+        if concept:
+            head += f" — {concept}"
+        rows = [head]
+        if depth == "full":
+            appearance = str(brief.get("appearance") or "").strip()
+            if appearance:
+                rows[0] += f" {appearance}"
+            voice = brief.get("voice") if isinstance(brief.get("voice"), dict) else {}
+            v = str(voice.get("register") or "").strip()
+            samples = [str(x).strip() for x in (voice.get("samples") or []) if str(x).strip()]
+            if v or samples:
+                rows.append("    Voice: " + v + (" Says things like: " + " / ".join(f'"{x}"' for x in samples[:3])
+                                                 if samples else ""))
+            traits = []
+            if brief.get("wants"):
+                traits.append(f"wants {str(brief['wants']).strip()}")
+            if brief.get("wont"):
+                traits.append(f"won't {str(brief['wont']).strip()}")
+            if brief.get("tell"):
+                traits.append(f"tell: {str(brief['tell']).strip()}")
+            if traits:
+                rows.append("    " + "; ".join(traits) + ".")
+            ties = [str(t).strip() for t in (brief.get("ties") or []) if str(t).strip()]
+            if ties:
+                rows.append("    Ties: " + "; ".join(ties) + ".")
+        now = []
+        sit = str(m.get("situation") or "").strip()
+        if sit:
+            now.append(f"Now: {sit}")
+        if chronicle in ("summaries", "recent"):
+            summaries = [str(x).strip() for x in (m.get("chronicle_summaries") or []) if str(x).strip()]
+            if summaries:
+                now.append("Before this: " + " ".join(summaries))
+        if chronicle == "recent":
+            recent = [str(e.get("text") or "").strip() for e in (m.get("chronicle_recent") or [])
+                      if str(e.get("text") or "").strip()]
+            if recent:
+                now.append("Recently: " + " ".join(recent[-10:]))
+        if now:
+            rows.append("    " + " · ".join(now))
+        cap = PARTY_LINES_FULL if depth == "full" else PARTY_LINES_SUMMARY
+        lines += rows[:cap]
+    return "\n".join(lines)
+
+
+def _act_ledger_lines(act: Dict[str, Any]) -> List[str]:
+    out = []
+    acc = act.get("accepted") or {}
+    head = f'  Act {act.get("act", "?")} "{act.get("title", "")}": '
+    if acc.get("title"):
+        head += f'the party took on "{acc["title"]}"'
+    else:
+        head += "no quest was taken"
+    if act.get("adventure"):
+        head += f' and rode out to {act["adventure"]}'
+    if act.get("boss"):
+        head += f'; {act["boss"]} was slain'
+    if act.get("defeats"):
+        n = int(act["defeats"])
+        head += f'; they were beaten back {n} time{"s" if n > 1 else ""} first'
+    out.append(head + ".")
+    if act.get("refused"):
+        out.append("    REFUSED: " + "; ".join(f'"{q.get("title", "")}"' for q in act["refused"]) + ".")
+    if act.get("fallen"):
+        out.append("    FELL: " + ", ".join(act["fallen"]) + ".")
+    if act.get("learned"):
+        out.append("    Learned of: " + ", ".join(act["learned"]) + ".")
+    if act.get("met"):
+        out.append("    Met: " + ", ".join(act["met"]) + ".")
+    spent = act.get("gold_spent") or {}
+    if spent or act.get("items_bought"):
+        out.append("    Bought: " + (", ".join(act.get("items_bought") or []) or "nothing")
+                   + (" (" + ", ".join(f"{n} gold at {loc}" for loc, n in spent.items()) + ")" if spent else "") + ".")
+    return out
+
+
+def _ledger_block(ledger: Optional[List[Dict[str, Any]]], current_scenario: Optional[int] = None) -> str:
+    """§D24-8.1: the `# PREVIOUSLY` block — the most recent scenario in full,
+    older scenarios as their one-liner plus refused quests and fallen heroes
+    (those are what NPCs bring up)."""
+    rows = [r for r in (ledger or []) if isinstance(r, dict)]
+    if not rows:
+        return ""
+    lines = ["# PREVIOUSLY — what this party has done in this campaign (never contradict it)"]
+    latest = rows[-1]
+    for r in rows[:-1]:
+        line = f'- Scenario {r.get("scenario", "?")}: {r.get("one_liner", "")}'
+        refused = [q.get("title", "") for a in r.get("acts") or [] for q in a.get("refused") or []]
+        fallen = sorted({h for a in r.get("acts") or [] for h in a.get("fallen") or []})
+        if refused:
+            line += " Refused: " + "; ".join(f'"{t}"' for t in refused if t) + "."
+        if fallen:
+            line += " Fell: " + ", ".join(fallen) + "."
+        lines.append(line)
+    tag = " (in progress)" if latest.get("outcome") == "in progress" else ""
+    lines.append(f'- Scenario {latest.get("scenario", "?")}{tag} — "{latest.get("title", "")}" in '
+                 f'{latest.get("town_name", latest.get("town_id", ""))}, villain {latest.get("villain", "")}; '
+                 f'outcome: {latest.get("outcome", "")}.')
+    for act in latest.get("acts") or []:
+        lines += _act_ledger_lines(act)
+    return "\n".join(lines)
+
+
+def _world_block(world_ctx: Optional[Dict[str, Any]], neighbours: bool = True) -> str:
+    """§D24-8.3: `# THE WORLD HERE` — this town's worldbook page (gist, region,
+    notable names) and, for the arc writer and the planner, its neighbours'
+    one-liners. The act writer gets this town only."""
+    ctx = world_ctx or {}
+    entry = ctx.get("entry")
+    if not entry:
+        return ""
+    lines = [f'# THE WORLD HERE — what a traveller knows of {entry.get("name", "")}']
+    region = ctx.get("region")
+    if region:
+        lines.append(f'Region: {region.get("name", "")} — {region.get("gist", "")}')
+    lines.append(str(entry.get("gist", "")))
+    if entry.get("notable"):
+        lines.append("Known for: " + "; ".join(entry["notable"]) + ".")
+    if neighbours:
+        near = ctx.get("neighbours") or []
+        if near:
+            lines.append("Neighbouring towns (ids in brackets):")
+            for n in near:
+                lines.append(f'- [{n.get("town_id", "")}] {n.get("name", "")} — {n.get("how", "")}: {n.get("gist", "")}')
+        else:
+            lines.append("No neighbouring towns are known yet.")
+    return "\n".join(lines)
+
+
+def _hook_block(hook: Optional[Dict[str, Any]]) -> str:
+    """`# HOW WE GOT HERE` (§D24-9.2): the chosen hook's narration and bridge,
+    and the player's note."""
+    if not hook:
+        return ""
+    lines = ["# HOW WE GOT HERE — honour this in Act I's hook and arrival"]
+    if hook.get("narration"):
+        lines.append(f'The road: {hook["narration"]}')
+    if hook.get("bridge"):
+        lines.append(f'Arrival: {hook["bridge"]}')
+    if hook.get("note"):
+        lines.append(f'The player\'s own note (honor it): {hook["note"]}')
+    return "\n".join(lines)
+
+
 def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
                    task: str = "scenarios") -> Dict[str, Any]:
     """The shared repair loop: call, validate via ``fix(raw) -> cleaned``, feed the
@@ -2891,14 +3207,74 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
     raise ValueError(f"{what} generation failed after {attempts} attempts: {last_err}")
 
 
-def generate_town(note: str = "", attempts: int = 3) -> Dict[str, Any]:
-    """Generate + validate + persist a town (§D17-5.1). Returns its meta."""
-    from . import scenario_content as sc
-    user = "Design the town now." + (f" Player's note (honor it): {note.strip()}" if note.strip() else "")
-    user += "\nReturn ONLY the town JSON."
-    town = _scenario_chat(TOWN_INSTRUCTIONS, user, attempts, sc.validate_town, "town",
-                          task="towns")
-    return sc.save_town(town)
+def _world_placement_block(world_ctx: Optional[Dict[str, Any]]) -> str:
+    """§D24-9.1: the `# WORLD` block the town generator is placed with — the
+    region it joins (or "found one") and one line per known town it sits
+    beside. Nobody ever receives the whole book."""
+    ctx = world_ctx or {}
+    region = ctx.get("region")
+    lines = ["# WORLD — where this town is placed"]
+    if region:
+        lines.append(f'Region: [{region["id"]}] {region["name"]} — {region.get("gist", "")}'
+                     " (join it with \"region_id\", or found a new one if the town clearly belongs elsewhere).")
+    else:
+        lines.append("Region: none known here — FOUND a new region (\"new_region\": {id, name, gist}).")
+    beside = ctx.get("neighbours") or []
+    if beside:
+        lines.append("Known towns it sits beside (name 1–2 as \"neighbours\", by id):")
+        for n in beside:
+            lines.append(f'- [{n["town_id"]}] {n.get("name", "")}: {n.get("gist", "")}')
+    else:
+        lines.append("No known towns nearby — this is the first town of its region; \"neighbours\" may be empty.")
+    return "\n".join(lines)
+
+
+def town_prompt(note: str = "", world_ctx: Optional[Dict[str, Any]] = None,
+                seed: Optional[Dict[str, Any]] = None) -> str:
+    """The user turn of a town generation — assembled here so tests can pin
+    what the writer is shown (§D24-9.1) without a model call."""
+    user = [_world_placement_block(world_ctx), ""]
+    if seed:
+        user.append("# THE SEED — the campaign's next scenario is headed here. Honour it:")
+        user.append(f'Name: {seed.get("name", "")}. {seed.get("line", "")}')
+        if seed.get("bridge"):
+            user.append(f'How the party arrives: {seed["bridge"]}')
+        user.append("")
+    user.append("Design the town now." + (f" Player's note (honor it): {note.strip()}" if note.strip() else ""))
+    user.append("Return ONLY the town JSON (with its world_entry).")
+    return "\n".join(user)
+
+
+def generate_town(note: str = "", attempts: int = 3,
+                  world_ctx: Optional[Dict[str, Any]] = None,
+                  seed: Optional[Dict[str, Any]] = None,
+                  added_by: str = "generate_town") -> Dict[str, Any]:
+    """Generate + validate + persist a town (§D17-5.1) AND its worldbook entry
+    (§D24-9.1) in one call. ``world_ctx`` is `world.placement_context(...)`
+    (the region + the towns it is placed beside); ``seed`` is a continuation's
+    `{name, line, bridge?}` (§D24-5.1). Returns the town's meta."""
+    from . import scenario_content as sc, world
+    ctx = world_ctx if world_ctx is not None else world.placement_context()
+    known = set(ctx.get("known_towns") or [e["town_id"] for e in world.list_entries()])
+
+    def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
+        town = sc.validate_town(raw)
+        entry_raw = raw.get("world_entry")
+        if not isinstance(entry_raw, dict):
+            raise ValueError("the town needs its \"world_entry\" (region, gist, notable, neighbours)")
+        if not entry_raw.get("region_id") and not entry_raw.get("new_region") and ctx.get("region"):
+            entry_raw = {**entry_raw, "region_id": ctx["region"]["id"]}
+        tid = sc._slug(town["name"]) or "town"
+        entry = world.validate_entry({**entry_raw, "town_id": tid, "name": town["name"],
+                                      "added_by": added_by},
+                                     known_towns=known | {tid})
+        if seed and seed.get("name") and sc._slug(seed["name"]) != tid:
+            raise ValueError(f'the seed names the town "{seed["name"]}" — keep that name')
+        return {"town": town, "world_entry": entry}
+
+    out = _scenario_chat(TOWN_INSTRUCTIONS, town_prompt(note, ctx, seed), attempts, fix, "town",
+                         task="towns")
+    return sc.save_town(out["town"], world_entry=out["world_entry"])
 
 
 def generate_town_topics(town_id: str, attempts: int = 3) -> Dict[str, Any]:
@@ -2942,61 +3318,184 @@ def generate_town_topics(town_id: str, attempts: int = 3) -> Dict[str, Any]:
     return sc.save_town(town, town_id)
 
 
-def generate_arc(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
-                 previous_arcs: Optional[List[Dict[str, Any]]] = None,
-                 note: str = "", attempts: int = 3) -> Dict[str, Any]:
-    """The arc — once, at scenario start (§D17-6.1); Everquest passes the
-    previous arcs' summaries so the new one continues the town's story."""
-    from . import scenario_content as sc
+def arc_prompt(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
+               previous_arcs: Optional[List[Dict[str, Any]]] = None, note: str = "",
+               party_state: Optional[Dict[str, Any]] = None,
+               ledger: Optional[List[Dict[str, Any]]] = None,
+               world_ctx: Optional[Dict[str, Any]] = None,
+               hook: Optional[Dict[str, Any]] = None) -> str:
+    """The arc writer's user turn (§D24-9.2), assembled here so tests can pin
+    it: the town, THE PARTY (briefs + situations + chronicle summaries),
+    PREVIOUSLY (the ledger), THE WORLD HERE (this town + neighbours) and, on a
+    continuation, HOW WE GOT HERE."""
     roster = "; ".join(f'{m["name"]} (level {m["level"]}'
-                       + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
+                       + (f', {"/".join(m["colors"])})' if m.get("colors") else ")")
                        for m in party["members"])
     user = [_town_block(town), "",
             f"# PARTY — {party['size']} hero(es): {roster}. Difficulty: {difficulty}."]
-    if previous_arcs:
-        user.append("\n# PREVIOUS ARCS in this town (the new arc follows them — new villain, "
+    if party_state and party_state.get("members"):
+        user += ["", _party_block(party_state["members"], depth="full", chronicle="summaries")]
+    if ledger:
+        user += ["", _ledger_block(ledger)]
+    elif previous_arcs:
+        user.append("\n# PREVIOUSLY in this town (the new arc follows — new villain, "
                     "consequences of the old):")
         for i, prev in enumerate(previous_arcs, start=1):
             user.append(f'- Scenario {i}: "{prev.get("title", "")}" — villain {prev.get("villain", "")}; '
                         f'outcome: {prev.get("outcome", "defeated")}.')
+    wb = _world_block(world_ctx, neighbours=True)
+    if wb:
+        user += ["", wb]
+    hb = _hook_block(hook)
+    if hb:
+        user += ["", hb]
     if note.strip():
         user.append(f"\nPlayer's note (honor it): {note.strip()}")
     user.append("\nWrite the arc now. Return ONLY the arc JSON.")
-    return _scenario_chat(ARC_INSTRUCTIONS, "\n".join(user), attempts,
+    return "\n".join(user)
+
+
+def generate_arc(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
+                 previous_arcs: Optional[List[Dict[str, Any]]] = None,
+                 note: str = "", attempts: int = 3,
+                 party_state: Optional[Dict[str, Any]] = None,
+                 ledger: Optional[List[Dict[str, Any]]] = None,
+                 world_ctx: Optional[Dict[str, Any]] = None,
+                 hook: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """The arc — once, at scenario start (§D17-6.1) and at every continuation
+    (§D24-5.3), where the ledger, the party's layers, the worldbook and the
+    chosen hook are passed so the new arc continues the campaign's story."""
+    from . import scenario_content as sc
+    user = arc_prompt(town, party, difficulty, previous_arcs, note,
+                      party_state=party_state, ledger=ledger, world_ctx=world_ctx, hook=hook)
+    return _scenario_chat(ARC_INSTRUCTIONS, user, attempts,
                           lambda raw: sc.validate_arc(raw, town), "arc")
 
 
-def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
-                 party_state: Dict[str, Any], previous_summary: str = "",
-                 attempts: int = 3) -> Dict[str, Any]:
-    """The act's town portion (§D17-6.2): quest, dialogue trees (closed hooks),
-    arrival paragraph, flavour lines. ``party_state`` = {members: [{name,
-    level}], gold: {name: n}, flags: {…}}; ``defeated_once`` in the flags makes
-    the questgiver's tree open on the bloodied-return branch."""
-    from . import scenario_content as sc
+def act_prompt(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
+               party_state: Dict[str, Any], previous_summary: str = "",
+               ledger: Optional[List[Dict[str, Any]]] = None,
+               world_ctx: Optional[Dict[str, Any]] = None,
+               lore: Optional[List[Dict[str, Any]]] = None) -> str:
+    """The act writer's user turn (§D24-9.3): town, arc, this act, THE PARTY
+    (briefs, situations, recent chronicles), the filtered flags and the
+    knowledge list, PREVIOUSLY (the ledger), THE WORLD HERE (this town only)
+    and LORE IN PLAY (≤ 2 key-matched entries)."""
     outline = arc["acts"][act_index]
-    # §D20-2: the town AS THIS ACT SEES IT — the arc's cast and places merged in,
-    # so the writer can hand them dialogue and the validator accepts it.
-    town = sc.town_for_act(town, arc, act_index)
     flags = party_state.get("flags") or {}
-    members = "; ".join(f'{m["name"]} (level {m["level"]})' for m in party_state.get("members", []))
+    public = sorted(k for k, v in flags.items() if v and not k.startswith("_") and not k.startswith("knows_"))
+    knows = [k for k in (party_state.get("knows") or [])] + sorted(
+        k for k, v in flags.items() if v and k.startswith("knows_"))
+    members = party_state.get("members", [])
     user = [_town_block(town), "", _arc_block(arc), "",
             f"# THIS ACT — Act {act_index + 1} of {len(arc['acts'])}: \"{outline['title']}\"",
             f"Hook: {outline['hook']}",
             f"Questgiver: [{outline['questgiver_npc']}]"
             + (f"; handoff: [{outline['handoff']}]" if outline.get("handoff") else ""),
             f"Adventure theme: {outline['adventure_theme']}. Tone: {outline.get('tone_notes', '')}",
-            "", f"# PARTY STATE — {members}.",
-            f"Flags set: {', '.join(sorted(k for k, v in flags.items() if v)) or 'none'}."]
+            "", _party_block(members, depth="full", chronicle="recent"),
+            f"Day {party_state.get('day', 1)} of the campaign. "
+            f"Flags set: {', '.join(public) or 'none'}.",
+            "The party already knows of: "
+            + (", ".join(k[len("knows_"):].replace("_", " ") for k in dict.fromkeys(knows)) or "nothing yet")
+            + " (gate questions about anything else)."]
     if flags.get("defeated_once"):
         user.append("The party ALREADY RODE OUT ON THIS QUEST AND WAS DEFEATED — they return "
                     "bloodied. Write the questgiver's tree so the defeated_once branch is the "
                     "living one (reproach, worry, or dark humour per persona), and re-offer the "
                     "same quest options there.")
-    if previous_summary:
+    lb = _ledger_block(ledger)
+    if lb:
+        user += ["", lb]
+    elif previous_summary:
         user.append(f"\n# PREVIOUSLY: {previous_summary}")
+    wb = _world_block(world_ctx, neighbours=False)
+    if wb:
+        user += ["", wb]
+    if lore:
+        user += ["", "# LORE IN PLAY — a hero's private canon the world touches this act. "
+                     "Colour a line, never a quest."]
+        for row in lore:
+            user.append(f'- {row.get("hero", "")}: "{row.get("title", "")}" — {row.get("text", "")}')
     user.append("\nWrite this act's town portion now. Return ONLY the JSON.")
-    known = {k for k, v in flags.items() if v}
-    return _scenario_chat(ACT_INSTRUCTIONS, "\n".join(user), attempts,
+    return "\n".join(user)
+
+
+def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
+                 party_state: Dict[str, Any], previous_summary: str = "",
+                 attempts: int = 3,
+                 ledger: Optional[List[Dict[str, Any]]] = None,
+                 world_ctx: Optional[Dict[str, Any]] = None,
+                 lore: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """The act's town portion (§D17-6.2): quest, dialogue trees (closed hooks),
+    arrival paragraph, flavour lines. ``party_state`` is `ScenarioRun.party_state()`
+    (members with briefs / situations / chronicles, the public flags, the
+    `knows` list); ``defeated_once`` in the flags makes the questgiver's tree
+    open on the bloodied-return branch. ``lore`` defaults to the key-matched
+    selection off the party's lore folders (§D24-7.3)."""
+    from . import content as _content, scenario_content as sc
+    outline = arc["acts"][act_index]
+    # §D20-2: the town AS THIS ACT SEES IT — the arc's cast and places merged in,
+    # so the writer can hand them dialogue and the validator accepts it.
+    town = sc.town_for_act(town, arc, act_index)
+    flags = party_state.get("flags") or {}
+    if lore is None:
+        try:
+            lore = _content.lore_in_play(party_state.get("members", []), town, arc,
+                                         {**flags, **{k: True for k in party_state.get("knows") or []}},
+                                         act_index, str(town.get("id") or ""))
+        except Exception:
+            lore = []
+    user = act_prompt(town, arc, act_index, party_state, previous_summary,
+                      ledger=ledger, world_ctx=world_ctx, lore=lore)
+    known = {k for k, v in flags.items() if v} | set(party_state.get("knows") or [])
+    return _scenario_chat(ACT_INSTRUCTIONS, user, attempts,
                           lambda raw: sc.validate_materialization(raw, town, outline,
                                                                  flags_known=known), "act")
+
+
+def interlude_prompt(town: Dict[str, Any], arc: Dict[str, Any],
+                     ledger: Optional[List[Dict[str, Any]]], party_state: Dict[str, Any],
+                     world_ctx: Optional[Dict[str, Any]]) -> str:
+    """The planner's user turn (§D24-5.1): the town, the arc that ended,
+    PREVIOUSLY, THE PARTY (recent chronicles) and THE WORLD HERE with
+    neighbours. Lore is NOT among its inputs."""
+    user = [_town_block(town), "", _arc_block(arc), "",
+            _party_block(party_state.get("members", []), depth="full", chronicle="recent")]
+    lb = _ledger_block(ledger)
+    if lb:
+        user += ["", lb]
+    wb = _world_block(world_ctx, neighbours=True)
+    if wb:
+        user += ["", wb]
+    else:
+        user += ["", "# THE WORLD HERE — this town has no worldbook page yet; propose "
+                     "\"stay\" and \"new\" hooks only (no \"neighbour\")."]
+    user.append(f"\nDay {party_state.get('day', 1)} of the campaign. The villain, "
+                f"{arc.get('villain', '')}, is defeated. Write the interlude and the three hooks now. "
+                "Return ONLY the JSON.")
+    return "\n".join(user)
+
+
+def generate_interlude(town: Dict[str, Any], arc: Dict[str, Any],
+                       ledger: Optional[List[Dict[str, Any]]], party_state: Dict[str, Any],
+                       world_ctx: Optional[Dict[str, Any]] = None,
+                       attempts: int = 3) -> Dict[str, Any]:
+    """The interlude planner (§D24-9.4): ONE call at boss death that writes the
+    post-victory town and proposes three hooks. Validated by
+    `scenario_content.validate_interlude`."""
+    from . import scenario_content as sc
+    town_id = str(town.get("id") or (world_ctx or {}).get("town_id") or "")
+    if not town_id and (world_ctx or {}).get("entry"):
+        town_id = str(world_ctx["entry"].get("town_id") or "")
+    known = {n.get("town_id") for n in (world_ctx or {}).get("neighbours") or [] if n.get("town_id")}
+    if (world_ctx or {}).get("entry"):
+        known.add(town_id)
+    flags = party_state.get("flags") or {}
+    known_flags = {k for k, v in flags.items() if v} | set(party_state.get("knows") or [])
+    user = interlude_prompt(town, arc, ledger, party_state, world_ctx)
+    return _scenario_chat(INTERLUDE_INSTRUCTIONS, user, attempts,
+                          lambda raw: sc.validate_interlude(raw, town, town_id,
+                                                            world_towns=known or None,
+                                                            flags_known=known_flags),
+                          "interlude")

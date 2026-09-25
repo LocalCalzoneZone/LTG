@@ -1,0 +1,28 @@
+{
+  "kind": "world_entry",
+  "town_id": "azure",
+  "name": "Azure",
+  "region_id": "cinnamere_lagoon",
+  "gist": "Azure is the lagoon's great port, a city of ninety timber-piled islets braided together by nine canals, where every doorstep is also a boat-step and the houses are washed blue and pink to the waterline. Its merchant houses run spice, salt and eel out past the giants' sea-wall and paint their mooring poles in family colours; its craftsmen make what a wet city needs — boarding blades, tide-rings, lamp-charms, and the gilt masks the trading families wear to negotiate. Cargo, passengers and rumour all come ashore up the same broad marble steps at the Salt Stair, and at dusk lamp-boats go out with hooked poles to light the canal lanterns until the water looks like a road of floating gold. Travellers remember the eel pie, the gulls, and the fact that nobody in Azure will give you directions by street.",
+  "notable": [
+    "The Salt Bell tower, with its bronze sea-drake weathervane, rung to close the markets; Hedda Stromm of the Iron Quay forge means to cast it a second bell before she dies.",
+    "The Gilded Eel, four storeys leaning over the Ropewalk Canal, where the halfling landlady Perrinelle Cobbleworth keeps nineteen years of guests' breakfast preferences in a ledger.",
+    "Coriander Bridge Market, a raft of moored spice barges under one humpbacked bridge, and Nio Fessari's unsold heron mask in white and silver hanging above his stall.",
+    "The Tidewatch Archive, four centuries of harbour ledgers and Archivist Maelen Thistlebar's chart of the lagoon's shifting channels, which he will show to anyone who asks a specific question."
+  ],
+  "neighbours": [
+    {
+      "town_id": "karzum",
+      "how": "Six weeks of Greatway and river-barge apart, but the same road: the pepper, cardamom and lamp-oil in Karzum's Long Hall Market come up from Azure's wharves by mule-train, and lagoon charts hang beside pass-maps in the watch-room."
+    },
+    {
+      "town_id": "millhaven",
+      "how": "No road — a week's coasting under sail; Millhaven's flour barrels go south to the lagoon and come back as salt, spice and eel."
+    },
+    {
+      "town_id": "nalindor",
+      "how": "Down the brown forest rivers by flat-bottomed barge, six days to the lagoon — fast going out, slow poling back, and wyrm-country the whole first stretch."
+    }
+  ],
+  "added_by": "backfill"
+}

@@ -1,0 +1,24 @@
+{
+  "regions": [
+    {
+      "id": "cinnamere_lagoon",
+      "name": "The Cinnamere Lagoon",
+      "gist": "Where the River Cinnamere loses itself in a warm green lagoon, the land gives up being land: ninety miles of reed-flats, mudbanks, oyster beds and timber-piled islets under a sky full of herons and gulls the size of geese. Winters are mild and wet, summers hot enough to make the canals steam at dawn, and the whole coast is sheltered by a colossal sea-wall of fitted grey blocks that giants laid down long before anyone kept ledgers — cracked now on its eastern arm, and patched with brick and prayer. Humans, halflings, elves and dwarves live here on boats as often as in houses, and travel by pole and oar rather than road; the reed-flats belong to marsh-drakes, eel-fishers and smugglers who know the channel-marks. The lagoon is known for salt, eel, spice brought in from six ports, lacquered masks, and charts — for the simple reason that its channels move every season, and only the people who write them down can find their way home."
+    },
+    {
+      "id": "frostcap_peaks",
+      "name": "The Frostcap Peaks",
+      "gist": "A wall of white horns and black scree standing across the north, where the treeline gives out at the third switchback and the waterfalls hang frozen from midautumn to Thawmoon. One road crosses it — the Greatway, a dwarf-cut wagon road of switchbacks, cisterns and windbreak walls that climbs through a single wagon-wide notch and down the far side to the northern lakes. Dwarves hollowed these mountains for iron and warm-vented stone and still hold the passes; humans, halflings, orcs and gnomes came up with the caravans and stayed for the work, and a few elves came for the question of what will grow at altitude. The Frostcaps are known for pass-picks and cold-forged steel, mule-droving, frostbite salve, and the sealed lower halls of the old strongholds — where the mountain is not empty, and the wolves, ice-trolls and worse keep to the high shoulders above the road."
+    },
+    {
+      "id": "ardsmere_downs",
+      "name": "The Ardsmere Downs",
+      "gist": "Rolling chalk-and-barley country on the western coast, where mile after mile of golden downland runs to cliffs of white rock and a string of sheltered blue bays. The wind off the sea never truly stops, so the Ardsmere is a land of sails — windmills on every ridge, sailcloth on every washing-line, coasters beating up the bays with grain and salt fish. Winters are grey and wet, summers bright and gusty, and the soil grows barley, oats and hedgerow herbs better than anything else. Humans farm the downs and halflings keep the hedge-lanes and kitchens, with dwarven smiths and elven craftsfolk settled in the harbour towns for the trade; the Ardsmere is known for flour, meal-cakes, sailcloth, chowder, and beer brewed from its own barley. Inland the downs climb into blue hill-marches full of standing stones, cliff-cut inscriptions and barrows that the wardens' old paths skirt rather than cross."
+    },
+    {
+      "id": "elderwood_deeps",
+      "name": "The Elderwood Deeps",
+      "gist": "South and inland of the river country stands the Elderwood Deeps: eighty leagues of ironwood, elderwood and moss-hung cedar so old and so close-grown that the canopy shuts out the sky and noon on the forest floor is a green twilight. Rain never quite stops falling, mist stands in the colossal roots until midday, and the only true roads are the rivers — brown, slow and patrolled by river wyrms that take pack-mules off the bank. Elves hold the heights, building their halls in the boughs and keeping wardens in the watchtowers; woodcutters, herb-gatherers, dwarf carpenters and river-traders come up from the lowlands for what the Deeps sell and rarely stay past the wet season. The forest is known for cured yew bowstaves, star-iron dug from meteor-pits under the roots, canopy salves and fever-tonics, and for the moss-grown ruins between the trunks that nobody living built. Manticores nest in the cloud-crags above the leaf-line, and bandit cart-trains work the old logging tracks below."
+    }
+  ]
+}

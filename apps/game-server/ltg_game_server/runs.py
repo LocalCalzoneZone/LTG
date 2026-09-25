@@ -49,8 +49,22 @@ if False:  # typing only
 REPO_ROOT = content.REPO_ROOT
 SAVES_DIR = REPO_ROOT / "saves"
 
-RUN_SCHEMA_VERSION = 1
+# Schema 2 (Update 24 §D24-3): a scenario run is a CAMPAIGN — `kind`,
+# `state`, `scenario_count` / `current_scenario`, and the campaign fields
+# (ledger, towns_visited, current_town_id, town_state, heroes, hooks, day)
+# ride run.json. A schema-1 run loads as a campaign with an empty ledger and
+# heroes seeded from its party (the Update 17 rule: old saves stay loadable).
+RUN_SCHEMA_VERSION = 2
 SAVE_SCHEMA_VERSION = 1
+CAMPAIGN_FIELDS = ("ledger", "towns_visited", "current_town_id", "town_state", "heroes",
+                   "hooks", "day")
+# Save kind → the campaign's state, stored for the Load list (§D24-3).
+_STATE_FOR_KIND = {"interlude": "interlude", "hooks_chosen": "between",
+                   "scenario_complete": "between"}
+
+
+def state_for_kind(kind: str) -> str:
+    return _STATE_FOR_KIND.get(kind, "in_scenario")
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
 
@@ -203,6 +217,13 @@ def progression_label(adventure_name: str, kind: str, phase_index: int,
     if scenario is not None:
         head = (f"{scenario.town['name']} · Scenario {scenario.scenario_number} · "
                 f"Act {_roman(scenario.act_index + 1)}")
+        # Update 24 §B.2: the campaign's own save kinds.
+        if kind == "scenario_complete":
+            return f"{scenario.town['name']} · Scenario {scenario.scenario_number} complete"
+        if kind == "interlude":
+            return f"{scenario.town['name']} · Campaign, between scenarios — the Interlude"
+        if kind == "hooks_chosen":
+            return f"{scenario.town['name']} · Campaign, between scenarios — the road ahead"
         if kind == "act_start":
             return f"{head} · Town — arrival"
         if kind == "quest_accept":
@@ -259,13 +280,31 @@ class RunManager:
             except Exception:
                 continue
             saves = st.list_saves()
+            newest = max(saves, key=lambda s_: (s_["saved_at"], s_["save_id"])) if saves else None
             out.append({**self._run_meta(run), "save_count": len(saves),
-                        "latest_label": saves[-1]["label"] if saves else ""})
+                        "latest_label": newest["label"] if newest else "",
+                        "newest_save_id": newest["save_id"] if newest else None})
         out.sort(key=lambda r: r.get("updated_at", ""), reverse=True)  # newest first
         return out
 
     @staticmethod
+    def run_kind(run: Dict[str, Any]) -> str:
+        """`campaign` (a scenario run — Update 24: every scenario game is one)
+        or `adventure` (a run around a lone adventure)."""
+        kind = run.get("kind")
+        if kind in ("campaign", "adventure"):
+            return kind
+        return "adventure" if (run.get("scenario") or {}).get("kind") == "adventure" else "campaign"
+
+    @staticmethod
     def _run_meta(run: Dict[str, Any]) -> Dict[str, Any]:
+        kind = RunManager.run_kind(run)
+        town_id = run.get("current_town_id") or (run.get("scenario") or {}).get("town_id", "")
+        town_name = run.get("current_town_name", "")
+        if not town_name and town_id:
+            # A schema-1 run never stored the name: read it off the town file.
+            town = sc.town_detail(town_id)
+            town_name = town.get("name", "") if town else ""
         return {
             "run_id": run["run_id"],
             "name": run.get("name", ""),
@@ -273,11 +312,19 @@ class RunManager:
             # them for the wire (a copy — `run` is written back elsewhere).
             "party": [{**row, "portrait": content.portrait_url(str(row.get("portrait") or ""))}
                       for row in run.get("party", []) if isinstance(row, dict)],
-            "options": run.get("options", {}),
+            "options": {k: v for k, v in (run.get("options") or {}).items() if k != "everquest"},
             "created_at": run.get("created_at", ""),
             "updated_at": run.get("updated_at", ""),
             "dead": bool(run.get("dead", False)),
             "schema_version": run.get("schema_version"),
+            # Update 24 §D24-3: the campaign's shape for the Load list.
+            "kind": kind,
+            "state": run.get("state", "in_scenario" if kind == "campaign" else ""),
+            "scenario_count": int(run.get("scenario_count", 1) or 1),
+            "current_scenario": int(run.get("current_scenario", 1) or 1),
+            "current_town_id": town_id,
+            "current_town_name": town_name,
+            "day": int(run.get("day", 1) or 1),
         }
 
     def run_detail(self, run_id: str) -> Dict[str, Any]:
@@ -297,7 +344,7 @@ class RunManager:
         while st.exists():
             run_id = _new_run_id()
             st = RunStore(run_id, self.root)
-        opts = {"difficulty": "standard", "hardcore": False, "everquest": False}
+        opts = {"difficulty": "standard", "hardcore": False}
         opts.update({k: v for k, v in (options or {}).items() if k in opts})
         party = []
         for cid, lo in zip(adventure.character_ids, adventure.loadouts):
@@ -346,6 +393,13 @@ class RunManager:
             "created_at": now,
             "updated_at": now,
             "dead": False,
+            # Update 24 §D24-3: a campaign of length one until continued.
+            "kind": "campaign",
+            "state": "in_scenario",
+            "scenario_count": 1,
+            "current_scenario": 1,
+            "current_town_name": scenario.town.get("name", ""),
+            **self._campaign_fields(scenario),
             "scenario": {"kind": "scenario",
                          "town_id": scenario.town_id,
                          "scenario_id": scenario.scenario_id,
@@ -357,6 +411,25 @@ class RunManager:
         st.write_run(run)
         return self._run_meta(run)
 
+    @staticmethod
+    def _campaign_fields(scenario: "ScenarioRun") -> Dict[str, Any]:
+        camp = getattr(scenario, "campaign", None) or {}
+        return {k: copy.deepcopy(camp.get(k)) for k in CAMPAIGN_FIELDS if k in camp}
+
+    def update_campaign(self, run_id: str, scenario: "ScenarioRun") -> None:
+        """Write the campaign fields (and the pending interlude, if any) into
+        run.json without a save row — the interlude job lands here."""
+        st = self.store(run_id)
+        run = st.read_run()
+        run.update(self._campaign_fields(scenario))
+        run["scenario_count"] = run["current_scenario"] = int(scenario.scenario_number)
+        run["current_town_name"] = scenario.town.get("name", "")
+        if scenario.pending_interlude is not None:
+            scenario.interlude_ref = st.put(scenario.pending_interlude)
+            run.setdefault("scenario", {})["interlude_ref"] = scenario.interlude_ref
+        run["updated_at"] = _now()
+        st.write_run(run)
+
     def put_content(self, run_id: str, obj: Any) -> str:
         return self.store(run_id).put(obj)
 
@@ -367,7 +440,7 @@ class RunManager:
         st.write_run(run)
 
     def set_arc(self, run_id: str, arc: Dict[str, Any]) -> None:
-        """Everquest: a new arc for the same town — recorded on the run."""
+        """A continuation's new arc (§D24-5.3) — recorded on the run."""
         st = self.store(run_id)
         run = st.read_run()
         ref = st.put(arc)
@@ -413,10 +486,15 @@ class RunManager:
             block = scenario.snapshot()
             block["loadout_refs"] = [st.put(lo) for lo in scenario.loadouts]
             block["arc_ref"] = st.put(scenario.arc)
-            block["town_ref"] = st.put(scenario.town)
+            # The BASE town is what a save points at (§D24-8.2: the campaign's
+            # overrides are composed on at load, never baked into the file).
+            block["town_ref"] = st.put(scenario.base_town)
             block["act_ref"] = st.put(scenario.act) if scenario.act is not None else None
             block["adventure_ref"] = (st.put(scenario.adventure_detail)
                                       if scenario.adventure_detail is not None else None)
+            block["interlude_ref"] = (st.put(scenario.pending_interlude)
+                                      if scenario.pending_interlude is not None else None)
+            scenario.interlude_ref = block["interlude_ref"]
             snap["scenario"] = block
         snap["label"] = progression_label(adv_name, kind, phase_index, phases_total,
                                           scenario=scenario)
@@ -425,6 +503,14 @@ class RunManager:
         if scenario is not None:
             run["adventure_job"] = dict(scenario.adventure_job)
             run.setdefault("scenario", {})["arc_ref"] = snap["scenario"]["arc_ref"]
+            run["scenario"]["town_id"] = scenario.town_id
+            run["scenario"]["interlude_ref"] = snap["scenario"]["interlude_ref"]
+            # Update 24 §D24-3: the campaign record follows every save.
+            run["kind"] = "campaign"
+            run["state"] = state_for_kind(kind)
+            run["scenario_count"] = run["current_scenario"] = int(scenario.scenario_number)
+            run["current_town_name"] = scenario.town.get("name", "")
+            run.update(self._campaign_fields(scenario))
         st.write_run(run)
         return {"save_id": save_id, "saved_at": snap["saved_at"],
                 "label": snap["label"], "kind": kind, "auto": auto}
@@ -439,6 +525,15 @@ class RunManager:
         st.write_run(run)
 
     # -- loading ------------------------------------------------------------------ #
+    def newest_save(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """The continue target (§D24-3): the newest save BY TIMESTAMP, not the
+        furthest progression — loading an older save and playing on makes a
+        newer save, and continue follows it."""
+        saves = self.store(run_id).list_saves()
+        if not saves:
+            return None
+        return max(saves, key=lambda s_: (s_["saved_at"], s_["save_id"]))
+
     def load_save(self, run_id: str, save_id: str
                   ) -> Tuple[Dict[str, Any], Optional[AdventureRun], Optional[GameState],
                              Dict[str, str], Dict[str, Any], str]:
@@ -486,10 +581,31 @@ class RunManager:
         loadouts = [_shrink_portraits(st.get(h)) for h in block.get("loadout_refs", [])]
         act = st.get(block["act_ref"]) if block.get("act_ref") else None
         adv = st.get(block["adventure_ref"]) if block.get("adventure_ref") else None
+        # Update 24 §D24-6: identity is read LIVE from the character file on
+        # every load; the instance keeps its points-buy and progression.
+        notices: List[str] = []
+        for cid, lo in zip(block.get("character_ids", []), loadouts):
+            live = content.loadout_for(cid)
+            if live is not None:
+                notices += content.refresh_instance(lo, live)
         scenario = ScenarioRun(town, arc, block["character_ids"], loadouts,
                                block.get("options"), town_id=block.get("town_id", ""),
                                scenario_id=block.get("scenario_id", ""))
+        # The campaign (§D24-3): the snapshot's copy when it has one (a fork
+        # keeps its own history), else the run-level record — and a schema-1
+        # run loads as a campaign with an empty ledger and its party's heroes.
+        if not isinstance(block.get("campaign"), dict):
+            block["campaign"] = {k: copy.deepcopy(run[k]) for k in CAMPAIGN_FIELDS if k in run}
         scenario.restore(block, act, adv, loadouts)
+        scenario.notices = notices
+        ref = block.get("interlude_ref") or (run.get("scenario") or {}).get("interlude_ref")
+        if ref and scenario.mode in ("complete", "interlude"):
+            try:
+                scenario.pending_interlude = st.get(ref)
+                scenario.interlude_ref = ref
+                scenario.interlude_job = {"state": "ready", "error": None}
+            except KeyError:
+                pass
         # Freshen town art (it may have painted since the save).
         scenario.reload_town_art()
         return scenario

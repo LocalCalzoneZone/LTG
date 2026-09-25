@@ -1,9 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { CardView } from "../lib/types";
 import type { Choices, Choice } from "../lib/choices";
 import { useGame } from "../lib/store";
 import { Pips } from "./Pips";
-import { IconSigil, IconTurnMark } from "./Icons";
 
 export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | null }) {
   const select = useGame((s) => s.selectChoice);
@@ -54,10 +53,6 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
             card={card}
             playable={playable}
             active={active}
-            // §D23-9: a sorcery-speed card SPENDS THE TURN, so it wears the same
-            // mark as the action bar's left group. Instants carry none — they
-            // cost nothing but mana.
-            spendsTurn={playable && card.timing !== "instant"}
             justDrawn={justDrawn.has(i)}
             onClick={() => choice && select(choice)}
           />
@@ -67,28 +62,31 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
   );
 }
 
-export function HandCard({ card, playable, active, spendsTurn, justDrawn, onClick }: {
+export function HandCard({ card, playable, active, justDrawn, onClick }: {
   card: CardView;
   playable: boolean;
   active: boolean;
-  spendsTurn?: boolean;
   justDrawn?: boolean;
   onClick: () => void;
 }) {
   // h-full + aspect-ratio => every card is the same size and top-aligned; the whole
   // card scales with the (window-sized) hand area. Fonts clamp against viewport height.
+  // The card is a drawn PLATE (CardFrame): its corner shape says what kind of
+  // card this is at a glance, and the shadow hugs that shape.
+  const state = playable ? (active ? "is-active" : "is-playable") : "is-dead";
   return (
     <div
       onClick={onClick}
       title={card.text}
-      className={`relative flex aspect-[2/3] h-full shrink-0 flex-col border bg-gradient-to-b from-ink-3 to-ink-2 p-1.5 text-parch shadow-[0_6px_16px_rgba(0,0,0,0.5)] transition-all duration-150 ${
+      className={`card-plate ${state} relative isolate flex aspect-[2/3] h-full shrink-0 flex-col p-1.5 text-parch transition-all duration-150 ${
         playable
           ? active
-            ? "-translate-y-1.5 cursor-pointer border-brass shadow-[0_10px_22px_rgba(0,0,0,0.65),0_0_14px_rgba(233,204,130,0.3)]"
-            : "cursor-pointer border-line2 hover:-translate-y-1.5 hover:border-brass/70 hover:shadow-[0_10px_22px_rgba(0,0,0,0.65)]"
-          : "border-line opacity-40"
+            ? "-translate-y-1.5 cursor-pointer"
+            : "cursor-pointer hover:-translate-y-1.5"
+          : "opacity-40"
       } ${justDrawn ? "hud-card-draw" : ""}`}
     >
+      <CardFrame timing={card.timing} />
       {/* Name (shrink-to-fit) + cost. The title's line height matches the 15px
           pips exactly, so a single-line name and its cost sit on one axis. */}
       <div className="flex items-start justify-between gap-1">
@@ -99,27 +97,78 @@ export function HandCard({ card, playable, active, spendsTurn, justDrawn, onClic
           <Pips cost={card.cost} size={15} />
         </div>
       </div>
-      {/* Art slot (3:2) — the card's own art when it has any (a consumable
-          carries its item's, painted at 3:2 for exactly this frame), else the
-          sigil placeholder. */}
-      <div className="relative my-1 flex aspect-[3/2] w-full items-center justify-center overflow-hidden border border-line bg-[radial-gradient(70%_60%_at_50%_40%,rgba(90,110,120,0.22),transparent_75%),linear-gradient(180deg,#1c222c,#141821)] text-[#6f7f8f]">
-        {card.image ? (
+      {/* Art (3:2) only when the card HAS any — a consumable carries its
+          item's, painted for exactly this frame. Cards without art give the
+          whole face to the text instead of a placeholder. */}
+      {card.image && (
+        <div className="relative my-1 flex aspect-[3/2] w-full items-center justify-center overflow-hidden border border-line bg-ink-0">
           <img src={card.image} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <IconSigil className="h-2/5 w-2/5 opacity-50" />
-        )}
-      </div>
+        </div>
+      )}
+      <div className="my-1 h-px w-full bg-line" aria-hidden />
       {/* Effect text (left-aligned, fills) */}
-      <div className="flex-1 overflow-hidden text-[clamp(8px,1.1vh,11px)] font-light leading-snug text-mist">
+      <div className={`flex-1 overflow-hidden font-light leading-snug text-mist ${
+        card.image ? "text-[clamp(8px,1.1vh,11px)]" : "text-[clamp(9px,1.25vh,12.5px)]"}`}>
         {card.text}
       </div>
-      {/* Type — with §D23-9's turn mark when casting this card is your turn. */}
-      <div className="caps-label mt-0.5 flex items-center justify-end gap-1 text-[clamp(7px,1vh,9px)] tracking-[0.18em] text-dimmed">
-        {spendsTurn && (
-          <IconTurnMark size={7} className="text-brass/70" />
-        )}
+      {/* Type. §D23-9's turn mark (this card spends the turn) sits on the
+          plate's top edge instead — see CardFrame. */}
+      <div className="caps-label mt-0.5 text-center text-[clamp(7px,1vh,9px)] tracking-[0.18em] text-dimmed">
         {card.timing}
       </div>
     </div>
+  );
+}
+
+/* The card's face and frame, drawn rather than bordered. One plate per
+   timing, told apart by the shape of its corners — the same brass-hairline
+   vocabulary as the panels (panel-ticks), scaled with the card:
+     sorcery   a square plate with engraved corner brackets — set down;
+     instant   the corners are CUT, a second stroke glinting off each cut
+               edge — struck, quick, playable any time;
+     channeled a cartouche with scalloped corners — bound to the board.
+   A sorcery and a channel SPEND THE TURN (§D23-9), so they wear the action
+   bar's brass turn mark on the plate's top edge; an instant carries none.
+   The stroke colour follows the card's state through --frame (.card-plate in
+   index.css); the plate itself is the old ink gradient. */
+const FRAME_PATH: Record<string, string> = {
+  sorcery: "M0 0H100V150H0Z",
+  instant: "M3 0H97L100 3V147L97 150H3L0 147V3Z",
+  channeled: "M3 0H97A3 3 0 0 0 100 3V147A3 3 0 0 0 97 150H3A3 3 0 0 0 0 147V3A3 3 0 0 0 3 0Z",
+};
+const CORNER_MARKS: Record<string, string> = {
+  // Inset L-brackets, all four corners.
+  sorcery: "M1.8 9V1.8H9M91 1.8H98.2V9M98.2 141V148.2H91M9 148.2H1.8V141",
+  // A short stroke paralleling each cut, just outside it.
+  instant: "M-1.4 2L2 -1.4M98 -1.4L101.4 2M101.4 148L98 151.4M2 151.4L-1.4 148",
+  channeled: "",
+};
+
+export function CardFrame({ timing }: { timing: string }) {
+  const kind = timing in FRAME_PATH ? timing : "sorcery";
+  const gradId = useId();
+  return (
+    <svg
+      viewBox="0 0 100 150"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 -z-10 h-full w-full overflow-visible"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#161a24" />
+          <stop offset="1" stopColor="#10131b" />
+        </linearGradient>
+      </defs>
+      <path d={FRAME_PATH[kind]} fill={`url(#${gradId})`} stroke="var(--frame)"
+            strokeWidth="1" vectorEffect="non-scaling-stroke" className="card-frame-ink" />
+      {CORNER_MARKS[kind] && (
+        <path d={CORNER_MARKS[kind]} fill="none" stroke="var(--frame)" strokeWidth="1"
+              vectorEffect="non-scaling-stroke" className="card-frame-ink" />
+      )}
+      {kind !== "instant" && (
+        <path d="M50 -2.4L52.4 0L50 2.4L47.6 0Z" fill="#c9b37e" fillOpacity="0.75" />
+      )}
+    </svg>
   );
 }

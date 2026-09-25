@@ -1,0 +1,20 @@
+{
+  "kind": "world_entry",
+  "town_id": "karzum",
+  "name": "Karzum",
+  "region_id": "frostcap_peaks",
+  "gist": "Karzum is the gate in the mountains: a dwarf-cut fortress grown into the cliffs of the only wagon-wide notch through the Frostcaps, its terraces stacked one above another with old arrow-slits reglazed as kitchen windows and forty chimney-vents breathing straight up into the cold. The Greatway enters at the Ironjaw Gate, switchbacks up through the town, crosses Wyrmthroat Gorge on the single black arch of Kholdrun's Bridge, and leaves by the Sky Stair for the northern lakes — so every cart, mule and traveller in the north passes through somebody's ledger here. The town lives on the road: cold-forged axes and pass-picks, hand-warmers and snow-goggles, frostbite salve, harness-mending and hot bread at any hour. At dusk the lamp-charms hung from the stair-rails turn the whole cliff amber, and the hours are marked not by bells but by shouting.",
+  "notable": [
+    "Vasla Grimhelt, fourth of her line at the forge, keeps a barrel of snapped lowland blades by the door as an argument against the Aldmere Caravan Guild.",
+    "The Ember Shrine of Durnkal, where a coal-bed has burned four hundred years unbroken; travellers leave a handful of fuel for luck and get an iron name-token nailed to the wall.",
+    "The Kettle and Anvil — the old officers' mess, warmest room in the pass, where Poppy Bramblecask writes every snowed-in traveller's name on a slate by the door.",
+    "Aeliru Frostfern's cellar garden: twelve terraced beds of green things grown at altitude, warmed by the stronghold's old forge-vents."
+  ],
+  "neighbours": [
+    {
+      "town_id": "azure",
+      "how": "Six weeks of Greatway and river-barge apart, but the same road: the pepper, cardamom and lamp-oil in Karzum's Long Hall Market come up from Azure's wharves by mule-train, and lagoon charts hang beside pass-maps in the watch-room."
+    }
+  ],
+  "added_by": "backfill"
+}

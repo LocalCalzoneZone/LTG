@@ -41,7 +41,7 @@ HOOKS = ("set_flag", "grant_quest", "defer_quest", "advance_quest",
 # already true) has to be able to set it, or the choice is a door with no key.
 STANDING_FLAGS = frozenset({"defeated_once", "quest_accepted",
                             "act_1_complete", "act_2_complete", "act_3_complete"})
-STANDING_PREFIXES = ("item_",)   # give_item writes item_<id>
+STANDING_PREFIXES = ("item_", "town:")   # give_item writes item_<id>; town: is campaign town state (§D24-8.2)
 # Hooks whose choice is party-wide: they open the all-players confirmation
 # (§D17-5.4). Flavour choices don't.
 PARTY_WIDE_HOOKS = frozenset({"grant_quest", "unlock_adventure", "rest"})
