@@ -95,7 +95,7 @@ def soak(specs: List[Dict[str, Any]], games: int,
                 if problems:
                     failure = "; ".join(problems)
                     break
-        except Exception as exc:  # apply_action must never raise
+        except Exception as exc:  # apply_action must never raise  # noqa: BLE001
             failure = f"exception: {type(exc).__name__}: {exc}"
         if failure is not None:
             failures.append({

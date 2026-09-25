@@ -209,7 +209,6 @@ function renderEnemies() {
     if (e.stunned) tags.append(el("span", "tag disabled", `stunned ×${e.stunned}`));
     if (e.temp_mod) tags.append(el("span", "tag", `${e.temp_mod > 0 ? "+" : ""}${e.temp_mod} temp HP`));
     if (e.power_bonus) tags.append(el("span", "tag", `${e.power_bonus > 0 ? "+" : ""}${e.power_bonus} Power`));
-    if (e.prevent_pool) tags.append(el("span", "tag", `reduce ${e.prevent_pool}`));
     if (e.protection) tags.append(el("span", "tag", `protection ×${e.protection}`));
     (e.keywords || []).forEach((k) => tags.append(el("span", "tag", `⚜ ${k}`)));
     if (e.rises) tags.append(el("span", "tag", `rises ×${e.rises}`));

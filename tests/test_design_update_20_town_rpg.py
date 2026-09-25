@@ -13,8 +13,8 @@ import copy
 
 import pytest
 
-from ltg_game_server import content, scenario_content as sc
-from ltg_game_server.dialogue import (Conversation, check_flag_consistency,
+from ltg_game_server import scenario_content as sc
+from ltg_game_server.dialogue import (check_flag_consistency,
                                       validate_dialogue)
 from ltg_game_server.scenario import ScenarioRun
 
@@ -22,7 +22,6 @@ from tests.test_design_update_17_towns import (
     _isolate_dirs,      # noqa: F401 (autouse fixture)
     arc_raw,
     materialization_raw,
-    questgiver_tree,
     town_raw,
 )
 

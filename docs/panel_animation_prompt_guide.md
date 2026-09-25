@@ -30,8 +30,15 @@ plays it, and swaps back. Two facts make the swap invisible:
   not by your prose).
 
 So every prompt must describe **a single continuous shot that erupts into motion
-and returns to the opening pose in its final second**. The exception is `death`,
-which ends on its own final image and holds there.
+and returns to the opening pose in its final second**. Two exceptions:
+
+- `death` ends on its own final image, and the game holds it there.
+- `revive` runs the other way: it opens on the `death` clip's final frame and
+  ends on the portrait pose. The game plays it over the held death frame, then
+  hands back to the portrait.
+
+`victory` returns to the opening pose like any other clip, and the game then
+holds its final frame until the next encounter begins.
 
 The game also **delays the board's reaction (hit flash, damage, enemy death)
 until the clip's impact moment**, so you will state, per clip, the second at
@@ -64,7 +71,10 @@ Ignore everything else (costs, HP, mana, ids).
 - **Format:** 9:16 portrait, 5 s, 24 fps, 768×1344 (H3 native canvas). Video
   only — audio is stripped in game.
 - **Model / conditioning:** H3 I2V (`fl2va`), portrait as **first and last
-  keyframe** for every clip except `death` (I2V only, no last keyframe).
+  keyframe** for every clip except:
+  - `death`: I2V only, no last keyframe;
+  - `revive`: the `death` clip's final frame as the **first** keyframe and the
+    portrait as the **last** (`fl2va`). Generate `death` first.
 - **Delivery:** WebM (VP9), audio stripped, played at ×1. Never trim a beat out
   of the middle of a clip (it severs the pose return); if a clip must be shorter,
   retime the whole thing uniformly.
@@ -130,6 +140,7 @@ forward from it.
 | `ultimate` | The **Ultimate** per `ultimate.flavor_text` at the scale `translated_text` implies. This is the one clip allowed to leave the panel framing for most of its length (camera tilts/whips to sell scale) and only return in the last second. | `ultimate.flavor_text`, `ultimate.translated_text` | 3.0–4.0 |
 | `hit` | **Takes damage**: a rush of force slams in from frame right, they are knocked/staggered (not thrown), magic gutters, camera jolts; they catch themselves and recover. | portrait, colours | n/a (write 0) |
 | `death` | **Incapacitated**: their magic dies, they stagger and sink (to a knee, slumped) as light drains, ending on a still dark final image with a cold rim light. I2V only — no last-frame keyframe. "No fade to black." | portrait, colours | n/a (write 0) |
+| `revive` | **They stand back up**: from the slumped, drained final frame of `death`, light returns to their magic, they push up off the knee and rise, straightening into the opening portrait pose as the cold rim light warms. The whole clip is the recovery, so the return is the ending, not a final-second beat. | the `death` clip's final frame, portrait, colours | n/a (write 0) |
 | `victory` | **The fight is won**: the party's celebration, played on every standing hero's panel at once when the encounter ends. They straighten out of the fight and mark the win in their own register — a weapon raised or planted, a fist closed, magic flaring bright and settling, a breath let out, a grin or a cold nod — then return to the opening pose. Read it as *this one*'s victory, not a generic cheer, and keep it self-contained: it plays beside the others, so no gesture aimed at a teammate. | `description`, `colors`, `ability_flavor`, portrait bearing | n/a (write 0) |
 | **alternates** | One extra clip per **stance-replaced attack** (`skill.effects[kind=stance].attack.name`) depicting that ability, marked `alternate: true`, trigger `attack`. Optionally, alternates for a signature card if the JSON's flavour text is spectacular and clearly distinct from the generic cast. | the stance replacement `name`/`effects`; card `flavor_text` | 1.5–2.0 |
 
@@ -144,7 +155,7 @@ consistent with the other clips, and mark it `(invented — no flavour in JSON)`
 # <Character name> — panel animation prompts
 
 Generation facts: 9:16 · 5 s · 24 fps · 768×1344 · H3 I2V (fl2va), portrait as first AND last
-keyframe (death: I2V only) · deliver WebM (VP9), audio stripped, ×1.
+keyframe (death: I2V only; revive: death's last frame → portrait) · deliver WebM (VP9), audio stripped, ×1.
 
 ## Shared preamble
 > <preamble paragraph>
@@ -177,6 +188,7 @@ The user pastes **preamble + action block** into H3 for each clip.
 ## 6. Quality checklist (run before you answer)
 
 - [ ] Every action block starts with `[0–…]` and its last beat is the single return line (except `death`, which ends on a held still).
+- [ ] The `revive` block opens on the `death` clip's final image and its whole arc is the rise back to the portrait pose.
 - [ ] No stillness words anywhere: *static, locked, still, subtle, restrained, gentle, exact pose, holds* — (the `channel` block may say *continuous / cyclical / even*).
 - [ ] Bold verbs and at least one camera move per action clip.
 - [ ] Outgoing action goes frame-right; incoming force comes from frame-right.
@@ -260,5 +272,5 @@ crashing down", 20 damage to a row and adjacent rows.
 > forms, a whistling plunge, then a thunderous crash decaying into a soft
 > crystalline ring.
 
-(Write the remaining clips — cast, defend, mitigate, skill, channel, hit, death, victory —
+(Write the remaining clips — cast, defend, mitigate, skill, channel, hit, death, revive, victory —
 in the same manner, each derived from the JSON fields named in §4.3.)

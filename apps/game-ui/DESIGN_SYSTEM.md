@@ -68,7 +68,7 @@ Structural chrome (classes in `index.css`):
 │ ◆ LTG · conn dot        Turn N + phase tracker        seats · ⚙ · +  │
 ├──────────────────────────────────────────────┬— Splitter (drag) ——┤
 │  Battlefield (.field-scene)                  │  Side panel        │
-│  players 40% | ◆ divider | enemies 60%       │  The Stack         │
+│  players 45% | ◆ divider | enemies 55%       │  The Stack         │
 │  rows: rear/mid/front (captions at bottom)   │  Intents (scroll)  │
 │                                              ├— Splitter (drag) —┤
 │                                              │  Chronicle (log)   │
@@ -243,8 +243,11 @@ clickable. While anything is armed, all non-targets dim to `opacity-40`.
 - **Banners**: the top of the stack is always mirrored in the persistent centre
   banner (what you'd be responding to); phase/turn changes get the transient
   title card. Phases in `SILENT_PHASES` (`reaction window`, `enemy intents`)
-  are never announced — intents are not broadcast to players, so nothing in the
-  UI may reveal them.
+  are never announced. Declared intents render **veiled** (GDD v2 §9, "The
+  veil"): a category, the locked target and a status, never the intent's name,
+  verbs, numbers or keywords. The seat snapshot carries only the veiled lines,
+  so the UI must not reveal more than it is sent; the full action shows once it
+  reaches the stack.
 - **Tooltips** carry the full detail wherever text truncates (`title=` on
   cards, channels, intent-adjacent chips).
 - **Log affordance**: card names in Chronicle/Stack rows are dotted-underlined

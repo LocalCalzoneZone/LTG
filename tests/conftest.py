@@ -1,4 +1,12 @@
-"""Shared generation fixtures.
+"""Shared test setup: the data sandbox, and generation fixtures.
+
+The sandbox: before any app module is imported, the suite points the game's
+data roots (`LTG_CONTENT_DIR`, `LTG_LOADOUTS_DIR`, `LTG_SAVES_DIR`; see
+`ltg_game_server.content.data_dir`) at a fresh temp dir. `content/` is copied in
+without `art/` (about 1 GB, and no test reads it); `loadouts/` and `saves/`
+start empty, as on a clean clone. So the suite never touches the real data
+dirs: it can run beside a live game or Deckbuilder server, and two suites can
+run at once.
 
 `gate_clean_pool` builds an encounter that clears EVERY generation gate — the
 §D14 kit floor, the anti-sameness checks, and the party-size layout rules
@@ -8,38 +16,54 @@ it here instead of hand-rolling a pool that silently rots as the gates grow."""
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _make_sandbox() -> Path:
+    root = Path(tempfile.mkdtemp(prefix="ltg-tests-"))
+    real_content = REPO_ROOT / "content"
+
+    def skip_art(folder: str, names: List[str]) -> List[str]:
+        return ["art"] if Path(folder) == real_content else []
+
+    shutil.copytree(real_content, root / "content", ignore=skip_art)
+    for sub in ("content/art", "content/scenarios", "loadouts", "saves"):
+        (root / sub).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+# Module level, not a fixture: this must run before the test modules import
+# ltg_game_server / ltg_deckbuilder, which read the variables at import time.
+SANDBOX = _make_sandbox()
+os.environ["LTG_CONTENT_DIR"] = str(SANDBOX / "content")
+os.environ["LTG_LOADOUTS_DIR"] = str(SANDBOX / "loadouts")
+os.environ["LTG_SAVES_DIR"] = str(SANDBOX / "saves")
+
+
+def pytest_unconfigure(config):
+    shutil.rmtree(SANDBOX, ignore_errors=True)
+
 
 @pytest.fixture(scope="session", autouse=True)
-def _one_suite_at_a_time():
-    """The adventure/town/deckbuilder tests read and write the repo's REAL
-    content/ and loadouts/ dirs, and their cleanup fixtures delete any file
-    that appears during a test. Two pytest processes therefore stomp each
-    other — the fixtures race on same-named artifacts (test_keep.json …) and
-    delete each other's fresh writes; every observed "flaky" adventure-test
-    failure traced to a concurrent run. An exclusive lock makes a second
-    concurrent suite WAIT instead of interleaving. (Same caveat applies to a
-    live game/deckbuilder server saving into loadouts/ mid-suite — avoid.)"""
-    lock_path = Path(__file__).resolve().parent / ".suite.lock"
-    fh = open(lock_path, "w")
-    try:
-        import fcntl
-        fcntl.flock(fh, fcntl.LOCK_EX)
-    except ImportError:  # Windows: no fcntl — concurrent local runs are on you
-        pass
-    try:
-        yield
-    finally:
-        try:
-            import fcntl
-            fcntl.flock(fh, fcntl.LOCK_UN)
-        except ImportError:
-            pass
-        fh.close()
+def _sandboxed_data_dirs():
+    """Fail loudly if an app module read its data roots before the sandbox was
+    set: the suite would then be writing into the real content/ and loadouts/."""
+    from ltg_deckbuilder import app as db_app
+    from ltg_game_server import content, runs
+    sandbox = SANDBOX.resolve()
+    for path in (content.CONTENT_DIR, content.LOADOUTS_DIR, runs.SAVES_DIR,
+                 db_app.LOADOUT_DIR):
+        assert sandbox in Path(path).resolve().parents, (
+            f"{path} is outside the test sandbox {sandbox}")
+    yield
 
 
 def _v_hit(n: int) -> Dict[str, Any]:

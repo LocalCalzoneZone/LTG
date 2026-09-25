@@ -10,12 +10,12 @@ module owns only app concerns — web routes, persistence, Scryfall ingestion.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
@@ -54,7 +54,10 @@ from . import flavour, ingest, scryfall, update
 # app.py lives at apps/deckbuilder/ltg_deckbuilder/app.py; the frontend and the
 # loadout store sit at the deckbuilder app root (one level up from the package).
 APP_ROOT = Path(__file__).resolve().parent.parent
-LOADOUT_DIR = APP_ROOT / "loadouts"
+# `LTG_LOADOUTS_DIR` overrides it (the test sandbox; same variable the game
+# server reads in content.py).
+LOADOUT_DIR = (Path(os.environ["LTG_LOADOUTS_DIR"]).expanduser().resolve()
+               if os.environ.get("LTG_LOADOUTS_DIR") else APP_ROOT / "loadouts")
 FRONTEND_DIR = APP_ROOT / "frontend"
 # Bundled example loadouts (repo /examples) — readable fallbacks for the edit
 # flow (Options → Characters → Edit), never written to. A save/update of an
@@ -94,7 +97,7 @@ class ImportCustomBody(BaseModel):
 def api_search(q: str = "") -> dict:
     try:
         return {"matches": scryfall.search(q)}
-    except Exception as exc:  # network / upstream errors → 502
+    except Exception as exc:  # network / upstream errors → 502  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Scryfall error: {exc}")
 
 
@@ -112,7 +115,7 @@ def api_import(body: ImportBody) -> dict:
     # per-name fuzzy path below sort them out.
     try:
         found, unmatched = scryfall.fetch_collection(body.names)
-    except Exception:
+    except Exception:  # noqa: BLE001
         found, unmatched = {}, list(body.names)
 
     # The batch endpoint is exact-match only; recover the rest with a per-name
@@ -121,7 +124,7 @@ def api_import(body: ImportBody) -> dict:
     for name in unmatched:
         try:
             found[name] = scryfall.fetch_best(name)
-        except Exception:
+        except Exception:  # noqa: BLE001
             not_found.append(name)
 
     out = []
@@ -131,7 +134,7 @@ def api_import(body: ImportBody) -> dict:
             continue
         try:
             card = ingest.build_card(data)
-        except Exception:
+        except Exception:  # noqa: BLE001
             not_found.append(name)
             continue
         out.append({"card": card.model_dump(), "lints": lint_card(card)})
@@ -152,7 +155,7 @@ def api_import_custom(body: ImportCustomBody) -> dict:
         label = (entry.get("name") if isinstance(entry, dict) else None) or f"card #{i + 1}"
         try:
             card = ingest.build_custom_card(entry)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             errors.append({"name": str(label), "reason": str(exc)})
             continue
         out.append({"card": card.model_dump(), "lints": lint_card(card)})
@@ -165,7 +168,7 @@ def api_add_card(body: AddCardBody) -> Card:
         data = scryfall.fetch_named(body.source_name)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Scryfall error: {exc}")
 
     bad = ingest.forbidden_type(data.get("type_line", ""))
@@ -397,7 +400,7 @@ def api_lore(name: str) -> dict:
             try:
                 entries.append({"slug": path.stem, "file": path.name,
                                 **_lore_meta(path.read_text(encoding="utf-8"), path.stem)})
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
     return {"folder": str(folder), "entries": entries}
 
@@ -551,7 +554,7 @@ def api_anim_upload(body: AnimUploadBody) -> dict:
     payload = body.data.split(",", 1)[1] if body.data.startswith("data:") else body.data
     try:
         raw = base64.b64decode(payload)
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise HTTPException(status_code=422, detail="animation payload is not valid base64")
     folder = _anim_slug_dir(body.character)
     folder.mkdir(parents=True, exist_ok=True)

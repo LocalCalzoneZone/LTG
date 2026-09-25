@@ -554,7 +554,7 @@ def test_a_channeled_action_modifier_rides_and_lifts_with_the_channel():
     modifier — `_apply_static` had no modify_action branch. It now rides
     `action_mods` for the channel's life and lifts on the break."""
     from ltg_combat.engine import _apply_static, _mitigate_value
-    from ltg_core.schema import ModifyAction, TargetDescriptor
+    from ltg_core.schema import ModifyAction
 
     st = _state([_char("p", power=4)], [_enemy()])
     hero = st.character("p")

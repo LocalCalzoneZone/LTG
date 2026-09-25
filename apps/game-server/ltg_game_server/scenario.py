@@ -355,7 +355,7 @@ class ScenarioRun:
     def world_context(self) -> Dict[str, Any]:
         try:
             return world.context_for(self.town_id)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return {"entry": None, "region": None, "neighbours": []}
 
     # -- helpers ------------------------------------------------------------ #
@@ -1519,7 +1519,7 @@ class ScenarioRun:
         for it in stock:
             try:
                 item = items.Item.model_validate(it)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             rows.append({**it, "buy_price": items.buy_price(item), "summary": items.summarize(item),
                          "description": items.describe(item)})
@@ -1660,7 +1660,7 @@ class ScenarioRun:
                 return None
             try:
                 it = items.Item.model_validate(raw)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 return raw
             return {**raw, "summary": items.summarize(it), "description": items.describe(it),
                     "sell_price": items.sell_price(it)}
@@ -1755,7 +1755,7 @@ class ScenarioRun:
                 item = items.Item.model_validate(it)
                 rows.append({**it, "summary": items.summarize(item),
                              "description": items.describe(item)})
-            except Exception:
+            except Exception:  # noqa: BLE001
                 rows.append(it)
         return {"items": rows, "assign": dict(self.rewards["assign"]),
                 "room": self.rewards_room(), "all_assigned": self.rewards_all_assigned(),

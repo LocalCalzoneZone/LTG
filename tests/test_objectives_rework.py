@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from ltg_combat.engine import _begin_turn, _end_step, apply_action, legal_actions
+from ltg_combat.engine import apply_action
 from ltg_combat.scenario import scale_encounter, state_from_dict
 from ltg_core.schema import EncounterObjective
 

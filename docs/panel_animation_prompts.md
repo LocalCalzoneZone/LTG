@@ -100,8 +100,12 @@ Three mechanisms, layered strongest-first:
   clip (Move has none — blank means no clip).
 - **In game**: the panel plays the clip when the action **resolves** (`resolve`
   log entry, now tagged with kind / card / heroic / stance slot), plus `defend`,
-  `mitigate`, `damage` (→ hit) and `incapacitated` (→ death). Latest clip wins;
-  a hit never interrupts a cast; death is terminal and holds its last frame.
+  `mitigate`, `damage` (→ hit), `incapacitated` (→ death), `revive` and the
+  encounter's `victory`. When clips collide on one panel, priority decides
+  (`PanelAnim.tsx` `PRIORITY`): death / revive / victory > ultimate > the rest >
+  hit. A newcomer of higher or equal priority replaces the current clip; a
+  lower one is skipped, so a hit never interrupts a cast. Death holds its last
+  frame until a revive; victory holds its last frame until the next encounter.
 - **No clips → no change**: the panel is exactly the static portrait as before.
 
 ## Which actions get an animation
@@ -115,21 +119,29 @@ Recommended starter set (per character, reused across all their cards):
 | `defend` | Defend action resolves (gain temp HP) | full clip, ×1 (5 s) | no |
 | `mitigate` | Mitigate reaction applies to an incoming hit | full clip, ×1 (5 s) | no |
 | `skill` | skill/channel begins (the power-up moment) | full clip, ×1 (5 s) | no |
-| `channel` | while the skill remains channeled | full clip, ×1 (5 s) | yes — end matches start |
+| `channel` | a channeled card resolves (the channel begins) | full clip, ×1 (5 s) | authored as a loop (end matches start); the game plays it once today — looping while the stance is held is roadmap M2.22 |
 | `ultimate` | ultimate resolves | full clip, ×1 (5–8 s) | no |
 | `hit` | takes damage | full clip, ×1 (5 s) | no |
 | `death` | HP reaches 0 | full clip, ×1, hold last frame | no |
+| `revive` | the hero stands back up | full clip, ×1, over the held death frame, then back to the portrait | no |
+| `victory` | the encounter is won; every standing hero plays it at once | full clip, ×1, hold last frame until the next encounter | no |
+
+`revive` is the one clip that does not start on the portrait: it opens on the
+`death` clip's final frame and ends on the portrait pose (first keyframe = the
+death clip's last frame, last keyframe = the portrait). Generate it after
+`death`, from that clip's final frame.
 
 `skill` + `channel` are a pair: `skill` is the one-shot ignition (plays once when the
 channel begins, ends back at the default pose), then `channel` takes over as the
-loop for as long as the stance is held. If you only want one clip, generate `channel`.
+loop for as long as the stance is held (once the game loops it; see the table). If you
+only want one clip, generate `channel`.
 
 `ultimate` is the exception to "keep it short": it's the finisher and the enemy is
 the target, so it's fine for the panel to leave the default framing for most of the
 clip and only return in the last second. Generate 8 s if the local grid allows it.
 
-Deferred: `victory`, per-color big-spell variants, `idle` (the CSS `idle-sway`
-already covers idle well and costs nothing).
+Deferred: per-color big-spell variants, `idle` (the CSS `idle-sway` already covers
+idle well and costs nothing).
 
 Directionality note: player panels sit on the left facing enemies to the right, so
 projectiles/impacts are prompted frame-right (outgoing) and from frame-right

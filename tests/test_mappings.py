@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from ltg_deckbuilder import scryfall
-from ltg_core.translation import render_effects, translate
+from ltg_core.translation import render_effects
 from ltg_deckbuilder.ingest import build_card, forbidden_type, parse_mana_cost
 from ltg_core.schema import Loadout, deck_status
 

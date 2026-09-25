@@ -12,8 +12,9 @@ hanging; an action cap backstops pathological in-turn loops the same way.
 
 ``run_adventure`` replicates the game server's phase carry-over and level-up
 rules (§D10-2/3) locally — the session layer is not imported. The magnitudes
-mirror the Rebalance Register: T-57 (30 points per level), T-58 (gauge carries
-at 50%, floored), T-59 (phase-start HP floor at 25% of max).
+mirror the Rebalance Register: T-57 (+10 / +20 / +30 points per phase won,
+``PHASE_GRANTS``), T-58 (gauge carries at 50%, floored), T-59 (phase-start HP
+floor at 25% of max).
 """
 
 from __future__ import annotations
@@ -570,8 +571,8 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
                   round_cap: int = ROUND_CAP) -> Dict[str, Any]:
     """Play an adventure (a dict with inline ``phases``: complete encounter
     objects) through the §D10-2/3 boundary rules: full-pool shuffle-up + fresh
-    hand, HP floor, 50% gauge carry, and a 30-point level-up spent by the
-    policy's spend plan. Returns one RunRecord with per-phase snapshots."""
+    hand, HP floor, 50% gauge carry, and the phase's point grant (T-57:
+    +10 / +20 / +30) spent by the policy's spend plan. Returns one RunRecord with per-phase snapshots."""
     phases = adventure.get("phases") or adventure.get("acts") or []  # "acts": pre-17 alias
     if not phases:
         raise ValueError("adventure has no phases")
@@ -641,13 +642,13 @@ def run_adventure(adventure: Dict[str, Any], loadouts: List[Dict[str, Any]],
                         "spent_points": spent_before + spent}
             try:
                 Character.model_validate(new_char)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # An invalid spend keeps the entering build; the points bank
                 # instead — the run keeps its determinism.
                 new_char, spent = {**candidate, "level": level_for_points(spent_before)}, 0
                 try:
                     Character.model_validate(new_char)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     new_char = old
             lo["character"] = new_char
             if live_id is not None:

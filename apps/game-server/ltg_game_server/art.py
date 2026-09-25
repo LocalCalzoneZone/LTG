@@ -5,10 +5,13 @@ encounter's ``scene`` / per-enemy ``description`` prose into images and hands th
 updated encounter back through ``content.save_encounter`` — the same validate +
 persist path every edit takes. It computes no rules.
 
-Images are PNG/JPEG files under ``loadouts/art/<encounter_id>/`` (gitignored with
-the rest of ``loadouts/``), referenced from the encounter JSON by server-relative
-URL (``/art/<encounter_id>/<file>``) — so a saved encounter replays with its art
-and the JSON stays small. Enemy art is keyed by the POOL enemy id; layout clones
+Encounter and adventure images are PNG/JPEG files under
+``content/art/<encounter_id>/`` (``ART_DIR``: tracked, so a commit ships them),
+referenced from the encounter JSON by server-relative URL
+(``/art/<encounter_id>/<file>``) — so a saved encounter replays with its art and
+the JSON stays small. Run-scoped art (spoils, cast, places; ``SPOILS_ROOT``)
+goes to the gitignored ``loadouts/art/`` instead, which also still serves
+pre-split legacy images read-only. Enemy art is keyed by the POOL enemy id; layout clones
 ("wolf", "wolf_2") share the base design's image.
 """
 
@@ -867,7 +870,7 @@ class ArtQueue:
                             item["enemy_id"], "")
                         await refresh(item["encounter_id"])
                     job["done"] += 1
-                except Exception as exc:  # skip-on-failure — the queue never stalls
+                except Exception as exc:  # skip-on-failure — the queue never stalls  # noqa: BLE001
                     job["failed"] += 1
                     job["errors"].append(f"{item['label']}: {exc}")
         finally:

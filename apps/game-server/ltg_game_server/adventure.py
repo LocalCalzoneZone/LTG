@@ -40,7 +40,7 @@ from . import content
 # Rebalance Register (Update 10 §D10-8)
 HP_FLOOR_PCT = 25          # T-59: phase-start HP floor, max(current, ceil(25% max))
 GAUGE_CARRY = 0.5          # T-58: ultimate-gauge carry across phases (floored)
-POINTS_PER_LEVEL = LEVEL_UP_POINTS  # T-57: a level-up's worth (the sheet's unit)
+POINTS_PER_LEVEL = LEVEL_UP_POINTS  # a level-up's worth (the sheet's unit; see schema). Not T-57: grants are PHASE_GRANTS
 
 
 def phase_grant(phase_index: int) -> int:
@@ -260,7 +260,7 @@ class AdventureRun:
                 self.banked[live_id] = max(0, char.points_remaining) if not char.legacy else 0
                 self.earned[live_id] = int(char.earned_points)
                 self.spent[live_id] = int(char.spent_points)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 self.banked[live_id] = 0
                 self.earned[live_id] = 0
                 self.spent[live_id] = 0
@@ -575,7 +575,7 @@ class AdventureRun:
                     try:
                         char = Character.model_validate(raw)
                         spent = _points(char)
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         spent = 0
                     row["build"] = {
                         "hp": raw.get("hp"),

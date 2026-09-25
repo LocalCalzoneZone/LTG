@@ -47,7 +47,7 @@ Proposals that come from no design document are marked *Proposed*. They need a d
 | **M5** | The world remembers | NPCs and towns react at runtime, not only in the next act's writing | 11 |
 | **M6** | Economy & progression | Gold, gear and the deck get a job | 10 |
 | **M7** | Voice & narration | Narrator, barks, party lines, and the sound of the world | 9 |
-| **M8** | Co-op & distribution hardening | LAN sessions survive faults; the Windows install updates cleanly | 12 |
+| **M8** | Co-op & distribution hardening | LAN sessions survive faults; the Windows install updates cleanly | 13 |
 | **M9** | Contracts & code health | Explicit schemas, event registry, generated types, verb traits | 9 |
 | **M10** | A trustworthy balance instrument | A stick good enough that balance questions stop costing the owner's evenings | 10 |
 | **M11** | Later, by design | Deferred on purpose, or waiting on a need | — |
@@ -63,11 +63,11 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
 | M0.1 | **Docs consolidation.** GDD v2, generation, register, architecture, roadmap, design-history index, `CLAUDE.md`, README | Done 2026-09-24 | — | A-01, A-08…A-18, A-34, B-11, B-21, B-58, B-59, C-12, C-14, C-15, C-17, C-38, C-64 |
-| M0.2 | **Test isolation.** An autouse fixture repoints `CONTENT_DIR`, `LOADOUTS_DIR` and `ART_DIR` to `tmp_path`. Then drop the session flock (a no-op on Windows) and the "don't test while hosting" caveat. | Not built | M | R3.2.1 |
-| M0.3 | **CI** (`.github/workflows`): pytest on 3.9 and a current Python; `npm run build` (tsc); fail on `dist/` drift; permissive ruff (unused imports, `BLE001` for the 50 broad `except Exception`); the soak smoke slice; branch protection on `main` | Not built | M | R3.2.2; §D12-3.7; B-06 |
-| M0.4 | **Pin the environment.** A `constraints.txt`, a `requires-python` upper bound, and the updater's pip using `-c` | Not built | S | R3.2.4 |
-| M0.5 | **Doc debt outside the canon:**<br>• the player guide still says heroes carry "a spellbook translated from real Magic cards", and still says "Act I is ready at once"<br>• `apps/game-server/README.md` (bosses "deferred", 3 REST routes, an emoji)<br>• `DESIGN_SYSTEM.md` §8 ("intents never shown"; the 40/60 split is now 45/55)<br>• the panel-animation prompt guide (the `revive` trigger is undocumented; `victory` is still listed as deferred)<br>• the `schema.py` module docstring (a stale 3-step verb recipe that cites `mappings.py`) | Doc | S | B-35, C-12; arch notes |
-| M0.6 | **Stale code comments:**<br>• `runner` "30 points per level"<br>• `_adventure_request_block` "L / L+1 / L+2"<br>• the `enrage_scale` docstring<br>• the `art.py` docstring (says `loadouts/art`)<br>• `_generate_locked` (claims a lock)<br>• `validate_materialization` (claims a `defeated_once` check)<br>• `jobs.py` job states that are never set<br>• the `_do_drop_channels` docstring<br>• the `RESOLVERS` `disable` note<br>• dead `prevent_pool` / `parry_reduce` | Doc | S | register notes; GDD §3–§4 notes |
+| M0.2 | **Test isolation.** Done differently from the plan: not a per-test `tmp_path` fixture (import-time path constants would dodge it) but a per-suite sandbox. `tests/conftest.py` sets `LTG_CONTENT_DIR` / `LTG_LOADOUTS_DIR` / `LTG_SAVES_DIR` before any app import (read by `content.data_dir` and the Deckbuilder). The flock and the "don't test while hosting" caveat are gone. Three tests that relied on the owner's `loadouts/` now use `examples/` or `tests/fixtures/soren.json`. | Done 2026-09-25 | — | R3.2.1 |
+| M0.3 | **CI** (`.github/workflows/ci.yml`): pytest on Ubuntu 3.9 and 3.14 (the suite includes the soak smoke slice), a non-blocking Windows 3.14 job, `npm run build` with a `dist/` drift check, and `ruff check .` (F401 fixed; the 46 existing BLE001 grandfathered with `noqa`). **Still open:** a first green run on GitHub, then branch protection on `main` requiring the checks (a repository setting for the owner). | Partial | S | R3.2.2; §D12-3.7; B-06 |
+| M0.4 | **Pin the environment.** `constraints.txt` (every compiled pin has 3.9 and Windows 3.14 wheels), applied from `requirements.txt` with `-c`, so the launchers, the updater and CI all use it; `requires-python >=3.9,<3.15`; `WINDOWS_INSTALL.md` now says which Python to download. | Done 2026-09-25 | — | R3.2.4 |
+| M0.5 | **Doc debt outside the canon:** the player guide (Magic cards, "Act I is ready at once"), `apps/game-server/README.md` (rewritten, points at architecture §6–§8), `DESIGN_SYSTEM.md` (veiled intents, 45/55), both panel-animation docs (`revive`, `victory`, collision priority, the `channel` loop as M2.22), the `schema.py` docstring. | Done 2026-09-25 | — | B-35, C-12; arch notes |
+| M0.6 | **Stale code comments**, all fixed: the runner and `run_adventure` (T-57), `_adventure_request_block` (T-62 ramp), `enrage_scale`, `art.py`, `_generate_locked` (now says it takes no lock; M1.8), `validate_materialization` (M4.11), the `jobs.py` states, the drop docstrings, the `RESOLVERS` `disable` note, `adventure.POINTS_PER_LEVEL`, `app.generate_scenario`. Dead `prevent_pool` / `parry_reduce` removed (engine, state, serializer, REPL, cockpit, the client's `reduced` fx case). | Done 2026-09-25 | — | register notes; GDD §3–§4 notes |
 
 ## M1 · Make it correct
 
@@ -77,7 +77,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M1.1 | **Python 3.11+ crash.** `engine._move_shuffle` seeds `random.Random` with a tuple, and Python 3.11 and later reject that with a TypeError. Any card that shuffles a library would crash on a Windows install that followed `WINDOWS_INSTALL.md` ("newest python.org release"). Seed with an int derived from `(rng_seed, shuffle_count)`, pin the new sequence in a test, and add a current-Python CI job (M0.3). | Bug | S | arch notes |
+| M1.1 | **Python 3.11+ crash.** Fixed: `engine._move_shuffle` seeds with the str `f"{rng_seed}:shuffle:{n}"`, pinned by `test_seeded_shuffle_is_pinned_and_runs_on_every_python`; CI runs 3.14 (M0.3). Seeded in-game shuffle orders changed once. | Done 2026-09-25 | — | arch notes |
 | M1.2 | **Unlimited Skill.** A Skill that carries `modify_action refresh_skill` on its caster can be re-used without limit in one main phase: `_proactive_open` keeps the taken mode open and the refresh clears `skill_used`. Reproduction: the local Vay loadout ("Perfect note") vs `the_sootfall_adit__phase2`, seed 99, 4,000 actions in round 2. | Bug | S | arch notes |
 | M1.3 | **`python -m ltg_combat validate` raises `AttributeError`.** `engine.run` still reads the removed `Character.archetype`. Fix it or retire the stale `run()`. | Bug | S | arch notes |
 
@@ -290,6 +290,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 | M8.10 | **Deckbuilder "Update Game Character"** keeps draft cards (or a sibling `.draft.json`); loadout errors return 422, not a raw 500. | Not built | S | R3.2.9 |
 | M8.11 | **Panel clips travel with a character** (loadout export/import), which matters for the Windows install. | Not built | M | B-28 |
 | M8.12 | **A view-only mode for a fallen Hardcore run's saves.** | Partial | S | B-53 |
+| M8.13 | **Explicit UTF-8 file I/O.** Several reads and writes omit `encoding="utf-8"` (`content._load_json`, `_read_id_set` and `_write_content`; `scenario_content`'s item write; `ltg_combat.loader` and `scenario.load_scenario`; the Deckbuilder's `api_load`; the autoplay tester's JSON reads). On Windows, Python 3.14 then uses the locale code page (cp1252) against UTF-8 JSON: 17 tracked content files hold non-ASCII text. Found in code. The first Windows CI run (2026-09-25) passed every test except one unrelated path-separator assertion, so the suite doesn't reach these paths with non-ASCII data; still worth fixing before a player hits it. | Bug | S | found 2026-09-25 |
 
 ## M9 · Contracts & code health
 
@@ -384,6 +385,8 @@ M1.7, M1.12, M1.17, M1.18, M1.22, M1.25, M1.26, M1.27 (a–d), M1.28, M1.30, M1.
 
 ## Done since the 2026-09-02 review (for the record)
 
+- M0 Foundations (2026-09-25): the test sandbox, CI, pinned dependencies, doc and comment debt; M0.3 awaits its first green run and branch protection.
+- M1.1, the Python 3.11+ shuffle crash (2026-09-25).
 - Update 23 in full.
 - Update 24 in full.
 - The `Ref` validator (R3.3.1, partial).

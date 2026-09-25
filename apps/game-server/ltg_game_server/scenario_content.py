@@ -838,10 +838,11 @@ def validate_materialization(raw: Dict[str, Any], town: Dict[str, Any],
 
     The gates: at least two quest OPTIONS, each with an accept choice (a
     ``grant_quest`` + ``unlock_adventure`` pair) somewhere in the act's trees; a
-    ``defer_quest`` out beside every offer; the outline's questgiver has a tree
-    with a ``defeated_once``-gated branch written up front so a Normal-mode
-    return re-offers the quest; and every NPC of the town has SOMETHING to say —
-    a tree, a topic (theirs or the act's), or at least a greeting line."""
+    ``defer_quest`` out beside every offer; the outline's questgiver has a
+    tree; and every NPC of the town has SOMETHING to say — a tree, a topic
+    (theirs or the act's), or at least a greeting line. The prompt also asks
+    for a ``defeated_once``-gated questgiver branch, but nothing here checks it
+    (roadmap M4.11); a Normal-mode return re-materializes the act anyway."""
     from .dialogue import check_flag_consistency, validate_dialogue  # local: dialogue imports nothing here
     if not isinstance(raw, dict):
         raise ValueError("materialization must be an object")

@@ -10,7 +10,6 @@ whole rest of the suite continuing to pass.
 from __future__ import annotations
 
 import copy
-import json
 
 import pytest
 

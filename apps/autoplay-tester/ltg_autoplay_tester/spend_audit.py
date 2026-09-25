@@ -25,18 +25,17 @@ import argparse
 import copy
 import json
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import ltg_core.schema as schema
 from ltg_combat.autoplay.policies import SPEND_PLANS, make_policy
 from ltg_combat.autoplay.runner import run_adventure
+from ltg_game_server import content as game_content
 
 from .gauntlets import baseline_gauntlet_id, load_gauntlet
 from .probes import OVER_PP, POLICY, _apply_pressure
 
-REPO = Path(__file__).resolve().parents[3]
-LOADOUTS = REPO / "apps" / "deckbuilder" / "loadouts"
+LOADOUTS = game_content.LOADOUTS_DIR
 
 # Pressure per stage: the base ladder × a per-stage climb so a level-5 party
 # (stage 3) still meets resistance from the level-1..3 fixtures.

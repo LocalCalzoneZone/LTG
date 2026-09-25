@@ -5,7 +5,6 @@ campaign; Everquest is retired), and scenario saves that reload."""
 
 from __future__ import annotations
 
-import copy
 
 import pytest
 

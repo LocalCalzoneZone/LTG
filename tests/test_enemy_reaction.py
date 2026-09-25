@@ -10,7 +10,7 @@ from __future__ import annotations
 from ltg_combat.engine import apply_action, legal_actions
 from ltg_combat.scenario import state_from_dict
 from ltg_combat.state import Component
-from ltg_core.schema import DealDamage, Heal, Wound, t_chosen, t_self
+from ltg_core.schema import DealDamage, Heal, t_chosen, t_self
 
 
 def _char(cid, power=3, hp=30, hand=None):

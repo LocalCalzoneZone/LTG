@@ -10,8 +10,7 @@ from pydantic import ValidationError
 
 from ltg_combat.engine import _prevent_match, apply_action, legal_actions
 from ltg_combat.scenario import state_from_dict
-from ltg_combat.state import Component, ProtectionTag
-from ltg_core.schema import (Card, DealDamage, Heal, Prevent, Protection, Amplify,
+from ltg_core.schema import (Prevent, Protection, Amplify,
                              effect_specs, t_chosen, t_self)
 from ltg_core.translation import render_effects
 

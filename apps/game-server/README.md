@@ -1,22 +1,22 @@
 # LTG-Game
 
-> **Partly stale (Phase 1, July 2026).** The launch flags below are current. For the server's module map, the full REST and WebSocket protocol, and the state contract, read [docs/architecture.md](../../docs/architecture.md) §6–§8; bosses, persistence and art, described here as deferred, all exist now.
+The game server: a FastAPI + WebSocket authority around the pure combat engine
+(`ltg_combat`), plus the RPG layer on top of it (adventures, towns, scenarios,
+campaigns, runs and saves, LLM generation, art). It also serves the built client
+from `apps/game-ui/dist/`.
 
-A real, playable multiplayer game UI for the Langelier Tactical Game — a new
-frontend + server layer on top of the existing headless combat engine
-(`ltg_combat`). It is a **sibling** to the playtest cockpit: both consume the same
-engine; neither replaces the other.
+The server submits engine-legal actions through `apply_action`; the client is a
+view that renders the snapshot and sends back an index into the legal-action
+list. Neither re-implements game rules.
 
-The server is an authority/relay around the engine; the client is a pure
-view + input layer. **Neither re-implements game rules** — all legality,
-resolution, ordering and state transitions come from the engine
-(`legal_actions` / `apply_action`). See [`INTERFACE_NOTES.md`](../../docs/design/INTERFACE_NOTES.md)
-at the repo root for the engine ↔ UI field reconciliation this is built on.
+The module map, the REST and WebSocket protocol, and the state contract live in
+[docs/architecture.md](../../docs/architecture.md) §6–§8. This page only covers
+launching.
 
 ## Launch
 
-From the repo root (sets up the venv on first run, builds the client if needed,
-serves everything on one port, opens a browser):
+From the repo root, the launcher sets up the venv on first run, builds the
+client if needed, serves everything on one port and opens a browser:
 
 ```bash
 ./LTG-Game.command
@@ -25,73 +25,40 @@ serves everything on one port, opens a browser):
 Or, once the monorepo is installed (`pip install -r requirements.txt`):
 
 ```bash
-LTG-Game                 # ≡ ltg-game — build client if needed, serve on :8020
-LTG-Game --port 9000
-LTG-Game --no-browser
-LTG-Game --skip-build    # serve whatever is already in apps/game-ui/dist
-LTG-Game --rebuild       # force a client rebuild
-LTG-Game --dev           # API/WS only (run the Vite dev server for the client)
+ltg-game                 # build the client if needed, serve on :8020
+ltg-game --port 9000
+ltg-game --host 127.0.0.1  # bind address (default 0.0.0.0)
+ltg-game --no-browser
+ltg-game --skip-build    # serve whatever is already in apps/game-ui/dist
+ltg-game --rebuild       # force a client rebuild
+ltg-game --reload        # auto-reload on Python edits
+ltg-game --dev           # API/WS only (run the Vite dev server for the client)
+ltg-start                # the game server and the Deckbuilder together
 ```
 
-This launches independently of, and without disturbing, the cockpit
-(`ltg-combat-cockpit`).
+Without `--reload` the server keeps serving the code it started with, so restart
+it after Python edits.
 
 ### Multiplayer
 
-`New Game` creates a session and puts its id in the URL (`?s=<id>`). Share that URL
-(the seat bar's **🔗 Copy invite** button) so others can join the same session. Each
-client **claims** one or more characters (single-player: **Claim all**). A client may
-act only for characters it controls and sees hand contents only for those characters
-(enforced server-side).
+New Game creates a session and puts its id in the URL (`?s=<id>`). Share the URL
+(the link icon in the top ribbon copies it; set the host address other players
+reach this machine at under Options → Settings) so others can join the same
+session. Each client claims one or more characters. A client may act only for
+the characters it controls, and sees hand contents only for those; the server
+enforces both.
 
 ## Development
 
 ```bash
 # Terminal 1 — API/WS server (no client build)
-LTG-Game --dev
+ltg-game --dev
 
 # Terminal 2 — Vite dev server (HMR); proxies /api and /ws to :8020
-cd apps/game-ui && npm install && npm run dev
+npm --prefix apps/game-ui install
+npm --prefix apps/game-ui run dev
 ```
 
-## Architecture
-
-```
-Browser (React/TS/Vite/Tailwind)  ──WebSocket (live state + actions)──►  LTG-Game server (FastAPI + WS)
-        many clients, one session  ──REST (lobby: setup/create/join)───►    SessionManager → engine
-                                                                             game-state (authoritative)
-                                                                                    │
-                                                                                    ▼
-                                                                   existing headless engine (ltg_combat)
-```
-
-- **Server** (`apps/game-server/ltg_game_server`): `app.py` (REST + WS + static),
-  `session.py` (authoritative state, seats, gating), `snapshot.py` (seat-filtered
-  state contract — reuses `ltg_combat.serialize`), `content.py` (setup-options),
-  `launch.py` (`LTG-Game`).
-- **Client** (`apps/game-ui/src`): a WS-driven store (`lib/store.ts`) is the single
-  source of truth; components are pure views; every interaction submits an
-  engine-legal action **index** the server re-validates.
-
-### REST
-- `GET  /api/setup-options` — available characters + encounters.
-- `POST /api/games` `{character_ids, encounter_id}` → `{session_id}`.
-- `GET  /api/games/{id}` — existence/status (for joining by URL).
-
-### WebSocket `ws /ws/{session_id}`
-- client→server: `claim_seat`, `release_seat`, `submit_action {action:{index}}`, `heartbeat`.
-- server→client: `hello`, `seats`, `state` (seat-filtered full snapshot), `prompt`,
-  `error`, `game_over`.
-
-## Phase 1 scope
-
-In: lobby/New Game, sessions, single- & multi-player seats with hidden-hand
-filtering, live WS state sync, full battlefield/side-panel/bottom-bar layout,
-select→action→target (+ cancel), choose-one modal, move row picker, mana display +
-start-of-turn colour choice, priority/reaction prompts, zone modals, channeling
-indicators, enemy-disappears-on-leave-play, downed treatment, game-over overlay.
-
-Deferred (hooks built, not features): animation polish, art asset pipeline (grey
-placeholders), auth/access control, persistence beyond in-memory + resync,
-diff-based sync, boss support (the engine has none yet — the client's boss visual
-hooks stay dormant; see `INTERFACE_NOTES.md` §4.3).
+After any client change, run `npm --prefix apps/game-ui run build` and commit
+`apps/game-ui/dist/`: the Windows standalone install serves the committed bundle
+without Node.

@@ -268,7 +268,7 @@ def _continue_sync(session) -> None:
             try:
                 session.run_manager.set_arc(session.run_id, arc)
                 session.run_manager.update_campaign(session.run_id, sc)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         sc.arrive(None)
         session.materialize_act()
@@ -918,7 +918,7 @@ def save_item(body: SaveItemBody) -> Dict[str, Any]:
     from . import items as _items
     try:
         return {"item": _items.save_item(body.item, body.id)}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(422, str(exc))
 
 
@@ -978,9 +978,11 @@ def delete_scenario(scenario_id: str) -> Dict[str, Any]:
 
 @app.post("/api/scenarios/generate")
 async def generate_scenario(body: GenerateScenarioBody) -> Dict[str, Any]:
-    """Pre-generate a scenario for a town: the arc plus Act I fully materialized
-    (town portion + adventure) so New Scenario is instant (§D17-6.1). Art for
-    the Act I adventure queues afterwards; town art has its own button."""
+    """Pre-generate a scenario for a town: the arc plus Act I's town portion,
+    so New Scenario is instant (§D17-6.1). The adventure is generated on quest
+    accept, as in every act (§D20-3), so `act1_adventure_id` is normally empty;
+    the art queue below only fires for an older scenario that pre-baked one.
+    Town art has its own button."""
     from .scenario import pregenerate_scenario
     try:
         meta = await asyncio.to_thread(pregenerate_scenario, body.town_id,
@@ -1016,7 +1018,7 @@ def game_status(session_id: str) -> Dict[str, Any]:
 async def _send(ws: WebSocket, msg: Dict[str, Any]) -> None:
     try:
         await ws.send_json(msg)
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass  # a dead socket is cleaned up on the disconnect path
 
 
@@ -1122,7 +1124,7 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
                         # enemy steps) drains PACED — one broadcast per step,
                         # a beat between the ones worth watching.
                         session.apply_index(client_id, index, mana, drain=False)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001
                         # ValueError is a rejection (illegal index / not your seat).
                         # Anything else is an engine fault mid-resolution — report it
                         # and keep the socket, because dropping it here would release

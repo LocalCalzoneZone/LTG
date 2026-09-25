@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import copy
 
-import pytest
 
 from ltg_combat.engine import (_new_ctx, _resolve_effect_list,
                                _try_declare_component, apply_action, legal_actions)

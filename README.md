@@ -86,7 +86,7 @@ Per-install data is gitignored: characters, settings (including the API key), an
 ## Developing
 
 ```bash
-.venv/bin/python -m pytest tests/ -q     # don't run while a game/Deckbuilder server is running
+.venv/bin/python -m pytest tests/ -q     # runs in a temp sandbox; safe beside a live server
 npm --prefix apps/game-ui run dev        # client dev server :5173 → proxies to :8020
 npm --prefix apps/game-ui run build      # then commit apps/game-ui/dist/
 .venv/bin/python -m ltg_combat harness   # the hand-traced §A/§C fights, asserted step by step

@@ -394,7 +394,7 @@ class Session:
             self.last_save = self.run_manager.save(self.run_id, self.adventure,
                                                    kind, seed, auto=auto,
                                                    scenario=self.scenario)
-        except Exception as exc:  # pragma: no cover — disk trouble
+        except Exception as exc:  # pragma: no cover — disk trouble  # noqa: BLE001
             self.last_save = {"error": str(exc), "kind": kind}
 
     def _run_hooks(self) -> None:
@@ -421,7 +421,7 @@ class Session:
                     run = self.run_manager.run_detail(self.run_id)
                     if run.get("options", {}).get("hardcore"):
                         self.run_manager.mark_dead(self.run_id)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     pass
 
     # -- scenarios (Update 17) ------------------------------------------------ #
@@ -482,7 +482,7 @@ class Session:
                 if self.run_id and self.run_manager:
                     try:
                         self.run_manager.mark_dead(self.run_id)
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         pass
                 self._enter_town(materialization=None, complete=True)
             else:

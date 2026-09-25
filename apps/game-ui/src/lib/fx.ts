@@ -468,9 +468,8 @@ export function fxFromLog(
         });
         panel(str(d.character), "mitigate");
         break;
-      // Damage soaked before it lands: a Mitigate / prevent shield ("reduced")
-      // or Defend's temp HP buffer ("absorbed") — the defence paying off.
-      case "reduced":
+      // Damage soaked before it lands: Defend's temp HP buffer ("absorbed") —
+      // the defence paying off.
       case "absorbed":
         push("absorb", str(d.target), {
           amount: num(d.amount),

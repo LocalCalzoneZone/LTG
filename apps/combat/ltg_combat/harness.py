@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from .engine import apply_action, legal_actions
-from .scenario import build_channeling_state, build_state, hand_names, mana
+from .scenario import build_channeling_state, build_state, hand_names
 from .state import Action, Event, GameState
 
 _VERBOSE = False

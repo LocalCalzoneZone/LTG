@@ -21,7 +21,7 @@ from typing import Callable, List, Optional
 from ltg_core.schema import Card
 
 from .engine import apply_action, legal_actions, settle
-from .scenario import SCENARIO_A, build_state, load_scenario, scenario_name
+from .scenario import build_state, load_scenario, scenario_name
 from .state import Action, GameState
 
 _WUBRG = ["W", "U", "B", "R", "G"]
@@ -60,8 +60,6 @@ def _status_str(char) -> str:
     bits = []
     if char.temp_mod:
         bits.append(f"{'+' if char.temp_mod >= 0 else ''}{char.temp_mod} tempHP")
-    if char.prevent_pool:
-        bits.append(f"reduce {char.prevent_pool}")
     for tag in char.prevent_tags:
         bits.append(f"prevent {'next ' if tag.uses is not None else ''}{tag.parameter}")
     if char.power_bonus:

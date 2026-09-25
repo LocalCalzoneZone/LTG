@@ -12,7 +12,6 @@ rest of the suite continuing to pass (the §A/§C harness scenarios carry none).
 
 from __future__ import annotations
 
-import copy
 
 import pytest
 
@@ -765,6 +764,7 @@ def test_shipped_ultimate_counters_can_actually_match():
 # §D12-3 — the autoplay balance harness
 # ========================================================================== #
 import json  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 from ltg_combat.autoplay import make_policy, run_adventure, run_one  # noqa: E402
 from ltg_combat.autoplay.report import aggregate, diff_reports, render_report  # noqa: E402
@@ -822,9 +822,14 @@ def test_greedy_defends_under_a_survive_objective():
     assert rec["result"] == "victory"  # held out to the timer
 
 
+def _soren():
+    """The owner's full Soren build (tests/fixtures; loadouts/ is per-install)."""
+    return json.loads((Path(__file__).resolve().parent / "fixtures" / "soren.json").read_text())
+
+
 def test_spend_plans_produce_valid_builds():
     from ltg_combat.autoplay.policies import SPEND_PLANS
-    lo = json.load(open("apps/deckbuilder/loadouts/soren.json"))
+    lo = _soren()
     base = dict(lo["character"], level=2)
     for plan in SPEND_PLANS:
         new, spent = make_policy("greedy", plan).spend_level_up(dict(base), 30)
@@ -837,7 +842,7 @@ def test_spend_plans_produce_valid_builds():
 
 
 def test_run_adventure_replicates_the_phase_boundary():
-    lo = json.load(open("apps/deckbuilder/loadouts/soren.json"))
+    lo = _soren()
 
     def phase(name, hp, boss=False):
         e = {"id": "foe", "name": f"{name} Foe", "hp": hp, "level": 1,

@@ -2255,7 +2255,6 @@ def _reset_temp_layers(combatant) -> None:
     an encounter buffer/anthem survives the turn instead of evaporating at End."""
     combatant.temp_mod = combatant.enc_temp_mod
     combatant.power_bonus = combatant.enc_power_bonus
-    combatant.prevent_pool = 0
     # `sap` rides the same two-layer shape (only characters have mana).
     if hasattr(combatant, "capacity_mod"):
         combatant.capacity_mod = combatant.enc_capacity_mod
@@ -2267,7 +2266,6 @@ def _shed_temp_layers(combatant) -> None:
     rising), which sheds its whole modifier stack."""
     combatant.temp_mod = combatant.enc_temp_mod = 0
     combatant.power_bonus = combatant.enc_power_bonus = 0
-    combatant.prevent_pool = 0
     if hasattr(combatant, "capacity_mod"):
         combatant.capacity_mod = combatant.enc_capacity_mod = 0
 
@@ -2993,8 +2991,8 @@ def _mitigated_rider(st: GameState, item: StackItem, effect, victim):
 
 def _do_drop_channels(st: GameState, action: Action) -> None:
     """Voluntary drop (a free action): end one named channel (`card_id`) or, when no
-    card is named, all droppable channels at once. Only channels started on an earlier
-    turn are droppable (a same-turn channel can't be cancelled)."""
+    card is named, all droppable channels at once. Every channel is droppable, a
+    same-turn one included (see `_voluntarily_droppable`, Update 06 ruling)."""
     actor = st.character(action.actor_id)
     droppable = _voluntarily_droppable(st, actor)
     if action.card_id is not None:
@@ -4990,7 +4988,9 @@ def _move_shuffle(st, char, effect):
         # no seed (the deterministic default) it stays a logged no-op (order fixed).
         if st.rng_seed is not None:
             st.shuffle_count += 1
-            random.Random((st.rng_seed, st.shuffle_count)).shuffle(char.library)
+            # A str seed: deterministic across processes and Pythons. A tuple
+            # seed is a TypeError on Python 3.11+ (roadmap M1.1).
+            random.Random(f"{st.rng_seed}:shuffle:{st.shuffle_count}").shuffle(char.library)
         _log(st, "shuffle", f"{char.name} shuffles their library.", character=char.id)
 
 
@@ -5271,7 +5271,7 @@ def _intent_reveal(intent: Intent, enemy: EnemyState) -> str:
     try:
         from ltg_core.translation import render_effects
         text = render_effects(intent.effects).strip()
-    except Exception:
+    except Exception:  # noqa: BLE001
         text = ""
     return f"{intent.name} — {text}" if text else intent.name
 
@@ -6160,8 +6160,6 @@ RESOLVERS = {
     "remove_keyword": _r_remove_keyword,
     "ramp": _r_ramp,
     "add_mana": _r_add_mana,
-    # `disable` is applied as a continuous channel effect (see _apply_static); it is
-    # never a one-shot, so it is not registered here.
 }
 
 
@@ -6704,13 +6702,6 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
                  target=_tid(target), parameter=ptag.parameter, combat_kind=pck)
             return 0
 
-    # Parry / numeric prevention reduces the hit before it lands.
-    reduced = min(target.prevent_pool, amount)
-    target.prevent_pool -= reduced
-    amount -= reduced
-    if reduced:
-        _log(st, "reduced", f"{reduced} damage to {target.name} reduced.",
-             target=_tid(target), amount=reduced)
     if amount <= 0:
         return 0
 
@@ -7475,9 +7466,9 @@ def _voluntarily_droppable(st: GameState, actor: CharacterState) -> List[Channel
 
 
 def _drop_actions(st: GameState, actor: CharacterState) -> List[Action]:
-    """Voluntary drop is a free action for each channel the holder may drop this turn
-    (started before this turn). One action per droppable channel (named by `card_id`),
-    plus a "drop all" (no card_id) when more than one is droppable."""
+    """Voluntary drop is a free action for each channel the holder may drop — all of
+    them (`_voluntarily_droppable`). One action per droppable channel (named by
+    `card_id`), plus a "drop all" (no card_id) when more than one is droppable."""
     droppable = _voluntarily_droppable(st, actor)
     if not droppable:
         return []
