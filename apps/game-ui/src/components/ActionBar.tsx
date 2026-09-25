@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getConfirmEndTurn } from "../lib/settings";
 import { useGame } from "../lib/store";
 import type { Choice, Choices } from "../lib/choices";
 import type { CharacterView } from "../lib/types";
@@ -79,7 +81,7 @@ export function ActionBar({ choices, reaction, char }: {
         key={label}
         disabled={!enabled}
         onClick={() => choice && select(choice)}
-        title={tip}
+        data-tip={tip}
         aria-label={closed ? `${label} — ${closed}` : label}
         className={`caps-label flex flex-col items-center justify-center gap-1 border text-[11px] tracking-[0.14em] transition ${
           enabled ? (active ? CELL_ON_ACTIVE : CELL_ON) : CELL_OFF
@@ -93,7 +95,9 @@ export function ActionBar({ choices, reaction, char }: {
 
   // The Skill (D8-3.1): a full grid cell beside the core actions — its own
   // icon, the authored name, and a tooltip with the effect (and cost, if any).
-  const skillBtn = () => {
+  // §D23-9: once the Ultimate is primed (full gauge, unspent) it takes this
+  // cell too — the cell splits, Skill above, the Ultimate below (M2.20).
+  const skillCell = () => {
     const skill = char?.skill ?? null;
     const choice = choices?.skill;
     const enabled = !!choice;
@@ -107,20 +111,85 @@ export function ActionBar({ choices, reaction, char }: {
         ? `${skill.name ?? "Skill"} — already used this encounter`
         : `${skill.name ?? "Skill"} — Skill (once per encounter; taking it is your turn).${cost}`
           + `${skill.text ? `\n${skill.text}` : ""}${closed ? `\n${closed}` : ""}`;
+    const ult = char?.ultimate ?? null;
+    const primed = !!ult && !ult.used && (char?.ultimate_gauge ?? 0) >= 100;
+    const label = skill?.used ? "Skill · spent" : "Skill";
+    if (!primed) {
+      return (
+        <button
+          disabled={!enabled}
+          onClick={() => choice && select(choice)}
+          data-tip={tip}
+          className={`caps-label flex flex-col items-center justify-center gap-1 border text-[11px] tracking-[0.14em] transition ${
+            enabled ? (active ? CELL_ON_ACTIVE : CELL_ON) : CELL_OFF
+          }`}
+        >
+          <IconSkill size={19} className={enabled ? (active ? "text-ink-0" : "text-brass") : "text-dimmed/60"} />
+          {/* The authored name lives in the tooltip; the cell shows "Skill". */}
+          <span className="line-clamp-2 max-w-full px-1 text-center leading-[1.1] [overflow-wrap:anywhere]">{label}</span>
+        </button>
+      );
+    }
+    const uChoice = choices?.ultimate;
+    const uActive = armed?.kind === "use_ultimate";
+    const uClosed = uChoice ? null : char?.turn_open?.ultimate === false ? "your turn is spent" : "not now";
+    const uTip = `${ult?.name ?? "Ultimate"} — Ultimate (once per encounter; taking it is your turn). `
+      + "The full gauge is the cost."
+      + `${ult?.text ? `\n${ult.text}` : ""}${uClosed ? `\n${uClosed}` : ""}`;
+    const half = "caps-label flex min-h-0 flex-1 items-center justify-center gap-1.5 border text-[10px] tracking-[0.14em] transition";
     return (
-      <button
-        disabled={!enabled}
-        onClick={() => choice && select(choice)}
-        title={tip}
-        className={`caps-label flex flex-col items-center justify-center gap-1 border text-[11px] tracking-[0.14em] transition ${
-          enabled ? (active ? CELL_ON_ACTIVE : CELL_ON) : CELL_OFF
-        }`}
-      >
-        <IconSkill size={19} className={enabled ? (active ? "text-ink-0" : "text-brass") : "text-dimmed/60"} />
-        {/* The authored name lives in the tooltip; the cell shows "Skill". */}
-        <span className="line-clamp-2 max-w-full px-1 text-center leading-[1.1] [overflow-wrap:anywhere]">{skill?.used ? "Skill · spent" : "Skill"}</span>
-      </button>
+      <div className="flex min-h-0 flex-col gap-1.5">
+        <button
+          disabled={!enabled}
+          onClick={() => choice && select(choice)}
+          data-tip={tip}
+          className={`${half} ${enabled ? (active ? CELL_ON_ACTIVE : CELL_ON) : CELL_OFF}`}
+        >
+          <IconSkill size={14} className={enabled ? (active ? "text-ink-0" : "text-brass") : "text-dimmed/60"} />
+          {label}
+        </button>
+        <button
+          disabled={!uChoice}
+          onClick={() => uChoice && select(uChoice)}
+          data-tip={uTip}
+          aria-label={uClosed ? `Ultimate — ${uClosed}` : "Ultimate"}
+          className={`${half} ${
+            uChoice ? (uActive ? CELL_ON_ACTIVE : `anim-ember ${CELL_ON} border-brass`) : CELL_OFF}`}
+        >
+          <IconUltimate size={14} className={uChoice ? (uActive ? "text-ink-0" : "text-brass-hi") : "text-dimmed/60"} />
+          Ultimate
+        </button>
+      </div>
     );
+  };
+
+  // The End Turn guard (M2.14): what ending now would leave behind, on the
+  // button itself; with the setting on, the first click asks and the second
+  // ends the turn. `leftover` counts only what could actually be done.
+  const castable = choices ? Object.keys(choices.casts).length : 0;
+  const leftover = [
+    castable ? `${castable} card${castable === 1 ? "" : "s"}` : "",
+    choices?.attack ? "attack" : "",
+  ].filter(Boolean).join(" · ");
+  const [confirming, setConfirming] = useState(false);
+  // A new state (not a re-render: `choices` is rebuilt on every store change)
+  // or another hero in focus drops a pending confirm.
+  const legal = useGame((s) => s.snapshot?.legal_actions);
+  useEffect(() => {
+    setConfirming(false);
+  }, [legal, char?.id]);
+  useEffect(() => {
+    if (!confirming) return;
+    const t = window.setTimeout(() => setConfirming(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [confirming]);
+  const endTurn = () => {
+    if (!choices?.endTurn) return;
+    if (leftover && !confirming && getConfirmEndTurn()) {
+      setConfirming(true);
+      return;
+    }
+    select(choices.endTurn);
   };
 
   const stackBtnCls = (enabled: boolean) =>
@@ -157,7 +226,7 @@ export function ActionBar({ choices, reaction, char }: {
       <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-3 gap-1.5">
         {coreBtn(ATTACK)}
         {coreBtn(DEFEND)}
-        {skillBtn()}
+        {skillCell()}
         {coreBtn(MOVE)}
         {coreBtn(MITIGATE)}
         {/* Pass / Delay share a cell. Pass answers a reaction window (usually
@@ -175,7 +244,7 @@ export function ActionBar({ choices, reaction, char }: {
           <button
             disabled={!choices?.delay}
             onClick={() => choices?.delay && select(choices.delay)}
-            title={choices?.delay
+            data-tip={choices?.delay
               ? "Move to the end of the party turn order for the rest of the encounter — the next character acts now; your turn comes round last"
               : "Delay — only at the start of your turn, once per turn, when another character still has a turn to take"}
             className={stackBtnCls(!!choices?.delay)}
@@ -189,14 +258,24 @@ export function ActionBar({ choices, reaction, char }: {
         <PassAllToggle char={char} />
         <button
           disabled={!choices?.endTurn}
-          onClick={() => choices?.endTurn && select(choices.endTurn)}
-          className={`chamfer-x caps-label py-2 text-[12px] tracking-[0.3em] transition ${
-            choices?.endTurn
-              ? "bg-gradient-to-b from-brass/15 to-brass/5 text-brass ring-1 ring-inset ring-brass/40 hover:from-brass-hi hover:to-brass hover:text-ink-0"
-              : "cursor-not-allowed bg-white/[0.02] text-dimmed/60"
+          onClick={endTurn}
+          data-end-turn
+          data-tip={leftover && choices?.endTurn ? `Still available: ${leftover}` : undefined}
+          className={`chamfer-x caps-label flex flex-col items-center justify-center leading-none transition ${
+            leftover && choices?.endTurn ? "py-1" : "py-2"} ${
+            !choices?.endTurn
+              ? "cursor-not-allowed bg-white/[0.02] text-dimmed/60"
+              : confirming
+                ? "bg-gradient-to-b from-brass-hi to-brass text-ink-0"
+                : "bg-gradient-to-b from-brass/15 to-brass/5 text-brass ring-1 ring-inset ring-brass/40 hover:from-brass-hi hover:to-brass hover:text-ink-0"
           }`}
         >
-          End Turn
+          <span className="text-[12px] tracking-[0.3em]">{confirming ? "Confirm" : "End Turn"}</span>
+          {leftover && choices?.endTurn && (
+            <span className="mt-0.5 text-[8px] tracking-[0.14em] opacity-80">
+              {confirming ? `leave ${leftover}?` : leftover}
+            </span>
+          )}
         </button>
       </div>
     </div>
@@ -207,7 +286,7 @@ export function ActionBar({ choices, reaction, char }: {
  *  the rule in words, because a bracket alone teaches nobody. */
 function GroupBracket({ Mark, label }: { Mark: typeof IconTurnMark; label: string }) {
   return (
-    <div title={label} className="flex items-center justify-center gap-1.5">
+    <div data-tip={label} className="flex items-center justify-center gap-1.5">
       <span className="h-px flex-1 bg-gradient-to-r from-transparent to-brass/40" />
       <Mark size={10} className="text-brass/70" />
       <span className="h-px flex-1 bg-gradient-to-l from-transparent to-brass/40" />
@@ -236,7 +315,7 @@ function PassAllToggle({ char }: { char?: CharacterView | null }) {
     <button
       disabled={!char?.controlled}
       onClick={() => char && setPassAll(!on, [char.id])}
-      title={!char?.controlled
+      data-tip={!char?.controlled
         ? "Pass All — only for characters you control"
         : on
           ? `${name} is passing every window for the rest of ${here} — click to take their windows back`
@@ -255,47 +334,44 @@ function PassAllToggle({ char }: { char?: CharacterView | null }) {
 }
 
 
-/** The Ultimate column (D8-3.2/3.3): an icon button over a vertical gauge,
- * sitting between the mana widget and the action grid. The gauge fills from
- * the bottom; full means the button can light. Rendered only when the
- * character has an ultimate authored. */
-export function UltimateColumn({ choices, char }: {
-  choices: Choices | null;
+/** The Ultimate column (D8-3.2/3.3): the gauge, between the mana widget and
+ * the action grid — a sigil over a vertical meter that fills from the bottom.
+ * The button itself lives in the Skill cell once the gauge is full (§D23-9,
+ * M2.20); here the sigil only lights. Rendered only when the character has an
+ * ultimate authored. */
+export function UltimateColumn({ char }: {
+  choices?: Choices | null;
   char?: CharacterView | null;
 }) {
-  const select = useGame((s) => s.selectChoice);
-  const armed = useGame((s) => s.armed);
   const ultimate = char?.ultimate ?? null;
   if (!char || ultimate == null) return null;
 
-  const choice = choices?.ultimate;
-  const enabled = !!choice;
-  const active = armed?.kind === "use_ultimate";
   const gauge = ultimate.used ? 0 : Math.min(100, char.ultimate_gauge);
   const ready = !ultimate.used && gauge >= 100;
-  const tip = ultimate.used
-    ? `${ultimate.name ?? "Ultimate"} — already unleashed this encounter`
-    : `${ultimate.name ?? "Ultimate"} — Ultimate (an action, once per encounter). `
-      + `Castable only on a full gauge — ${char.ultimate_gauge}/100; the gauge is the cost.`
-      + `${ultimate.text ? `\n${ultimate.text}` : ""}`;
+  const why = ultimate.used
+    ? "already unleashed this encounter"
+    : ready
+      ? char.turn_open?.ultimate === false
+        ? "primed — but your turn is spent"
+        : "primed: it waits in the Skill cell"
+      : `the gauge is at ${char.ultimate_gauge}/100`;
+  const tip = `${ultimate.name ?? "Ultimate"} — Ultimate (once per encounter; taking it is your turn). `
+    + `The full gauge is the cost.\n${why}`
+    + `${ultimate.text ? `\n${ultimate.text}` : ""}`;
 
   return (
-    <div className="flex w-[52px] shrink-0 flex-col items-stretch gap-1.5" title={tip}>
-      <button
-        disabled={!enabled}
-        onClick={() => choice && select(choice)}
+    <div className="flex w-[52px] shrink-0 flex-col items-stretch gap-1.5" data-tip={tip}>
+      <div
         className={`flex aspect-square items-center justify-center border transition ${
-          enabled
-            ? active
-              ? "border-brass bg-gradient-to-b from-brass-hi to-brass text-ink-0"
-              : "anim-ember border-brass bg-brass/15 text-brass hover:bg-brass hover:text-ink-0"
-            : ultimate.used
-              ? "cursor-not-allowed border-line/50 text-dimmed/50 opacity-60"
-              : "cursor-not-allowed border-line text-dimmed"
+          ultimate.used
+            ? "border-line/50 text-dimmed/50 opacity-60"
+            : ready
+              ? "anim-ember border-brass bg-brass/15 text-brass-hi"
+              : "border-line text-dimmed"
         }`}
       >
         <IconUltimate size={22} />
-      </button>
+      </div>
       <div className={`caps-label text-center text-[9px] tracking-[0.1em] ${
         ultimate.used ? "text-dimmed/60" : ready ? "text-brass-hi" : "text-dimmed"
       }`}>

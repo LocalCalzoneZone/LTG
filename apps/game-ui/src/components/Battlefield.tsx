@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CreatureView, GameSnapshot, Row, TokenView } from "../lib/types";
 import { DEPART_MS, type DepartKind, type FxEvent } from "../lib/fx";
 import { useFieldView, type FieldView } from "../lib/fieldView";
-import { CARD_WIDTH } from "../lib/layout";
+import { CARD_WIDTH, TOKEN_CARD_WIDTH } from "../lib/layout";
 import { lungeVars, useFlip } from "../lib/motion";
 import { useSceneTint } from "../lib/sceneTint";
 import { armedTargetIdSet, useGame } from "../lib/store";
@@ -34,6 +34,16 @@ const CASCADE_GAP = 0.08; // vertical gap (card fraction) where cards do NOT ove
 const CASCADE_DX = 0.12; // leftward lean per step, fraction of card width
 const PARTY_DX = 0.12; // the party's stagger — gentle, must not cross row bounds
 const cardFrac = (f: number) => `calc(${CARD_WIDTH} * ${f})`;
+
+/** The party cards' width when the most crowded row holds `n` heroes (M2.4):
+ * the default width, unless that row's portraits (9:16) would overflow its
+ * height — then every party card shrinks to fit, so the party stays one size. `100cqh` is the row column's height (it is a size
+ * container); the reserve covers the gaps, the row label, the Your-Move
+ * banner and the tokens' strip when the row holds any. */
+function partyCardWidth(n: number, tokens: boolean): string {
+  const reserve = `${12 * Math.max(0, n - 1) + 30}px${tokens ? ` + ${TOKEN_CARD_WIDTH} + 12px` : ""}`;
+  return `min(${CARD_WIDTH}, calc((100cqh - (${reserve})) * 9 / 16 / ${Math.max(1, n)}))`;
+}
 
 // How long a card stays surfaced after its last stack/fx involvement — covers
 // the choreography tail (deferred impacts, recoils) so a card never sinks
@@ -163,6 +173,39 @@ function useDeparting(snapshot: GameSnapshot | null): Dying[] {
   return [...dying.values()];
 }
 
+// How long an arrival's rise-in plays (matches .fx-enter-* in fx-state.css).
+const ENTRANCE_MS = 900;
+
+/** Entrances (roadmap M2.12): the creatures and tokens present now that were
+ * absent from the previous snapshot — a summoned token, raised or risen dead,
+ * a wave, reinforcements, a redeploy — each held for its rise-in. The first
+ * snapshot baselines silently (a loaded board does not "arrive"). Measured in
+ * a layout effect so the arrival never paints once before its animation. */
+function useEntrances(snapshot: GameSnapshot | null): Set<string> {
+  const prev = useRef<Set<string> | null>(null);
+  const [entering, setEntering] = useState<Set<string>>(new Set());
+  useLayoutEffect(() => {
+    if (!snapshot) {
+      prev.current = null;
+      return;
+    }
+    const now = new Set([...snapshot.creatures.map((c) => c.id),
+                         ...snapshot.tokens.map((t) => t.id)]);
+    const before = prev.current;
+    prev.current = now;
+    if (!before) return;
+    const fresh = [...now].filter((id) => !before.has(id));
+    if (!fresh.length) return;
+    setEntering((s) => new Set([...s, ...fresh]));
+    window.setTimeout(() => setEntering((s) => {
+      const n = new Set(s);
+      for (const id of fresh) n.delete(id);
+      return n;
+    }), ENTRANCE_MS);
+  }, [snapshot]);
+  return entering;
+}
+
 /** Wraps a card for the motion layer: `data-fid` is the FLIP/aim anchor; a
  * live "strike" fx lunges the whole card at its target; a landing hit gives
  * the target a recoil punch. The wrapper (not the card) carries motion, so
@@ -173,6 +216,7 @@ function MotionWrap({
   impacts,
   acts,
   side,
+  entering,
   children,
 }: {
   id: string;
@@ -180,6 +224,7 @@ function MotionWrap({
   impacts: Set<string>;
   acts: Set<string>;
   side: "party" | "enemy";
+  entering?: Set<string>;
   children: React.ReactNode;
 }) {
   const strike = strikes.get(id);
@@ -188,7 +233,7 @@ function MotionWrap({
       data-fid={id}
       className={`${strike ? "fx-lunge" : ""} ${impacts.has(id) ? "fx-recoil" : ""} ${
         acts.has(id) ? (side === "enemy" ? "fx-stepforward-w" : "fx-stepforward-e") : ""
-      }`}
+      } ${entering?.has(id) ? (side === "enemy" ? "fx-enter-enemy" : "fx-enter-party") : ""}`}
       style={strike ? lungeVars(id, strike.targetId, side === "party" ? 22 : -22) : undefined}
     >
       {children}
@@ -258,7 +303,7 @@ function ViewControls({ view }: { view: FieldView }) {
         className={VIEW_BTN}
         onClick={view.zoomOut}
         disabled={!view.canZoomOut}
-        title="Zoom out (scroll wheel)"
+        data-tip="Zoom out (scroll wheel)"
       >
         <IconZoomOut size={13} />
       </button>
@@ -267,7 +312,7 @@ function ViewControls({ view }: { view: FieldView }) {
         className={VIEW_BTN}
         onClick={view.zoomIn}
         disabled={!view.canZoomIn}
-        title="Zoom in (scroll wheel)"
+        data-tip="Zoom in (scroll wheel)"
       >
         <IconZoomIn size={13} />
       </button>
@@ -276,7 +321,7 @@ function ViewControls({ view }: { view: FieldView }) {
         className={VIEW_BTN}
         onClick={view.reset}
         disabled={view.isDefault}
-        title="Reset view — drag the field to pan"
+        data-tip="Reset view — drag the field to pan"
       >
         <IconFitView size={13} />
       </button>
@@ -293,6 +338,7 @@ export function Battlefield() {
   const fx = useGame((s) => s.fx);
   const dying = useDeparting(snapshot);
   const surfaced = useSurfaced(snapshot, fx);
+  const entering = useEntrances(snapshot);
   const shaking = useScreenShake();
   const viewRef = useRef<HTMLDivElement>(null);   // the pane (fixed): backdrop + chrome
   const fieldRef = useRef<HTMLDivElement>(null);  // the stage (zoomed/panned): the board
@@ -359,6 +405,13 @@ export function Battlefield() {
   for (const c of snapshot.creatures) {
     if (!arrival.has(c.id)) arrival.set(c.id, arrival.size);
   }
+  // One width for the whole party, sized to its most crowded row (M2.4).
+  const crowd = Math.max(1, ...PLAYER_ROWS.map(
+    (r) => snapshot.characters.filter((c) => c.row === r).length));
+  const partyWidth = partyCardWidth(crowd, PLAYER_ROWS.some(
+    (r) => snapshot.characters.filter((c) => c.row === r).length === crowd
+      && snapshot.tokens.some((t) => t.row === r)));
+
   const kick = [...strikes.keys()].some((id) => creatureIds.has(id))
     ? "fx-kick-w"
     : strikes.size
@@ -371,6 +424,12 @@ export function Battlefield() {
       onWheel={view.onWheel}
       onPointerDown={view.onPointerDown}
       onClickCapture={view.onClickCapture}
+      // Right-click cancels a selection — on the board and the console only
+      // (M2.18: a window-wide handler also killed paste in Options).
+      onContextMenu={(e) => {
+        e.preventDefault();
+        useGame.getState().cancelArm();
+      }}
       className={`field-scene relative isolate h-full w-full overflow-hidden ${
         view.panning ? "cursor-grabbing" : ""
       } ${shaking ? "fx-shake" : kick}`}
@@ -433,7 +492,8 @@ export function Battlefield() {
               <div
                 key={row}
                 onClick={() => pickable && pickTargetId(row)}
-                className={`relative flex flex-1 flex-col items-center justify-center gap-3 ${
+                style={{ containerType: "size" }}
+                className={`relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3 ${
                   pickable ? "brackets cursor-pointer bg-brass/5" : ""
                 }`}
               >
@@ -463,13 +523,14 @@ export function Battlefield() {
                         isHolder={holder === c.id && controlled.has(c.id)}
                         waiting={holder === c.id && !controlled.has(c.id)}
                         isTarget={targetIds.has(c.id)}
+                        width={partyWidth}
                       />
                     </MotionWrap>
                   </div>
                 ))}
                 <div className="flex flex-wrap justify-center gap-1.5">
                   {toks.map((t) => (
-                    <MotionWrap key={t.id} id={t.id} strikes={strikes} impacts={impacts} acts={acts} side="party">
+                    <MotionWrap key={t.id} id={t.id} strikes={strikes} impacts={impacts} acts={acts} side="party" entering={entering}>
                       <TokenCard token={t} isTarget={targetIds.has(t.id)} />
                     </MotionWrap>
                   ))}
@@ -514,7 +575,7 @@ export function Battlefield() {
                   boss: !!c.is_boss,
                   type: c.base_id,
                   node: (
-                    <MotionWrap id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy">
+                    <MotionWrap id={c.id} strikes={strikes} impacts={impacts} acts={acts} side="enemy" entering={entering}>
                       <CreatureCard creature={c} isTarget={targetIds.has(c.id)} />
                     </MotionWrap>
                   ),

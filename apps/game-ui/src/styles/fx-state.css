@@ -154,3 +154,74 @@
     opacity: 0.75;
   }
 }
+
+/* ---- Boss state (roadmap M2.9) --------------------------------------------
+   An enraged boss burns at the frame for as long as the fury lasts (to its
+   death): a blood inset glow that breathes, under the card's chrome. */
+@keyframes boss-fury-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.boss-fury {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 22px 2px rgba(194, 90, 80, 0.55);
+  animation: boss-fury-breathe 1.8s ease-in-out infinite;
+}
+/* A neglect swell still pending this round pulses its chip. */
+.neglect-pending {
+  animation: boss-fury-breathe 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boss-fury,
+  .neglect-pending {
+    animation: none;
+  }
+}
+
+/* ---- Entrances (roadmap M2.12) ---------------------------------------------
+   A body arriving mid-fight — a token, raised or risen dead, a wave, a
+   reinforcement, a redeploy — rises onto its row out of a shimmer: brass for
+   the party's side, crimson for the enemy's. The exits were always lavish;
+   now the arrivals are seen too. */
+@keyframes fx-enter-rise {
+  0% { opacity: 0; transform: translateY(22px) scale(0.94); filter: brightness(1.8); }
+  55% { opacity: 1; filter: brightness(1.25); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+@keyframes fx-enter-sheen {
+  0% { opacity: 0; transform: translateY(40%); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-40%); }
+}
+.fx-enter-party,
+.fx-enter-enemy {
+  position: relative;
+  animation: fx-enter-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.fx-enter-party::after,
+.fx-enter-enemy::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  z-index: 40;
+  animation: fx-enter-sheen 0.9s ease-out both;
+}
+.fx-enter-party::after {
+  background: linear-gradient(to top, transparent, rgba(233, 204, 130, 0.35) 50%, transparent);
+}
+.fx-enter-enemy::after {
+  background: linear-gradient(to top, transparent, rgba(194, 90, 80, 0.4) 50%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-enter-party,
+  .fx-enter-enemy,
+  .fx-enter-party::after,
+  .fx-enter-enemy::after {
+    animation: none;
+  }
+}

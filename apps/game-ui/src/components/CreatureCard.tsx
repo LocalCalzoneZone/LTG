@@ -8,6 +8,7 @@ import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
 import { IconSkull } from "./Icons";
 import { StatPop } from "./StatPop";
+import { StatusChips } from "./StatusChips";
 import { WardAura, wardTitle } from "./WardAura";
 
 const STAT = "text-[clamp(11px,1.7vh,18px)]";
@@ -108,6 +109,27 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         ? "anim-ember border-blood"
         : "border-line2";
   const dimUntargeted = armed && !isTarget ? "opacity-40" : "";
+  // The aiming preview (M2.17): while a basic attack is armed, hovering a
+  // legal target says what the swing would do — the server ran the numbers.
+  const preview = isTarget && armed?.kind === "attack"
+    ? armed.candidates.find((a) => a.target_id === creature.id)?.preview ?? null
+    : null;
+  // Boss state (M2.9): the neglect swell reads as one more chip — pulsing
+  // while this round still owes the boss a wound, quiet once it's answered.
+  const neglect = creature.neglect;
+  const chips = [
+    ...(creature.guarded_by?.length
+      ? [{ label: `guarded ×${creature.guarded_by.length}`, tone: "bane" as const,
+           tip: `Can't be targeted while its guards stand: ${creature.guarded_by.join(", ")}.` }]
+      : []),
+    ...(neglect
+      ? [{ label: `swells +${neglect.amount}`, tone: "bane" as const, pulse: !neglect.hurt,
+           tip: neglect.hurt
+             ? `Hurt this round — it won't swell at the End Step.`
+             : `Unhurt at the End Step, it grows +${neglect.amount}/+${neglect.amount} for good. Hurt it this round.` }]
+      : []),
+    ...(creature.status_chips ?? []),
+  ];
 
   return (
     <div
@@ -116,7 +138,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       onMouseEnter={() => creature.intent && setHoverIntent({
         enemyId: creature.id, targetId: creature.intent.target_id })}
       onMouseLeave={() => setHoverIntent(null)}
-      title={`${creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}\nClick to inspect.${wardTitle(creature.wards)}`}
+      data-tip={`${creature.intent ? `${creature.name} — ${creature.intent.line}` : creature.name}\nClick to inspect.${wardTitle(creature.wards)}`}
       style={{
         width: size,
         ...(creature.in_execute_window && !isTarget
@@ -155,6 +177,25 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       {/* Ward aura — a standing damage shield, ringed in its lane's colour. */}
       <WardAura wards={creature.wards} />
 
+      {/* Fury (M2.9): an enraged boss burns at the frame until it dies, and
+          wears the plaque on its top edge. */}
+      {creature.enraged && <div className="boss-fury" aria-hidden />}
+      {creature.enraged && (
+        <div
+          data-tip={`${creature.name} is enraged: it declares two intents a round.`}
+          className="chamfer-x-sm caps-label absolute -top-2.5 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap bg-gradient-to-b from-[#d46b60] to-blood px-2.5 py-0.5 text-[clamp(7px,1vh,9px)] tracking-[0.22em] text-ink-0"
+        >
+          Enraged
+        </div>
+      )}
+
+      {/* condition chips (M2.8) — right edge, level with the keyword sigils */}
+      {chips.length > 0 && (
+        <div className="absolute right-1 top-[22%] z-[2]">
+          <StatusChips chips={chips} />
+        </div>
+      )}
+
       {/* art controls — appear on hover, aimed at the pool design (clones share) */}
       {encounterId && (
         <div className="absolute right-1 top-1 z-10 opacity-0 transition group-hover:opacity-100">
@@ -177,7 +218,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
           brass. Frame-state precedence is unchanged (a plaque, not a frame). */}
       {creature.doom_clock != null && (
         <div
-          title={`The doom clock: ${creature.doom_clock} round(s) remain — defeat this enemy before it runs out.`}
+          data-tip={`The doom clock: ${creature.doom_clock} round(s) remain — defeat this enemy before it runs out.`}
           className={`absolute -right-px top-1.5 border border-r-0 border-brass/60 bg-ink-0/85 px-1.5 py-0.5 font-display ${STAT} leading-none tracking-[0.06em] text-brass`}
         >
           {creature.doom_clock}
@@ -222,7 +263,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       {/* charge gauge (D8-2.4) — the public windup pips: what they feed is veiled */}
       {(creature.charge > 0 || creature.charge_threshold != null) && (
         <div
-          title={`Charge ${creature.charge}${creature.charge_threshold ? ` / ${creature.charge_threshold}` : ""} — it is gathering power; what detonates is hidden until it fires.`}
+          data-tip={`Charge ${creature.charge}${creature.charge_threshold ? ` / ${creature.charge_threshold}` : ""} — it is gathering power; what detonates is hidden until it fires.`}
           className="absolute inset-x-1 bottom-[36%] flex items-center justify-center gap-1 border border-brass/40 bg-ink-0/80 px-1 py-0.5"
         >
           {Array.from({ length: Math.max(creature.charge_threshold ?? 0, creature.charge) }).map((_, i) => (
@@ -243,7 +284,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
       {/* channelling strip — named so the player knows what breaking does */}
       {creature.is_channeling && (
         <div
-          title={`Channeling: ${(creature.channels ?? []).map((c) => c.name).join(" · ")}\nBreak it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
+          data-tip={`Channeling: ${(creature.channels ?? []).map((c) => c.name).join(" · ")}\nBreak it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
           className={`caps-label absolute inset-x-1 bottom-[26%] truncate border border-aether/50 bg-ink-0/80 px-1 py-0.5 text-center text-[clamp(7px,1vh,9px)] tracking-[0.12em] text-aether`}
         >
           {(creature.channels ?? [])[0]?.name ?? "Channeling"}
@@ -255,7 +296,7 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
           edge (bottom-left, clear of the stat gem and nameplate). */}
       {creature.is_channeling && (
         <div
-          title={`Break it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
+          data-tip={`Break it: one hit of ≥${creature.break_threshold} damage, or remove the channeler.`}
           className="caps-label absolute -left-px bottom-[8%] z-10 border border-l-0 border-blood/60 bg-ink-0/85 px-1 py-0.5 text-[7px] tracking-[0.1em] text-blood"
         >
           break ≥{creature.break_threshold}
@@ -282,6 +323,15 @@ export function CreatureCard({ creature, isTarget }: { creature: CreatureView; i
         </div>
       </div>
 
+      {preview && (
+        <div className="caps-label pointer-events-none absolute inset-x-1 top-1/2 z-30 hidden -translate-y-1/2 justify-center group-hover:flex">
+          <span className={`border bg-ink-0/90 px-1.5 py-0.5 text-[clamp(8px,1.15vh,11px)] tracking-[0.1em] ${
+            preview.includes("kills") ? "border-blood/70 text-blood" : "border-line2 text-parch"}`}>
+            {preview}
+          </span>
+        </div>
+      )}
+
       <StatPop hp={creature.hp.current} />
       <FxLayer id={creature.id} />
     </div>
@@ -302,7 +352,7 @@ export function CorpseMarker({ corpse, isTarget }: { corpse: CorpseView; isTarge
   return (
     <div
       onClick={() => isTarget && pickTargetId(corpse.id)}
-      title={title}
+      data-tip={title}
       style={{ width: "clamp(50px, 5.5vh, 80px)" }}
       className={`relative aspect-square shrink-0 select-none border transition ${
         isTarget
@@ -340,7 +390,7 @@ export function TokenCard({ token, isTarget }: { token: TokenView; isTarget?: bo
   return (
     <div
       onClick={() => (isTarget ? pickTargetId(token.id) : !armed && setInspect(token.id))}
-      title={`${token.name} (ally)${controlTitle}\nClick to inspect.${wardTitle(token.wards)}`}
+      data-tip={`${token.name} (ally)${controlTitle}\nClick to inspect.${wardTitle(token.wards)}`}
       style={{ width: TOKEN_CARD_WIDTH }}
       className={`group relative aspect-square shrink-0 select-none border bg-ink-3 shadow transition ${
         isTarget ? "brackets cursor-pointer border-brass-hi" : "border-tide/40"

@@ -17,6 +17,8 @@ export type FxKind =
   | "keyword" // a keyword granted — brass shimmer + the keyword chip
   | "stun" // stunned — crimson concentric rings + chip
   | "poison" // poisoned — a sickly pulse + chip
+  | "regen" // regen counters placed — a vigor ring + chip (not a heal: the
+  // counters heal at Upkeep, and each tick logs its own `heal`)
   | "skill" // a hero Skill goes off — brass sigil flare on the caster
   | "ultimate" // an Ultimate — golden shockwave on the caster + screen flash
   | "enrage" // a boss enrages — crimson flare on it + screen pulse
@@ -37,6 +39,10 @@ export type FxKind =
   | "defeat" // the party falls — full-screen treatment
   | "passed" // an AUTO-pass fired — a visible beat, so resolutions never
   // feel like they jumped the queue (also stretches the scheduler's timeline)
+  | "beat" // an objective / boss beat (M2.10): the banner flashes `label` and
+  // the field washes in `tone` — guards down, a wave, the clock running out
+  | "swell" // a neglected boss grows (M2.10) — engraved, with a blood chip
+  | "retarget" // an intent redirected onto this card (M2.11) — a blood ring
   | "enemyact" // an enemy's declared intent hits the stack — the card steps
   // forward with a crimson flare; the moment you are being asked to answer
   | "panel"; // a hero's panel plays a pre-generated clip (Update 16) — `label`
@@ -59,6 +65,8 @@ export interface FxEvent {
   // The caster's first identity colour (W/U/B/R/G) when the log names a party
   // source — spell effects tint per school. Undefined = neutral palette.
   tint?: string;
+  // A beat's colour: brass for the party's good news, blood for the enemy's.
+  tone?: "brass" | "blood";
 }
 
 // How long each effect stays mounted (ms) — matches its CSS animation.
@@ -71,6 +79,7 @@ export const FX_TTL: Record<FxKind, number> = {
   keyword: 1400,
   stun: 1300,
   poison: 1200,
+  regen: 1200,
   skill: 1200,
   ultimate: 1800,
   enrage: 1800,
@@ -91,6 +100,9 @@ export const FX_TTL: Record<FxKind, number> = {
   defeat: 3400,
   passed: 900,
   enemyact: 1100,
+  beat: 2400,
+  swell: 1300,
+  retarget: 1100,
   panel: 1500, // a trigger pulse — the clip itself outlives the event
 };
 
@@ -102,17 +114,6 @@ export const DEPART_MS: Record<DepartKind, number> = {
   exile: 1000, // banished — a white flare and an implosion
   bounce: 900, // returned / suspended — slips away upward
 };
-
-/** label -> mode ("melee attack" | "ranged attack" | "spell" | "ability") for
- * everything currently on the stack — the FX layer uses the PREVIOUS
- * snapshot's map to classify a `damage` event's source action. */
-export function stackModes(snapshot: GameSnapshot): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const row of snapshot.stack) {
-    if (row.mode) out[row.label] = row.mode;
-  }
-  return out;
-}
 
 const str = (v: unknown): string => (v == null ? "" : String(v));
 const num = (v: unknown): number | undefined =>
@@ -179,12 +180,10 @@ const BEAT_RESPONSE = 340;
 const BEAT_SCENE = 480; // how much board-time one damaging resolution occupies
 const BEAT_CAP = 1500;
 
-/** Map the log entries with seq > lastSeq onto FX events + departure kinds.
- * `modes` is the previous snapshot's stackModes (what was resolving). */
+/** Map the log entries with seq > lastSeq onto FX events + departure kinds. */
 export function fxFromLog(
   snapshot: GameSnapshot,
   lastSeq: number,
-  modes: Record<string, string>,
 ): { events: FxEvent[]; departures: Record<string, DepartKind>; maxSeq: number;
      // Pre-roll (Update 16): when the batch OPENS with a hero's panel clip, the
      // ms the world state should wait before applying — the clip plays on the
@@ -202,9 +201,6 @@ export function fxFromLog(
   const tintOf = (id: string): string | undefined =>
     partyIds.get(id)?.mana?.identity_colors?.[0];
 
-  // What is resolving right now, updated as we walk the batch in order: a
-  // `resolve` names the action whose effects the following entries describe.
-  let resolvingMode = "";
   // The scheduler cursors: `beat` anchors the current resolution's scene;
   // `cursor` is the running end of everything scheduled so far.
   let beat = 0;
@@ -268,7 +264,6 @@ export function fxFromLog(
 
     switch (e.type) {
       case "resolve": {
-        resolvingMode = modes[str(d.label)] ?? "";
         beat = cursor; // a new scene opens where the last one ended
         // The actor's panel plays its clip as the action lands (Update 16).
         if (str(d.side) === "party") {
@@ -314,8 +309,11 @@ export function fxFromLog(
         break;
       }
       case "damage": {
-        const attack = resolvingMode.includes("attack");
-        const ranged = resolvingMode.includes("ranged");
+        // The engine names the blow's mode on the event itself (M2.19) —
+        // slash for an attack, arrow for a ranged one, a burst for the rest.
+        const mode = str(d.mode);
+        const attack = mode.includes("attack");
+        const ranged = mode.includes("ranged");
         const target = str(d.target);
         const source = str(d.source_id);
         push(attack ? "hit" : "arcane", target, {
@@ -362,7 +360,9 @@ export function fxFromLog(
         });
         break;
       case "regen":
-        push("heal", str(d.target), { amount: 1 });
+        // Placing counters heals nothing yet (§D22-2); the Upkeep ticks do,
+        // and each logs a `heal` of its own (M2.2).
+        push("regen", str(d.target), { amount: num(d.amount) });
         break;
       case "pump":
         push("pump", str(d.target));
@@ -427,7 +427,9 @@ export function fxFromLog(
         });
         break;
       case "stun":
-        push("stun", str(d.target));
+        // The engine names a stunned enemy `enemy`, a dazed hero `character`
+        // (M2.2: this read `target`, so the rings never played).
+        push("stun", str(d.enemy ?? d.character));
         break;
       case "poison":
         push("poison", str(d.target));
@@ -477,6 +479,42 @@ export function fxFromLog(
         });
         break;
 
+      // ---- objective and boss beats (M2.10) ------------------------------ //
+      // Each flashes the banner and washes the field; the ones with a body
+      // mark it too. (Arrivals animate on the board itself — see Battlefield's
+      // entrances — so a wave needs no per-card event here.)
+      case "guards_down":
+        push("beat", "screen", { screen: true, tone: "brass", label: "The Guards Fall" });
+        push("keyword", str(d.enemy), { label: "exposed" });
+        break;
+      case "objective_complete":
+        push("beat", "screen", { screen: true, tone: "brass", label: "The Clock Shatters" });
+        break;
+      case "withdraw":
+        push("beat", "screen", { screen: true, tone: "brass", label: "The Enemy Withdraws" });
+        break;
+      case "wave_deployed":
+        push("beat", "screen", {
+          screen: true, tone: "blood",
+          label: d.wave != null ? `Wave ${num(d.wave)} of ${num(d.total)}` : "A New Wave",
+        });
+        break;
+      case "reinforcements":
+        push("beat", "screen", { screen: true, tone: "blood", label: "Reinforcements" });
+        break;
+      case "escalation":
+        push("beat", "screen", { screen: true, tone: "blood", label: "The Clock Runs Out" });
+        push("detonate", str(d.enemy));
+        break;
+      case "neglect":
+        push("swell", str(d.enemy), { amount: num(d.amount) });
+        break;
+      case "intent_redirect":
+        // The mark moves (M2.11): the new target rings; its threat chevron
+        // restamps from the snapshot.
+        push("retarget", str(d.target));
+        break;
+
       // ---- departures (consumed by the Battlefield ghost system) ---------- //
       case "enemy_died":
         departures[str(d.enemy)] = "death";
@@ -489,9 +527,10 @@ export function fxFromLog(
         departures[str(d.target)] = "death";
         break;
       case "exiled":
-        // A spell's exile removes for good (data carries the level); a
-        // channel's exile merely suspends — it slips away instead.
-        departures[str(d.target)] = d.level != null ? "exile" : "bounce";
+        // A spell's exile removes for good; a channel's exile merely
+        // suspends (`channeled`) — it slips away instead (M2.2: both carry
+        // a level, so the suspension played the banish implosion).
+        departures[str(d.target)] = d.channeled === true ? "bounce" : "exile";
         break;
       case "bounced":
         departures[str(d.enemy)] = "bounce";

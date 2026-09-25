@@ -1,8 +1,14 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { CardView } from "../lib/types";
 import type { Choices, Choice } from "../lib/choices";
 import { useGame } from "../lib/store";
 import { Pips } from "./Pips";
+
+// How long a hand card must be hovered (or focused) before it enlarges (M2.6).
+const PEEK_DELAY_MS = 150;
+const PEEK_WIDTH = 224; // px — the enlarged card (the Stack/Chronicle popup's size class)
+
+type Peek = { card: CardView; left: number; bottom: number; castable: boolean };
 
 export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | null }) {
   const select = useGame((s) => s.selectChoice);
@@ -33,6 +39,27 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
     baselinesRef.current.set(holder, counts);
   });
 
+  // Hover-enlarge (M2.6): after a short dwell the card floats full-size above
+  // the console, flavour line and all; keyboard focus does the same.
+  const [peek, setPeek] = useState<Peek | null>(null);
+  const peekTimer = useRef<number | null>(null);
+  const clearPeek = () => {
+    if (peekTimer.current != null) window.clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+    setPeek(null);
+  };
+  const startPeek = (card: CardView, castable: boolean, el: HTMLElement) => {
+    if (peekTimer.current != null) window.clearTimeout(peekTimer.current);
+    peekTimer.current = window.setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      const left = Math.max(8, Math.min(r.left + r.width / 2 - PEEK_WIDTH / 2,
+                                        window.innerWidth - PEEK_WIDTH - 8));
+      setPeek({ card, left, bottom: window.innerHeight - r.top + 10, castable });
+    }, PEEK_DELAY_MS);
+  };
+  useEffect(() => clearPeek, []);
+  useEffect(() => clearPeek(), [holder]);
+
   if (!hand.length) {
     return (
       <div className="flex h-full items-center justify-center text-sm font-light italic text-dimmed">
@@ -47,27 +74,62 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
         const choice: Choice | undefined = choices?.casts[card.id];
         const playable = !!choice;
         const active = armed?.cardId === card.id;
+        // The why-not chip (M2.7): the server names the reason; the client
+        // only shows it.
+        const why = playable ? null : card.unplayable_reason ?? null;
         return (
-          <HandCard
+          <div
             key={`${card.id}-${i}`}
-            card={card}
-            playable={playable}
-            active={active}
-            justDrawn={justDrawn.has(i)}
-            onClick={() => choice && select(choice)}
-          />
+            className="relative h-full shrink-0"
+            onMouseEnter={(e) => startPeek(card, playable, e.currentTarget)}
+            onMouseLeave={clearPeek}
+            onFocus={(e) => startPeek(card, playable, e.currentTarget)}
+            onBlur={clearPeek}
+          >
+            <HandCard
+              card={card}
+              playable={playable}
+              active={active}
+              justDrawn={justDrawn.has(i)}
+              onClick={() => choice && select(choice)}
+              focusable
+            />
+            {why && (
+              <span className="caps-label pointer-events-none absolute inset-x-1 bottom-[22%] z-10 truncate border border-line2 bg-ink-0/90 px-1 py-0.5 text-center text-[clamp(8px,1.1vh,10px)] tracking-[0.12em] text-mist">
+                {why}
+              </span>
+            )}
+          </div>
         );
       })}
+      {peek && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{ left: peek.left, bottom: peek.bottom, width: PEEK_WIDTH }}
+          aria-hidden
+        >
+          <HandCard card={peek.card} playable active={false} onClick={() => {}} large
+                    castable={peek.castable} />
+        </div>
+      )}
     </div>
   );
 }
 
-export function HandCard({ card, playable, active, justDrawn, onClick }: {
+export function HandCard({ card, playable, active, justDrawn, onClick, large, focusable, castable }: {
   card: CardView;
   playable: boolean;
   active: boolean;
   justDrawn?: boolean;
   onClick: () => void;
+  // The enlarged card (hover, Stack, Chronicle): full width of its box, the
+  // whole rules text unclipped at a fixed readable size, and the flavour line.
+  large?: boolean;
+  // A card in the hand is a keyboard stop (M2.15): Enter or Space plays it.
+  focusable?: boolean;
+  // Lights the turn mark brass (M2.21): the card can be cast right now.
+  // Defaults to `playable` in the hand; a Stack/Chronicle copy is never lit.
+  castable?: boolean;
 }) {
   // h-full + aspect-ratio => every card is the same size and top-aligned; the whole
   // card scales with the (window-sized) hand area. Fonts clamp against viewport height.
@@ -77,20 +139,34 @@ export function HandCard({ card, playable, active, justDrawn, onClick }: {
   return (
     <div
       onClick={onClick}
-      title={card.text}
-      className={`card-plate ${state} relative isolate flex aspect-[2/3] h-full shrink-0 flex-col p-1.5 text-parch transition-all duration-150 ${
-        playable
-          ? active
-            ? "-translate-y-1.5 cursor-pointer"
-            : "cursor-pointer hover:-translate-y-1.5"
-          : "opacity-40"
-      } ${justDrawn ? "hud-card-draw" : ""}`}
+      role={focusable ? "button" : undefined}
+      tabIndex={focusable ? 0 : undefined}
+      aria-disabled={focusable ? !playable : undefined}
+      aria-label={focusable ? `${card.name}: ${card.text}` : undefined}
+      onKeyDown={focusable ? (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      className={`card-plate ${state} relative isolate flex aspect-[2/3] shrink-0 flex-col p-1.5 text-parch transition-all duration-150 ${
+        large ? "w-full p-2.5" : "h-full"
+      } ${
+        large
+          ? ""
+          : playable
+            ? active
+              ? "-translate-y-1.5 cursor-pointer"
+              : "cursor-pointer hover:-translate-y-1.5"
+            : "opacity-40"
+      } ${justDrawn ? "hud-card-draw" : ""} focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-brass`}
     >
-      <CardFrame timing={card.timing} />
+      <CardFrame timing={card.timing} lit={castable ?? (playable && !large)} />
       {/* Name (shrink-to-fit) + cost. The title's line height matches the 15px
           pips exactly, so a single-line name and its cost sit on one axis. */}
       <div className="flex items-start justify-between gap-1">
-        <span className="line-clamp-2 font-display text-[clamp(9px,1.3vh,12px)] font-normal leading-[15px] tracking-[0.02em]">
+        <span className={`line-clamp-2 font-display font-normal leading-[15px] tracking-[0.02em] ${
+          large ? "text-[14px]" : "text-[clamp(9px,1.3vh,12px)]"}`}>
           {card.name}
         </span>
         <div className="flex h-[15px] shrink-0 items-center">
@@ -106,14 +182,23 @@ export function HandCard({ card, playable, active, justDrawn, onClick }: {
         </div>
       )}
       <div className="my-1 h-px w-full bg-line" aria-hidden />
-      {/* Effect text (left-aligned, fills) */}
-      <div className={`flex-1 overflow-hidden font-light leading-snug text-mist ${
-        card.image ? "text-[clamp(8px,1.1vh,11px)]" : "text-[clamp(9px,1.25vh,12.5px)]"}`}>
+      {/* Effect text (left-aligned, fills). The enlarged card never clips:
+          the plate grows past 2:3 before a word is lost. */}
+      <div className={`flex-1 font-light leading-snug text-mist ${
+        large
+          ? "text-[12.5px]"
+          : `overflow-hidden ${card.image ? "text-[clamp(8px,1.1vh,11px)]" : "text-[clamp(9px,1.25vh,12.5px)]"}`}`}>
         {card.text}
+        {large && card.flavor && (
+          <p className="mt-2 border-t border-line pt-1.5 text-[11.5px] font-light italic leading-snug text-dimmed">
+            “{card.flavor}”
+          </p>
+        )}
       </div>
       {/* Type. §D23-9's turn mark (this card spends the turn) sits on the
           plate's top edge instead — see CardFrame. */}
-      <div className="caps-label mt-0.5 text-center text-[clamp(7px,1vh,9px)] tracking-[0.18em] text-dimmed">
+      <div className={`caps-label mt-0.5 text-center tracking-[0.18em] text-dimmed ${
+        large ? "text-[9.5px]" : "text-[clamp(7px,1vh,9px)]"}`}>
         {card.timing}
       </div>
     </div>
@@ -128,7 +213,10 @@ export function HandCard({ card, playable, active, justDrawn, onClick }: {
                edge — struck, quick, playable any time;
      channeled a cartouche with scalloped corners — bound to the board.
    A sorcery and a channel SPEND THE TURN (§D23-9), so they wear the action
-   bar's brass turn mark on the plate's top edge; an instant carries none.
+   bar's turn mark on the plate's top edge; an instant carries none. Ruled
+   2026-09-25 (M2.21): the mark is always there, but brass only while the card
+   can be cast — gold means "you can act on this" — and a dim hairline grey
+   otherwise.
    The stroke colour follows the card's state through --frame (.card-plate in
    index.css); the plate itself is the old ink gradient. */
 const FRAME_PATH: Record<string, string> = {
@@ -144,7 +232,7 @@ const CORNER_MARKS: Record<string, string> = {
   channeled: "",
 };
 
-export function CardFrame({ timing }: { timing: string }) {
+export function CardFrame({ timing, lit = true }: { timing: string; lit?: boolean }) {
   const kind = timing in FRAME_PATH ? timing : "sorcery";
   const gradId = useId();
   return (
@@ -167,7 +255,8 @@ export function CardFrame({ timing }: { timing: string }) {
               vectorEffect="non-scaling-stroke" className="card-frame-ink" />
       )}
       {kind !== "instant" && (
-        <path d="M50 -2.4L52.4 0L50 2.4L47.6 0Z" fill="#c9b37e" fillOpacity="0.75" />
+        <path d="M50 -2.4L52.4 0L50 2.4L47.6 0Z"
+              fill={lit ? "#c9b37e" : "#59616e"} fillOpacity={lit ? 0.75 : 0.9} />
       )}
     </svg>
   );

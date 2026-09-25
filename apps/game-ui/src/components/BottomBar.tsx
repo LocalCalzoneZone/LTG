@@ -60,6 +60,11 @@ export function BottomBar({ height }: { height?: number | null }) {
       // A dragged height (from the splitter above) overrides the responsive default.
       style={{ height: height ? `${height}px` : "clamp(200px, 27vh, 320px)" }}
       className="relative flex shrink-0 items-stretch gap-2.5 bg-gradient-to-b from-ink-2 to-ink-0 p-2.5"
+      // Right-click cancels a selection here as on the board (M2.18).
+      onContextMenu={(e) => {
+        e.preventDefault();
+        useGame.getState().cancelArm();
+      }}
     >
       <ArmingHint />
       <ManaPayPopup />
@@ -70,7 +75,7 @@ export function BottomBar({ height }: { height?: number | null }) {
         <button
           onClick={() => hasSheet && setSheetFor(char.id)}
           disabled={!hasSheet}
-          title={hasSheet ? `${char.name} — character sheet` : undefined}
+          data-tip={hasSheet ? `${char.name} — character sheet` : undefined}
           className={`flex items-center justify-center border border-line bg-black/25 px-2 py-2 transition ${
             hasSheet ? "hover:border-brass/60 hover:bg-brass/5" : "cursor-default"
           }`}

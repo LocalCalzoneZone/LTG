@@ -33,7 +33,7 @@ towns, world, equipment, art) ──────▶ game server (:8020) ──�
 - `ltg_deckbuilder` imports only `ltg_core`.
 - `ltg_combat` imports only `ltg_core`. Its `autoplay/runner.py` copies game-server constants by hand ("keep in sync") instead of importing them.
 - `ltg_game_server` uses the engine as a library. It imports:
-  - from `engine`: `apply_action`, `legal_actions`, `settle`, `auto_pass_action`, `pass_all_action`, `cast_target_labels`, and the private `_ordered`;
+  - from `engine`: `apply_action`, `legal_actions`, `settle`, `auto_pass_action`, `pass_all_action`, `cast_target_labels`, `unplayable_reason`, `attack_preview`, and the private `_ordered` and `_objective_shielded`;
   - from `serialize`: the private `_character_dict`, `_enemy_dict`, `_token_dict`, `_corpse_dict` and `_stack_list`, plus public helpers;
   - from `scenario`: `compose_spec`, `scale_encounter`, `state_from_dict`, `sized_roster`, `SCENARIO_A`/`SCENARIO_C`, and the private `_slug`.
 - `ltg_autoplay_tester` imports `ltg_combat.autoplay`, `ltg_combat.scenario`, `ltg_game_server.content` and `ltg_game_server.llm`. Nothing imports the tester.
@@ -193,7 +193,7 @@ Core has **no** Enemy or Encounter model; the only encounter-level model is `Enc
 18. **Legal actions:**
     - `_legal` → `_legal_main` / `_legal_react` / `_legal_choice`;
     - `_heroic_actions`, `_cast_actions`, `_pick_options`, **`_target_sites`**, `_effect_site_label`;
-    - public `auto_pass_action` and `pass_all_action`, which both deep-copy; `cast_target_labels`, which does not.
+    - public `auto_pass_action` and `pass_all_action`, which both deep-copy; `cast_target_labels` and `unplayable_reason` (why a hand card can't be cast, M2.7), which do not; `attack_preview` (a basic attack's outcome through the real `_deal_damage`, M2.17), which deep-copies.
 19. **Mana and log:** `_can_pay`, `_pay` (pays generic costs in WUBRG order), **`_log`**, and the stale `run(loadout)`.
 
 ### `state.py`
@@ -289,7 +289,7 @@ The server is an authority and relay. Every combat action goes through the engin
 |---|---|
 | `app.py` (1.3k) | FastAPI `app`, `MANAGER`, `RUNS`. All routes, `ws_endpoint`, and `_broadcast` (sends seats, state and prompt to every socket, plus game_over once a result exists). `_scenario_async(session, kind)` does off-lock work: `materialize`, `interlude`, `continue`, `adventure_job`, `confirm_timer`. `_open_save` and `_continue_sync`. It serves `/art/*` (`content/art`, then `loadouts/art`), `/anim/*`, and `dist` (`index.html` no-store). |
 | `session.py` (1.05k) | `Session`: one `GameState` (`None` in town), `seats`, `clients`, a lazy lock, `pass_all`, `confirm`. `SessionManager` is in-memory and never evicts. `apply_index`. `_auto_advance` is a synchronous drain (cap 200). It also runs at phase openings, so those are unpaced. `_drain_paced` is one task per session: one broadcast per synthetic step, with 1.1 s, 0.6 s or 0.18 s pauses, holding the lock only while stepping. Confirmations (T-84): all sockets must say yes, one "no" cancels, 30 s of silence counts as yes, and a lone socket skips the vote. `set_pass_all` works per character, per turn step. Also `town_verb`, `economy_verb`, `start_adventure`, `materialize_act` (blocking), `continue_campaign`, `choose_hook`, `_scenario_transitions` (the act wrap-up and defeat), `confirm_level_up`, `save_point`, `snapshot_for`. |
-| `snapshot.py` (475) | `build_snapshot`, `priority_fields`, `priority_kind`, `LOG_TAIL=60`, `HIDDEN_LOG_TYPES={"intent_declared"}`, the seat log filter `_seat_log_line`, and the per-entity reshapers. |
+| `snapshot.py` (475) | `build_snapshot`, `priority_fields`, `priority_kind`, `LOG_TAIL=60` (oldest-first), `HIDDEN_LOG_TYPES={"intent_declared"}`, the seat log filter `_seat_log_line`, and the per-entity reshapers. |
 | `scenario.py` (1.9k) | `ScenarioRun`: town + arc + three acts. `mode` is town, adventure, complete or interlude. It holds the `campaign` record and run copies of the party's loadouts, points, gold and HP. Verbs: `arrive`, `materialize`, `visit`, `talk`, `choose`, `buy`, `sell`, `give`, `accept_rewards`, `start_adventure`, `on_adventure_complete`, `on_adventure_defeat`, `begin_interlude`, `choose_hook`, `begin_next_scenario`, `town_snapshot`, `snapshot`, `restore`. Its generators can be swapped out in tests. |
 | `scenario_content.py` | CRUD for towns (`content/towns/`) and pre-generated scenarios (`content/scenarios/`). Validators: `validate_town`, `validate_arc`, `validate_materialization`, `validate_interlude`. `town_for_act` merges the base town with the arc's cast and places and the campaign's overrides. |
 | `dialogue.py` | `validate_dialogue` (the closed `HOOKS` vocabulary) and the `Conversation` walker. |
@@ -387,7 +387,14 @@ On connect the server sends `hello {client_id, session_id}`, then `seats`, `stat
 - It also receives `legal_actions`, but only if it controls the holder, and `pending_choice` candidates, but only if it is the chooser.
 - Intents are **veiled** for everyone: category and target only. `intent_declared` log lines are dropped.
 - **The log is seat-filtered** (`_seat_log_line`): a teammate's `draw` or `scry` reads "X draws a card." with no card attached (`PRIVATE_CARD_LOG_TYPES`), and `intent_redirect` / `intent_spoiled` are rewritten without the intent's name (`VEILED_LOG_TYPES`). The engine's own log keeps everything.
-- `log` is the 60 newest visible entries, **newest first**. `seq` is the absolute index in the stored log.
+- `log` is the 60 newest visible entries, **oldest first** (M2.1). `seq` is the absolute index in the stored log; the client merges snapshots by `seq` into the fight's whole Chronicle (`store.chronicle`, `mergeChronicle`).
+
+**Legibility fields (M2, 2026-09-25)**
+- Characters and creatures carry `status_chips` (`serialize.status_chips`: `{label, tone: bane|boon, tip}`, lockdown first); a hero's `mana` block carries `sapped`.
+- Creatures carry `enraged`, `neglect` (`{amount, hurt}` or null, bosses only) and `guarded_by` (the race guards' names).
+- `objective` carries `next_arrival` (`{when, line}` or null) and stays in the snapshot after it resolves.
+- Hand cards carry `unplayable_reason` (`engine.unplayable_reason`) and every card `flavor`; an `attack` legal action carries `preview` ("→ 4 · kills").
+- `damage` log entries carry `mode` ("melee attack", "ranged attack", "spell", "combat ability", "ability", "fight"), which the FX read directly (the client's label→mode guess is gone).
 
 **[`INTERFACE_NOTES.md`](design/INTERFACE_NOTES.md) status** (the July Phase-1 contract, now kept in `docs/design/`; still cited by `session.py`, `snapshot.py`, `content.py`, `app.py`, `CreatureCard.tsx`):
 
@@ -412,10 +419,10 @@ On connect the server sends `hello {client_id, session_id}`, then `seats`, `stat
 About 16.6k lines. Stack: React 18, zustand, Tailwind 3, Vite 5, strict TypeScript.
 
 **`lib/`**
-- `store.ts` is the single zustand store. It holds the socket and the `handle(msg)` switch. States enter a presentation queue (`_snapQueue` / `_drainPresent`) and each is held until its FX timeline has landed (`holdUntil`, `HOLD_SETTLE_MS=680`). It also runs panel-clip pre-roll and arming (`selectChoice`, `pickTargetId`, the `beginCast` mana payment). Every applied snapshot clears `armed` and `manaSelect`.
-- `ws.ts` reconnects every 1 s and sends a heartbeat every 20 s. `api.ts` holds every REST call; `types.ts` the contract; `choices.ts` groups legal actions; `fx.ts` maps log entries to FX; `motion.ts` does FLIP slides; `fieldView.ts` zoom and pan.
+- `store.ts` is the single zustand store. It holds the socket and the `handle(msg)` switch. States enter a presentation queue (`_snapQueue` / `_drainPresent`) and each is held until its FX timeline has landed (`holdUntil`, `HOLD_SETTLE_MS=680`). It also runs panel-clip pre-roll and arming (`selectChoice`, `pickTargetId`, the `beginCast` mana payment, which pre-pays the fixed pips and asks only when the colour matters). An applied snapshot clears `armed` and `manaSelect` only when its `legal_actions` differ from the last one (M2.3).
+- `ws.ts` reconnects every 1 s and sends a heartbeat every 20 s. `api.ts` holds every REST call; `types.ts` the contract; `choices.ts` groups legal actions; `fx.ts` maps log entries to FX; `motion.ts` does FLIP slides; `fieldView.ts` zoom and pan; `keyboard.ts` the console keys (M2.15); `settings.ts` the per-browser preferences.
 
-**`components/` (37 files)**
+**`components/` (39 files)**
 - **Battlefield:** party rows take 45% of the width and the enemy cascade 55%. Also corpses, departure ghosts and projectiles.
 - **`CharacterCard`:** hosts `PanelAnim`, `StatPop`, `WardAura`, `KeywordBadges` and `FxLayer`.
 - **`CreatureCard`:** also exports `TokenCard` and `CorpseMarker`.
@@ -428,16 +435,14 @@ About 16.6k lines. Stack: React 18, zustand, Tailwind 3, Vite 5, strict TypeScri
 - **`Items`:** shop, gear and spoils.
 - **`NewGameModal` / `LoadGameModal`:** start or resume a game.
 - **`OptionsModal`:** nine tabs, using `EncounterEditor`, `AdventurePanel`, `ScenarioPanels`, `WorldPanel`, `LlmSettingsPanel` and `SettingsPanel`.
-- **Shared:** `Icons` and `Splitter`.
+- **Shared:** `Icons`, `Splitter`, `StatusChips` and `TooltipLayer` (the themed tooltip: any element with `data-tip` gets it; prefer it to `title=`).
 
 **FX pipeline**
 - `fxFromLog` walks entries with `seq > lastSeq`, oldest first, through `switch (e.type)`.
-- It schedules 29 `FxKind`s on a beat timeline (`BEAT_IMPACT=180`, `BEAT_CAP=1500` ms) and records departures (death, exile, bounce) for the ghosts.
+- It schedules 33 `FxKind`s on a beat timeline (`BEAT_IMPACT=180`, `BEAT_CAP=1500` ms) and records departures (death, exile, bounce) for the ghosts.
 - `syncSeq` skips history when `seq` resets.
-- **The client handles 35 log types. The engine emits 148 distinct types** (an AST count of `_log(...)` literals in `apps/combat/ltg_combat`). Every type still shows as Chronicle text, and `SidePanel.logTint` tints about 40 types by category.
-- Known misses:
-  - The `stun` case reads `d.target`, but the engine logs `enemy` / `character`, so the stun FX never fires.
-  - The Chronicle renders newest-first top-down but pins its scroll to the bottom, so the *oldest* lines stay in view.
+- **The client handles 43 log types. The engine emits 148 distinct types** (an AST count of `_log(...)` literals in `apps/combat/ltg_combat`). Every type still shows as Chronicle text, and `SidePanel.logTint` tints about 40 types by category.
+- Arrivals are not log-driven: `Battlefield.useEntrances` animates any creature or token absent from the previous snapshot (M2.12).
 
 **Styling**
 - Colour tokens and the Optima `display` font are in `tailwind.config.js`. `src/index.css` holds `.caps-label`, `.panel-ticks`, `.chamfer-x` and the keyframes. `src/styles/fx-*.css` load after it.
@@ -593,7 +598,7 @@ Because the sandbox starts like a clean clone, tests must use the bundled `examp
    - Control verb: `_filter_control_targets`, `_pending_control_claims`.
    - Label: `_effect_site_label`.
 4. **`lints.py`:** only if you want a new advisory rule. There is no per-kind registry.
-5. **`serialize.py`:** the `_HOSTILE_KINDS`, `_CONTROL_KINDS` and `_SIDE_SENSITIVE_HOSTILE` sets; `_status_tags` if the verb leaves a status.
+5. **`serialize.py`:** the `_HOSTILE_KINDS`, `_CONTROL_KINDS`, `_SIDE_SENSITIVE_HOSTILE` and `_CORPSE_KINDS` sets; `_status_tags` if the verb leaves a status, and `status_chips` if the card should wear it.
 6. **Enemy use:**
    - `scenario._check_enemy_verbs`;
    - in `apps/game-server/ltg_game_server/llm.py`: `DEFAULT_INSTRUCTIONS` (the verb prose and the JSON block), `_SELF_DEV_KINDS`, `_SUPPORT_VERB_KINDS`;
@@ -622,8 +627,8 @@ Because the sandbox starts like a clean clone, tests must use the bundled `examp
 There is **no typed registry**. The engine emits **148 distinct literal `type` strings** from 210 `_log` calls, and `LogEntry.type` is a plain `string` on the client.
 
 1. Call `_log(st, "type", msg, **data)` with JSON-plain data only. The game server sends `e.data` unchanged through `ws.send_json`.
-2. `snapshot.py` ships the newest 60 entries (`LOG_TAIL`), minus `HIDDEN_LOG_TYPES`, through `_seat_log_line`. A line that names a hidden card or a veiled intent belongs in `PRIVATE_CARD_LOG_TYPES` or `VEILED_LOG_TYPES`.
-3. Add a case to `switch (e.type)` in `apps/game-ui/src/lib/fx.ts` (35 types handled today), and a new `FxKind` if it needs a new visual.
+2. `snapshot.py` ships the newest 60 entries oldest-first (`LOG_TAIL`), minus `HIDDEN_LOG_TYPES`, through `_seat_log_line`. A line that names a hidden card or a veiled intent belongs in `PRIVATE_CARD_LOG_TYPES` or `VEILED_LOG_TYPES`.
+3. Add a case to `switch (e.type)` in `apps/game-ui/src/lib/fx.ts` (43 types handled today), and a new `FxKind` if it needs a new visual.
 4. Add the type to the tint sets in `SidePanel.tsx`.
 5. If it should be counted, add it to `runner._collect_metrics`.
 

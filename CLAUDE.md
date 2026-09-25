@@ -69,6 +69,7 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 - **The Deckbuilder is custom-cards-only.** No MTG/Scryfall import UI. Legacy fields load but are pruned on save. Rarity stays as a balance lever.
 - **Autoplay harness numbers are not balance evidence.** Keep the harness working and versioned (bump the policy `version` on heuristic changes). Use it for crash/anomaly detection and A/B deltas within one run. Don't cite its win rates as balance evidence or gate work on a run.
 - **No quests hooked to hero backstory.** Knowledge is party-level. Party composition is fixed per campaign.
+- **M2 rulings (2026-09-25):** the hand's turn diamond stays on every sorcery and channel card, brass only while the card is castable (grey otherwise). No dashed threat lines or dashed outlines on the battlefield (clutter); threat and shields live on the cards.
 - **M1 rulings (2026-09-25),** recorded in the canon and the roadmap's M1 rows: generated play content stays in `content/`; an enemy's turn-scoped lockdown on a hero holds through that hero's next turn; a taunt respects the wall; enemy deathtouch downs heroes; enemies aim at party tokens; each struck hero may Mitigate their own hit; keyword and attack mode stay as the campaign bought them.
 
 ## Gotchas

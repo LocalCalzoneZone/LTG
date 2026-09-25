@@ -1,6 +1,6 @@
 # LTG roadmap — milestones & objectives
 
-**As of 2026-09-25** (M1 done on branch `Milestone-M1`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
+**As of 2026-09-25** (M1 merged; M2 done on branch `Milestone-M2`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
 
 - the design history (v1 GDD, Updates 01–24);
 - the 2026-09-02 review briefs;
@@ -41,7 +41,7 @@ Proposals that come from no design document are marked *Proposed*. They need a d
 |---|---|---|---|
 | **M0** | Foundations | Make the project cheap and safe to work on: docs, tests, CI, environment | 6 |
 | **M1** | Make it correct | **Done 2026-09-25**: every row fixed or ruled, each with a test. | 37 |
-| **M2** | Legibility | The board explains itself: status, threat, boss state, beats, hand. The biggest felt improvement per hour. | 22 |
+| **M2** | Legibility | **Done 2026-09-25** except M2.22's clip coverage (owner). | 22 |
 | **M3** | The playtest loop | Make the RPG layer cheap to test, then run the playtests that are owed | 12 |
 | **M4** | Generation pipeline | Faster, cheaper, sturdier, less samey generation, with gates that match the prompts | 18 |
 | **M5** | The world remembers | NPCs and towns react at runtime, not only in the next act's writing | 11 |
@@ -137,6 +137,8 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 
 ## M2 · Legibility — the board explains itself
 
+*Status: done 2026-09-25* on branch `Milestone-M2`, except M2.22's clip coverage (the owner's to generate). Server-side fields are pinned in `tests/test_board_legibility.py`; the client was checked in the browser at 1440×900.
+
 *Done when* all of these hold:
 - after a kill, the Chronicle's newest line is the kill;
 - an enraged boss wears its state;
@@ -149,30 +151,30 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M2.1 | **Chronicle.** It is sent newest-first but pinned to the bottom, so new lines append out of view (since `347dfa7`, 2026-08-29). Fix the order or the pin, key rows by `seq`, and page past `LOG_TAIL = 60`. | Bug | S | R2.1.1; obs. |
-| M2.2 | **FX key mismatches.** The stun FX never renders (it reads `d.target`); a channel-suspend exile plays the banish implosion; regen glows like a heal. | Bug | S | R2.1.6 |
-| M2.3 | **Arming is cancelled by any snapshot.** A teammate claiming a seat resets your half-paid X cast. | Bug | S | R2.2.8 |
-| M2.4 | **Party column overflow.** Three heroes in one row don't fit at 1440×900 (the bottom card sits under the console). | Bug | S | obs. |
-| M2.5 | **Card flavour in play.** `card_dict` omits `flavor_text`, so about 65 generated lines are never seen. Show them on the enlarged card and the Stack hover. | Partial | S | R4.2.5, C-53 |
-| M2.6 | **Hover-enlarge** hand cards, on focus too, reusing the Stack/Chronicle popup. | Not built | S | R2.2.1 |
-| M2.7 | **Why-not chips** on dimmed cards ("2 short", "sorcery", "no target", "holding"), with a server `unplayable_reason` where the client can't know. | Not built | M | R2.2.2 |
-| M2.8 | **Status chips** on hero and creature cards (`status_tags` on `CreatureView`: silenced, pacified, sapped, warded, taunted…). | Not built | M | R2.1.5 |
-| M2.9 | **Boss state on the card.** An enraged plaque, a neglect-swelling badge and a `guarded_by` hairline. The objective banner stays up with its outcome line. | Not built | M | R2.1.3 |
-| M2.10 | **Beats.** FX and Chronicle tints for `guards_down`, `wave_deployed`, `reinforcements`, `escalation`, `objective_complete`, `withdraw`, `neglect`, `redeploy`, plus a `PhaseBanner` flash. | Not built | M | R2.1.2 |
-| M2.11 | **Persistent threat marks.** A chevron with a count on each targeted hero, a hairline while surfaced, and animation on `intent_redirect`. The swing/pursues stamp is already done. | Partial | M | R2.1.4 |
-| M2.12 | **Entrances** for tokens, raised or risen dead, waves, reinforcements and redeploys, plus a "next round: 2 Raiders" preview. | Not built | M | R2.1.7 |
-| M2.13 | **Sap in the mana widget.** Classifier fixes: an enemy forced `move` counts as interference, and corpse `control` / `consume_corpse` as summon. | Not built | S | R2.1.8 |
-| M2.14 | **End Turn guard.** A count on the button and a one-click confirm, with a Settings toggle. | Not built | S | R2.2.5 |
-| M2.15 | **Keyboard.** Pass/End Turn, 1–9 for cards, A/D/M/V for the verbs, Enter in the mana picker; `role` and `tabIndex` on cards. | Not built | M | R2.2.4 |
-| M2.16 | **Mana payment.** Auto-pay the fixed pips so clicks add only X; a max-X button; ask for generic colour only when it matters. | Not built | M | R2.2.6 |
-| M2.17 | **Damage preview while aiming** a basic attack ("→ 4 · kills", "ward eats 2"). | Not built | M | R2.2.7 |
-| M2.18 | **Scope the right-click cancel** to the board and console (it currently kills paste in Options). Add a themed tooltip component to replace `title=`. | Not built | M | R2.2.9 |
-| M2.19 | **Tag `damage` events with a `mode`** and delete the client's label→mode guess. Best done after M9.2. | Not built | M | R2.1.6 |
-| M2.20 | **The Ultimate cell**: a turn-rule reason when it is disabled, no banned word "action", and placement in the Skill cell as §D23-9 lays out. | Partial | S | C-33 |
-| M2.21 | **The turn diamond** now shows on every sorcery and channel card, castable or not (a2cce25). §D23-9 says castable only, and gold means "clickable". Gate it, or ratify the static mark. | Decide | S | C-34 |
-| M2.22 | **Panel clips.** Loop the `channel` clip while a stance is held (§A-7). Fill in coverage: Soren, Vay and Ys have none; Bones lacks ultimate and victory. | Not built | M | B-27, B-30 |
+| M2.1 | **Chronicle.** Fixed: the snapshot's log tail is oldest-first (the pin-to-bottom now shows the newest line), rows are keyed by `seq`, and the client merges every snapshot into the whole fight's history (`store.chronicle`, `mergeChronicle`), so `LOG_TAIL = 60` no longer limits what can be re-read. | Done 2026-09-25 | — | R2.1.1; obs. |
+| M2.2 | **FX key mismatches.** Fixed: stun reads `enemy`/`character`; a channel suspension (`channeled`) slips away instead of imploding; placing regen counters plays a `regen` ring and chip (each Upkeep tick still heals with its own `heal`). | Done 2026-09-25 | — | R2.1.6 |
+| M2.3 | **Arming survives unrelated broadcasts.** A snapshot keeps `armed` / `manaSelect` / the mode pick when its `legal_actions` equal the last one's. | Done 2026-09-25 | — | R2.2.8 |
+| M2.4 | **Party column overflow.** Fixed: the party's cards shrink together to fit the most crowded row (`partyCardWidth`, a `cqh` size container per row). | Done 2026-09-25 | — | obs. |
+| M2.5 | **Card flavour in play.** `card_dict` ships `flavor`; the enlarged card (hand hover, Stack, Chronicle) shows it under the rules text. | Done 2026-09-25 | — | R4.2.5, C-53 |
+| M2.6 | **Hover-enlarge** in the hand after 150 ms, and on keyboard focus; the enlarged card never clips its text. | Done 2026-09-25 | — | R2.2.1 |
+| M2.7 | **Why-not chips.** The server names the reason per hand card (`engine.unplayable_reason`: downed, waiting, stunned, silenced, your turn only, turn spent, stance held, N short, needs {C}, no target); a seeded random-play test pins that a card has a reason exactly when no cast of it is offered. | Done 2026-09-25 | — | R2.2.2 |
+| M2.8 | **Status chips** on hero and creature cards (`serialize.status_chips`, lockdown first: stunned, silenced, pacified, sapped, hamstrung, taunted; boons: action modifiers, protected, primed). | Done 2026-09-25 | — | R2.1.5 |
+| M2.9 | **Boss state on the card.** An Enraged plaque and fury glow until death; a "swells +N" chip that pulses while the round still owes the boss a wound; a "guarded ×N" chip on a race target its guards shield. The objective banner stays up after it resolves, tinted by the outcome. | Done 2026-09-25 | — | R2.1.3 |
+| M2.10 | **Beats.** `guards_down`, `objective_complete`, `withdraw` (brass) and `wave_deployed`, `reinforcements`, `escalation` (blood) flash the banner and wash the screen; `neglect` swells the boss; the Chronicle tints all of them plus `redeploy` and `risen`. | Done 2026-09-25 | — | R2.1.2 |
+| M2.11 | **Persistent threat marks.** A blood chevron and count on each targeted hero (restamps when it changes); a redirect rings the new target ("drawn in"). Hairlines across the field were built and then rejected by the owner as clutter (2026-09-25). | Done 2026-09-25 | — | R2.1.4 |
+| M2.12 | **Entrances.** Any creature or token new since the last snapshot rises in (brass sheen for allies, crimson for enemies): tokens, raised and risen dead, waves, reinforcements, redeploys. The banner previews the next arrival (`objective.next_arrival`: "next round · 2 Raiders"). | Done 2026-09-25 | — | R2.1.7 |
+| M2.13 | **Sap and the classifier.** The mana widget shows "sapped −N" (`mana.sapped`); a forced `move` on a hero reads as interference, and corpse `control` / `consume_corpse` as summon when nothing hostile rides with them (GDD v2 §9 category list). | Done 2026-09-25 | — | R2.1.8 |
+| M2.14 | **End Turn guard.** The button names what is left ("2 cards · attack"); with something castable or the Attack unused, the first click asks and a second ends the turn. Options → Settings → Play turns the confirm off. | Done 2026-09-25 | — | R2.2.5 |
+| M2.15 | **Keyboard** (`lib/keyboard.ts`): Space/Enter Pass or End Turn (through its guard), 1–9 hand cards, A/D/M/V/S/U verbs, Enter to cast a completed payment; hand cards are `role="button"` keyboard stops. | Done 2026-09-25 | — | R2.2.4 |
+| M2.16 | **Mana payment.** The fixed pips arrive paid (an X cast's generic from the colours the hand needs least), so clicks add only X; a Max X button; a non-X cast asks for the generic colour only when paying it would leave another card in hand short. | Done 2026-09-25 | — | R2.2.6 |
+| M2.17 | **Damage preview while aiming** a basic attack: the hovered target reads "→ 4 · kills", "temp HP eats 2", "ward eats a hit", "breaks its channel". Server-side (`engine.attack_preview`), through the real `_deal_damage` on a copy. | Done 2026-09-25 | — | R2.2.7 |
+| M2.18 | **Right-click** cancels on the board and the console only. A themed tooltip (`TooltipLayer`, driven by `data-tip`) replaces `title=` across the combat UI. | Done 2026-09-25 | — | R2.2.9 |
+| M2.19 | **`damage` events carry `mode`** (`engine._damage_mode`); the client's label→mode guess (`stackModes`) is deleted. | Done 2026-09-25 | — | R2.1.6 |
+| M2.20 | **The Ultimate cell.** Once primed it takes the Skill cell (split, Skill above, Ultimate below) as §D23-9 lays out; the column is the gauge, with a reason when it can't be used; the word "action" is gone. | Done 2026-09-25 | — | C-33 |
+| M2.21 | **The turn diamond.** Ruled 2026-09-25: it stays on every sorcery and channel card, brass only while the card is castable, dim grey otherwise. | Done 2026-09-25 | — | C-34 |
+| M2.22 | **Panel clips.** Built: a held stance loops its `channel` clip (the stance card's pick, else the default) under every other clip, skipped under reduced motion. **Still open (owner):** generate clips for Soren, Vay and Ys, and Bones's ultimate and victory. | Partial | M | B-27, B-30 |
 
-*Rejected, do not re-add:* the reaction strip; the "Mitigate −N" label (removed in playtest, 2026-09-06).
+*Rejected, do not re-add:* the reaction strip; the "Mitigate −N" label (removed in playtest, 2026-09-06); dashed threat hairlines or dashed outlines on the battlefield (clutter, 2026-09-25).
 
 ## M3 · The playtest loop
 
@@ -362,7 +364,7 @@ Deferred on purpose or waiting for a need. Promote a row into a milestone when i
 
 ## Decisions needed
 
-M2.21, M3.5, M3.11, M5.11, M6.8, M6.9. Also:
+M3.5, M3.11, M5.11, M6.8, M6.9. Also:
 - whether the Deckbuilder's Import Deck should keep reading MTG-worded rules text (`CUSTOM_CARD_SCHEMA.md`) now that cards are authored in LTG's own vocabulary;
 - whether `shroud` stays in the rules at all.
 
@@ -377,6 +379,7 @@ M2.21, M3.5, M3.11, M5.11, M6.8, M6.9. Also:
 - any change to the *shape* of Defend or Mitigate (Power scaling is intended);
 - the reaction strip;
 - the "Mitigate −N" label;
+- dashed threat lines or outlines across the battlefield;
 - tuning the lockdown budget down;
 - MTG/Scryfall import in the Deckbuilder UI;
 - quests hooked to hero backstory.
@@ -387,6 +390,7 @@ M2.21, M3.5, M3.11, M5.11, M6.8, M6.9. Also:
 
 - M0 Foundations (2026-09-25): the test sandbox, CI, pinned dependencies, doc and comment debt; M0.3 awaits its first green run and branch protection.
 - **M1 Make it correct (2026-09-25):** all 37 rows fixed or ruled (see the M1 table).
+- **M2 Legibility (2026-09-25):** 21 of 22 rows done; M2.22 waits on clip generation.
 - Update 23 in full.
 - Update 24 in full.
 - The `Ref` validator (R3.3.1, partial).

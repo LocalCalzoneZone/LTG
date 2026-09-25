@@ -28,6 +28,11 @@ export interface CardView {
   // Card art, when the card has any (today: a consumable inherits its item's
   // art — §D17-4.4). "" / absent leaves the sigil placeholder.
   image?: string;
+  // The in-character flavour line (M2.5); shown only on an enlarged card.
+  flavor?: string;
+  // Hand cards only: why this card can't be cast right now ("2 short",
+  // "your turn only", "no target", "waiting"…), null when it can (M2.7).
+  unplayable_reason?: string | null;
 }
 
 export interface ManaColor {
@@ -41,6 +46,8 @@ export interface ManaBlock {
   identity_colors: Color[];
   by_color: ManaColor[];
   pending_capacity_choice: boolean;
+  // Capacity a live sap holds dark (M2.13): that many slots don't refresh.
+  sapped?: number;
 }
 
 // A keyword static, pre-labelled by the server (registry display name + rules
@@ -145,6 +152,8 @@ export interface CharacterView {
   is_channeling: boolean;
   channels_summary: ChannelSummary[];
   status_tags: string[];
+  // The card's condition chips (M2.8), lockdown first.
+  status_chips: StatusChip[];
   keywords: KeywordInfo[];
   wards: Ward[];
   // +1/+1 counters received; their stat change is already inside power/hp.
@@ -245,6 +254,8 @@ export interface ObjectiveView {
   wave: number | null;
   waves_total: number | null;
   target_id: string | null;
+  // Who comes next and when ("next round" / "round 5" / "next wave"), M2.12.
+  next_arrival: { when: string; line: string } | null;
 }
 
 // A corpse marker (§D9-1): the dead stay on the battlefield — an object, not a
@@ -307,6 +318,21 @@ export interface CreatureView {
   // One hit of at least this much breaks the enemy's channel(s).
   break_threshold: number;
   in_execute_window: boolean;
+  // Boss state on the card (M2.9): the fury; the neglect swell (+amount at
+  // the End Step of a round it goes unhurt — `hurt`: this round is answered);
+  // the race guards still shielding it from targeting (names; [] = none).
+  enraged: boolean;
+  neglect: { amount: number; hurt: boolean } | null;
+  guarded_by: string[];
+  status_chips: StatusChip[];
+}
+
+// A condition a card wears as a chip (M2.8): bane = hostile (blood), boon = vigor.
+export interface StatusChip {
+  label: string;
+  tone: "bane" | "boon";
+  tip: string;
+  pulse?: boolean; // client-side: a condition still coming due this round
 }
 
 export interface TokenView {
@@ -401,6 +427,8 @@ export interface LegalAction {
   // GameSnapshot.pending_choice.candidates.
   choice?: number | null;
   label: string;
+  // A basic attack's aiming preview (M2.17), server-computed: "→ 4 · kills".
+  preview?: string | null;
 }
 
 export interface Priority {

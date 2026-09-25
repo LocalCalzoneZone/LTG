@@ -1,11 +1,10 @@
 import { create } from "zustand";
 import { GameSocket } from "./ws";
-import type { CardView, GameSnapshot, LegalAction, TownSnapshot } from "./types";
+import type { CardView, GameSnapshot, LegalAction, LogEntry, TownSnapshot } from "./types";
 import { buildChoices, castPayment, siteCount, targetAt, type Choice, type Choices } from "./choices";
 import {
   FX_TTL,
   fxFromLog,
-  stackModes,
   syncSeq,
   type DepartKind,
   type FxEvent,
@@ -23,11 +22,11 @@ const HOLD_KINDS = new Set([
 ]);
 const HOLD_SETTLE_MS = 680;
 
-// A cast that needs the player to pay its cost by hand ({X}, or a generic
-// portion payable more than one way): the player clicks mana symbols for the
-// ENTIRE cost — coloured pips included, in any order — then hits Cast. Nothing
-// is set aside automatically: what you see in the pool is what you pay from,
-// exactly like tapping lands for a full MTG cost.
+// A cast whose payment needs the player (M2.16): an {X} cast (how big?), or a
+// generic portion where the colour spent matters to the rest of the hand. The
+// fixed part is paid up front — the coloured pips always, and an {X} cast's
+// generic too, from the colours the hand needs least — so a click only adds
+// X, or picks the generic colour that matters. The pool counts down live.
 export interface ManaSelect {
   actorId: string;
   index: number; // the cast action's legal index (the X=0 one for an {X} cast)
@@ -36,7 +35,8 @@ export interface ManaSelect {
   cost: string; // the full pip string ("{X}{U}{B}{R}") shown in the header
   colored: string[]; // the coloured pips the payment must include
   generic: number; // the fixed generic portion of the cost
-  picked: string[]; // every colour clicked so far (the whole payment)
+  picked: string[]; // the whole payment so far (the prefilled base included)
+  base: string[]; // what was paid up front (Reset returns here)
   // {X} cast: total-picks -> legal index for that X (total = coloured + generic
   // + X). Every extra pip past the base cost raises X. Null for a non-X cast.
   xByCount: Record<number, number> | null;
@@ -83,6 +83,41 @@ export function castIndexFor(ms: ManaSelect): number | null {
   return ms.picked.length === ms.maxPicks ? ms.index : null;
 }
 
+/** Coloured pips the rest of the hand asks for, by colour (the card being
+ *  cast excluded) — what a generic payment should leave alone. */
+function colourDemand(hand: CardView[], castingId: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of hand) {
+    if (c.id === castingId) continue;
+    for (const p of castPayment(c.cost, {}).colored) out[p] = (out[p] ?? 0) + 1;
+  }
+  return out;
+}
+
+/** The generic portion paid from the colours the hand needs least (then
+ *  WUBRG), and whether that choice still MATTERS: true when it had to spend
+ *  a colour another card in hand asks for. `pay` is null when the pool can't
+ *  cover it (the engine will refuse; the picker lets the player see why). */
+function autoGeneric(pool: Record<string, number>, colored: string[], generic: number,
+                     demand: Record<string, number>): { pay: string[] | null; matters: boolean } {
+  const left: Record<string, number> = { ...pool };
+  for (const c of colored) left[c] = (left[c] ?? 0) - 1;
+  const order = ["W", "U", "B", "R", "G", "C"]
+    .filter((c) => (left[c] ?? 0) > 0)
+    .sort((a, b) => (demand[a] ?? 0) - (demand[b] ?? 0));
+  const pay: string[] = [];
+  for (const c of order) {
+    while (pay.length < generic && (left[c] ?? 0) > 0) {
+      pay.push(c);
+      left[c] -= 1;
+    }
+  }
+  if (pay.length !== generic) return { pay: null, matters: true };
+  // It matters only if the payment leaves a colour short of what the hand asks.
+  const matters = pay.some((c) => (left[c] ?? 0) < (demand[c] ?? 0));
+  return { pay, matters };
+}
+
 // A target-selection in progress. Walks the candidate actions site-by-site:
 // single-target (one site), independent multi-target (e.g. Agony Warp), or a
 // stack-targeting counter (target ids look like "#<uid>").
@@ -107,6 +142,29 @@ export function armedTargetIdSet(armed: Armed | null): Set<string> {
     .map((a) => targetAt(a, armed.site))
     .filter((x): x is string => x != null);
   return new Set(ids);
+}
+
+// The Chronicle keeps at most this many lines (a long fight is a few hundred).
+const CHRONICLE_CAP = 2000;
+
+/** Merge a snapshot's oldest-first log tail into the chronicle by `seq`
+ *  (M2.1). A tail that does not continue the chronicle — its seqs end
+ *  behind it, or a seq they share names a different event — is a new
+ *  engine log (the next phase, a new fight), and replaces it. */
+export function mergeChronicle(prev: LogEntry[], tail: LogEntry[]): LogEntry[] {
+  const rows = tail.filter((e) => e.seq != null);
+  if (!rows.length) return prev;
+  if (!prev.length) return rows;
+  const last = prev[prev.length - 1].seq ?? -1;
+  const bySeq = new Map(prev.map((e) => [e.seq, e]));
+  const overlap = rows.find((e) => bySeq.has(e.seq));
+  const continues = rows[rows.length - 1].seq! >= last
+    && (overlap ? bySeq.get(overlap.seq)!.type === overlap.type : rows[0].seq! > last);
+  if (!continues) return rows;
+  const fresh = rows.filter((e) => e.seq! > last);
+  if (!fresh.length) return prev;
+  const out = [...prev, ...fresh];
+  return out.length > CHRONICLE_CAP ? out.slice(out.length - CHRONICLE_CAP) : out;
 }
 
 interface StoreState {
@@ -146,7 +204,10 @@ interface StoreState {
   fx: FxEvent[];
   departures: Record<string, DepartKind>;
   lastLogSeq: number | null;
-  _stackModes: Record<string, string>;
+  // The Chronicle (M2.1): every log line this seat has seen this fight,
+  // oldest-first, merged from each snapshot's tail by `seq` — so the whole
+  // fight can be re-read although a snapshot ships only its last lines.
+  chronicle: LogEntry[];
 
   // The resolution hold: while a snapshot's choreography is still landing
   // (fx timeline tail), the action UI stays gated — the board finishes
@@ -201,7 +262,8 @@ interface StoreState {
   beginCast: (actions: LegalAction[]) => void;
   pickMana: (color: string) => void; // add one pip to the pending cast's payment
   confirmMana: () => void; // submit the cast once the picks cover the cost
-  resetMana: () => void; // clear the picks and start the selection over
+  resetMana: () => void; // back to what was paid up front
+  maxMana: () => void; // an {X} cast: spend everything left (the largest X)
 
   openZone: (z: ZoneModal) => void;
   setInspect: (id: string | null) => void;
@@ -237,7 +299,7 @@ export const useGame = create<StoreState>((set, get) => ({
   fx: [],
   departures: {},
   lastLogSeq: null,
-  _stackModes: {},
+  chronicle: [],
   holdUntil: 0,
   _holdTick: 0,
   _snapQueue: [],
@@ -248,7 +310,7 @@ export const useGame = create<StoreState>((set, get) => ({
     const socket = new GameSocket(sessionId, (msg) => get().handle(msg));
     set({ socket, sessionId, snapshot: null, gameOver: null, inspectId: null,
           town: null, showQuestLog: false, sheetFor: null,
-          fx: [], departures: {}, lastLogSeq: null, _stackModes: {},
+          fx: [], departures: {}, lastLogSeq: null, chronicle: [],
           holdUntil: 0, _snapQueue: [], _preroll: null });
   },
 
@@ -278,7 +340,7 @@ export const useGame = create<StoreState>((set, get) => ({
           // town screen renders straight from the message. Leaving a fight
           // for town clears the battlefield and any queued beats.
           set({ town: msg as TownSnapshot, snapshot: null, gameOver: null,
-                _snapQueue: [], holdUntil: 0, fx: [], armed: null });
+                _snapQueue: [], holdUntil: 0, fx: [], armed: null, chronicle: [] });
           break;
         }
         if (get().town) set({ town: null }); // riding out: the fight takes over
@@ -330,7 +392,7 @@ export const useGame = create<StoreState>((set, get) => ({
     let fxState: Partial<StoreState> = { lastLogSeq: synced };
     let fired: FxEvent[] = [];
     if (lastSeq != null && synced === lastSeq) {
-      const r = fxFromLog(snap, lastSeq, get()._stackModes);
+      const r = fxFromLog(snap, lastSeq);
       fired = r.events;
       if (prerollMs > 0) {
         // The opening clip already fired on the old board (see
@@ -353,9 +415,17 @@ export const useGame = create<StoreState>((set, get) => ({
     } else if (synced !== lastSeq) {
       fxState = { lastLogSeq: synced, fx: [], departures: {} };
     }
-    // A fresh authoritative state ends any optimistic arming (§4.6).
-    set({ snapshot: snap, armed: null, chooseModeFor: null, manaSelect: null,
-          _stackModes: stackModes(snap), ...fxState });
+    // A fresh authoritative state ends any optimistic arming (§4.6) — unless
+    // the actor's options are exactly what they were (M2.3): a teammate
+    // claiming a seat, a disconnect or art landing broadcasts a state too,
+    // and must not reset a half-picked target or a half-paid X cast.
+    const prevActions = get().snapshot?.legal_actions;
+    const keepArming = prevActions != null
+      && JSON.stringify(prevActions) === JSON.stringify(snap.legal_actions);
+    const arming = keepArming ? {} : { armed: null, chooseModeFor: null, manaSelect: null };
+    set({ snapshot: snap, ...arming,
+          chronicle: mergeChronicle(get().chronicle, snap.log),
+          ...fxState });
     for (const e of fired) {
       const mountAt = e.delayMs ?? 0;
       if (mountAt > 0) {
@@ -402,7 +472,7 @@ export const useGame = create<StoreState>((set, get) => ({
       const lastSeq = get().lastLogSeq;
       const synced = syncSeq(lastSeq, snap.log);
       if (lastSeq != null && synced === lastSeq) {
-        const peek = fxFromLog(snap, lastSeq, get()._stackModes);
+        const peek = fxFromLog(snap, lastSeq);
         if (peek.preroll > 0) {
           const leadEvents = peek.events.filter(
             (e) => e.kind === "panel" && !(e.delayMs && e.delayMs > 0));
@@ -549,10 +619,23 @@ export const useGame = create<StoreState>((set, get) => ({
     for (const m of char.mana.by_color) pool[m.color] = m.pool;
     const pay = castPayment(card.cost, pool);
     const base = pay.colored.length + pay.generic;
+    // What the REST of the hand needs, colour by colour: the generic is paid
+    // from the least-needed colours, and the player is asked only when even
+    // those are colours another card needs (M2.16).
+    const demand = colourDemand(char.hand ?? [], card.id);
+    const generic = autoGeneric(pool, pay.colored, pay.generic, demand);
+    const open = (prefill: string[], xByCount: Record<number, number> | null, maxPicks: number) =>
+      set({
+        manaSelect: {
+          actorId: char.id, index: action.index, cardId: card.id, cardName: card.name,
+          cost: card.cost, colored: pay.colored, generic: pay.generic,
+          picked: [...prefill], base: [...prefill], xByCount, maxPicks,
+        },
+        armed: null,
+      });
     if (action.x != null) {
-      // An {X} cast ALWAYS opens the picker: the player pays the WHOLE cost by
-      // hand (coloured pips included); every pip past the base cost raises X,
-      // and Cast locks in the action matching the total.
+      // An {X} cast always asks how big: the fixed cost is paid already, and
+      // every pip past it raises X; Cast locks in the action for the total.
       const xByCount: Record<number, number> = {};
       let maxPicks = base;
       for (const a of actions) {
@@ -560,28 +643,20 @@ export const useGame = create<StoreState>((set, get) => ({
         xByCount[base + a.x] = a.index;
         maxPicks = Math.max(maxPicks, base + a.x);
       }
-      set({
-        manaSelect: {
-          actorId: char.id, index: action.index, cardId: card.id, cardName: card.name,
-          cost: card.cost, colored: pay.colored, generic: pay.generic, picked: [],
-          xByCount, maxPicks,
-        },
-        armed: null,
-      });
+      open([...pay.colored, ...(generic.pay ?? [])], xByCount, maxPicks);
       return;
     }
     if (!pay.ambiguous) {
       get().submitIndex(action.index); // one valid payment — no need to ask
       return;
     }
-    set({
-      manaSelect: {
-        actorId: char.id, index: action.index, cardId: card.id, cardName: card.name,
-        cost: card.cost, colored: pay.colored, generic: pay.generic, picked: [],
-        xByCount: null, maxPicks: base,
-      },
-      armed: null,
-    });
+    if (generic.pay && !generic.matters) {
+      // Several ways to pay, none the rest of the hand cares about: pay from
+      // the colours nobody needs, without asking.
+      get().submitIndex(action.index, [...pay.colored, ...generic.pay]);
+      return;
+    }
+    open([...pay.colored], null, base);
   },
 
   pickMana: (color) => {
@@ -606,7 +681,23 @@ export const useGame = create<StoreState>((set, get) => ({
 
   resetMana: () => {
     const ms = get().manaSelect;
-    if (ms) set({ manaSelect: { ...ms, picked: [] } });
+    if (ms) set({ manaSelect: { ...ms, picked: [...ms.base] } });
+  },
+
+  maxMana: () => {
+    // Max X (M2.16): add every pip the pool still has, up to the largest X.
+    const ms = get().manaSelect;
+    if (!ms) return;
+    const char = get().snapshot?.characters.find((c) => c.id === ms.actorId) ?? null;
+    const pool: Record<string, number> = {};
+    for (const m of char?.mana.by_color ?? []) pool[m.color] = m.pool;
+    let next = ms;
+    for (let guard = 0; guard < 64; guard++) {
+      const colour = Object.keys(pool).find((c) => canPickMana(next, c, pool));
+      if (!colour) break;
+      next = { ...next, picked: [...next.picked, colour] };
+    }
+    set({ manaSelect: next });
   },
 
   openZone: (z) => set({ zoneModal: z }),

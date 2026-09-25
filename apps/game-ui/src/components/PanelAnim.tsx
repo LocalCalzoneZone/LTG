@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { pickPanelAnim } from "../lib/fx";
 import { useGame } from "../lib/store";
 import type { PanelAnimBundle, PanelAnimation } from "../lib/types";
 
@@ -26,6 +27,11 @@ import type { PanelAnimBundle, PanelAnimation } from "../lib/types";
 // authored to open on the death clip's final frame and end on the portrait
 // pose, so it plays over the held frame and hands back to the portrait when it
 // ends (normal clear — revive does not hold).
+//
+// A held STANCE loops its `channel` clip for as long as it is held (§A-7,
+// roadmap M2.22): the stance card's own pick, else the default channel clip.
+// The loop is the floor under everything — any other clip plays over it and
+// the loop resumes when that clip ends. Skipped under prefers-reduced-motion.
 
 const PRIORITY: Record<string, number> = { hit: 0, death: 3, ultimate: 2, revive: 3, victory: 3 };
 const prio = (a: PanelAnimation) => PRIORITY[a.trigger] ?? 1;
@@ -41,13 +47,21 @@ interface Props {
   charId: string;
   bundle: PanelAnimBundle | null | undefined;
   incapacitated: boolean;
+  // The held stance's card id (its channel clip loops), or null.
+  stanceCardId?: string | null;
 }
 
 const NONE: PanelAnimation[] = [];
 
-export function PanelAnim({ charId, bundle, incapacitated }: Props) {
+export function PanelAnim({ charId, bundle, incapacitated, stanceCardId }: Props) {
   const anims = bundle?.animations ?? NONE;
   const [playing, setPlaying] = useState<Playing | null>(null);
+  const reducedMotion = typeof window !== "undefined"
+    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const loopClip = stanceCardId && !incapacitated && !reducedMotion
+    ? pickPanelAnim(bundle, "channel", { cardId: stanceCardId })
+    : undefined;
+  const looping = !!loopClip && !playing;
   const seen = useRef<Set<string>>(new Set());
   const videos = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imgTimer = useRef<number | null>(null);
@@ -127,6 +141,24 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
     return undefined;
   }, [playing]);
 
+  // The stance loop (§A-7): runs whenever nothing else is playing. Keyed by
+  // the clip's id (the bundle object is new with every snapshot).
+  const loopId = loopClip && isVideo(loopClip) ? loopClip.id : null;
+  const loopSpeed = loopClip?.speed ?? 1;
+  useEffect(() => {
+    if (!looping || !loopId) return;
+    const el = videos.current.get(loopId);
+    if (!el) return;
+    el.loop = true;
+    el.playbackRate = loopSpeed > 0 ? loopSpeed : 1;
+    el.onended = null;
+    void el.play().catch(() => undefined);
+    return () => {
+      el.loop = false;
+      el.pause();
+    };
+  }, [looping, loopId, loopSpeed]);
+
   // A revived hero drops the held death frame. With a revive clip authored,
   // the drop waits for the revive pulse to replace the frame instead — an
   // instant swap to the portrait would jump the pose the clip is about to
@@ -172,12 +204,17 @@ export function PanelAnim({ charId, bundle, incapacitated }: Props) {
           preload="auto"
           aria-hidden
           className={media}
-          style={{ visibility: playing?.anim.id === a.id ? "visible" : "hidden" }}
+          style={{ visibility: playing?.anim.id === a.id || (looping && loopClip?.id === a.id)
+            ? "visible" : "hidden" }}
         />
       ))}
       {playing && !isVideo(playing.anim) && (
         // Re-keyed per firing so the animated image restarts from its first frame.
         <img key={playing.key} src={playing.anim.file} alt="" aria-hidden className={media} />
+      )}
+      {looping && loopClip && !isVideo(loopClip) && (
+        // An animated image loops by itself.
+        <img key={`loop-${loopClip.id}`} src={loopClip.file} alt="" aria-hidden className={media} />
       )}
     </>
   );

@@ -31,7 +31,7 @@ import itertools
 import math
 import random
 import zlib
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ltg_core.schema import (
     ACTION_MODIFIERS,
@@ -6898,6 +6898,20 @@ def _apply_amplify(st: GameState, source_obj, amount: int, damage_kind: str,
     return amount
 
 
+def _damage_mode(damage_kind: str, attack_mode: Optional[str]) -> str:
+    """The `mode` a `damage` event carries (roadmap M2.19), in the stack rows'
+    vocabulary (serialize.action_mode): "melee attack" / "ranged attack",
+    "spell", "combat ability" for the physical lane's abilities, "ability"
+    for a trigger's, "fight". The combat FX pick slash, arrow or burst by it."""
+    if damage_kind == "attack":
+        return f"{attack_mode if attack_mode in ('melee', 'ranged') else 'melee'} attack"
+    if damage_kind in ("activated", "ability"):
+        return "combat ability"
+    if damage_kind == "triggered":
+        return "ability"
+    return damage_kind  # "spell" / "fight"
+
+
 def _deal_damage(st: GameState, target, amount: int, source: str = "", source_obj=None,
                  damage_kind: str = "spell", attack_mode: Optional[str] = None,
                  amplified: bool = False) -> int:
@@ -7002,7 +7016,8 @@ def _deal_damage(st: GameState, target, amount: int, source: str = "", source_ob
         _log(st, "damage", f"{target.name} takes {dealt} damage (HP {target.hp}, "
              f"eff {target.effective_hp}).", target=_tid(target), amount=dealt,
              hp=target.hp, source=source,
-             source_id=getattr(source_obj, "id", None))
+             source_id=getattr(source_obj, "id", None),
+             mode=_damage_mode(damage_kind, attack_mode))
 
     # On-damage triggers key off the blow that connected — temp HP soaked plus HP lost
     # (so a shielded hit still feeds lifelink/deathtouch; identical to before when no
@@ -8428,6 +8443,77 @@ def cast_target_labels(state: GameState, action: Action) -> List[Optional[str]]:
         effects = _mode_specs(card)[0][1]
     return [_site_label(key, effects, card)
             for key, *_ in _target_sites(effects, card)]
+
+
+def unplayable_reason(state: GameState, actor_id: str, card: Card) -> Optional[str]:
+    """Why `card` in `actor_id`'s hand is not castable right now, as a short
+    chip for the hand (roadmap M2.7), or None when it is (or no reason
+    applies: a pick or a mana choice is open). A read-only query that walks
+    the same gates `_legal_main` / `_legal_react` / `_cast_actions` apply,
+    in the order a player would want to hear them."""
+    actor = state.character(actor_id)
+    if actor is None:
+        return None
+    if not actor.alive:
+        return "downed"
+    if state.pending_choice is not None or state.settle:
+        return None
+    if state.priority != actor.id or state.phase == "capacity":
+        return "waiting"
+    if not state.stack and actor.stunned > 0:
+        return "stunned"     # a stunned turn offers only End Turn (§F-3)
+    if _silenced_for(actor, card):
+        return "silenced"
+    if card.timing in _SORCERY_SPEED:
+        if state.stack:
+            return "your turn only"
+        if not _proactive_open(actor, "cast"):
+            return "turn spent"
+        if _card_has_stance(card) and _active_stance(actor) is not None:
+            return "stance held"
+    if not _can_pay(actor, card):
+        short = _cost_total(card) - len(actor.pool)
+        if short > 0:
+            return f"{short} short"
+        missing = [c.value for c, n in card.cost.colors.items()
+                   if actor.pool.count(c.value) < n]
+        return "needs " + "".join("{%s}" % c for c in missing)
+    if not _cast_actions(state, actor, card):
+        return "no target"
+    return None
+
+
+def attack_preview(state: GameState, action: Action) -> Optional[Dict[str, Any]]:
+    """What a basic attack would do to its target if it resolved now, unanswered
+    (roadmap M2.17): ``{"damage", "soaked", "prevented", "kills", "breaks"}``.
+    A read-only query — each hit runs through the real `_deal_damage` on a
+    throwaway copy, so wards, protection, temp HP, a primed amplify,
+    indestructible and deathtouch all count exactly as they would. None for
+    anything but an attack."""
+    if action.kind != "attack":
+        return None
+    sim = copy.deepcopy(state)
+    actor = sim.character(action.actor_id)
+    target = sim.combatant(action.target_id) if action.target_id else None
+    if actor is None or target is None:
+        return None
+    sim.pending_break = []
+    before_hp, before_temp = target.hp, max(0, target.temp_mod)
+    prevented = 0
+    for _ in range(2 if _has_kw(actor, "double_strike") else 1):
+        mark = len(sim.log)
+        _deal_damage(sim, target, actor.current_power, source="Basic Attack",
+                     source_obj=actor, damage_kind="attack",
+                     attack_mode=actor.attack_mode)
+        if any(e.type in ("prevented", "protected") for e in sim.log[mark:]):
+            prevented += 1
+    return {
+        "damage": max(0, before_hp - target.hp),
+        "soaked": max(0, before_temp - max(0, target.temp_mod)),
+        "prevented": prevented,
+        "kills": target.effective_hp <= 0 or not getattr(target, "alive", True),
+        "breaks": target.id in sim.pending_break,
+    }
 
 
 # --------------------------------------------------------------------------- #

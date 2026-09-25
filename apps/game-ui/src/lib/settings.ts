@@ -32,3 +32,24 @@ export function inviteUrl(sessionId: string): string {
   }
   return `${location.protocol}//${host}/?s=${encodeURIComponent(sessionId)}`;
 }
+
+// End Turn guard (roadmap M2.14): End Turn asks once more while a card is
+// still castable or the Attack still unused. On unless the player turns it off.
+const CONFIRM_END_KEY = "ltg_confirm_end_turn";
+
+export function getConfirmEndTurn(): boolean {
+  try {
+    return localStorage.getItem(CONFIRM_END_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setConfirmEndTurn(on: boolean) {
+  try {
+    if (on) localStorage.removeItem(CONFIRM_END_KEY);
+    else localStorage.setItem(CONFIRM_END_KEY, "off");
+  } catch {
+    /* storage blocked: the default (on) stands */
+  }
+}

@@ -16,7 +16,15 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from ltg_combat.engine import _ordered, cast_target_labels, legal_actions, settle
+from ltg_combat.engine import (
+    _objective_shielded,
+    _ordered,
+    attack_preview,
+    cast_target_labels,
+    legal_actions,
+    settle,
+    unplayable_reason,
+)
 from ltg_combat.serialize import (
     _character_dict,
     _corpse_dict,
@@ -30,13 +38,17 @@ from ltg_combat.serialize import (
     phase_label,
     phase_step,
     serialize_actions,
+    status_chips,
     veiled_intent,
     veiled_intents,
 )
 from ltg_combat.state import Action, GameState
 from ltg_core.schema import KEYWORDS
 
-LOG_TAIL = 60  # how many recent log entries to ship (newest-first)
+# How many recent log entries each snapshot ships, oldest-first (M2.1). The
+# client merges snapshots by `seq` into the whole fight's chronicle, so the tail
+# only has to cover what one broadcast can add.
+LOG_TAIL = 60
 
 # Enemy intents are hidden from the player-facing log: the engine still declares
 # them (they drive targeting, stun, strip, etc.), we just don't surface the
@@ -192,6 +204,9 @@ def _mana_block(char_dict: Dict[str, Any], raw_char, pending_capacity: bool) -> 
             for m in char_dict["mana"]
         ],
         "pending_capacity_choice": pending_capacity,
+        # Capacity a live `sap` holds dark (M2.13): that many slots don't
+        # refresh until it lifts. 0 when unsapped.
+        "sapped": max(0, -getattr(raw_char, "capacity_mod", 0)),
     }
 
 
@@ -225,6 +240,8 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "wards": _wards(char),
         "channels_summary": cd["channels"],  # id/name/target/text per held channel
         "status_tags": cd["status_tags"],
+        # The card's condition chips (M2.8): silenced, sapped, taunted …
+        "status_chips": status_chips(view, char),
         "keywords": _keyword_list(char),
         # +1/+1 counters received (their stat change is already inside power/hp).
         "counters": getattr(char, "counters", 0),
@@ -258,8 +275,10 @@ def _character_snapshot(view: GameState, char, controlled: bool,
         "is_active_focusable": controlled and char.alive,
         "controlled": controlled,
         "is_priority_holder": is_holder,
-        # Hidden information: hand only for controlled characters.
-        "hand": cd["hand"] if controlled else None,
+        # Hidden information: hand only for controlled characters. Each card
+        # carries why it can't be cast right now, if it can't (M2.7).
+        "hand": [{**c, "unplayable_reason": unplayable_reason(view, char.id, card)}
+                 for c, card in zip(cd["hand"], char.hand)] if controlled else None,
         "hand_count": len(char.hand),
         "library_count": len(char.library),
         "graveyard": [card_dict(c) for c in char.graveyard] if controlled else None,
@@ -337,7 +356,43 @@ def _creature_snapshot(view: GameState, enemy,
         "channels": [{"name": ch.name} for ch in enemy.channels],
         "break_threshold": -(-enemy.max_hp // 4),  # ceil(max_hp / 4)
         "in_execute_window": bool(enemy.is_boss and enemy.in_execute_window),
+        # Boss state on the card (M2.9): the fury, the neglect swell (+N at the
+        # End Step of a round it goes unhurt — `hurt` says whether this round
+        # has already been answered), and the race guards shielding it.
+        "enraged": bool(enemy.enraged),
+        "neglect": ({"amount": enemy.neglect, "hurt": bool(enemy.hurt_this_round)}
+                    if enemy.is_boss and enemy.neglect > 0 else None),
+        "guarded_by": _guarded_by(view, enemy),
+        "status_chips": status_chips(view, enemy),
     }
+
+
+def _attack_preview_line(p: Optional[Dict[str, Any]]) -> Optional[str]:
+    """The target's hover line while a basic attack is aimed (M2.17):
+    "→ 4 · kills", "→ 3 · temp HP eats 2", "warded"."""
+    if p is None:
+        return None
+    if p["prevented"] and not p["damage"] and not p["soaked"]:
+        return "warded — no damage"
+    parts = [f"→ {p['damage']}"]
+    if p["soaked"]:
+        parts.append(f"temp HP eats {p['soaked']}")
+    if p["prevented"]:
+        parts.append("ward eats a hit")
+    if p["breaks"]:
+        parts.append("breaks its channel")
+    if p["kills"]:
+        parts.append("kills")
+    return " · ".join(parts)
+
+
+def _guarded_by(view: GameState, enemy) -> List[str]:
+    """The names of the race guards still shielding `enemy` from targeting
+    (§D12-1 guards), or [] when nothing shields it."""
+    if not _objective_shielded(view, enemy.id):
+        return []
+    return [g.name for g in (view.enemy(gid) for gid in view.objective.guards)
+            if g is not None]
 
 
 def _token_snapshot(view: GameState, token,
@@ -417,6 +472,9 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
             # Per-site effect labels so the targeting popup names each pick (e.g.
             # Agony Warp's two wounds) rather than "target 1 / target 2".
             entry["target_labels"] = cast_target_labels(view, act)
+            # The aiming preview for a basic attack (M2.17): "→ 4 · kills".
+            if act.kind == "attack":
+                entry["preview"] = _attack_preview_line(attack_preview(view, act))
 
     # A pending card pick's candidates, as FULL cards (cost/text/type), so the
     # client can show the whole card instead of a name list. Hidden-information
@@ -482,7 +540,7 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
     visible = [(i, e) for i, e in enumerate(stored.log)
                if e.type not in HIDDEN_LOG_TYPES]
     log = []
-    for i, e in reversed(visible[-LOG_TAIL:]):  # newest-first tail
+    for i, e in visible[-LOG_TAIL:]:  # oldest-first tail
         msg, data, private = _seat_log_line(view, e, controlled_ids)
         log.append({"seq": i, "type": e.type, "msg": msg, "data": data,
                     "card": None if private else _log_card(e)})

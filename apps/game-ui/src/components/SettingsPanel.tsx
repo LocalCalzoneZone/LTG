@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { applyUpdate, checkUpdate, UpdateStatus } from "../lib/api";
-import { getHostAddress, inviteUrl, setHostAddress } from "../lib/settings";
+import {
+  getConfirmEndTurn, getHostAddress, inviteUrl, setConfirmEndTurn, setHostAddress,
+} from "../lib/settings";
 
 const field =
   "border border-line bg-ink-0 px-2 py-1.5 text-sm font-light focus:border-brass/60 focus:outline-none";
@@ -51,8 +53,38 @@ export function SettingsPanel() {
         </div>
       </section>
 
+      <PlaySection />
+
       <UpdateSection />
     </div>
+  );
+}
+
+// Play preferences (per browser).
+function PlaySection() {
+  const [confirmEnd, setConfirmEnd] = useState(getConfirmEndTurn());
+  return (
+    <section className="border border-line bg-black/25 p-3">
+      <div className="caps-label mb-3 text-[10px] tracking-[0.25em] text-brass">
+        Play
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-[12px] font-light text-parch">
+        <input
+          type="checkbox"
+          className="accent-[#c9b37e]"
+          checked={confirmEnd}
+          onChange={(e) => {
+            setConfirmEnd(e.target.checked);
+            setConfirmEndTurn(e.target.checked);
+          }}
+        />
+        Confirm End Turn while a card is castable or the Attack is unused
+      </label>
+      <div className="mt-1.5 max-w-[560px] text-[11px] font-light text-dimmed">
+        End Turn always shows what you would leave behind; with this on, the
+        first click asks and a second click ends the turn.
+      </div>
+    </section>
   );
 }
 
