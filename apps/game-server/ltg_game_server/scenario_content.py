@@ -287,7 +287,13 @@ def save_town(raw: Dict[str, Any], town_id: Optional[str] = None,
     already holds is left alone (the book is append-only in play)."""
     from . import world
     cleaned = validate_town(raw)
-    tid = town_id or _slug(cleaned["name"]) or "town"
+    if town_id:
+        tid = town_id
+    else:
+        # A new town never takes an existing town's (or worldbook entry's) id:
+        # a `new` hook whose seed repeats a name used to overwrite it (M1.16).
+        taken = set(_town_registry()) | {e["town_id"] for e in world.list_entries()}
+        tid = content.fresh_id(_slug(cleaned["name"]) or "town", taken)
     _write(TOWNS_DIR, tid, cleaned)
     hidden = _hidden(TOWN_HIDDEN_FILE)
     if tid in hidden:
@@ -986,7 +992,8 @@ def validate_interlude(raw: Dict[str, Any], town: Dict[str, Any], town_id: str,
     least one stays, at least one leaves); `neighbour` hooks name a worldbook
     town; `new` hooks carry a seed (name + one line) and a known anchor; every
     hook has a narration, a bridge and days; foreshadow exchanges name NPCs
-    present in the interlude town (they are merged into the topics so the
+    present in the interlude town who have NO interlude tree (they are merged
+    into the topics, which only a tree-less NPC offers, so the
     party has already heard every hook before the rest screen); the dialogue
     portion passes `validate_materialization` with no quests and no quest
     hooks (payment hooks allowed)."""
@@ -1000,6 +1007,16 @@ def validate_interlude(raw: Dict[str, Any], town: Dict[str, Any], town_id: str,
         raise ValueError(f"exactly {HOOK_COUNT} hooks are required — got "
                          f"{len(hooks_raw) if isinstance(hooks_raw, list) else 'none'}")
     known = set(world_towns or ())
+    # An NPC with an authored interlude tree never shows their topics (the
+    # topics live in `_flavor_tree`, used only for NPCs WITHOUT a tree), so a
+    # hook foreshadowed there is never heard (roadmap M1.5; the full fix, topics
+    # inside a tree, is M5.3).
+    tree_npcs: set = set()
+    dialogues_raw = inter_raw.get("dialogues")
+    for key in (dialogues_raw.keys() if isinstance(dialogues_raw, dict) else ()):
+        found = _resolve_npc(town, str(key))
+        if found is not None:
+            tree_npcs.add(found[1]["id"])
     hooks: List[Dict[str, Any]] = []
     seen_ids: set = set()
     for i, h in enumerate(hooks_raw, start=1):
@@ -1052,6 +1069,11 @@ def validate_interlude(raw: Dict[str, Any], town: Dict[str, Any], town_id: str,
             found = _resolve_npc(town, str(f.get("npc_id") or f.get("npc") or ""))
             if found is None:
                 raise ValueError(f"hook {i}: foreshadow names '{f.get('npc_id')}', who is not in town")
+            if found[1]["id"] in tree_npcs:
+                raise ValueError(
+                    f"hook {i}: foreshadow names '{found[1]['name']}', who has an "
+                    "interlude dialogue tree — the party never sees that NPC's "
+                    "topics. Give the exchange to an NPC without a tree")
             ask = str(f.get("ask") or "").strip()
             reply = str(f.get("reply") or "").strip()
             if not ask or not reply:

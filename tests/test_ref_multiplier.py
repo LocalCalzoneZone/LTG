@@ -145,3 +145,18 @@ def test_set_reference_card_text():
     assert render_effects(c.effects, c.targets) == (
         "Choose an enemy: they have their maximum HP noted as R1, then are destroyed. "
         "Restore HP equal to R1 to an ally.")
+
+
+def test_base_power_is_printed_power_without_counters():
+    """Roadmap M1.31 (ruled 2026-09-25): +1/+1 counters raise `power` but are
+    not printed Power, so `*_base_power` leaves them out."""
+    from ltg_combat.engine import _r_counters
+    from ltg_combat.scenario import state_from_dict
+    from ltg_core.schema import Counters, t_self
+    st = state_from_dict({"party": [{"id": "p", "name": "p", "hp": 20, "power": 3,
+                                     "hand_size": 0, "identity": ["U"], "library": []}],
+                          "enemies": [{"id": "e", "name": "e", "hp": 5, "level": 1}]})
+    p = st.character("p")
+    _r_counters(st, None, Counters(power=2, toughness=2, target=t_self()), p, {})
+    assert p.power == 5
+    assert _value(Ref(ref="caster_base_power"), {"caster_obj": p}) == 3

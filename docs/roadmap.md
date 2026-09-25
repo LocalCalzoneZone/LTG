@@ -1,6 +1,6 @@
 # LTG roadmap — milestones & objectives
 
-**As of 2026-09-24** (commit `a2cce25`). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
+**As of 2026-09-25** (M1 done on branch `Milestone-M1`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
 
 - the design history (v1 GDD, Updates 01–24);
 - the 2026-09-02 review briefs;
@@ -40,7 +40,7 @@ Proposals that come from no design document are marked *Proposed*. They need a d
 | | Milestone | Why | Objectives |
 |---|---|---|---|
 | **M0** | Foundations | Make the project cheap and safe to work on: docs, tests, CI, environment | 6 |
-| **M1** | Make it correct | Verified bugs: two crash or loop, several would spoil the campaign playtest, and the rest are rules and session faults. Most are S. | 37 |
+| **M1** | Make it correct | **Done 2026-09-25**: every row fixed or ruled, each with a test. | 37 |
 | **M2** | Legibility | The board explains itself: status, threat, boss state, beats, hand. The biggest felt improvement per hour. | 22 |
 | **M3** | The playtest loop | Make the RPG layer cheap to test, then run the playtests that are owed | 12 |
 | **M4** | Generation pipeline | Faster, cheaper, sturdier, less samey generation, with gates that match the prompts | 18 |
@@ -71,69 +71,69 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 
 ## M1 · Make it correct
 
-*Done when:* every row is fixed or ruled on, and each fix lands with a test. M1.1–M1.3 come first because they crash or break play outright. M1.4–M1.9 gate the campaign playtest (M3.6).
+*Status: done 2026-09-25.* *Done when:* every row is fixed or ruled on, and each fix lands with a test. M1.1–M1.3 come first because they crash or break play outright. M1.4–M1.9 gate the campaign playtest (M3.6).
 
 **Crashes and runaway loops**
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
 | M1.1 | **Python 3.11+ crash.** Fixed: `engine._move_shuffle` seeds with the str `f"{rng_seed}:shuffle:{n}"`, pinned by `test_seeded_shuffle_is_pinned_and_runs_on_every_python`; CI runs 3.14 (M0.3). Seeded in-game shuffle orders changed once. | Done 2026-09-25 | — | arch notes |
-| M1.2 | **Unlimited Skill.** A Skill that carries `modify_action refresh_skill` on its caster can be re-used without limit in one main phase: `_proactive_open` keeps the taken mode open and the refresh clears `skill_used`. Reproduction: the local Vay loadout ("Perfect note") vs `the_sootfall_adit__phase2`, seed 99, 4,000 actions in round 2. | Bug | S | arch notes |
-| M1.3 | **`python -m ltg_combat validate` raises `AttributeError`.** `engine.run` still reads the removed `Character.archetype`. Fix it or retire the stale `run()`. | Bug | S | arch notes |
+| M1.2 | **Unlimited Skill.** Fixed: the Skill is offered once per turn (`"skill" not in proactive_modes`), so a refreshed Skill comes back for a later turn; pinned by `test_a_self_refreshing_skill_is_used_once_per_turn_not_looped`. | Done 2026-09-25 | — | arch notes |
+| M1.3 | **`python -m ltg_combat validate` crashed.** Fixed: the stale `engine.run` is retired (the engine does no I/O); the CLI prints the report itself (`tests/test_combat_cli.py`). | Done 2026-09-25 | — | arch notes |
 
 **Campaign and scenario flow**
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M1.4 | **Phase III objectives are vetoed.** `content.save_adventure` still rejects every Phase III objective that §D23-5 allows, so every generated boss-phase objective is repaired away and the feature has never run. Delete the pre-check and add a `save_adventure` test. | Bug | S | C-22; §D23-5 |
-| M1.5 | **Unreachable foreshadow topics.** An NPC who also has an interlude tree never offers them, so the party hasn't "already heard" that hook. Short-term: allow foreshadow only on NPCs without a tree. Full fix: M5.3. | Bug | S | C-45; §D24-5.1 |
-| M1.6 | **The hook's bridge never reaches Act I.** It reaches the arc writer but not the act writer who writes Act I's arrival. Pass the chosen hook to `generate_act` on a continuation. | Bug | S | C-44; §D24-5.3 |
-| M1.7 | **In-session Continue skips the live-identity refresh** (`refresh_instance` runs only on load). While there, rule on the refresh overwriting **attack mode, row and the keyword**. The keyword is priced in the points-buy, so changing it silently changes the build's cost. | Bug / Decide | S | C-47; §D24-6; GDD v2 §14 notes |
-| M1.8 | **Unlocked worker threads.** The interlude worker (`InterludeJobRunner._generate_locked`) mutates the session from a thread without the lock. `_materialize_task`, `_continue_task`, `generate_sync` and the art painters do the same (the general fix is M8.4). | Bug | S–M | C-65; R3.1.5 |
-| M1.9 | **A failed act materialization wedges the town** until a reload. Add a `retry_materialize` verb, an `act_start` save before materializing, and a player-facing message. | Not built | S–M | R3.1.6 |
-| M1.10 | **Rest isn't guaranteed.** The act validator doesn't require an innkeeper `rest` choice, so an act can leave the party no way to rest. | Bug | S | GDD v2 §14 notes |
-| M1.11 | **Reward items vanish silently.** `assign_reward` checks room against the pre-adventure copies, items land on the adventure's copies, and the `ValueError` is swallowed. | Bug | S | R4.3.6; GDD v2 §14 notes |
-| M1.12 | **Unspent creation points are lost in campaigns.** A hero built under 70 points loses the difference: `ScenarioRun.banked` starts at 0, while a lone adventure banks it. | Bug / Decide | S | GDD v2 §14 notes |
-| M1.13 | **`town:` lore gates never open.** `generate_act` passes the composed town's id, which has been popped, so it arrives empty. | Bug | S | GDD v2 §14 notes |
-| M1.14 | **The arc writer at a campaign's first scenario** gets only a roster line: no briefs, situations or world block. §D24-7.6 says all heroes' briefs at scenario start. | Bug | S | generation notes |
+| M1.4 | **Phase III objectives were vetoed.** Fixed: the `save_adventure` pre-check is gone; `_validate_adventure`'s §D23-5 shape check decides (`test_save_adventure_keeps_a_modifier_objective_on_phase_three`). | Done 2026-09-25 | — | C-22; §D23-5 |
+| M1.5 | **Unreachable foreshadow topics.** Fixed (short-term): `validate_interlude` refuses a foreshadow on an NPC with an interlude tree, and the planner prompt says so. Full fix: M5.3. | Done 2026-09-25 | — | C-45; §D24-5.1 |
+| M1.6 | **The hook's bridge reaches Act I.** Fixed: a continuation's Act I writer gets `_hook_block` (`hook=` on `generate_act`). Also fixed: `chosen_hook()` dropped the player's note on a proposed hook, so neither writer saw it. | Done 2026-09-25 | — | C-44; §D24-5.3 |
+| M1.7 | **Live identity at an in-session Continue.** Fixed: `content.refresh_party` runs on load and at Continue. Ruled 2026-09-25: keyword and attack mode stay as the campaign bought them (`BUILD_LOCKED_FIELDS`); a differing file gets a splash notice. | Done 2026-09-25 | — | C-47; §D24-6; GDD v2 §14 notes |
+| M1.8 | **Worker threads.** Fixed: `jobs.call_locked` runs every read and write of the session under its lock on the event loop; the act writer, the road ahead, the adventure and interlude jobs and the art painters use it, and only the LLM calls run unlocked (`tests/test_worker_locking.py`). `load_save` / `continue_run` stay synchronous (M8.4). | Done 2026-09-25 | — | C-65; R3.1.5 |
+| M1.9 | **A failed materialization no longer wedges the town.** The splash (and a banner) offer *Try again* (`retry_materialize`), which re-runs the act or, when a continuation never began, the whole road ahead; a failure also writes an act-less `act_start` save so a reload retries. Any exception counts. | Done 2026-09-25 | — | R3.1.6 |
+| M1.10 | **Rest is guaranteed.** Fixed at runtime rather than in the validator: when no tree at the inn offers `rest` this act, the inn's first resident gets "Take a room." (`ScenarioRun._with_room`). | Done 2026-09-25 | — | GDD v2 §14 notes |
+| M1.11 | **Reward items no longer vanish.** Room is checked on the copies the items land on (`_gear_loadouts`: the live adventure's while it is up), and a plan that no longer fits is refused whole, naming who is full. | Done 2026-09-25 | — | R4.3.6; GDD v2 §14 notes |
+| M1.12 | **Creation leftovers are banked.** Ruled 2026-09-25: a campaign banks the points a hero was built without (`_creation_leftover`), as a lone adventure does. | Done 2026-09-25 | — | GDD v2 §14 notes |
+| M1.13 | **`town:` lore gates.** Fixed: the run passes its `town_id` to `generate_act` (the composed town carries no id). | Done 2026-09-25 | — | GDD v2 §14 notes |
+| M1.14 | **The first arc writer.** Fixed: Town + New passes `opening_party_state` (briefs, default situations) and the world block. | Done 2026-09-25 | — | generation notes |
 
 **Data safety**
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M1.15 | **Run data leaks into tracked `content/`.** Quest-accept adventures (`run_only=True`) go through `_write_content`, and 13 are already committed. A `new` hook's town, its worldbook entry and the reverse edges also edit tracked files. This dirties the tree and blocks the brother's in-app update. Write run content to the run's store (or `content_local/`, M8.8), and remove the 13 files. | Bug | M | B-39, C-62; §D17-3.3 |
-| M1.16 | **Name collisions overwrite.** `save_encounter`, `save_adventure` and `save_town` key files by the slug of the name, and a `new` hook whose seed repeats a town name overwrites that town. | Bug | S | generation notes |
+| M1.15 | **Run content in `content/`.** Ruled 2026-09-25: play-time generated content (run adventures and their art, campaign towns, worldbook edits) stays in tracked `content/`, because the owner generates and commits it and the keyless install only pulls. The 13 old `run_only` adventures, their phase files and art were deleted. | Done 2026-09-25 | — | B-39, C-62; §D17-3.3 |
+| M1.16 | **Name collisions.** Fixed: a NEW encounter, adventure (and its phase ids) or town takes the next free id (`content.fresh_id`); an explicit id still edits in place. | Done 2026-09-25 | — | generation notes |
 
 **Rules engine** (verified in code; GDD v2 records the current behaviour)
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M1.17 | **One Mitigate per stack item.** A second hero's Mitigate on the same swipe silently replaces the first, and the first guard's once-per-round use is wasted. §L-5 says each struck character may self-Mitigate. Either support several, or stop offering the second. | Bug / Decide | S–M | §L-5; `StackItem.mitigate_by` |
-| M1.18 | **Taunt from behind the wall** makes melee swings fizzle or deflect instead of landing on the taunter; §R-11 says the taunted hit lands regardless of row. `test_taunt.py` only uses a ranged enemy. | Bug / Decide | S–M | §R-11 |
-| M1.19 | **Curve-up colours** are read from `starting_mana`, not the character's colours, so a colour missing from starting mana can never be locked. A `choice` ramp or ritual auto-resolves to the first colour. | Bug | S | §4.4 |
-| M1.20 | **Sap and channel reservation overlap instead of stacking**: pool = min(cap − reserved, cap − sap). | Bug | S | code ruling 2026-08-21 |
-| M1.21 | **Countering a basic swing pays about double gauge**: `_denied_value` adds both `attack_power` and the swing's `DealDamage`. | Bug | S | gauge rework |
-| M1.22 | **T-27 caps live tokens at 2 per creator.** That silently clips the party-size Enrage token scaling (§D18-2) and race escalation waves at party sizes 3–4. Decide whether Enrage bypasses the cap. | Bug / Decide | S | register notes |
-| M1.23 | **Enemy rules skipped for want of a target.** A ranged enemy in Front can't aim any component at a hero, spells included, although §D23-3 says spells are unaffected. More generally, `_try_declare_component` skips any rule whose non-`self` target rule finds nobody, even when its verbs are untargeted (a `mode: all` blast). | Bug | S | §D23-3; GDD v2 §9 notes |
-| M1.24 | **Easy bosses still get two intents.** `build_state_from_loadouts` passes `scenario.get("difficulty") or "standard"`, and neither `encounter_for` nor `scenario_from_detail` carries the difficulty. So every boss is stamped `double_intent`, including on Easy. | Bug | S | GDD v2 §9 notes; T-54 |
-| M1.25 | **Enemy lockdown mostly expires before it bites.** Enemies act after the party, so these are gone before the hero's next turn:<br>• a one-shot `prevent` (Silence / Pacify) ignores its duration and clears at End Step;<br>• `this_turn` modifiers and sap end at End Step;<br>• a taunt on a hero clears at the next Upkeep.<br>A one-shot `prevent` on an enemy also never cancels its declared intent. The owner wants *more* control pressure, so rule on the intended durations. | Bug / Decide | M | GDD v2 §9 notes; lockdown ruling 2026-08-21 |
-| M1.26 | **Smaller enemy-rule findings:**<br>• a wound that drops a boss into its window doesn't enrage it until the next HP change;<br>• a `post_enrage` rule on a minion is never eligible (the comment says "ignored");<br>• neglect applies to any enemy with `neglect > 0`, from any HP drop, not just party-sourced ones;<br>• enemy-raised undead are permanent;<br>• `survive` can't be won early while reinforcements wait in reserve (§D12-1.2 says it can);<br>• the 2× minimum-bodies rule isn't checked on hand-authored standalone encounters. | Bug / Decide | S each | GDD v2 §9, §12 notes |
-| M1.27 | **Four rulings needed** on behaviour the canon records as-is:<br>(a) regen ticks and mana paid for the Skill earn no gauge;<br>(b) amplify applies after Mitigate ((h−X)×m), contrary to its docstring;<br>(c) consumables stack as kind `ability`, so an `activated`-filter counter can't answer them;<br>(d) enemies never aim at, or get walled by, ordinary ally tokens. | Decide | S each | GDD v2 §4 notes |
-| M1.28 | **Stale lines worth a ruling** rather than a silent code change:<br>• a bounced enemy returns to the row it was bounced *from*;<br>• released channel mana returns straight to the pool, not as a stack trigger;<br>• first strike is a plain basic attack in any Enemies-step window;<br>• bosses get two intents from round 1 on standard/hard (T-54, code-only). | Decide | S | GDD v2 notes; A-49 |
-| M1.29 | **Small fixes:**<br>• the `infect` gloss predates §D22-2 (A-42);<br>• `serialize._mitigate_value` lacks the engine's minimum of 1 (R3.3.3);<br>• `_DAMAGE_KINDS` and the llm taunt gate list `"drain"`, which isn't a verb;<br>• the sheet's "effective level" isn't the one budgets use. | Bug | S | A-42; arch and §14 notes |
-| M1.30 | **Enemy deathtouch does nothing.** `_deal_damage` executes only `EnemyState` victims, yet the prompt prices deathtouch for enemies (L3 / 4). Make it work on heroes and party tokens, or drop it from the enemy table. | Bug / Decide | S | GDD v2 §7 notes |
-| M1.31 | **More rulings from the §5–§11 review:**<br>• `indestructible` dies to destroy and deathtouch, and ignores its 1-HP floor against life loss and poison;<br>• `*_base_power` refs include +1/+1 counters, though the comment says otherwise;<br>• a hero channel watching `spell_cast` with `who: enemy` never fires;<br>• an enemy `channel_drop` on an event trigger does nothing;<br>• only one post-resolution enemy reaction fires per resolution across the whole enemy side (an AoE hitting three `on_hit` enemies draws one punish);<br>• an untargeted `chosen` effect still lands on a target bounced or suspended in response;<br>• a hero's taunt re-aims even an enemy's support heals. | Decide | S each | GDD v2 §5–§11 notes |
+| M1.17 | **One guard per struck character.** Ruled 2026-09-25 (§L-5): every hero a swipe strikes may Mitigate their own hit; `StackItem.mitigations` maps protected → guard, and a covered character is not offered again. | Done 2026-09-25 | — | §L-5; `StackItem.mitigate_by` |
+| M1.18 | **Taunt and the wall.** Ruled 2026-09-25, replacing §R-11's "regardless of row": a taunt draws only what can reach the taunter (a melee swing at a rear taunter stays where it was aimed, no fizzle, no deflection), and an active taunt binds the enemy's hostile rules as well as its swing (`_taunt_reaim`, `_component_target`). | Done 2026-09-25 | — | §R-11 |
+| M1.19 | **Curve-up colours.** Fixed: the lock offers the character's colours (the spec's `colors`), and a `choice` ramp or ritual is a pick at cast (`_color_options`, `StackItem.color`); `tests/test_mana_colors.py`. | Done 2026-09-25 | — | §4.4 |
+| M1.20 | **Sap and reservation stack.** Fixed: the pool refreshes to capacity − sap − reserved (`_free_capacity`), at once and at every refresh. | Done 2026-09-25 | — | code ruling 2026-08-21 |
+| M1.21 | **Countering a basic swing** pays its damage once: `_denied_value` no longer adds the swing's own `deal_damage` on top of `attack_power`. | Done 2026-09-25 | — | gauge rework |
+| M1.22 | **Enrage waves.** Ruled 2026-09-25: a boss's Enrage and a race escalation are exempt from the T-27 cap (`StackItem.uncapped_spawns`), so the party-size wave spawns whole; `engine.TOKEN_CAP`; a clipped spawn logs `token_cap`. | Done 2026-09-25 | — | register notes |
+| M1.23 | **Enemy rules skipped for want of a target.** Fixed: a spell reaches as a ranged body even from Front (`_component_reach`), and a rule whose verbs are all untargeted declares with nobody pickable (`_needs_a_pick`). | Done 2026-09-25 | — | §D23-3; GDD v2 §9 notes |
+| M1.24 | **Easy bosses.** Fixed: `apply_boss_difficulty` stamps `double_intent: False` on Easy, so the build path's fallback can't re-stamp it, and `encounter_for` carries the made-at difficulty. | Done 2026-09-25 | — | GDD v2 §9 notes; T-54 |
+| M1.25 | **Lockdown bites.** Ruled 2026-09-25: an enemy's turn-scoped lockdown on a hero (Silence/Pacify, wound, sap, hostile modifier, taunt) holds through the hero's next turn (the `nt_*` layer, `PreventTag.linger_turn`, `taunted_turn`, `_expire_lingering`), and a hero's one-shot Pacify/Silence on an enemy cancels its declared intent. | Done 2026-09-25 | — | GDD v2 §9 notes; lockdown ruling 2026-08-21 |
+| M1.26 | **Enemy-rule findings.** Ruled 2026-09-25. Changed: a wound into the window enrages at once; a minion's `post_enrage` / `pre_enrage` gate reads its boss; neglect counts party-caused drops and applies to bosses only. Kept as canon: enemy raises are permanent; `survive` can't be won early while reinforcements wait; the 2× bodies rule skips hand-authored standalone encounters. | Done 2026-09-25 | — | GDD v2 §9, §12 notes |
+| M1.27 | **Four rulings, all changed (2026-09-25):** (a) regen ticks pay the placer, Skill mana earns gauge; (b) amplify before Mitigate (h×m − X; a full Mitigate still spends the tag); (c) consumables stack as `activated`; (d) enemies aim at party tokens and grounded tokens wall (`_foes_of_enemies`). | Done 2026-09-25 | — | GDD v2 §4 notes |
+| M1.28 | **Stale lines.** Ruled 2026-09-25: code kept for the bounce row, released channel mana and round-1 double intents. First strike narrowed: its only legal targets are enemies with an action on the stack. | Done 2026-09-25 | — | GDD v2 notes; A-49 |
+| M1.29 | **Small fixes**, all done: the infect gloss (§D22-2 counters); `serialize._mitigate_value`'s floor of 1; `"drain"` removed from `_DAMAGE_KINDS` and the taunt gate; the sheet's effective level now reads earned potential + gear, like the budgets. | Done 2026-09-25 | — | A-42; arch and §14 notes |
+| M1.30 | **Enemy deathtouch works.** Ruled 2026-09-25: connecting deathtouch damage executes any victim — an enemy (a boss only in its window), a party token, or a hero, who is downed. The enemy prompt now asks for low Power, no area damage, one per encounter. | Done 2026-09-25 | — | GDD v2 §7 notes |
+| M1.31 | **§5–§11 rulings (2026-09-25).** Changed: indestructible is immune to destroy and deathtouch and floors life loss and poison at 1; `*_base_power` excludes counters (`counter_power`); enemy spells fire `spell_cast`; an enemy channel's event-triggered `channel_drop` works; an untargeted pick that left the field fizzles; a taunt spares heals. Kept: one post-resolution reaction per resolution for the whole enemy side. | Done 2026-09-25 | — | GDD v2 §5–§11 notes |
 
 **Server and session**
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M1.32 | **Guards.** A rule error in the ws `confirm` branch or anywhere in dispatch should send an `error` frame, not drop the player's seats. Also: guard the pacer, make `_AUTO_CAP` exhaustion loud, use `get_running_loop`, and validate message shapes. | Bug | S | R3.1.1 |
-| M1.33 | **The combat log isn't seat-filtered.** Teammates see each other's draws (the `draw` line names the card). | Bug | S | arch notes |
-| M1.34 | **The server trusts the client on two gates.** Start Adventure is disabled only in the client, and `set_situation` is accepted anywhere in town. | Bug | S | GDD v2 §14 notes |
-| M1.35 | **The veil leaks through the log.** `_recheck_intents` logs `intent_redirect` with the intent's name (its telegraph, often with numbers), and only `intent_declared` is hidden from seats. | Bug | S | GDD v2 §5 notes; §D8-1.4 |
-| M1.36 | **Deckbuilder port mismatch.** With the Deckbuilder on another port, the game's Quit and Edit still target 8000 unless an env var or localStorage key is set. | Bug | S | arch notes |
-| M1.37 | **Adventure runs are saved but unreachable.** "As a run" adventures are written as `kind: adventure`, but Load Game filters them out. List them or stop offering the option. | Decide | S | GDD v2 §14 notes |
+| M1.32 | **WebSocket guards.** Fixed: every message goes through one guarded `_dispatch`; bad frames and any fault answer with an `error` frame and a broadcast, keeping the seats. The pacer and confirm timer print faults; `_AUTO_CAP` warns; `get_running_loop` (`tests/test_ws_guards.py`). | Done 2026-09-25 | — | R3.1.1 |
+| M1.33 | **The log is seat-filtered.** A teammate's `draw` / `scry` names no card (`snapshot._seat_log_line`). | Done 2026-09-25 | — | arch notes |
+| M1.34 | **Server-side gates.** Start Adventure is refused inside a location, and `set_situation` outside the rest screen. | Done 2026-09-25 | — | GDD v2 §14 notes |
+| M1.35 | **The veil holds in the log.** `intent_redirect` and `intent_spoiled` are rewritten without the intent's name in the seat feed. | Done 2026-09-25 | — | GDD v2 §5 notes; §D8-1.4 |
+| M1.36 | **Deckbuilder port.** `ltg-start` reads `LTG_DECKBUILDER_PORT` / `LTG_GAME_PORT`, passes them to both apps, and the client's Edit link asks `/api/app/info`. | Done 2026-09-25 | — | arch notes |
+| M1.37 | **Adventure runs.** Ruled 2026-09-25: the "Save as a run" option is gone from New Game (Load Game never listed those runs); the server path stays. | Done 2026-09-25 | — | GDD v2 §14 notes |
 
 ## M2 · Legibility — the board explains itself
 
@@ -235,7 +235,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 |---|---|---|---|---|
 | M5.1 | **Standing flags.** Set `refused_<quest>`, `talked_<npc>`, `fell_<hero>` and `defeated_act_<n>`. Write `town_state.talked`, and unify the two `STANDING_FLAGS` copies. | Not built | S | R4.1.2, C-55 |
 | M5.2 | **Negated and once-only gates** (`requires: ["!flag"]`, `once`, a per-conversation seen set). Also the validator's `!` support and an ACT-prompt paragraph ("second greetings differ"). | Not built | S | R4.1.3; §D24-12 |
-| M5.3 | **Merge unasked town and act topics into authored trees**, and warn when a tree shadows topics. This is the full fix for M1.2. | Not built | S | R4.1.4 |
+| M5.3 | **Merge unasked town and act topics into authored trees**, and warn when a tree shadows topics. This is the full fix for M1.5. | Not built | S | R4.1.4 |
 | M5.4 | **Journal hygiene.** Dedupe per (npc, node); an act-close entry naming the boss, the fallen and the phases; date entries with the day counter; group by act. | Partial | S–M | R4.1.5, C-56 |
 | M5.5 | **Finish the inert hooks:**<br>• `give_item` → `items.add_item`<br>• `open_shop` wired or dropped (today it sets an unread flag)<br>• `advance_quest` gets a reader | Not built | S | R4.1.9, B-48, B-49 |
 | M5.6 | **Clear `_offered_*` on arrival** (a leftover from the flag-hygiene item). | Not built | S | R4.1.8 |
@@ -285,7 +285,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 | M8.5 | **Session odds and ends.** Reap idle sessions; seed `_end_saved` from a loaded save; drop `__import__("time")`; re-evaluate pending confirms on disconnect. | Not built | S | R3.1.7 |
 | M8.6 | **Close the drive-by hole.** CORS only in `--dev`; a host token for quit, update, deletes, LLM settings and the worldbook PUTs; Origin/Host checks. | Not built | S–M | R3.2.7, C-65 |
 | M8.7 | **Tests for the release paths:** a two-socket WebSocket test (claim, submit, confirm race, garbage frame, rejoin) and a `selfupdate` test over a temp bare repo. | Not built | M | R3.2.3 |
-| M8.8 | **Shipped vs local content.** A gitignored `content_local/` searched first, so play never dirties the tracked tree, plus a "reset shipped content" path. Worldbook appends are the other writer (C-62). | Not built | M | R3.2.6, C-62 |
+| M8.8 | **Shipped vs local content.** A gitignored `content_local/` searched first, so play never dirties the tracked tree, plus a "reset shipped content" path. **Mostly retired by the M1.15 ruling (2026-09-25):** play-time generated content belongs in tracked `content/`. What is left: a way for the keyless install to recover if a local edit dirties its tree. | Decide | S | R3.2.6, C-62 |
 | M8.9 | **Art out of git's growth path.** WebP on save; delete the 69 orphaned town-art files (`medusel`, `windmill_town`); decide on LFS or a release asset (the tracked PNGs are ≈918 MB, and `.git` is 1.0 GB). | Not built | M–L | R3.2.5 |
 | M8.10 | **Deckbuilder "Update Game Character"** keeps draft cards (or a sibling `.draft.json`); loadout errors return 422, not a raw 500. | Not built | S | R3.2.9 |
 | M8.11 | **Panel clips travel with a character** (loadout export/import), which matters for the Windows install. | Not built | M | B-28 |
@@ -362,7 +362,7 @@ Deferred on purpose or waiting for a need. Promote a row into a milestone when i
 
 ## Decisions needed
 
-M1.7, M1.12, M1.17, M1.18, M1.22, M1.25, M1.26, M1.27 (a–d), M1.28, M1.30, M1.31, M1.37, M2.21, M3.5, M3.11, M5.11, M6.8, M6.9. Also:
+M2.21, M3.5, M3.11, M5.11, M6.8, M6.9. Also:
 - whether the Deckbuilder's Import Deck should keep reading MTG-worded rules text (`CUSTOM_CARD_SCHEMA.md`) now that cards are authored in LTG's own vocabulary;
 - whether `shroud` stays in the rules at all.
 
@@ -386,7 +386,7 @@ M1.7, M1.12, M1.17, M1.18, M1.22, M1.25, M1.26, M1.27 (a–d), M1.28, M1.30, M1.
 ## Done since the 2026-09-02 review (for the record)
 
 - M0 Foundations (2026-09-25): the test sandbox, CI, pinned dependencies, doc and comment debt; M0.3 awaits its first green run and branch protection.
-- M1.1, the Python 3.11+ shuffle crash (2026-09-25).
+- **M1 Make it correct (2026-09-25):** all 37 rows fixed or ruled (see the M1 table).
 - Update 23 in full.
 - Update 24 in full.
 - The `Ref` validator (R3.3.1, partial).

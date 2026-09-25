@@ -249,12 +249,15 @@ def test_rest_in_the_interlude_opens_the_rest_screen_and_does_not_heal(runs):
     _rest_at_inn(session)
     assert scen.rest_screen is True and scen.hp["loadout_soren"] == 3
     assert session.snapshot_for("c1")["interlude"]["rest_screen"] is True
-    session.town_verb("c1", "rest_back", {})
-    assert scen.rest_screen is False and scen.hp["loadout_soren"] == 3
     # The situation editor lives on the rest screen (§D24-7.4).
     session.town_verb("c1", "set_situation", {"character_id": "loadout_ys", "text": "wary of the reeds"})
     assert scen.situation_of("loadout_ys") == "wary of the reeds"
     assert scen.party_state()["members"][1]["situation"] == "wary of the reeds"
+    session.town_verb("c1", "rest_back", {})
+    assert scen.rest_screen is False and scen.hp["loadout_soren"] == 3
+    # …and only there: the server refuses it anywhere else (M1.34).
+    with pytest.raises(ValueError, match="rest screen"):
+        session.town_verb("c1", "set_situation", {"character_id": "loadout_ys", "text": "x"})
 
 
 def test_choosing_stay_starts_the_next_scenario_in_the_same_town(runs):
@@ -424,3 +427,169 @@ def test_a_schema_one_run_loads_as_a_campaign(runs):
     scen2 = runs.load_scenario_save(run_id, save["save_id"])
     assert scen2.campaign["ledger"] == [] and set(scen2.campaign["heroes"]) == {"loadout_soren", "loadout_ys"}
     assert "everquest" not in scen2.options
+
+
+def test_foreshadow_on_an_npc_with_an_interlude_tree_is_refused():
+    """Roadmap M1.5: an NPC with an interlude tree speaks the tree and never
+    offers topics, so a hook foreshadowed there was never heard."""
+    raw = interlude_raw()
+    raw["hooks"][0]["foreshadow"] = [{"npc_id": "sister_aud", "ask": "The reeds?",
+                                      "reply": "They sing again."}]
+    town = sc.town_detail("hollowmere")
+    known = {e["town_id"] for e in world.list_entries()}
+    with pytest.raises(ValueError, match="interlude dialogue tree"):
+        sc.validate_interlude(raw, town, "hollowmere", world_towns=known)
+
+
+def test_a_continuations_act_one_writer_gets_the_hook_and_the_town_id(runs):
+    """Roadmap M1.6: the chosen hook's bridge reached the arc writer but not the
+    act writer who writes Act I's arrival. M1.13: the composed town carries no
+    id, so `town:` lore gates arrived empty; the run passes its town id."""
+    seen_arcs = []
+    session, scen, run_id = _start(runs, seen_arcs)
+    calls = []
+
+    def recording(town, arc, act_index, party_state, prev="", **kw):
+        calls.append({"act_index": act_index, **kw})
+        return _fake_materializer(town, arc, act_index, party_state, prev, **kw)
+
+    scen.materializer = recording
+    _finish_scenario(session)
+    assert all(c["hook"] is None for c in calls)          # the first scenario has no road
+    assert all(c["town_id"] == "hollowmere" for c in calls)
+    session.town_verb("c1", "continue_campaign", {})
+    _rest_at_inn(session)
+    calls.clear()
+    session.town_verb("c1", "choose_hook", {"index": 1, "note": "go quietly"})
+    first = calls[0]
+    assert first["act_index"] == 0 and first["town_id"] == "bellhollow"
+    assert first["hook"]["kind"] == "neighbour" and "silent tower" in first["hook"]["bridge"]
+    assert first["hook"]["note"] == "go quietly"
+    assert seen_arcs[-1]["note"] == "go quietly"   # the arc writer's note, too
+
+
+def test_the_act_prompt_carries_how_we_got_here():
+    from ltg_game_server import llm
+    town = sc.validate_town(town_raw("Hollowmere"))
+    arc = sc.validate_arc(arc_raw(), town)
+    ps = {"members": [], "flags": {}, "day": 3}
+    hook = {"narration": "You take the causeway north.",
+            "bridge": "You arrive under a silent tower.", "note": "go quietly"}
+    text = llm.act_prompt(town, arc, 0, ps, hook=hook)
+    assert "# HOW WE GOT HERE" in text and "silent tower" in text and "go quietly" in text
+    assert "HOW WE GOT HERE" not in llm.act_prompt(town, arc, 0, ps)
+
+
+def test_the_first_arc_writer_reads_the_partys_briefs_and_the_world(runs, monkeypatch):
+    """Roadmap M1.14 (§D24-7.6): Town + New gave the arc writer only a roster
+    line. It now gets the same party layers and world block a continuation's
+    arc writer does."""
+    import asyncio
+    from ltg_game_server import llm
+    seen = {}
+
+    def fake_arc(town, party, difficulty, previous_arcs=None, note="", **kw):
+        seen.update(kw, note=note)
+        return sc.validate_arc(arc_raw(), town)
+
+    monkeypatch.setattr(llm, "generate_arc", fake_arc)
+    monkeypatch.setattr(game_app, "RUNS", runs)
+    monkeypatch.setattr(game_app, "_scenario_async", lambda session, kind: None)
+    body = game_app.CreateGameBody(character_ids=["loadout_soren", "loadout_ys"],
+                                   town_id="hollowmere", note="a quiet start")
+    asyncio.run(game_app._create_scenario_game(body))
+    members = seen["party_state"]["members"]
+    assert [m["name"] for m in members] == ["Soren", "Ys"]
+    assert all("brief" in m and "situation" in m for m in members)
+    assert seen["world_ctx"]["entry"]["town_id"] == "hollowmere"
+    assert seen["note"] == "a quiet start"
+    text = llm.arc_prompt(sc.town_detail("hollowmere"), llm.party_summary_from_loadouts(
+        content.loadouts_for(["loadout_soren", "loadout_ys"])), "standard",
+        party_state=seen["party_state"], world_ctx=seen["world_ctx"])
+    assert "# THE PARTY" in text and "# THE WORLD HERE" in text
+
+
+def test_the_innkeeper_always_rents_a_room(runs):
+    """Roadmap M1.10: an act whose trees give the inn no `rest` choice left the
+    party no way to rest (and, in the interlude, no way to the rest screen).
+    The innkeeper then offers "Take a room." on their own."""
+    session, scen, run_id = _start(runs)
+    scen.act["dialogues"].pop("marra_quill", None)      # no authored inn tree
+    scen.hp["loadout_soren"] = 3
+    _rest_at_inn(session)
+    assert scen.hp["loadout_soren"] is None
+
+    # An authored rest choice is left alone — no second room on offer.
+    session2, scen2, _ = _start(runs)
+    session2.town_verb("c1", "visit", {"location_id": "the_drowned_lantern"})
+    session2.town_verb("c1", "talk", {"npc_id": "marra_quill"})
+    labels = [c["label"] for c in scen2.town_snapshot()["conversation"]["choices"]]
+    assert sum("room" in lbl.lower() for lbl in labels) == 1
+
+
+def test_a_campaign_banks_the_points_a_hero_was_built_without():
+    """Roadmap M1.12 (ruled 2026-09-25): a hero built under the creation
+    budget banks the difference into the unspent pool, as a lone adventure
+    does; a campaign used to start the pool at 0."""
+    import json
+    from pathlib import Path
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "soren.json").read_text(encoding="utf-8"))
+    town = sc.validate_town(town_raw("Hollowmere"))
+    arc = sc.validate_arc(arc_raw(), town)
+    legacy = content.loadouts_for(["loadout_ys"])[0]
+    scen = ScenarioRun(town, arc, ["modern", "legacy"], [fixture, legacy],
+                       {"difficulty": "standard"}, town_id="hollowmere")
+    assert scen.banked == {"modern": 2, "legacy": 0}   # 70 budget − 68 spent; legacy banks nothing
+
+
+def test_the_server_refuses_to_ride_out_from_inside_a_location(runs):
+    """Roadmap M1.34: Start Adventure was greyed out inside a location by the
+    client only."""
+    session, scen, run_id = _start(runs)
+    _accept_quest(session)
+    assert scen.adventure_ready and scen.location_id is not None
+    with pytest.raises(ValueError, match="leave the location"):
+        session.town_verb("c1", "start_adventure", {})
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    assert scen.mode == "adventure"
+
+
+def test_a_failed_act_materialization_can_be_retried(runs):
+    """Roadmap M1.9: a writer failure used to wedge the town until a reload.
+    Now the error is shown with a Retry, and an act-less arrival save lets a
+    reload retry too."""
+    session, scen, run_id = _start(runs)
+    good = scen.materializer
+
+    def broken(*a, **k):
+        raise ValueError("the model returned nonsense")
+    scen.materializer = broken
+    _play_act(session)                                   # Act I won → Act II writes…
+    assert scen.act is None and not scen.materializing   # …and fails
+    assert "nonsense" in scen.materialize_error
+    assert runs.run_detail(run_id)["saves"][-1]["kind"] == "act_start"
+    scen.materializer = good
+    session.town_verb("c1", "retry_materialize", {})
+    assert scen.act is not None and scen.materialize_error is None
+    with pytest.raises(ValueError, match="nothing to retry"):
+        session.town_verb("c1", "retry_materialize", {})
+
+
+def test_a_failed_road_ahead_retries_the_whole_continuation(runs):
+    seen = []
+    session, scen, run_id = _start(runs, seen)
+    _finish_scenario(session)
+    session.town_verb("c1", "continue_campaign", {})
+    _rest_at_inn(session)
+    good = scen.arc_generator
+
+    def broken(*a, **k):
+        raise RuntimeError("network down")
+    scen.arc_generator = broken
+    session.town_verb("c1", "choose_hook", {"index": 0, "note": ""})
+    assert scen.scenario_number == 1 and "network down" in scen.materialize_error
+    assert scen.materialize_retry == "road"
+    scen.arc_generator = good
+    session.town_verb("c1", "retry_materialize", {})
+    assert scen.scenario_number == 2 and scen.act is not None

@@ -473,7 +473,12 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             types=_clean_tags(p.get("types")), classes=_clean_tags(p.get("classes")),
             max_hp=int(p["hp"]), hp=int(p["hp"]),
             power=int(p["power"]), hand_size=hand_size, hand=hand, library=draw_pile,
-            identity=list(p["identity"]), mana_colors=list(p["identity"]), pool=[],
+            # `identity` is what the curve-up may lock: the character's COLOURS
+            # (roadmap M1.19; it read the starting mana, so a colour the build
+            # never started with could never be locked). The capacity slots
+            # themselves start as the starting mana.
+            identity=list(p.get("colors") or p["identity"]),
+            mana_colors=list(p["identity"]), pool=[],
             row=p.get("row", "front"),
             attack_mode=p.get("attack_mode", "melee"), level=int(p.get("level", 1)),
             # Keywords bought at creation (§P-3) — permanent for the encounter.
@@ -659,6 +664,7 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
         "level": char.level,
         "hand_size": block["starting_cards"],
         "identity": [c.value for c in char.starting_mana],
+        "colors": [c.value for c in char.colors],               # what the curve-up locks
         "types": list(getattr(char, "types", []) or []),        # §D21 type line
         "classes": list(getattr(char, "classes", []) or []),
         "keywords": list(block["keywords"]),  # the one bought keyword (§P-3), if any

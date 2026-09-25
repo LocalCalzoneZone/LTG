@@ -1,8 +1,8 @@
 """Design Update 24 §D24-6 / §B.4 — instanced mechanics, live identity: on
 every load of a campaign each hero's instanced loadout is refreshed from the
-character file (deck, skill/ultimate, colours, keyword, description, brief,
+character file (deck, skill/ultimate, colours, row, description, brief,
 portrait, animations), keeps its progression (HP, mana, cards, Power, points,
-level, gear), reconciles the starting mana with notices; a missing character
+level, gear) and its priced keyword and attack mode (M1.7), reconciles the starting mana with notices; a missing character
 file is a no-op."""
 
 from __future__ import annotations
@@ -56,12 +56,17 @@ def test_refresh_instance_replaces_identity_and_keeps_progression():
     # Replaced from the file.
     assert [c["name"] for c in inst["cards"]] == ["Shield Wall", "Green Fuse"]
     assert ch["skill"] == {"id": "new_skill"} and ch["ultimate"] == {"id": "ult"}
-    assert ch["colors"] == ["R", "G"] and ch["keyword"] is None
+    assert ch["colors"] == ["R", "G"]
     assert ch["description"] == "new" and ch["portrait"] == "/art/new.png" and ch["animations"] == []
     assert ch["brief"] == {"concept": "a smith"} and ch["brief_situation"] == "broke"
-    assert ch["attack_mode"] == "ranged" and ch["row"] == "rear" and ch["classes"] == ["smith"]
+    assert ch["row"] == "rear" and ch["classes"] == ["smith"]
     # Kept from the instance.
     assert ch["hp"] == 16 and ch["starting_cards"] == 3 and ch["power_bought"] == 2
+    # Priced by the points-buy, so the campaign keeps what it paid for (M1.7,
+    # ruled 2026-09-25), and the splash says the file differs.
+    assert ch["keyword"] == "reach" and ch["attack_mode"] == "melee"
+    assert any("keyword none; this campaign keeps reach" in n for n in notices)
+    assert any("attack mode ranged; this campaign keeps melee" in n for n in notices)
     assert ch["earned_points"] == 60 and ch["spent_points"] == 42 and ch["level"] == 2
     assert inst["gear"] == {"primary": {"id": "sword"}, "belt": []}
     # Reconciled: the U pips became live colours (round-robin R/G), with a notice.
@@ -115,3 +120,23 @@ def test_a_campaign_load_refreshes_every_hero_from_the_character_file(runs, monk
     # The enemy designer's summary reads the live concept.
     from ltg_game_server import llm
     assert llm.party_summary_from_loadouts(scen2.loadouts)["members"][0]["concept"] == "a lantern-bearer"
+
+
+def test_an_in_session_continue_refreshes_identity_too(runs, monkeypatch):
+    """Roadmap M1.7: the refresh ran only on load, so a party that played on
+    into the next scenario in one sitting kept the old deck."""
+    from tests.test_design_update_24_campaign import _finish_scenario, _rest_at_inn
+    session, scen, run_id = _start(runs)
+    _finish_scenario(session)
+    live = content.loadout_for("loadout_soren")
+    live["cards"] = live["cards"][1:]
+    live["character"]["description"] = "rewritten between scenarios"
+    monkeypatch.setattr(content, "loadout_for",
+                        lambda cid, _live=live: copy.deepcopy(_live) if cid == "loadout_soren" else None)
+    session.town_verb("c1", "continue_campaign", {})
+    _rest_at_inn(session)
+    session.town_verb("c1", "choose_hook", {"index": 0, "note": ""})
+    soren = scen.loadouts[0]
+    assert soren["character"]["description"] == "rewritten between scenarios"
+    assert len(soren["cards"]) == len(live["cards"])
+    assert any("deck follows the character file" in n for n in scen.notices)

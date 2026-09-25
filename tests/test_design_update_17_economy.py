@@ -204,7 +204,7 @@ def test_compose_folds_gear_and_deals_consumables():
     assert drink is not None
     st2, _ = apply_action(st, drink)
     top = st2.stack[-1]
-    assert top.kind == "ability" and top.label == "Quick Salve"
+    assert top.kind == "activated" and top.label == "Quick Salve"   # M1.27c
     c2 = st2.character(c.id)
     assert any(k.consumable_id == "quick_salve" for k in c2.exile)
     assert not any(k.consumable_id == "quick_salve" for k in c2.hand + c2.graveyard)
@@ -371,3 +371,33 @@ def test_spoils_are_frozen_on_arrival_and_their_art_can_be_painted_early(runs, t
     rv = session.snapshot_for("c1")["rewards"]
     assert [i["id"] for i in rv["items"]] == [r["id"] for r in frozen]
     assert all(i["art_url"] for i in rv["items"])
+
+
+def test_reward_room_is_read_from_the_copies_the_items_land_on(runs):
+    """Roadmap M1.11: the room check read the run's pre-adventure copies while
+    the items landed on the adventure's copies, and an overflow was swallowed.
+    Now both read the adventure's live copies, and a plan that cannot land is
+    refused (naming who is full) instead of losing the item."""
+    session, scen, run_id = _start(runs)
+    _accept_quest(session)
+    session.town_verb("c1", "leave", {})
+    session.town_verb("c1", "start_adventure", {})
+    _win_adventure(session)
+    gear_idx = next(i for i, it in enumerate(scen.rewards["items"])
+                    if it["slot"] != "consumable")
+    # Fill Soren's inventory on the ADVENTURE's copy only.
+    live = session.adventure.loadouts[0]
+    filler = dict(scen.rewards["items"][gear_idx], id="filler")
+    while items.has_room(live, filler):
+        items.add_item(live, filler)
+    assert items.has_room(scen.loadouts[0], filler)       # the stale copy has room
+    assert scen.rewards_room()[str(gear_idx)]["loadout_soren"] is False
+    with pytest.raises(ValueError, match="is full"):
+        session.economy_verb("c1", "reward_assign",
+                             {"index": gear_idx, "target": "loadout_soren"})
+    # A plan that stopped fitting after it was made is refused whole.
+    scen.rewards["assign"] = {str(i): "discard" for i in range(len(scen.rewards["items"]))}
+    scen.rewards["assign"][str(gear_idx)] = "loadout_soren"
+    with pytest.raises(ValueError, match="no room"):
+        scen.accept_rewards()
+    assert scen.rewards is not None

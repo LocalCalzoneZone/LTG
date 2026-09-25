@@ -10,7 +10,7 @@ the §D23-7 corrections that no existing suite owns, the two turn GROUPS
 from __future__ import annotations
 
 
-from ltg_combat.engine import apply_action, legal_actions
+from ltg_combat.engine import apply_action, legal_actions, settle
 from ltg_combat.scenario import state_from_dict
 
 
@@ -176,6 +176,9 @@ def test_a_wound_after_the_telegraph_blunts_the_taunts_bite():
     between actually reduces what lands."""
     st = _state([_char("p", hp=30)],
                 [_enemy("bully", power=5, components=[dict(_CHALLENGE)])])
+    # Round 1's declaration (a round-2 re-taunt would be skipped: the first
+    # taunt still holds through the hero's next turn, M1.25).
+    st = settle(st)
     for _ in range(60):
         if st.enemy("bully") is not None and st.enemy("bully").intent is not None:
             break

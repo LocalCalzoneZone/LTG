@@ -19,7 +19,7 @@ import secrets
 import shutil
 from math import ceil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ltg_core.schema import EncounterObjective, Loadout
 from ltg_combat.scenario import (
@@ -158,13 +158,15 @@ DOUBLE_INTENT_DIFFICULTIES = frozenset({"standard", "hard"})
 
 
 def apply_boss_difficulty(scen: Dict[str, Any], difficulty: str) -> None:
-    """Mark every boss in an encounter spec for two intents a round, per the run's
-    difficulty. In place; a spec that already says otherwise is left alone."""
-    if difficulty not in DOUBLE_INTENT_DIFFICULTIES:
-        return
+    """Mark every boss in an encounter spec for two intents a round (or, on
+    Easy, explicitly one), per the run's difficulty. In place; a spec that
+    already says otherwise is left alone. Easy writes `False` rather than
+    nothing, so the build path's own fallback call can't re-stamp a boss the
+    run already ruled on (roadmap M1.24: every boss had two intents on Easy)."""
+    double = difficulty in DOUBLE_INTENT_DIFFICULTIES
     for e in scen.get("enemies", []) or []:
         if isinstance(e, dict) and e.get("is_boss") and "double_intent" not in e:
-            e["double_intent"] = True
+            e["double_intent"] = double
 
 
 # --------------------------------------------------------------------------- #
@@ -594,6 +596,8 @@ def encounter_for(encounter_id: str) -> Optional[Dict[str, Any]]:
         "tokens": copy.deepcopy(scen["tokens"]),
         "layouts": copy.deepcopy(scen.get("layouts", {})),
         **({"objective": copy.deepcopy(scen["objective"])} if scen.get("objective") else {}),
+        # The "made at" difficulty: a standalone encounter plays at it (M1.24).
+        **({"difficulty": scen["difficulty"]} if scen.get("difficulty") else {}),
     }
 
 
@@ -884,7 +888,8 @@ def save_encounter(raw: Dict[str, Any], encounter_id: Optional[str] = None) -> D
     name slug (a fresh encounter); with one it overwrites/overrides that id (editing
     a user file, or shadowing a built-in / example). Saving un-hides the id."""
     cleaned = _validate_encounter(raw)
-    eid = encounter_id or _slug(cleaned["name"]) or "encounter"
+    eid = encounter_id or fresh_id(_slug(cleaned["name"]) or "encounter",
+                                   _taken_content_ids())
     _carry_art_refs(cleaned, eid)
     # "Made at" survives edits from clients that don't round-trip the field.
     if not cleaned.get("difficulty"):
@@ -928,6 +933,25 @@ def delete_encounter(encounter_id: str) -> None:
 # and the game-build path all work on a phase unchanged. Phase ids never appear in
 # the standalone encounter list (see list_encounters).
 # --------------------------------------------------------------------------- #
+def fresh_id(base: str, taken: "set[str]",
+             also: Callable[[str], List[str]] = lambda i: []) -> str:
+    """``base`` if it (and every id ``also`` derives from it) is free, else
+    ``base_2``, ``base_3``… A NEW piece of content keyed by its name's slug
+    used to overwrite an older one of the same name (roadmap M1.16)."""
+    n = 1
+    cand = base
+    while cand in taken or any(x in taken for x in also(cand)):
+        n += 1
+        cand = f"{base}_{n}"
+    return cand
+
+
+def _taken_content_ids() -> "set[str]":
+    """Every id in the shared JSON namespace: encounters, adventure wrappers
+    and phase files, built-ins."""
+    return {p.stem for p in _iter_json()} | set(_BUILTIN_ENCOUNTERS)
+
+
 def phase_encounter_id(adventure_id: str, phase_number: int) -> str:
     """The reserved encounter id behind one phase (phase_number is 1-based)."""
     return f"{adventure_id}__phase{phase_number}"
@@ -1164,9 +1188,8 @@ def save_adventure(raw: Dict[str, Any],
     if len(with_objective) > 1:
         raise ValueError("an adventure carries at most one objective "
                          f"(phases {', '.join(map(str, with_objective))} all have one)")
-    if PHASE_COUNT in with_objective:
-        raise ValueError("Phase III is always the standard boss kill — "
-                         "objectives may appear on Phases I and II only")
+    # Phase III objectives are shape-checked in `_validate_adventure` (§D23-5):
+    # they may modify the boss fight, never replace it.
     cleaned_phases: List[Dict[str, Any]] = []
     narrations: List[str] = []
     for i, phase in enumerate(phases_raw, start=1):
@@ -1181,7 +1204,9 @@ def save_adventure(raw: Dict[str, Any],
         narrations.append(str(phase.get("narration") or "").strip())
     _validate_adventure(cleaned_phases, narrations)
 
-    aid = adventure_id or _slug(name) or "adventure"
+    aid = adventure_id or fresh_id(
+        _slug(name) or "adventure", _taken_content_ids(),
+        also=lambda a: [phase_encounter_id(a, i) for i in range(1, PHASE_COUNT + 1)])
     phase_entries = []
     for i, (phase, narration) in enumerate(zip(cleaned_phases, narrations), start=1):
         eid = phase_encounter_id(aid, i)
@@ -1686,18 +1711,35 @@ def lore_in_play(members: List[Dict[str, Any]], town: Optional[Dict[str, Any]],
 # campaign (§D24-6): balance changes must flow into campaigns, and a campaign
 # should never be stranded on a stale deck. The points-buy and progression
 # fields are the instance's own and are never touched.
-IDENTITY_FIELDS = ("name", "description", "portrait", "animations", "colors", "keyword",
-                   "attack_mode", "row", "types", "classes", "skill", "ultimate",
+IDENTITY_FIELDS = ("name", "description", "portrait", "animations", "colors",
+                   "row", "types", "classes", "skill", "ultimate",
                    "ability_flavor", "brief", "brief_situation", "lore", "combat_lore")
+# Priced by the points-buy, so they stay as the campaign bought them (roadmap
+# M1.7, ruled 2026-09-25): the keyword costs points and the attack mode sets
+# base Power. A file that differs gets a load-splash notice, never a free respec.
+BUILD_LOCKED_FIELDS = ("keyword", "attack_mode")
 PROGRESSION_FIELDS = ("hp", "starting_cards", "power_bought", "earned_points", "spent_points",
                       "level", "legacy", "preset")
 
 
+def refresh_party(character_ids: List[str], loadouts: List[Dict[str, Any]]) -> List[str]:
+    """`refresh_instance` for each hero from their character file, in place
+    (§D24-6): on every campaign load, and at an in-session Continue (M1.7).
+    Returns the load-splash notices."""
+    notices: List[str] = []
+    for cid, lo in zip(character_ids, loadouts):
+        live = loadout_for(cid)
+        if live is not None:
+            notices += refresh_instance(lo, live)
+    return notices
+
+
 def refresh_instance(instanced: Dict[str, Any], live: Optional[Dict[str, Any]]) -> List[str]:
     """Refresh a campaign's instanced loadout from the live character file, in
-    place. Replaced: the deck (`cards`), skill and ultimate, colours, keyword,
+    place. Replaced: the deck (`cards`), skill and ultimate, colours, row,
     description and brief, portrait, art and animation references. Kept:
-    HP, starting mana / cards, bought Power, points, level, gear. Reconciled:
+    HP, starting mana / cards, bought Power, points, level, gear, and the
+    priced keyword and attack mode (a differing file earns a notice). Reconciled:
     a `starting_mana` pip in a colour the live deck no longer covers is
     re-rolled to a live colour. Returns the notices for the load splash; a
     missing character file (``live`` None) is a silent no-op."""
@@ -1728,6 +1770,15 @@ def refresh_instance(instanced: Dict[str, Any], live: Optional[Dict[str, Any]]) 
             inst_ch[key] = copy.deepcopy(live_ch[key])
         elif key in inst_ch and key not in ("name",):
             inst_ch.pop(key, None)
+    for key, label in (("keyword", "keyword"), ("attack_mode", "attack mode")):
+        want = live_ch.get(key) or None
+        have = inst_ch.get(key) or None
+        if key == "attack_mode":
+            want, have = want or "melee", have or "melee"
+        if want != have:
+            notices.append(f"{name}'s character file now has {label} "
+                           f"{str(want or 'none').replace('_', ' ')}; this campaign keeps "
+                           f"{str(have or 'none').replace('_', ' ')}, the one it paid for.")
     # Starting mana: every pip must be a live colour.
     live_colors = [str(c) for c in (live_ch.get("colors") or []) if c]
     pips = [str(c) for c in (inst_ch.get("starting_mana") or [])]

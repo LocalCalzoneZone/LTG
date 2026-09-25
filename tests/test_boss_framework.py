@@ -288,3 +288,22 @@ def test_phase_gates_flip_with_enrage():
     boss.enraged = True
     assert not _component_eligible(st, boss, pre)
     assert _component_eligible(st, boss, post)
+
+
+def test_an_easy_run_boss_keeps_one_intent_through_the_build_path():
+    """Roadmap M1.24: the adventure layer skipped Easy, then
+    `build_state_from_loadouts` fell back to "standard" (the frozen phase
+    carries no difficulty) and stamped every boss for two intents."""
+    from ltg_game_server import content
+    from ltg_game_server.adventure import AdventureRun
+    from tests.test_design_update_12 import _adventure
+    detail = content.adventure_detail(content.save_adventure(_adventure())["id"])
+    for difficulty, expect in (("easy", False), ("standard", True)):
+        run = AdventureRun("x", detail=detail)
+        run.difficulty = difficulty
+        loadouts = content.loadouts_for(["loadout_soren"])
+        scen = run._scenario(2)
+        state, _, _ = content.build_state_from_loadouts(loadouts, "x__phase3", seed=1,
+                                                        scenario=scen)
+        boss = next(e for e in state.enemies if e.is_boss)
+        assert boss.double_intent is expect, difficulty

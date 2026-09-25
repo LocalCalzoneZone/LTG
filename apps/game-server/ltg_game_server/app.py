@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from . import appctl, art, content, jobs, llm, scenario_content, world
 from .adventure import AdventureRun
 from .runs import RunManager
-from .scenario import ScenarioRun
+from .scenario import ScenarioRun, opening_party_state
 from .session import SessionManager
 from .snapshot import priority_fields
 
@@ -151,9 +151,17 @@ async def _create_scenario_game(body: CreateGameBody) -> Dict[str, Any]:
             raise HTTPException(404, "no such town")
         try:
             party = llm.party_summary_from_loadouts(loadouts)
-            arc = await asyncio.to_thread(llm.generate_arc, town, party,
-                                          opts.get("difficulty", "standard"),
-                                          None, body.note or "")
+            # §D24-7.6: the first arc writer reads every hero's brief and
+            # situation, and the world block, as a continuation's does (M1.14).
+            try:
+                world_ctx = world.context_for(body.town_id or "")
+            except Exception:  # noqa: BLE001 — the worldbook is optional context
+                world_ctx = None
+            arc = await asyncio.to_thread(
+                llm.generate_arc, town, party, opts.get("difficulty", "standard"),
+                None, body.note or "",
+                party_state=opening_party_state(body.character_ids, loadouts),
+                world_ctx=world_ctx)
         except ValueError as exc:
             raise HTTPException(502, str(exc))
         pregen_adventure = None
@@ -222,67 +230,94 @@ def _scenario_async(session, kind: str) -> None:
 
 
 async def _materialize_task(session) -> None:
-    await asyncio.to_thread(session.materialize_act)
+    await asyncio.to_thread(session.materialize_act, asyncio.get_running_loop())
     await _broadcast(session)
     _queue_spoils_art(session)     # the act's spoils are frozen now — start painting
     _queue_cast_art(session)       # …and the arc's cast/places (§D20-2)
 
 
-def _continue_sync(session) -> None:
+def _continue_sync(session, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
     """The chosen hook becomes the next scenario (§D24-5.3): a `new` hook
     generates its town (with the seed and the worldbook placement); the arc
     is generated for the destination with the ledger, the party's layers, the
     world block and the hook; then Act I materializes under the entry splash
-    exactly as a new game does. Blocking — the task runs it in a thread."""
+    exactly as a new game does. Blocking — the task runs it in a thread, with
+    ``loop`` set: every read and write of the session goes through
+    `jobs.call_locked`, and only the writers run unlocked (roadmap M1.8)."""
     sc = session.scenario
     if sc is None:
         return
-    hook = sc.chosen_hook()
-    if hook is None:
+    locked = lambda fn: jobs.call_locked(session, loop, fn)  # noqa: E731
+
+    def start() -> Optional[Dict[str, Any]]:
+        hook = sc.chosen_hook()
+        if hook is None:
+            return None
+        # §D24-6: identity follows the character file into the next scenario,
+        # as it does on a load; an in-session Continue skipped it (M1.7).
+        sc.notices = list(sc.notices or []) + content.refresh_party(sc.character_ids,
+                                                                    sc.loadouts)
+        return {"hook": hook, "town_id": sc.town_id, "run_id": session.run_id,
+                "town_generator": sc.town_generator}
+
+    begun = locked(start)
+    if begun is None:
         return
+    hook = begun["hook"]
     try:
         if hook.get("kind") == "new" and hook.get("town_seed"):
             seed = dict(hook["town_seed"])
             seed.setdefault("bridge", hook.get("bridge", ""))
-            anchor = seed.get("anchor_town_id") or sc.town_id
+            anchor = seed.get("anchor_town_id") or begun["town_id"]
             ctx = world.placement_context(anchor)
-            meta = sc.town_generator(seed.get("line", ""), 3, ctx, seed,
-                                     added_by=f"scenario:{session.run_id or ''}")
+            meta = begun["town_generator"](seed.get("line", ""), 3, ctx, seed,
+                                           added_by=f"scenario:{begun['run_id'] or ''}")
             town_id = meta["id"]
         elif hook.get("kind") == "neighbour" and hook.get("town_id"):
             town_id = hook["town_id"]
         else:
-            town_id = sc.town_id
+            town_id = begun["town_id"]
         town = scenario_content.town_detail(town_id)
         if town is None:
             raise ValueError(f"the road leads to a town that is missing: {town_id}")
-        party = llm.party_summary_from_loadouts(sc.loadouts, sc.levels())
-        prev = sc.previous_arcs + [{"title": sc.arc["title"], "villain": sc.arc["villain"],
-                                    "outcome": "defeated"}]
-        arc = sc.arc_generator(town, party, sc.options.get("difficulty", "standard"), prev,
-                               hook.get("note", ""),
-                               party_state=sc.party_state(), ledger=sc.ledger_for_writers(),
-                               world_ctx=world.context_for(town_id), hook=hook)
-        sc.begin_next_scenario(arc, town, town_id)
-        if session.run_id and session.run_manager:
-            try:
-                session.run_manager.set_arc(session.run_id, arc)
-                session.run_manager.update_campaign(session.run_id, sc)
-            except Exception:  # noqa: BLE001
-                pass
-        sc.arrive(None)
-        session.materialize_act()
-    except ValueError as exc:
-        sc.materialize_error = f"the road ahead: {exc}"
-        sc.materializing = False
-        raise
+
+        def arc_inputs() -> Dict[str, Any]:
+            import copy as _copy
+            prev = sc.previous_arcs + [{"title": sc.arc["title"], "villain": sc.arc["villain"],
+                                        "outcome": "defeated"}]
+            out = _copy.deepcopy({
+                "party": llm.party_summary_from_loadouts(sc.loadouts, sc.levels()),
+                "difficulty": sc.options.get("difficulty", "standard"), "prev": prev,
+                "party_state": sc.party_state(), "ledger": sc.ledger_for_writers()})
+            out["generator"] = sc.arc_generator
+            return out
+
+        a = locked(arc_inputs)
+        arc = a["generator"](town, a["party"], a["difficulty"], a["prev"],
+                             hook.get("note", ""), party_state=a["party_state"],
+                             ledger=a["ledger"], world_ctx=world.context_for(town_id),
+                             hook=hook)
+
+        def begin() -> None:
+            sc.begin_next_scenario(arc, town, town_id)
+            if session.run_id and session.run_manager:
+                try:
+                    session.run_manager.set_arc(session.run_id, arc)
+                    session.run_manager.update_campaign(session.run_id, sc)
+                except Exception:  # noqa: BLE001
+                    pass
+            sc.arrive(None)
+        locked(begin)
+        session.materialize_act(loop)
+    except Exception as exc:  # noqa: BLE001 — any failure on the road must leave a Retry (M1.9)
+        msg = str(exc) if isinstance(exc, ValueError) else f"{type(exc).__name__}: {exc}"
+        locked(lambda: sc.materialize_failed(f"the road ahead: {msg}", retry="road"))
+        if not isinstance(exc, ValueError):
+            traceback.print_exc()
 
 
 async def _continue_task(session) -> None:
-    try:
-        await asyncio.to_thread(_continue_sync, session)
-    except ValueError:
-        pass
+    await asyncio.to_thread(_continue_sync, session, asyncio.get_running_loop())
     await _broadcast(session)
     _queue_spoils_art(session)
     _queue_cast_art(session)       # a fresh arc brings a fresh cast (§D20-2)
@@ -294,8 +329,11 @@ async def _confirm_timer(session) -> None:
         return
     cid = c["id"]
     await asyncio.sleep(max(0.0, c["deadline"] - __import__("time").time()))
-    async with session.lock():
-        session.expire_confirm(cid)
+    try:
+        async with session.lock():
+            session.expire_confirm(cid)
+    except Exception:  # noqa: BLE001 — a timed-out confirm's action must not die silently
+        traceback.print_exc()
     await _broadcast(session)
     _after_town_change(session)
 
@@ -322,7 +360,11 @@ def _queue_spoils_art(session) -> None:
     async def _refresh(_key: str) -> None:
         await _broadcast(session)
 
-    items_ = art.spoil_art_items(sc.spoils(), sc.set_spoil_art)
+    loop = jobs.running_loop()
+    # The painters run on worker threads: their result lands under the lock (M1.8).
+    items_ = art.spoil_art_items(
+        sc.spoils(),
+        lambda iid, url: jobs.call_locked(session, loop, lambda: sc.set_spoil_art(iid, url)))
     if not items_:
         return
     try:
@@ -344,8 +386,11 @@ def _queue_cast_art(session) -> None:
     async def _refresh(_key: str) -> None:
         await _broadcast(session)
 
-    items_ = art.scenario_cast_art_items(sc.arc, sc.town.get("scene", ""),
-                                         sc.set_cast_art)
+    loop = jobs.running_loop()
+    items_ = art.scenario_cast_art_items(
+        sc.arc, sc.town.get("scene", ""),
+        lambda kind, eid, url: jobs.call_locked(session, loop,
+                                                lambda: sc.set_cast_art(kind, eid, url)))
     if not items_:
         return
     try:
@@ -1046,6 +1091,135 @@ async def _broadcast(session) -> None:
             await _send(ws, {"type": "game_over", "result": result})
 
 
+async def _dispatch(session, ws: WebSocket, client_id: str, msg: Dict[str, Any]) -> None:
+    """One client message. Any failure is answered by `ws_endpoint`'s guard
+    with an `error` frame and a resync, never by dropping the socket (which
+    would release the player's seats — roadmap M1.32)."""
+    mtype = msg.get("type")
+
+    if mtype == "heartbeat":
+        await _send(ws, {"type": "heartbeat"})
+
+    elif mtype in ("claim_seat", "release_seat"):
+        ids = msg.get("character_ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise ValueError(f"{mtype}.character_ids must be a list of ids")
+        (session.claim if mtype == "claim_seat" else session.release)(client_id, ids)
+        await _broadcast(session)
+
+    elif mtype == "pass_all":
+        # §D23-8: "pass for the rest of this enemy phase" for the named
+        # character (the toggle is per character, not per player).
+        # Setting it drains the windows already waiting, so the toggle
+        # takes effect on the click, not on the next one.
+        ids = msg.get("character_ids")
+        if not isinstance(ids, list) or not ids:
+            # The wire contract is per character: naming the seat is what
+            # keeps a client from silently speaking for the whole party.
+            await _send(ws, {"type": "error",
+                             "message": "pass_all.character_ids required"})
+            return
+        async with session.lock():
+            try:
+                session.set_pass_all(client_id, bool(msg.get("on")), ids)
+            except ValueError as exc:
+                await _send(ws, {"type": "error", "message": str(exc)})
+                return
+        await _broadcast(session)
+        session.start_pacer(_broadcast)
+
+    elif mtype == "submit_action":
+        action = msg.get("action", {})
+        if not isinstance(action, dict):
+            raise ValueError("action must be an object")
+        index = action.get("index")
+        if not isinstance(index, int):
+            await _send(ws, {"type": "error", "message": "action.index required"})
+            return
+        mana = action.get("mana")
+        if mana is not None and not isinstance(mana, list):
+            await _send(ws, {"type": "error", "message": "action.mana must be a list"})
+            return
+        async with session.lock():
+            try:
+                # drain=False: the player's own action lands instantly;
+                # the synthetic follow-up (auto-passes, resolutions,
+                # enemy steps) drains PACED — one broadcast per step,
+                # a beat between the ones worth watching.
+                session.apply_index(client_id, index, mana, drain=False)
+            except Exception as exc:  # noqa: BLE001
+                # ValueError is a rejection (illegal index / not your seat).
+                # Anything else is an engine fault mid-resolution — report it
+                # and keep the socket, because dropping it here would release
+                # this client's seats and force everyone to re-claim their
+                # characters. `apply_action` works on a deep copy, so the
+                # session's state is still the last good one either way.
+                if not isinstance(exc, ValueError):
+                    traceback.print_exc()
+                await _send(ws, {"type": "error", "message": str(exc) or
+                                 f"{type(exc).__name__} while resolving"})
+                # Re-sync just this client so its optimistic arming reverts.
+                await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
+                return
+        await _broadcast(session)
+        session.start_pacer(_broadcast)
+
+    elif mtype == "town":
+        # Scenario Mode (Update 17 §D17-5.2): a town verb — visit /
+        # leave / talk / choose / attribute / start_adventure / save.
+        if not isinstance(msg.get("payload") or {}, dict):
+            raise ValueError("town.payload must be an object")
+        async with session.lock():
+            try:
+                verb = str(msg.get("verb") or "")
+                if session.scenario is not None and session.state is not None:
+                    # In a fight: only the economy verbs (gear at the
+                    # gate, the rewards modal) apply.
+                    session.economy_verb(client_id, verb, msg.get("payload") or {})
+                else:
+                    session.town_verb(client_id, verb, msg.get("payload") or {})
+            except ValueError as exc:
+                await _send(ws, {"type": "error", "message": str(exc)})
+                return
+        await _broadcast(session)
+        _after_town_change(session)
+
+    elif mtype == "confirm":
+        # The all-players confirmation (T-84): yes / no / cancel.
+        async with session.lock():
+            cid_ = int(msg.get("id") or 0)
+            if msg.get("cancel"):
+                session.cancel_confirm(client_id, cid_)
+            else:
+                session.answer_confirm(client_id, cid_, bool(msg.get("yes", True)))
+        await _broadcast(session)
+        _after_town_change(session)
+
+    elif mtype == "retry_job":
+        if session.scenario is not None:
+            _scenario_async(session, "adventure_job")
+        await _broadcast(session)
+
+    elif mtype == "confirm_level_up":
+        # The between-phases gate (Update 10 §D10-3.3): one confirmation
+        # per controlled character; the last confirmation composes the
+        # next phase (carry-over applied) before the broadcast.
+        async with session.lock():
+            try:
+                session.confirm_level_up(
+                    client_id,
+                    str(msg.get("character_id") or ""),
+                    msg.get("build") or {})
+            except ValueError as exc:
+                await _send(ws, {"type": "error", "message": str(exc)})
+                await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
+                return
+        await _broadcast(session)
+
+    else:
+        await _send(ws, {"type": "error", "message": f"unknown message: {mtype}"})
+
+
 @app.websocket("/ws/{session_id}")
 async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     session = MANAGER.get(session_id)
@@ -1072,128 +1246,29 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
 
     try:
         while True:
-            msg = await ws.receive_json()
-            mtype = msg.get("type")
-
-            if mtype == "heartbeat":
-                await _send(ws, {"type": "heartbeat"})
-
-            elif mtype == "claim_seat":
-                session.claim(client_id, list(msg.get("character_ids", [])))
+            try:
+                msg = await ws.receive_json()
+            except ValueError:            # not JSON: answer it, keep the socket
+                await _send(ws, {"type": "error", "message": "messages must be JSON"})
+                continue
+            if not isinstance(msg, dict):
+                await _send(ws, {"type": "error", "message": "messages must be objects"})
+                continue
+            try:
+                await _dispatch(session, ws, client_id, msg)
+            except WebSocketDisconnect:
+                raise
+            except Exception as exc:  # noqa: BLE001 — any fault answers, never drops seats
+                # ValueError / TypeError / KeyError are a bad or refused request;
+                # anything else is a rule fault mid-dispatch (a confirm's action,
+                # a town verb): print it, tell the client, resync its view.
+                if not isinstance(exc, (ValueError, TypeError, KeyError)):
+                    traceback.print_exc()
+                await _send(ws, {"type": "error", "message": str(exc) or
+                                 f"{type(exc).__name__} while handling {msg.get('type')}"})
+                # A fault may have landed half a change (a confirm's action):
+                # everyone gets the state as it now stands.
                 await _broadcast(session)
-
-            elif mtype == "release_seat":
-                session.release(client_id, list(msg.get("character_ids", [])))
-                await _broadcast(session)
-
-            elif mtype == "pass_all":
-                # §D23-8: "pass for the rest of this enemy phase" for the named
-                # character (the toggle is per character, not per player).
-                # Setting it drains the windows already waiting, so the toggle
-                # takes effect on the click, not on the next one.
-                ids = msg.get("character_ids")
-                if not isinstance(ids, list) or not ids:
-                    # The wire contract is per character: naming the seat is what
-                    # keeps a client from silently speaking for the whole party.
-                    await _send(ws, {"type": "error",
-                                     "message": "pass_all.character_ids required"})
-                    continue
-                async with session.lock():
-                    try:
-                        session.set_pass_all(client_id, bool(msg.get("on")), ids)
-                    except ValueError as exc:
-                        await _send(ws, {"type": "error", "message": str(exc)})
-                        continue
-                await _broadcast(session)
-                session.start_pacer(_broadcast)
-
-            elif mtype == "submit_action":
-                action = msg.get("action", {})
-                index = action.get("index")
-                if not isinstance(index, int):
-                    await _send(ws, {"type": "error", "message": "action.index required"})
-                    continue
-                mana = action.get("mana")
-                if mana is not None and not isinstance(mana, list):
-                    await _send(ws, {"type": "error", "message": "action.mana must be a list"})
-                    continue
-                async with session.lock():
-                    try:
-                        # drain=False: the player's own action lands instantly;
-                        # the synthetic follow-up (auto-passes, resolutions,
-                        # enemy steps) drains PACED — one broadcast per step,
-                        # a beat between the ones worth watching.
-                        session.apply_index(client_id, index, mana, drain=False)
-                    except Exception as exc:  # noqa: BLE001
-                        # ValueError is a rejection (illegal index / not your seat).
-                        # Anything else is an engine fault mid-resolution — report it
-                        # and keep the socket, because dropping it here would release
-                        # this client's seats and force everyone to re-claim their
-                        # characters. `apply_action` works on a deep copy, so the
-                        # session's state is still the last good one either way.
-                        if not isinstance(exc, ValueError):
-                            traceback.print_exc()
-                        await _send(ws, {"type": "error", "message": str(exc) or
-                                         f"{type(exc).__name__} while resolving"})
-                        # Re-sync just this client so its optimistic arming reverts.
-                        await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
-                        continue
-                await _broadcast(session)
-                session.start_pacer(_broadcast)
-
-            elif mtype == "town":
-                # Scenario Mode (Update 17 §D17-5.2): a town verb — visit /
-                # leave / talk / choose / attribute / start_adventure / save.
-                async with session.lock():
-                    try:
-                        verb = str(msg.get("verb") or "")
-                        if session.scenario is not None and session.state is not None:
-                            # In a fight: only the economy verbs (gear at the
-                            # gate, the rewards modal) apply.
-                            session.economy_verb(client_id, verb, msg.get("payload") or {})
-                        else:
-                            session.town_verb(client_id, verb, msg.get("payload") or {})
-                    except ValueError as exc:
-                        await _send(ws, {"type": "error", "message": str(exc)})
-                        continue
-                await _broadcast(session)
-                _after_town_change(session)
-
-            elif mtype == "confirm":
-                # The all-players confirmation (T-84): yes / no / cancel.
-                async with session.lock():
-                    cid_ = int(msg.get("id") or 0)
-                    if msg.get("cancel"):
-                        session.cancel_confirm(client_id, cid_)
-                    else:
-                        session.answer_confirm(client_id, cid_, bool(msg.get("yes", True)))
-                await _broadcast(session)
-                _after_town_change(session)
-
-            elif mtype == "retry_job":
-                if session.scenario is not None:
-                    _scenario_async(session, "adventure_job")
-                await _broadcast(session)
-
-            elif mtype == "confirm_level_up":
-                # The between-phases gate (Update 10 §D10-3.3): one confirmation
-                # per controlled character; the last confirmation composes the
-                # next phase (carry-over applied) before the broadcast.
-                async with session.lock():
-                    try:
-                        session.confirm_level_up(
-                            client_id,
-                            str(msg.get("character_id") or ""),
-                            msg.get("build") or {})
-                    except ValueError as exc:
-                        await _send(ws, {"type": "error", "message": str(exc)})
-                        await _send(ws, {"type": "state", **session.snapshot_for(client_id)})
-                        continue
-                await _broadcast(session)
-
-            else:
-                await _send(ws, {"type": "error", "message": f"unknown message: {mtype}"})
-
     except WebSocketDisconnect:
         pass
     finally:

@@ -730,6 +730,35 @@ def test_deathtouch_executes_any_minion_it_damages():
     assert after.enemy("orc") is None
 
 
+def test_enemy_deathtouch_downs_a_hero_it_connects_with():
+    """Roadmap M1.30 (ruled 2026-09-25): an enemy's deathtouch executes heroes
+    too — the hero is downed (incapacitated, revivable), not killed."""
+    enemies = [{"id": "orc", "name": "Orc", "hp": 10, "level": 3, "keywords": ["deathtouch"],
+                "intent": {"name": "Nick", "amount": 1, "action_type": "ability",
+                           "intent_type": "attack", "targeting": "lowest_hp_party"}}]
+    state = make_state([], enemies=enemies, hero_hp=30)
+    state, _ = apply_action(state, pick(state, kind="end_turn"))
+    state = settle_window(state)
+    assert hero(state).hp == 0 and not hero(state).alive
+    assert any(ev.type == "deathtouch" for ev in state.log)
+
+
+def test_indestructible_shrugs_off_destroy_deathtouch_and_lethal_life_loss():
+    """M1.31 (ruled 2026-09-25): indestructible dies only to exile or −X/−X."""
+    from types import SimpleNamespace
+
+    from ltg_combat.engine import _r_destroy, _r_lose_life
+    from ltg_core.schema import Destroy, LoseLife, t_chosen
+    state = make_state([], enemy_hp=10)
+    orc = state.enemy("orc")
+    orc.keywords["indestructible"] = "encounter"
+    doom = SimpleNamespace(label="Doom", source_side="party", source_id="hero")
+    _r_destroy(state, doom, Destroy(target=t_chosen("enemy", targeted=True)), orc, {})
+    assert state.enemy("orc") is not None and orc.alive
+    _r_lose_life(state, None, LoseLife(amount=99, target=t_chosen("enemy", targeted=True)), orc, {})
+    assert orc.hp == 1 and orc.alive
+
+
 def test_indestructible_floors_damage_at_one_hp():
     state = make_state([_grant_self("indestructible")], hero_hp=4, intent_amount=99)
     after, _ = do(state, kind="cast", card_id="grant_indestructible")
@@ -776,6 +805,8 @@ def test_first_strike_offers_a_held_attack_as_a_reaction_and_kills_first():
     after, _ = apply_action(after, pick(after, kind="end_turn"))
     assert after.phase == "enemy" and after.stack[-1].source_id == "orc1"
     assert has(after, kind="attack", target_id="orc1")  # First Strike offers the held swing NOW
+    # …only at the enemy acting: a bystander is no target (roadmap M1.28).
+    assert not has(after, kind="attack", target_id="orc2")
 
     after, _ = apply_action(after, pick(after, kind="attack", target_id="orc1"))
     after = settle_window(after)

@@ -47,7 +47,7 @@ No model is involved in loot or item naming (`loot`, `items`), merchant stock, o
    3. `begin_next_scenario` closes the ledger entry, parks town flags on the campaign's town state and draws a new loot lexicon.
    4. `arrive(None)` and `materialize_act()` build Act I under the splash.
 
-   A failure sets `materialize_error` ("the road ahead: …"); reloading the save retries it.
+   A failure sets `materialize_error` ("the road ahead: …"); *Try again* on the splash (or reloading the save) retries it.
 7. **Art** paints in the background throughout (§11).
 
 ## 4. What each writer reads
@@ -56,8 +56,8 @@ The table follows the code. † marks a difference from the reader matrix in §D
 
 | Reader | Party | Lore | Ledger | Town | Worldbook | Also |
 |---|---|---|---|---|---|---|
-| Arc writer (`arc_prompt`) | a roster line (name, level, colours) and difficulty; at Continue also `_party_block(depth="full", chronicle="summaries")` † | never | at Continue (a new campaign has none) | `_town_block` of the raw town file, with no town state † | at Continue only: this town and its neighbours † | `_hook_block` at Continue; the note |
-| Act writer (`act_prompt`) | `_party_block(full, recent)` | up to 2 entries | all scenarios, including the one in progress | the composed town (`town_for_act`: cast, places, town state) plus `_arc_block` with the cast's secrets | this town only | the day, public flags, the `knows` list, a `defeated_once` paragraph |
+| Arc writer (`arc_prompt`) | a roster line (name, level, colours) and difficulty, plus `_party_block(depth="full", chronicle="summaries")` (at a campaign's start from `opening_party_state`: briefs and default situations, no chronicle) | never | at Continue (a new campaign has none) | `_town_block` of the raw town file, with no town state † | this town and its neighbours (a pre-generated scenario's arc gets neither party nor world) | `_hook_block` at Continue; the note |
+| Act writer (`act_prompt`) | `_party_block(full, recent)` | up to 2 entries | all scenarios, including the one in progress | the composed town (`town_for_act`: cast, places, town state) plus `_arc_block` with the cast's secrets | this town only | the day, public flags, the `knows` list, a `defeated_once` paragraph; `_hook_block` on a continuation's Act I (the chosen hook's road, bridge and note) |
 | Interlude planner (`interlude_prompt`) | `_party_block(full, recent)` | never | all, with the current scenario recorded as a victory | the last act's composed town plus `_arc_block` | this town and its neighbours, or a "stay/new only" line | the villain is defeated |
 | Enemy designer (`_request_block`, `_adventure_request_block`) | name, level, colours and `brief.concept` (§D24-9.5) | never | — | in a run: the town's name, region and NPC names | — | in a run, the arc, act and quest; the library avoid-list; signature rolls |
 | Town generator (`town_prompt`) | — | — | — | — | `_world_placement_block`: the region to join or found, and the towns it sits beside | the seed (name, line, bridge); the note |
@@ -153,7 +153,7 @@ Appended for adventures (§D10-5). It asks for:
 | `scenario_content.validate_materialization` | acts, interludes | • `_clean_quests`: 2–4 options, each with its own non-empty `adventure_theme`; exact duplicates are refused<br>• an arrival paragraph<br>• dialogue only for real NPCs (`dialogue.validate_dialogue`), and a tree for the questgiver<br>• narration nodes: at least 1 in any tree of 4 or more nodes, and at least 2 in the questgiver's<br>• `_bind_quest_hooks`: every grant names an option and carries `unlock_adventure`; every option can be accepted somewhere; a defer sits beside every accept<br>• `check_flag_consistency`<br>• every NPC has something to say<br>• `validate_town_state_delta` (at most 2 real locations)<br>Lines addressed to unknown NPCs are dropped silently. |
 | `dialogue.validate_dialogue` | inside the above | Closed `HOOKS`; speakers limited to npc, party and narration; at most 5 choices per node; every `next` exists; no cycles; depth at most 10; no `freeform`. |
 | `dialogue.check_flag_consistency` | inside the above | Every `requires` flag must be standing (`STANDING_FLAGS`), have an `item_` or `town:` prefix, already be true in the run, or be set by some `set_flag` in this act's trees. |
-| `scenario_content.validate_interlude` | the interlude | Exactly 3 hooks, at least one staying and at least one leaving. Each has a narration and a bridge. A `neighbour` names a known town (checked only when this town has a worldbook entry). A `new` hook carries a seed and a known anchor. At most 2 foreshadow exchanges per hook, spoken by NPCs in town. The town portion passes `validate_materialization` with no quests and `QUEST_HOOKS` forbidden. |
+| `scenario_content.validate_interlude` | the interlude | Exactly 3 hooks, at least one staying and at least one leaving. Each has a narration and a bridge. A `neighbour` names a known town (checked only when this town has a worldbook entry). A `new` hook carries a seed and a known anchor. At most 2 foreshadow exchanges per hook, spoken by NPCs in town who have no interlude tree. The town portion passes `validate_materialization` with no quests and `QUEST_HOOKS` forbidden. |
 | flavour check | `generate_flavours` | Every card, Skill and Ultimate id gets non-empty text. |
 
 ## 7. The repair loop
@@ -169,10 +169,10 @@ Appended for adventures (§D10-5). It asks for:
 |---|---|
 | Options or New Game (encounter, adventure, town, topics, pregenerated scenario) | HTTP 422 or 502 with the last error. Nothing is saved. |
 | Town + New arc | `POST /api/games` returns 502. No run is created. |
-| Act materialization | The splash shows "The chronicle faltered: …". There is no retry within the session; reloading the save runs it again. |
+| Act materialization | The splash shows "The chronicle faltered: …" with *Try again* (the `retry_materialize` town verb), and a banner keeps the retry if the splash is dismissed. An act-less `act_start` save is written, so reloading runs it again too. Any exception counts, not only a `ValueError`. |
 | Adventure job | The job becomes `failed`. *Retry* re-runs the whole loop from a fresh conversation, and the quest stays accepted. |
 | Interlude | The job becomes `failed`, and Continue re-queues it. |
-| Continue (town, arc or act) | `materialize_error` is set and the chosen hook stays. Reloading retries. |
+| Continue (town, arc or act) | `materialize_error` is set and the chosen hook stays. *Try again* re-runs the whole road ahead (town, arc, Act I) when the next scenario never began, or only Act I when it did. Reloading also retries. |
 
 ## 8. Models
 

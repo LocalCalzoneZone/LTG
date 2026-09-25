@@ -43,12 +43,12 @@ Every tunable magnitude in LTG carries a register ID, a **T-number** (`T-57`), s
 | T-24 | Escalate counters per firing | +2/+2 | prompt (Verb magnitudes) | §F-4; §D18-2 | **amended by §D18-2** (was +1/+1) |
 | T-25 | Enemy `prevent` duration | 1 turn | `schema.Prevent.duration` default `this_turn` | §F-4 | untagged in code |
 | T-26 | Swarm token level | Husk chassis at ceil(L/2) | prompt (Verb magnitudes) | §F-4 | prompt-only. The engine reads the token definition's `level` |
-| T-27 | Max live tokens per creator | 2 | literal `2` in `engine._create_enemy_tokens` and `engine._swarm_at_cap` | §F-4 | Bare literal. **doc≠code**: the cap clips §D18-2's Enrage token scaling (+n−1 bodies). See the editor notes |
+| T-27 | Max live tokens per creator | 2 | `engine.TOKEN_CAP` (`_create_enemy_tokens`, `_swarm_at_cap`) | §F-4 | A boss's Enrage and a race escalation are exempt (`StackItem.uncapped_spawns`), so §D18-2's +n−1 wave spawns whole (ruled 2026-09-25, M1.22). A clipped spawn logs `token_cap` |
 | T-28 | Enemy keyword reach (min level / cost) | L1 / 1 | prompt (Keywords) | §F-5 | prompt-only |
 | T-29 | Enemy keyword trample | L2 / 2 | prompt (Keywords) | §F-5 | prompt-only |
 | T-30 | Enemy keyword flying | L2 / 4 | prompt (Keywords) | §F-5 | prompt-only |
 | T-31 | Enemy keyword lifelink | L3 / 3 | prompt (Keywords) | §F-5 | prompt-only |
-| T-32 | Enemy keyword deathtouch | L3 / 4 | prompt (Keywords) | §F-5 | prompt-only |
+| T-32 | Enemy keyword deathtouch | L3 / 4 | prompt (Keywords) | §F-5 | prompt-only. Since 2026-09-25 (M1.30) it downs a hero it connects with, so the prompt also asks for low Power, no area damage, at most one per encounter; the price is unreviewed for that |
 | T-33 | Enemy keyword protection | — (was L4 / 3) | `schema.KEYWORDS["protection"]`, `grantable: False` | §F-5 | **retired** 2026-08-22 (code comment: author the `protection` effect instead). **doc≠code**: §F-5 and README still list it |
 | T-34 | Enemy keyword hexproof | L5 / 6 | prompt (Keywords) | §F-5; §D19-3 | **amended by §D19-3** (was L4 / 4). The §F-5 body was edited in place, but the §F-10 row is stale |
 | T-35 | Enemy keyword indestructible | L6 / 6 | prompt (Keywords) | §F-5 | prompt-only |
@@ -190,7 +190,7 @@ The doc's HP row (§D17-2.2, §D17-11) is 5 / 5 / 5 / 5 / 6 / 6 / 7 / 7 / 8 / 8.
 | `ENEMY_STAT_BUFF` / `BOSS_STAT_BUFF` | ×1.2 / ×1.3 | `llm` | A flat HP and Power buff on every *generated* enemy, on top of T-40. Tokens take ×1.2. Authored content is untouched. From beta playtest, 2026-08-30 |
 | `ENEMY_ABILITY_BONUS` / `BOSS_ABILITY_BONUS` | +2 / +4 | `content` (mirrored in `runner`) | Lifts hostile component `deal_damage` / `lose_life` like T-64 lifts Power. Enrage is excluded (§D18-2) |
 | `ROW_ABILITY_BONUS` | +2 | `content` (mirrored in `runner`) | A further lift on row and blast shapes, because they can be dodged (§D18-2) |
-| `enrage_scale(n)` | Power half of a pump ×n. Toughness / AoE / heal ×(1 + (n−1)/2). Tokens +n−1 | `content` (mirrored in `runner`) | Scales a boss's Enrage to party size (§D18-2). At n = 4: ×4 / ×2.5 / +3, with the tokens clipped by T-27 |
+| `enrage_scale(n)` | Power half of a pump ×n. Toughness / AoE / heal ×(1 + (n−1)/2). Tokens +n−1 | `content` (mirrored in `runner`) | Scales a boss's Enrage to party size (§D18-2). At n = 4: ×4 / ×2.5 / +3 (the Enrage wave is exempt from T-27) |
 | `DOUBLE_INTENT_DIFFICULTIES` | {standard, hard} | `content` | On these difficulties, bosses declare 2 intents from round 1 (see T-54) |
 | `_lockdown_budget` | Party size 1 / 2 / 3 / 4 → 0 / 1 / 2 / 3 pieces. Easy −1 (min 0), hard +1 | `llm` | Lockdown pieces (stun, taunt, silence, hamstring, discard, sap, drain-ult, strip-reach) per layout. From 2026-08-21 |
 | Variety floor / copy cap | ≥ party size + 1 distinct designs; ≤ 3 copies of one design | `llm` layout validation | Stops a layout outnumbering the party with clones (beta playtest, 2026-08) |
@@ -218,7 +218,7 @@ The doc's HP row (§D17-2.2, §D17-11) is 5 / 5 / 5 / 5 / 6 / 6 / 7 / 7 / 8 / 8.
 
 - **Shipped encounters got easier.** Combat Abilities (§M-A.7, a code ruling of 2026-08-21) made 72 shipped enemy components answerable by Mitigate. Shipped content did not get the 2026-08-30 generation stat buff. Source: `engine._announce_combat_ability`, `tests/test_combat_ability.py`.
 - **Defend temp HP = base Power** (`engine._defend_value`, 2026-08-21). This is a buff to high-Power heroes, and their gauge also charges +1 per temp HP. The *shape* is intended (Update 23: "the tank's second axis"). The *magnitude* is unverified.
-- **Enrage at party size 4** (`content.enrage_scale`, §D18-2) gives ×4 on the pump's Power and ×2.5 on toughness, AoE and heal. Check how steep that is. The +3 tokens are clipped by T-27 (see the editor notes).
+- **Enrage at party size 4** (`content.enrage_scale`, §D18-2) gives ×4 on the pump's Power and ×2.5 on toughness, AoE and heal. Check how steep that is.
 - **Gauge cost step c = 20** (`state.GAUGE_LEVEL_STEP`, 2026-08-29) was chosen conservatively. The target is control casters within ±20 % of damage casters on the runner's `gauge_per_turn` metric.
 - **T-79 price curve.** The 2026-08-18 spend audit (`apps/autoplay-tester/SPEND_AUDIT_UPDATE_17.md`) found greedy-power over the ±4 pp band at every stage (a spread of about 19 pp). It blamed the greedy stick rather than the prices, so the gate is recorded as not met. Re-run the audit once the stick can spend its mana.
 - **T-74 band** (`probes.OVER_PP` / `UNDER_PP`, ±4 pp) was not recalibrated for greedy-1.5.0. That was deliberate (2026-09-06).
@@ -231,10 +231,9 @@ The owner does not currently trust the autoplay harness's absolute numbers. It i
 
 These need a decision or a fix, and each is tracked in [roadmap.md](roadmap.md):
 
-- **T-27 vs §D18-2 (M1.22).** `_create_enemy_tokens` caps live tokens at 2 per creator, which clips the party-size Enrage token wave (+n−1 bodies) and a race escalation's wave at party sizes 3–4.
 - **About 40 values are prompt-only (M4.8, M4.10).** T-01–T-24, T-26, T-28–T-32, T-34–T-36, T-39, T-47, T-53, T-65, T-67 and the prices in T-51 and T-56 are taught to the enemy designer as prose. No code prices an enemy or checks its Level against B(L), and a saved Options → LLM override can replace them.
 - **The prompt contradicts itself on single-target damage.** Its magnitude table says L+2 (T-20, §D18-2), but its T-55 line still says "single target = L+1". `enemy_analysis.LEVERS` also still quotes L+1 and Drain ceil(L/2)+1.
-- **Literals without constants (M9.7).** T-27 (`2`, twice), T-52 (`// 2`, twice) and T-45/T-46 (1 per counter).
+- **Literals without constants (M9.7).** T-52 (`// 2`, twice) and T-45/T-46 (1 per counter).
 - **Tunables without T-ids (M9.7).** Updates 18–24 added none. Candidates for T-88 onward: the stat buffs, the ability and row bonuses, `enrage_scale`, `ATTACK_CADENCE`, `EMERGENCY_BAND`, `DOUBLE_INTENT_DIFFICULTIES`, the lockdown budget, `GAUGE_LEVEL_STEP`, the boss-dial ranges, the variety floor, `_defend_value`, the later archetype costs, and the `lose_life` / `sap` / `drain_ultimate` magnitudes.
 - **The history's own register tables are stale** (T-40, T-78, T-79, T-81 rows in §X-7 and §D17-11). This page supersedes them.
 

@@ -361,3 +361,23 @@ def test_silence_still_stops_a_silenced_heros_sorceries():
     cast — the gate still catches ordinary spells on the same turn."""
     st = _silence(_heroic(), "p")
     assert not any(a.kind == "cast" for a in legal_actions(st))
+
+
+def test_sap_and_a_channels_reservation_stack():
+    """Roadmap M1.20: with 5 slots, 2 reserved by a held channel and a sap of 2,
+    one slot refreshes (5 − 2 − 2). The two used to overlap: min(5 − 2, 5 − 2)
+    left three."""
+    from ltg_combat.engine import _r_sap, _refreshed_pool
+    from ltg_combat.state import Channel
+    from ltg_core.schema import Card, Sap, t_chosen
+
+    st = _state([_char("p", hp=30)], [_enemy()])
+    p = st.character("p")
+    p.mana_colors = ["U"] * 5
+    held = Card.model_validate(_card("ward", [{"kind": "draw", "amount": 0}], timing="channeled"))
+    p.channels = [Channel(card=held, effects=[], holder_id="p", reserved=["U", "U"])]
+    p.pool = ["U", "U", "U"]                  # the three unreserved slots, unspent
+    _r_sap(st, None, Sap(amount=2, duration="encounter",
+                         target=t_chosen("ally", targeted=True)), p, {})
+    assert p.pool == ["U"]                    # it bites at once…
+    assert _refreshed_pool(p) == ["U"]        # …and at every refresh

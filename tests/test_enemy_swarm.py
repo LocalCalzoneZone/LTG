@@ -69,3 +69,23 @@ def test_spawned_token_counts_for_victory():
     st = _end_turn(st)
     assert any(e.created_by == "e" for e in st.enemies)
     assert st.result is None
+
+
+def test_an_enrage_wave_ignores_the_token_cap():
+    """Roadmap M1.22 (ruled 2026-09-25): a boss's Enrage (and a race
+    escalation) spawns its whole party-size wave; T-27 still stops a Swarm
+    rule. The cap used to clip a 4-hero Enrage of 5 down to 2, or to 0 with
+    the boss's own tokens already out."""
+    from ltg_combat.engine import _create_enemy_tokens
+    from ltg_combat.state import StackItem
+    st = _state(count=2)
+    st = _end_turn(st)                                  # the Swarm fills the cap
+    assert len([e for e in st.enemies if e.created_by == "e"]) == 2
+    wave = CreateToken(token_id="bat", count=3, hp=2, power=1)
+    _create_enemy_tokens(st, StackItem(kind="triggered", source_id="e", source_side="enemy",
+                                       label="Fury", effects=[wave]), wave)
+    assert len([e for e in st.enemies if e.created_by == "e"]) == 2   # a capped spawn…
+    assert any(ev.type == "token_cap" for ev in st.log)               # …says so
+    _create_enemy_tokens(st, StackItem(kind="triggered", source_id="e", source_side="enemy",
+                                       label="Fury", effects=[wave], uncapped_spawns=True), wave)
+    assert len([e for e in st.enemies if e.created_by == "e"]) == 5

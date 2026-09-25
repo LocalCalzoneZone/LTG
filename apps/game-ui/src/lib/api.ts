@@ -21,6 +21,18 @@ import type {
   WorldRegion,
 } from "./types";
 
+/** Where the sibling Deckbuilder answers (the host's `LTG_DECKBUILDER_PORT`). */
+export async function fetchDeckbuilderPort(): Promise<string> {
+  try {
+    const res = await fetch("/api/app/info");
+    if (!res.ok) return "8000";
+    const body = (await res.json()) as { deckbuilder_port?: number };
+    return String(body.deckbuilder_port ?? 8000);
+  } catch {
+    return "8000";
+  }
+}
+
 export async function fetchSetupOptions(): Promise<SetupOptions> {
   const res = await fetch("/api/setup-options");
   if (!res.ok) throw new Error(`setup-options failed: ${res.status}`);

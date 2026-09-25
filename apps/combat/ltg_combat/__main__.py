@@ -50,9 +50,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         except LoadoutError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        from .engine import run
+        # The report lives here, not in the engine: the engine does no I/O.
+        char = loadout.character
         print(f"[ltg-combat] loadout OK: {argv[1]}")
-        run(loadout)
+        print(f"[ltg-combat] loaded '{char.name}' (level {char.level}, "
+              f"{char.attack_mode.value}) with {len(loadout.cards)} card(s); "
+              f"stats={char.stats}")
+        print("[ltg-combat] a loadout has no encounter; run the playable demo with "
+              "`python -m ltg_combat harness` or `python -m ltg_combat repl`.")
         return 0
 
     print(f"unknown command '{command}'\n\n{_USAGE}", file=sys.stderr)

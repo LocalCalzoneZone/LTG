@@ -115,3 +115,102 @@ def test_taunt_lifts_when_the_channel_is_dropped():
     st = apply_action(st, drop)[0]
     st = _pass_all(st)
     assert st.enemy("ogre").taunted_by is None
+
+
+# --------------------------------------------------------------------------- #
+# The wall holds (roadmap M1.18, ruled 2026-09-25) and heals are spared (M1.31)
+# --------------------------------------------------------------------------- #
+_TAUNT = {"id": "jeer", "name": "Jeer", "source_name": "Jeer", "rarity": "common",
+          "level": 1, "type": "Instant", "timing": "instant",
+          "cost": {"generic": 0, "colors": {}},
+          "effects": [{"kind": "taunt",
+                       "target": {"mode": "chosen", "side": "enemy", "targeted": True}}],
+          "validated": True}
+
+
+def _hero(hid, row, hp, library=()):
+    return {"id": hid, "name": hid.title(), "hp": hp, "power": 2,
+            "hand_size": len(library), "identity": ["U"], "row": row,
+            "attack_mode": "melee", "library": list(library)}
+
+
+def _melee(components=None, eid="brute"):
+    e = {"id": eid, "name": eid.title(), "hp": 20, "level": 2, "power": 2,
+         "row": "front", "attack_mode": "melee",
+         "intent": {"name": "Smash", "amount": 3, "action_type": "attack",
+                    "intent_type": "attack", "targeting": "lowest_hp_party",
+                    "mode": "melee"}}
+    if components:
+        e["components"] = components
+    return e
+
+
+def _jeer(st, target="brute"):
+    for _ in range(20):
+        acts = legal_actions(st)
+        act = next((a for a in acts if a.kind == "cast" and a.card_id == "jeer"
+                    and a.target_id == target), None)
+        if act is not None:
+            return _pass_all(apply_action(st, act)[0])
+        st = apply_action(st, next(a for a in acts if a.kind == "end_turn"))[0]
+    raise AssertionError("Jeer never castable")
+
+
+def test_a_rear_taunter_cannot_draw_a_melee_swing_and_the_swing_still_lands():
+    """A melee body can't reach behind the wall, so the swing stays on the
+    front row: it neither fizzles nor gets pushed around."""
+    st = settle(state_from_dict({
+        "party": [_hero("wall", "front", 12), _hero("mouth", "rear", 30, [_TAUNT])],
+        "enemies": [_melee()]}))
+    assert st.enemy("brute").intent.target_id == "wall"
+    st = _jeer(st)
+    assert st.enemy("brute").taunted_by == "mouth"
+    assert st.enemy("brute").intent.target_id == "wall"     # the wall holds
+
+
+def test_a_reachable_taunter_draws_an_enemy_ability_not_only_its_swing():
+    gore = {"id": "gore", "timing": "proactive", "priority": 20,
+            "target_rule": "valuation", "telegraph": "Gore — deal 4",
+            "verbs": [{"kind": "deal_damage", "amount": 4,
+                       "target": {"mode": "chosen", "side": "ally", "targeted": True}}]}
+    st = settle(state_from_dict({
+        "party": [_hero("weak", "front", 6), _hero("loud", "front", 30, [_TAUNT])],
+        "enemies": [_melee([gore])]}))
+    assert st.enemy("brute").intent.target_id == "weak"
+    st = _jeer(st)
+    assert st.enemy("brute").intent.target_id == "loud"
+
+
+def test_a_taunt_spares_the_enemys_heals():
+    mend = {"id": "mend", "timing": "proactive", "priority": 20,
+            "target_rule": "lowest_hp_ally", "telegraph": "Mend — heal 4",
+            "verbs": [{"kind": "heal", "amount": 4,
+                       "target": {"mode": "chosen", "side": "ally", "targeted": True}}]}
+    hurt = _melee(eid="hurt")
+    hurt["hp"] = 20
+    st = state_from_dict({
+        "party": [_hero("loud", "front", 30, [_TAUNT])],
+        "enemies": [_melee([mend], eid="brute"), hurt]})
+    st.enemy("hurt").hp = 5
+    st = settle(st)
+    assert st.enemy("brute").intent.target_id == "hurt"      # it heals its friend
+    st = _jeer(st)
+    assert st.enemy("brute").intent.target_id == "hurt"      # the taunt spares it
+
+
+def test_a_lured_enemy_declares_its_next_ability_at_the_channeler():
+    """M1.18: under a held Lure the NEXT round's rule (not just the basic
+    swing) lands on the channeler — declared there by `_component_target`, and
+    re-aimed there by the Lure's own re-assertion."""
+    gore = {"id": "gore", "timing": "proactive", "priority": 20,
+            "target_rule": "valuation", "telegraph": "Gore — deal 4",
+            "verbs": [{"kind": "deal_damage", "amount": 4,
+                       "target": {"mode": "chosen", "side": "ally", "targeted": True}}]}
+    st = state_from_dict({
+        "party": [{**_hero("bait", "front", 25, [dict(_LURE)]), "identity": ["G", "G", "W"]},
+                  _hero("weak", "front", 5)],
+        "enemies": [_melee([gore])]})
+    st = _pass_all(_cast_lure(st))
+    st = _advance_to_turn2_player(st)
+    intent = st.enemy("brute").intent
+    assert intent.source_component == "gore" and intent.target_id == "bait"

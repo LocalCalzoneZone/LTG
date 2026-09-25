@@ -351,15 +351,16 @@ slack, which is why the budget is small at size 1 and generous at size 4.
   cannot cast CARDS. They keep their basic attack, their Skill/Ultimate and any
   carried consumable, so this narrows the turn instead of deleting it — never
   apologise for it, but never stack it on the same hero two turns running. As a
-  one-shot it lasts the turn; as a CHANNELLED aura it holds until the channel
+  one-shot it holds THROUGH THE HERO'S NEXT TURN (an enemy's turn-scoped
+  lockdown always does); as a CHANNELLED aura it holds until the channel
   breaks, which is the version worth building an encounter around (a Hush-Choir
   whose channel the party must break to get their spells back). Price as
   Debilitate; as a channel, ×1.5 like any channelled component.
 - MANA SAP — `{"kind":"sap","amount":<int>,"duration":"encounter","target":
   {...}}`. Reduces the hero's mana CAPACITY, the lands-equivalent: the slowest,
   cruellest pressure in the game, because it shrinks every future turn. Use
-  `"duration":"encounter"` — a `this_turn` sap from an enemy is nearly worthless,
-  since the enemy acts last and the End step lifts it almost immediately.
+  `"duration":"encounter"` for the long squeeze; a `this_turn` sap from an enemy
+  holds through the hero's next turn and costs them one refresh — a tempo tax.
   Magnitude 1–2, and give it `once_per_encounter` or a long cooldown: a sap that
   fires every turn stacks into a party that cannot play the game. Price as
   Debilitate +1 (it compounds).
@@ -374,7 +375,8 @@ poor character.
   "duration":"encounter","target":{...}}`. The hero's once-per-encounter Skill
   cannot be activated. Their Ultimate is untouched (a separate action), so this
   narrows the turn without flattening the character. `encounter` makes it a real
-  loss the party plans around; `this_turn` is a tempo tax. Give it to duellists,
+  loss the party plans around; `this_turn` holds through the hero's next turn,
+  a tempo tax. Give it to duellists,
   crippling beasts, anything that goes for the tendons.
 - DRAIN ULT — `{"kind":"modify_action","action":"ultimate",
   "modifier":"drain_ultimate","amount":<int>,"target":{...}}`. Takes `amount`
@@ -628,6 +630,11 @@ Infect: any damage the creature deals that CONNECTS also poisons the victim
 healing removes the counters). An infected biter turns every landed hit into a healer assignment —
 pair it with pressure that punishes healing (on_hero_healed) for a genuinely
 nasty knot, and use AT MOST ONE infect creature per encounter.
+Deathtouch: any damage it deals that CONNECTS executes the victim — a hero is
+DOWNED outright (revivable), whatever their HP. The party's answer is to stop the
+hit connecting at all: Mitigate it to 0, soak it with temp HP, kill or stun the
+body first. Give it LOW Power and no area damage, telegraph it plainly, and use
+AT MOST ONE deathtouch creature per encounter.
 Hexproof wards off targeted SPELLS and ABILITIES only — basic attacks still land
 on a hexproof creature (both directions), so a hexproof enemy is spell-slippery,
 not unhittable.
@@ -1646,7 +1653,7 @@ def _taunt_problems(encounter: Dict[str, Any]) -> List[str]:
                 continue
             kinds = {str(v.get("kind") or "") for v in (c.get("verbs") or [])
                      if isinstance(v, dict)}
-            if "taunt" in kinds and not (kinds & {"deal_damage", "lose_life", "drain"}):
+            if "taunt" in kinds and not (kinds & {"deal_damage", "lose_life"}):
                 problems.append(
                     f"{name}: component '{c.get('id') or c.get('archetype')}' taunts "
                     "but deals no damage — a taunt is never a whole turn. Add a "
@@ -2959,7 +2966,9 @@ Write:
    * "foreshadow": 1–2 topic exchanges per hook, spoken by NPCs PRESENT IN THIS
      TOWN, so the party has already HEARD every hook in town before the rest
      screen: the fisherman's talk of sails to the south, the trader's
-     complaint about the shut library, the innkeeper's late daughter.
+     complaint about the shut library, the innkeeper's late daughter. Give
+     them only to NPCs WITHOUT an entry in "dialogues": an NPC with a tree
+     speaks the tree, and never offers topics.
    * Each hook is a CONCRETE trouble with a body and a place, a painter could
      paint. The three must differ in kind, not just in address.
 
@@ -3378,11 +3387,13 @@ def act_prompt(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
                party_state: Dict[str, Any], previous_summary: str = "",
                ledger: Optional[List[Dict[str, Any]]] = None,
                world_ctx: Optional[Dict[str, Any]] = None,
-               lore: Optional[List[Dict[str, Any]]] = None) -> str:
+               lore: Optional[List[Dict[str, Any]]] = None,
+               hook: Optional[Dict[str, Any]] = None) -> str:
     """The act writer's user turn (§D24-9.3): town, arc, this act, THE PARTY
     (briefs, situations, recent chronicles), the filtered flags and the
-    knowledge list, PREVIOUSLY (the ledger), THE WORLD HERE (this town only)
-    and LORE IN PLAY (≤ 2 key-matched entries)."""
+    knowledge list, PREVIOUSLY (the ledger), THE WORLD HERE (this town only),
+    HOW WE GOT HERE (a continuation's Act I only: the chosen hook's road and
+    bridge, §D24-5.3) and LORE IN PLAY (≤ 2 key-matched entries)."""
     outline = arc["acts"][act_index]
     flags = party_state.get("flags") or {}
     public = sorted(k for k, v in flags.items() if v and not k.startswith("_") and not k.startswith("knows_"))
@@ -3414,6 +3425,9 @@ def act_prompt(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
     wb = _world_block(world_ctx, neighbours=False)
     if wb:
         user += ["", wb]
+    hb = _hook_block(hook)
+    if hb:
+        user += ["", hb]
     if lore:
         user += ["", "# LORE IN PLAY — a hero's private canon the world touches this act. "
                      "Colour a line, never a quest."]
@@ -3428,15 +3442,21 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
                  attempts: int = 3,
                  ledger: Optional[List[Dict[str, Any]]] = None,
                  world_ctx: Optional[Dict[str, Any]] = None,
-                 lore: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                 lore: Optional[List[Dict[str, Any]]] = None,
+                 hook: Optional[Dict[str, Any]] = None,
+                 town_id: str = "") -> Dict[str, Any]:
     """The act's town portion (§D17-6.2): quest, dialogue trees (closed hooks),
     arrival paragraph, flavour lines. ``party_state`` is `ScenarioRun.party_state()`
     (members with briefs / situations / chronicles, the public flags, the
     `knows` list); ``defeated_once`` in the flags makes the questgiver's tree
     open on the bloodied-return branch. ``lore`` defaults to the key-matched
-    selection off the party's lore folders (§D24-7.3)."""
+    selection off the party's lore folders (§D24-7.3). ``hook`` is the chosen
+    hook on a continuation's Act I (§D24-5.3), so its arrival honours the
+    bridge. ``town_id`` keys the `town:` lore gates: a campaign's composed town
+    carries no id of its own (M1.13), so the run passes it."""
     from . import content as _content, scenario_content as sc
     outline = arc["acts"][act_index]
+    town_id = town_id or str(town.get("id") or "")
     # §D20-2: the town AS THIS ACT SEES IT — the arc's cast and places merged in,
     # so the writer can hand them dialogue and the validator accepts it.
     town = sc.town_for_act(town, arc, act_index)
@@ -3445,11 +3465,11 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
         try:
             lore = _content.lore_in_play(party_state.get("members", []), town, arc,
                                          {**flags, **{k: True for k in party_state.get("knows") or []}},
-                                         act_index, str(town.get("id") or ""))
+                                         act_index, town_id)
         except Exception:  # noqa: BLE001
             lore = []
     user = act_prompt(town, arc, act_index, party_state, previous_summary,
-                      ledger=ledger, world_ctx=world_ctx, lore=lore)
+                      ledger=ledger, world_ctx=world_ctx, lore=lore, hook=hook)
     known = {k for k, v in flags.items() if v} | set(party_state.get("knows") or [])
     return _scenario_chat(ACT_INSTRUCTIONS, user, attempts,
                           lambda raw: sc.validate_materialization(raw, town, outline,

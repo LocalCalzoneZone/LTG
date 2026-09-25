@@ -117,3 +117,27 @@ def test_conditional_strike_shares_one_target():
     # base 2 + conditional 2, both on EnemyA; EnemyB untouched.
     assert st.enemy("ea").hp == 12 - 4
     assert st.enemy("eb").hp == 12
+
+
+def test_an_untargeted_pick_fizzles_on_a_bounced_enemy():
+    """Roadmap M1.31 (ruled 2026-09-25): an untargeted `chosen` effect whose
+    pick was bounced (or suspended) in response fizzles, like a targeted one."""
+    from types import SimpleNamespace
+
+    from ltg_combat.engine import _resolve_effect
+    from ltg_combat.scenario import state_from_dict
+    from ltg_core.schema import DealDamage, t_chosen
+    st = state_from_dict({"party": [{"id": "p", "name": "p", "hp": 20, "power": 2,
+                                     "hand_size": 0, "identity": ["U"], "library": []}],
+                          "enemies": [{"id": "e", "name": "e", "hp": 10, "level": 1}]})
+    e = st.enemy("e")
+    e.in_hand = True
+    item = SimpleNamespace(label="Quake", kind="spell", source_id="p", source_side="party",
+                           target_id="e", targets=(), card=None, mitigations={},
+                           mitigation_outcomes={}, combat_ability=False, stored={},
+                           attack_power=None, attack_mode=None, x=0, mode=None,
+                           corpse_id=None, color=None)
+    _resolve_effect(st, item, DealDamage(amount=3, target=t_chosen("enemy", targeted=False)),
+                    {"caster_obj": st.character("p")})
+    assert e.hp == 10
+    assert any(ev.type == "fizzle" and "left the field" in ev.msg for ev in st.log)

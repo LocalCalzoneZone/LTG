@@ -26,6 +26,33 @@ from . import art, content, llm
 Generator = Callable[..., Dict[str, Any]]
 
 
+def call_locked(session: Any, loop: Optional[asyncio.AbstractEventLoop],
+                fn: Callable[[], Any]) -> Any:
+    """Run ``fn`` under the session lock ON THE EVENT LOOP, from a worker
+    thread, and return its result (roadmap M1.8). Workers compute off-thread
+    (the LLM call, the file writes); every read of the live session and every
+    write to it goes through here, so a worker never races the players' own
+    actions. With no loop (tests, sync callers) it simply calls ``fn``, and on
+    the loop thread itself it does too: code there runs between awaits, so it
+    is already atomic against every other coroutine (and waiting on the loop
+    from the loop would deadlock)."""
+    if loop is None or running_loop() is loop:
+        return fn()
+
+    async def _go() -> Any:
+        async with session.lock():
+            return fn()
+
+    return asyncio.run_coroutine_threadsafe(_go(), loop).result()
+
+
+def running_loop() -> Optional[asyncio.AbstractEventLoop]:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+
 class AdventureJobRunner:
     """Runs one session's adventure generation off-thread and steps the job
     state machine. `generator` is `llm.generate_adventure` (tests swap it)."""
@@ -66,28 +93,43 @@ class AdventureJobRunner:
                        progress=[len(detail["phases"]), len(detail["phases"])])
         self.persist(session)
 
-    def generate_sync(self, session: Any) -> None:
+    def generate_sync(self, session: Any,
+                      loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         """Generate the act's adventure NOW (blocking): the body of the
-        background task, also usable inline by tests."""
+        background task, also usable inline by tests. ``loop`` is the event
+        loop when this runs on a worker thread: the session is read and
+        written only through `call_locked` (M1.8)."""
         sc = session.scenario
+
+        def inputs() -> Dict[str, Any]:
+            import copy as _copy
+            return dict(difficulty=sc.options.get("difficulty", "standard"),
+                        loadouts=_copy.deepcopy(sc.loadouts), levels=sc.levels(),
+                        base_level=sc.effective_level(), context=sc.adventure_context(),
+                        phase_levels=sc.phase_budget_levels())
+
         try:
+            kw = call_locked(session, loop, inputs)
             meta = self.generator(
-                [], sc.options.get("difficulty", "standard"), note="",
-                loadouts=sc.loadouts, levels=sc.levels(),
-                base_level=sc.effective_level(), context=sc.adventure_context(),
-                phase_levels=sc.phase_budget_levels(), run_only=True)
+                [], kw.pop("difficulty"), note="", run_only=True, **kw)
             detail = content.adventure_detail(meta["id"])
             if detail is None:
                 raise ValueError("the generated adventure did not persist")
             ref = None
             if session.run_id and session.run_manager:
                 ref = session.run_manager.put_content(session.run_id, detail)
-            sc.attach_adventure(meta["id"], detail, ref)
-            self.set_state(sc, "ready", adventure_ref=ref, error=None,
-                           progress=[0, len(detail["phases"])])
+
+            def apply() -> None:
+                sc.attach_adventure(meta["id"], detail, ref)
+                self.set_state(sc, "ready", adventure_ref=ref, error=None,
+                               progress=[0, len(detail["phases"])])
+                self.persist(session)
+            call_locked(session, loop, apply)
         except Exception as exc:  # noqa: BLE001
-            self.set_state(sc, "failed", error=str(exc))
-        self.persist(session)
+            def fail() -> None:
+                self.set_state(sc, "failed", error=str(exc))
+                self.persist(session)
+            call_locked(session, loop, fail)
 
     # -- async driver ------------------------------------------------------- #
     async def run(self, session: Any, broadcast: Callable[[Any], Awaitable[None]],
@@ -100,7 +142,7 @@ class AdventureJobRunner:
             self.set_state(sc, "pending", error=None)
             self.persist(session)
         await broadcast(session)
-        await asyncio.to_thread(self.generate_sync, session)
+        await asyncio.to_thread(self.generate_sync, session, asyncio.get_running_loop())
         await broadcast(session)
         if sc.adventure_job.get("state") == "ready" and sc.adventure_id:
             detail = sc.adventure_detail or {}
@@ -141,29 +183,40 @@ class InterludeJobRunner:
     def __init__(self) -> None:
         self.runner: Optional[Callable[[Any], Dict[str, Any]]] = None   # tests swap it
 
-    def generate_sync(self, session: Any) -> None:
+    def generate_sync(self, session: Any,
+                      loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        """The planner call (blocking). On a worker thread (``loop`` given) the
+        writer's inputs are read, and its result applied, under the session
+        lock on the loop; only the LLM call runs unlocked (M1.8)."""
         sc = session.scenario
         if sc is None:
             return
         try:
             if self.runner is not None:
-                sc.pending_interlude = self.runner(sc)
-                sc.interlude_job = {"state": "ready", "error": None}
+                result = self.runner(sc)          # tests' stand-in for the writer
             else:
-                sc.generate_interlude()
+                args = call_locked(session, loop, sc.interlude_inputs)
+                result = sc.interlude_generator(*args)
+        except Exception as exc:  # noqa: BLE001
+            def fail() -> None:
+                sc.pending_interlude = None
+                sc.interlude_job = {"state": "failed", "error": str(exc)}
+            call_locked(session, loop, fail)
+            return
+
+        def apply() -> None:
+            sc.take_interlude(result)
             if session.run_id and session.run_manager:
                 try:
                     session.run_manager.update_campaign(session.run_id, sc)
                 except Exception:  # noqa: BLE001
                     pass
-        except Exception as exc:  # noqa: BLE001
-            sc.pending_interlude = None
-            sc.interlude_job = {"state": "failed", "error": str(exc)}
-        if sc.interlude_job.get("state") == "ready" and sc.continue_requested:
-            try:
-                session.continue_campaign()
-            except ValueError:
-                pass
+            if sc.continue_requested:
+                try:
+                    session.continue_campaign()
+                except ValueError:
+                    pass
+        call_locked(session, loop, apply)
 
     async def run(self, session: Any, broadcast: Callable[[Any], Awaitable[None]]) -> None:
         sc = session.scenario
@@ -172,14 +225,8 @@ class InterludeJobRunner:
         async with session.lock():
             sc.interlude_job = {"state": "pending", "error": None}
         await broadcast(session)
-        await asyncio.to_thread(self._generate_locked, session)
+        await asyncio.to_thread(self.generate_sync, session, asyncio.get_running_loop())
         await broadcast(session)
-
-    def _generate_locked(self, session: Any) -> None:
-        # Runs off-thread and does NOT take the session lock: `generate_sync`
-        # writes the scenario and may call `continue_campaign()` unlocked.
-        # Known race (roadmap M1.8); despite the name, nothing here locks.
-        self.generate_sync(session)
 
     def start(self, session: Any, broadcast: Optional[Callable[[Any], Awaitable[None]]]) -> None:
         sc = session.scenario

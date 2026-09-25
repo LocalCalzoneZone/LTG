@@ -29,7 +29,7 @@ import random
 from typing import Any, Callable, Dict, List, Optional
 
 from ltg_core.schema import (LEVEL_THRESHOLDS, LEVEL_UP_POINTS, MAX_LEVEL, PHASE_GRANTS,
-                             level_band, level_for_points, level_progress,
+                             Character, level_band, level_for_points, level_progress,
                              points_to_next_level)
 
 from . import content, items, llm, loot, scenario_content as sc, world
@@ -67,6 +67,7 @@ DEFAULT_COMMITTED_REPLY = ("Then I will not press you. See your business through
 DEFAULT_SWORN_LABEL = "We have given you our word. We are seeing to it."
 DEFAULT_SWORN_REPLY = "Then I will keep you no longer. Go — and come back whole."
 FAREWELL_LABEL = "Farewell."
+ROOM_LABEL = "Take a room."
 # Update 24 §D24-7.5: the chronicle's kinds — engine-written, append-only,
 # campaign-scoped per hero. `stance` is reserved for a later update's party
 # lines; the kind exists so the schema does not change when they arrive.
@@ -98,6 +99,44 @@ def _boss_name(detail: Optional[Dict[str, Any]]) -> str:
             if isinstance(e, dict) and e.get("is_boss"):
                 return str(e.get("name") or e.get("id") or "")
     return ""
+
+
+def _member_view(cid: str, lo: Dict[str, Any], level: int, gold: int, situation: str,
+                 recent: List[Dict[str, Any]], summaries: List[str]) -> Dict[str, Any]:
+    """One hero as the writers see them (§D24-7.6)."""
+    ch = lo.get("character", {}) or {}
+    brief = ch.get("brief") if isinstance(ch.get("brief"), dict) else {}
+    return {"id": cid, "name": ch.get("name", cid), "level": level, "gold": gold,
+            "colors": list(ch.get("colors") or []),
+            "concept": str(brief.get("concept") or ch.get("description") or ""),
+            "brief": copy.deepcopy(brief), "situation": situation,
+            "chronicle_recent": recent, "chronicle_summaries": summaries}
+
+
+def opening_party_state(character_ids: List[str],
+                        loadouts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """`ScenarioRun.party_state()` for a party that has not started yet: the
+    arc writer of a campaign's FIRST scenario runs before the run exists, and
+    §D24-7.6 gives it every hero's brief and default situation (M1.14). No
+    chronicle, no flags, no purse yet."""
+    members = []
+    for cid, lo in zip(character_ids, loadouts):
+        ch = lo.get("character", {}) or {}
+        level = level_for_points(_spent_points_of(ch))
+        members.append(_member_view(cid, lo, level, 0,
+                                    str(ch.get("brief_situation") or "").strip(), [], []))
+    return {"members": members, "flags": {}, "knows": [], "gold": {}, "day": 1}
+
+
+def _creation_leftover(ch: Dict[str, Any]) -> int:
+    """Points a hero was built without spending, banked into the unspent pool
+    exactly as a lone adventure banks them (§D10-3; roadmap M1.12, ruled
+    2026-09-25). A campaign used to start the pool at 0 and lose them."""
+    try:
+        char = Character.model_validate(ch)
+    except Exception:  # noqa: BLE001 — a malformed copy banks nothing
+        return 0
+    return 0 if char.legacy else max(0, int(char.points_remaining))
 
 
 def _spent_points_of(ch: Dict[str, Any]) -> int:
@@ -172,6 +211,7 @@ class ScenarioRun:
             ch = lo.get("character", {}) or {}
             self.earned[cid] = int(ch.get("earned_points", 0) or 0)
             self.spent[cid] = _spent_points_of(ch)
+            self.banked[cid] = _creation_leftover(ch)
         # Progression
         self.scenario_number = 1
         self.act_index = 0
@@ -183,6 +223,7 @@ class ScenarioRun:
         self.act_ref: Optional[str] = None
         self.materializing = False
         self.materialize_error: Optional[str] = None
+        self.materialize_retry = "act"          # what a Retry re-runs: act | road (M1.9)
         self.quest: Dict[str, Any] = {"status": "none", "title": "", "text": "", "id": "",
                                       "adventure_theme": "", "direct_to": None}
         self.adventure_unlocked = False          # write-once per act (§D17-5.4)
@@ -402,17 +443,10 @@ class ScenarioRun:
         reaches a writer — §D24-7.7) with `knows_*` moved to a `knows` list."""
         members = []
         for cid, lo, lvl in zip(self.character_ids, self.loadouts, self.levels()):
-            ch = lo.get("character", {}) or {}
-            brief = ch.get("brief") if isinstance(ch.get("brief"), dict) else {}
             view = self.chronicle_view(cid)
-            members.append({"id": cid, "name": ch.get("name", cid), "level": lvl,
-                            "gold": self.gold.get(cid, 0),
-                            "colors": list(ch.get("colors") or []),
-                            "concept": str(brief.get("concept") or ch.get("description") or ""),
-                            "brief": copy.deepcopy(brief),
-                            "situation": self.situation_of(cid),
-                            "chronicle_recent": view["recent"],
-                            "chronicle_summaries": view["summaries"]})
+            members.append(_member_view(cid, lo, lvl, self.gold.get(cid, 0),
+                                        self.situation_of(cid),
+                                        view["recent"], view["summaries"]))
         flags = {k: v for k, v in self.flags.items()
                  if not k.startswith("_") and not k.startswith("knows_")}
         knows = sorted(k for k, v in self.flags.items() if k.startswith("knows_") and v)
@@ -513,19 +547,53 @@ class ScenarioRun:
     def materialize(self) -> Dict[str, Any]:
         """Generate this act's town portion (blocking; the app runs it in a
         thread under the entry splash). Returns the materialization."""
-        prev = self.act_summaries[-1] if self.act_summaries else ""
+        args, kw = self.materialize_inputs()
         try:
-            m = self.materializer(self.town, self.arc, self.act_index,
-                                  self.party_state(), prev,
-                                  ledger=self.ledger_for_writers(),
-                                  world_ctx=self.world_context())
+            m = self.materializer(*args, **kw)
         except ValueError as exc:
-            self.materializing = False
-            self.materialize_error = str(exc)
+            self.materialize_failed(str(exc))
             raise
+        self.take_materialization(m)
+        return m
+
+    def materialize_inputs(self) -> "tuple[tuple, Dict[str, Any]]":
+        """The act writer's inputs, snapshotted (deep copies) so the call can
+        run off the session lock (M1.8)."""
+        prev = self.act_summaries[-1] if self.act_summaries else ""
+        # A continuation's Act I writes the arrival the chosen hook's bridge
+        # promised (§D24-5.3); the arc writer alone saw it before (M1.6).
+        hook = (self.chosen_hook()
+                if self.scenario_number > 0 and self.act_index == 0 else None)
+        args = (self.town, self.arc, self.act_index, self.party_state(), prev)
+        kw = dict(ledger=self.ledger_for_writers(), world_ctx=self.world_context(),
+                  hook=hook, town_id=self.town_id)
+        return copy.deepcopy(args), copy.deepcopy(kw)
+
+    def materialize_failed(self, error: str, retry: str = "act") -> None:
+        """The writer failed. The town is not wedged (roadmap M1.9): the error
+        shows on the splash with a Retry, and ``retry`` says what to re-run —
+        ``act`` (this act's town portion) or ``road`` (a continuation's town
+        and arc, which never began)."""
+        self.materializing = False
+        self.materialize_error = error
+        self.materialize_retry = retry
+
+    def retry_materialize(self) -> str:
+        """Re-arm a failed materialization; returns what to re-run."""
+        if self.materializing:
+            raise ValueError("the town is already being written")
+        kind = getattr(self, "materialize_retry", "act") or "act"
+        # A failed road leaves the interlude's own act standing; a failed act
+        # leaves none.
+        if not self.materialize_error or (kind == "act" and self.act is not None):
+            raise ValueError("there is nothing to retry")
+        self.materializing = True
+        self.materialize_error = None
+        return kind
+
+    def take_materialization(self, m: Dict[str, Any]) -> None:
         self._take_materialization(m)
         self._apply_town_state_delta(m.get("town_state_delta"))
-        return m
 
     def _apply_town_state_delta(self, delta: Optional[Dict[str, Any]]) -> None:
         """A writer's `town_state_delta` (§D24-8.2): one or two location
@@ -591,11 +659,14 @@ class ScenarioRun:
         tree = (self.act or {}).get("dialogues", {}).get(npc_id)
         if tree is None:
             tree = self._flavor_tree(npc)
+            tree = self._with_room(loc, npc, tree)
         elif (self.flags.get(DEFERRED_PREFIX + npc_id)
               and not self.flags.get("quest_accepted")):
             # "Let us get back to you" — so they do: the NPC opens by asking
             # again, with the same offers still on the table.
             tree = self._reask_tree(npc_id, tree)
+        else:
+            tree = self._with_room(loc, npc, tree)
         if self.committed:
             tree = self._committed_tree(npc_id, tree)
         self.conversation = Conversation(npc_id, tree)
@@ -665,6 +736,31 @@ class ScenarioRun:
     def _choice(label: str, nxt: Optional[str] = None,
                 effects: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         return {"label": label, "next": nxt, "requires": [], "effects": effects or []}
+
+    def _with_room(self, loc: Dict[str, Any], npc: Dict[str, Any],
+                   tree: Dict[str, Any]) -> Dict[str, Any]:
+        """The inn always rents a room (roadmap M1.10). If no tree at the inn
+        this act offers a `rest` choice, the innkeeper (the inn's first
+        resident) gets "Take a room." on their opening node. The act writer
+        is asked for one, but nothing checks it, and in the interlude the rest
+        is the way to the rest screen."""
+        if loc.get("function") != "inn":
+            return tree
+        residents = loc.get("npcs") or []
+        if not residents or residents[0].get("id") != npc.get("id"):
+            return tree
+        dialogues = (self.act or {}).get("dialogues", {})
+        for resident in residents:
+            other = dialogues.get(resident.get("id"))
+            if other and any(h.get("kind") == "rest"
+                             for node in other["nodes"].values()
+                             for ch in node["choices"] for h in ch["effects"]):
+                return tree
+        tree = copy.deepcopy(tree)
+        root = tree["nodes"][tree["root"]]
+        room = self._choice(ROOM_LABEL, None, [{"kind": "rest"}])
+        root["choices"].insert(max(0, len(root["choices"]) - 1), room)
+        return tree
 
     def _flavor_tree(self, npc: Dict[str, Any]) -> Dict[str, Any]:
         """An NPC with no authored tree this act still holds a conversation: a
@@ -1242,18 +1338,26 @@ class ScenarioRun:
         the job runs it off-thread). Reads the ledger, the party, this town as
         the campaign knows it, and the worldbook (this town + neighbours).
         Stores and returns `{interlude, hooks}`."""
-        if not self.act_logs or not self.act_logs[-1].get("boss"):
-            pass  # the provisional entry still names the villain
+        result = self.interlude_generator(*self.interlude_inputs())
+        self.take_interlude(result)
+        return result
+
+    def interlude_inputs(self) -> tuple:
+        """What the planner reads, snapshotted (deep copies) so the call itself
+        can run off the session lock: this town as the campaign knows it, the
+        arc, the ledger with this scenario recorded as a victory, the party and
+        the worldbook."""
         ledger = self.ledger_for_writers()
         if not ledger or int(ledger[-1].get("scenario", 0)) != self.scenario_number:
             ledger.append(self._ledger_entry("victory"))
         else:
             ledger[-1] = self._ledger_entry("victory")
-        result = self.interlude_generator(self.interlude_town(), self.arc, ledger,
-                                          self.party_state(), self.world_context())
+        return copy.deepcopy((self.interlude_town(), self.arc, ledger,
+                              self.party_state(), self.world_context()))
+
+    def take_interlude(self, result: Dict[str, Any]) -> None:
         self.pending_interlude = copy.deepcopy(result)
         self.interlude_job = {"state": "ready", "error": None}
-        return result
 
     def begin_interlude(self, result: Optional[Dict[str, Any]] = None) -> None:
         """Continue Campaign (§D24-5.2): the party arrives in the post-victory
@@ -1290,14 +1394,19 @@ class ScenarioRun:
         return list((self.campaign.get("hooks") or {}).get("hooks") or [])
 
     def chosen_hook(self) -> Optional[Dict[str, Any]]:
-        """The hook the party chose (proposed or custom), or None."""
+        """The hook the party chose (proposed or custom), or None, carrying the
+        player's note (a proposed hook's stored copy has none of its own)."""
         h = self.campaign.get("hooks") or {}
         idx = h.get("chosen")
         if idx is None:
             return None
         if idx < len(h.get("hooks") or []):
-            return copy.deepcopy(h["hooks"][idx])
-        return copy.deepcopy(h.get("custom"))
+            hook = copy.deepcopy(h["hooks"][idx])
+        else:
+            hook = copy.deepcopy(h.get("custom"))
+        if hook is not None and h.get("note"):
+            hook["note"] = h["note"]
+        return hook
 
     def choose_hook(self, index: int, note: str = "",
                     custom: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1456,7 +1565,7 @@ class ScenarioRun:
         if target and target != "discard":
             # "full" — the dropdown disallows a character whose slots would overflow,
             # counting the other rewards already headed their way.
-            lo = copy.deepcopy(self.loadouts[self.slot_of(target)])
+            lo = copy.deepcopy(self._gear_loadouts()[self.slot_of(target)])
             for i_str, who in self.rewards["assign"].items():
                 if who == target and int(i_str) != index:
                     try:
@@ -1482,7 +1591,7 @@ class ScenarioRun:
         for i, item in enumerate(self.rewards["items"]):
             row: Dict[str, bool] = {}
             for cid in self.character_ids:
-                lo = copy.deepcopy(self.loadouts[self.slot_of(cid)])
+                lo = copy.deepcopy(self._gear_loadouts()[self.slot_of(cid)])
                 for j_str, who in self.rewards["assign"].items():
                     if who == cid and int(j_str) != i:
                         try:
@@ -1493,20 +1602,38 @@ class ScenarioRun:
             out[str(i)] = row
         return out
 
+    def _gear_loadouts(self) -> List[Dict[str, Any]]:
+        """The copies that hold the party's gear right now. While the finished
+        adventure is still live (the Rewards modal sits before the harvest),
+        its copies are the real ones: the spoils land there and the harvest
+        carries them into the run. Checking room against one set and landing
+        on the other lost items silently (roadmap M1.11)."""
+        run = self.adventure
+        if run is not None and len(getattr(run, "loadouts", None) or []) == len(self.loadouts):
+            return run.loadouts
+        return self.loadouts
+
     def accept_rewards(self) -> None:
-        """Land the assigned items (discards vanish); the modal closes."""
+        """Land the assigned items (discards vanish); the modal closes. A plan
+        that no longer fits is refused whole, naming who is full, so the party
+        can reassign; nothing lands until every item fits."""
         if self.rewards is None:
             raise ValueError("no rewards")
         if not self.rewards_all_assigned():
             raise ValueError("assign every reward first (or discard it)")
-        for i_str, who in sorted(self.rewards["assign"].items(), key=lambda kv: int(kv[0])):
-            if who == "discard":
-                continue
-            lo = self.loadouts[self.slot_of(who)]
+        targets = self._gear_loadouts()
+        plan = [(int(i_str), who) for i_str, who in
+                sorted(self.rewards["assign"].items(), key=lambda kv: int(kv[0]))
+                if who != "discard"]
+        trial = copy.deepcopy(targets)
+        for i, who in plan:
             try:
-                items.add_item(lo, self.rewards["items"][int(i_str)])
-            except ValueError:
-                pass  # overflow at the last moment: the item is lost, not the run
+                items.add_item(trial[self.slot_of(who)], self.rewards["items"][i])
+            except ValueError as exc:
+                name = self.rewards["items"][i].get("name", "that item")
+                raise ValueError(f"{self.hero_name(who)} has no room for {name}: {exc}")
+        for i, who in plan:
+            items.add_item(targets[self.slot_of(who)], self.rewards["items"][i])
         self.rewards = None
 
     # -- shops, selling, trading (§D17-5.3 / §D17-5.5) ----------------------- #
@@ -1642,7 +1769,10 @@ class ScenarioRun:
                           "colors": list(ch.get("colors", [])), "description": ch.get("description", "")},
                 "gear": self._gear_view(lo),
                 "worn_points": items.worn_points(lo),
-                "effective_level": lvl + items.effective_level_bonus(lo),
+                # The level encounter budgets and item tiers read (T-81): the
+                # EARNED potential plus worn gear, not the spent level (M1.29).
+                "effective_level": max(1, int(level_progress(earned)
+                                              + items.effective_level_bonus(lo))),
                 # Update 24: the character layers the player owns — the brief,
                 # this campaign's situation, and the full chronicle (the Deeds tab).
                 "brief": copy.deepcopy(ch.get("brief")) if isinstance(ch.get("brief"), dict) else None,

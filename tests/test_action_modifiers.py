@@ -563,3 +563,36 @@ def test_a_modifier_aimed_at_an_enemy_does_nothing():
                                             target=t_chosen("enemy", targeted=True)),
                      enemy, {})
     assert not getattr(enemy, "action_mods", None)
+
+
+def test_a_self_refreshing_skill_is_used_once_per_turn_not_looped():
+    """Roadmap M1.2: a Skill whose own effects refresh the Skill used to loop
+    without limit in one main phase. It comes back for the NEXT turn instead."""
+    skill = _mod_card("perfect_note", "skill", "refresh_skill")
+    skill["type"], skill["timing"] = "Sorcery", "sorcery"
+    party = [_char("p", hand=2, library=[_filler("f1"), _filler("f2"),
+                                         _filler("f3"), _filler("f4")])]
+    party[0]["skill"] = skill
+    st = _state(party)
+    st = _resolve_stack(_do(st, kind="use_skill"))
+    p = st.character("p")
+    assert p.skill_used is False          # the refresh landed…
+    assert not _kinds(st, "use_skill")    # …but not for this turn
+    st = _end_turn(st)
+    assert _kinds(st, "use_skill", "p")   # next turn it is offered again
+
+
+def test_mana_paid_for_the_skill_charges_the_gauge_like_a_cast():
+    """Roadmap M1.27a (ruled 2026-09-25): +1 gauge per point of mana the Skill
+    costs, on top of the Skill's own +5%."""
+    def gauge_after(cost):
+        skill = _filler("focus")
+        skill["type"], skill["timing"] = "Sorcery", "sorcery"
+        skill["cost"] = {"generic": cost, "colors": {}}
+        party = [_char("p", hand=1)]
+        party[0]["skill"] = skill
+        party[0]["identity"] = ["U", "U"]
+        st = _state(party)
+        st = _resolve_stack(_do(st, kind="use_skill"))
+        return st.character("p").ultimate_gauge
+    assert gauge_after(2) - gauge_after(0) == 2

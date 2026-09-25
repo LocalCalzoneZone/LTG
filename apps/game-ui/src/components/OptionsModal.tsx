@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   deleteCharacter,
   deleteEncounter,
+  fetchDeckbuilderPort,
   fetchEncounter,
   fetchSetupOptions,
   importCharacter,
@@ -125,15 +126,16 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
 
   // Open the Deckbuilder app with this character loaded for editing. There its
   // export button becomes "Update Game Character", writing back to the repo so
-  // the next New Game picks the changes up. The Deckbuilder serves on port 8000
-  // by default (`ltg-deckbuilder`); override via localStorage if you run it
-  // elsewhere: localStorage.setItem("ltg_deckbuilder_port", "8012").
-  const editInDeckbuilder = (c: CharacterOption) => {
-    const port = localStorage.getItem("ltg_deckbuilder_port") || "8000";
-    window.open(
-      `http://${location.hostname}:${port}/?edit=${encodeURIComponent(c.id)}`,
-      "_blank",
-    );
+  // the next New Game picks the changes up. The port is the one the server
+  // reports (`LTG_DECKBUILDER_PORT`, default 8000); a localStorage override
+  // still wins: localStorage.setItem("ltg_deckbuilder_port", "8012").
+  const editInDeckbuilder = async (c: CharacterOption) => {
+    // Open the tab first (inside the click, so no popup blocker), then aim it.
+    const tab = window.open("", "_blank");
+    const port = localStorage.getItem("ltg_deckbuilder_port") || (await fetchDeckbuilderPort());
+    const url = `http://${location.hostname}:${port}/?edit=${encodeURIComponent(c.id)}`;
+    if (tab) tab.location.href = url;
+    else window.open(url, "_blank");
   };
 
   if (editing) {

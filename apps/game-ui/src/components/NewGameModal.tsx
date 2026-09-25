@@ -81,7 +81,6 @@ export function NewGameModal({ onClose, onStarted }: {
   // Update 17 §D17-3: play the adventure inside a RUN (auto-saved at every
   // phase boundary; resumable / forkable from Load Game). Off == today's
   // throwaway session, byte-identical.
-  const [asRun, setAsRun] = useState(false);
   const [hardcore, setHardcore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null); // busy sub-status
@@ -143,10 +142,9 @@ export function NewGameModal({ onClose, onStarted }: {
           adventureId = meta.id;
         }
         setStatus("Starting adventure…");
-        const run: RunOptions | undefined = asRun
-          ? { difficulty: difficulty as RunOptions["difficulty"], hardcore }
-          : undefined;
-        onStarted(await createGame(picked, { adventureId, run }));
+        // A lone adventure is a throwaway session: "as a run" saves were
+        // never listed by Load Game, so the option was retired (roadmap M1.37).
+        onStarted(await createGame(picked, { adventureId }));
         return;
       }
       let encounterId = pick.id;
@@ -416,20 +414,8 @@ export function NewGameModal({ onClose, onStarted }: {
                     </div>
                   )}
                 </div>
-                {(tab === "adventures" || tab === "scenarios") && (
+                {tab === "scenarios" && (
                   <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-line pt-2">
-                    {tab === "adventures" && (
-                    <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
-                      <input
-                        type="checkbox"
-                        className="accent-[#c9b37e]"
-                        checked={asRun}
-                        onChange={(e) => setAsRun(e.target.checked)}
-                      />
-                      <span className="caps-label text-[10px] tracking-[0.16em] text-parch">Save as a run</span>
-                      <span className="text-dimmed">— auto-saves at every phase; resume or fork from Load Game</span>
-                    </label>
-                    )}
                     {tab === "scenarios" && (
                       <>
                         <span className="caps-label text-[10px] tracking-[0.16em] text-mist">Difficulty</span>
@@ -446,7 +432,7 @@ export function NewGameModal({ onClose, onStarted }: {
                         ))}
                       </>
                     )}
-                    {(asRun || tab === "scenarios") && (
+                    {tab === "scenarios" && (
                       <label className="flex cursor-pointer items-center gap-2 text-xs font-light text-mist">
                         <input
                           type="checkbox"
