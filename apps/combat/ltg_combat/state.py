@@ -75,6 +75,10 @@ class PreventTag:
     parameter: str
     uses: Optional[int] = None
     combat_kind: str = "all"    # all | melee | ranged — read only for combat_damage
+    # An ENEMY's one-shot lockdown on a hero (Silence / Pacify): the round it
+    # landed. It survives the End Step and lapses as the hero ends a turn in a
+    # later round — so it bites the hero's next turn (roadmap M1.25).
+    linger_turn: Optional[int] = None
 
 
 @dataclass
@@ -222,7 +226,7 @@ class CharacterState:
     library: List[Card] = field(default_factory=list)  # ordered; top == index 0
     graveyard: List[Card] = field(default_factory=list)  # spent / channelled cards (R-9)
     exile: List[Card] = field(default_factory=list)      # cards removed from the game (move_card)
-    identity: List[str] = field(default_factory=list)   # colours the +1 may lock
+    identity: List[str] = field(default_factory=list)   # colours the +1 may lock (the character's colours)
     mana_colors: List[str] = field(default_factory=list)  # one per capacity slot
     pool: List[str] = field(default_factory=list)        # spendable mana this turn
     channels: List[Channel] = field(default_factory=list)
@@ -247,6 +251,15 @@ class CharacterState:
     # survives it. Folded into `capacity` (never below 0) and into the refresh.
     capacity_mod: int = 0
     enc_capacity_mod: int = 0
+    # The LINGERING share (roadmap M1.25, ruled 2026-09-25): an enemy's
+    # `this_turn` wound or sap on a hero. Enemies act after the party, so a
+    # turn-scoped debuff used to lapse at the End Step before the hero ever
+    # acted under it. This share survives the End Step (the reset adds it back)
+    # and is taken off as the hero ends a turn in a later round than `nt_turn`.
+    nt_temp_mod: int = 0
+    nt_power_bonus: int = 0
+    nt_capacity_mod: int = 0
+    nt_turn: Optional[int] = None
     # Action modifiers riding this character: {modifier name: duration}, exactly
     # the shape (and expiry rule) `keywords` uses. They change what an evergreen
     # ACTION is — a bow for a turn, a Defend held as a reaction, a Mitigate that
@@ -274,6 +287,7 @@ class CharacterState:
     # `power`/`max_hp` when granted (_r_counters); this tally exists so the UI
     # can show counters as a distinct, permanent thing.
     counters: int = 0
+    counter_power: int = 0  # the Power that +1/+1 counters added (M1.31: *_base_power excludes it)
     # Typed counters (D8-2): active poison/regen effects (the ticking processes)
     # and the counters they have placed (stats folded in as each lands; the
     # tallies exist for display and 1:1 annihilation).
@@ -281,6 +295,7 @@ class CharacterState:
     regen_effects: List[Affliction] = field(default_factory=list)
     poison_counters: int = 0
     regen_counters: int = 0
+    regen_source: Optional[str] = None   # who placed them: the ticks pay their gauge (M1.27a)
     # Charge counters (§D22-1): heroes may hold the windup gauge too — a plain
     # resource added/drained by the `charge` verb, read via caster/target_charge.
     # Distinct from the ultimate gauge.
@@ -328,6 +343,7 @@ class CharacterState:
     # must target while it lives (cleared at upkeep — a this-turn effect).
     stunned: int = 0
     taunted_to: Optional[str] = None
+    taunted_turn: Optional[int] = None  # the round an enemy taunt landed (M1.25)
 
     @property
     def effective_hp(self) -> int:
@@ -440,10 +456,12 @@ class TokenState:
     power_bonus: int = 0  # temporary Power (pump +, wound −) — tokens can be anthemed
     keywords: Dict[str, str] = field(default_factory=dict)
     counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
+    counter_power: int = 0
     poison_effects: List[Affliction] = field(default_factory=list)  # typed counters (D8-2)
     regen_effects: List[Affliction] = field(default_factory=list)
     poison_counters: int = 0
     regen_counters: int = 0
+    regen_source: Optional[str] = None   # who placed them: the ticks pay their gauge (M1.27a)
 
     @property
     def effective_hp(self) -> int:
@@ -554,7 +572,8 @@ class Component:
     # swipe Mitigate-answerable.
     target_row: Optional[str] = None
     # Boss phase gate (§F-9): None = always; "pre_enrage" = only before the boss
-    # enrages; "post_enrage" = only after. Meaningless (ignored) on non-bosses.
+    # enrages; "post_enrage" = only after. On a minion the gate reads the
+    # encounter's boss (M1.26).
     phase: Optional[str] = None
     # GDD action-taxonomy class for what this component puts on the stack.
     # Enemies have no cards, so "spell" is THEMATIC: Fireball/Meteor/Psionic
@@ -679,10 +698,12 @@ class EnemyState:
     power_bonus: int = 0
     keywords: Dict[str, str] = field(default_factory=dict)
     counters: int = 0  # total +1/+1 counters (stats already folded in; see CharacterState)
+    counter_power: int = 0
     poison_effects: List[Affliction] = field(default_factory=list)  # typed counters (D8-2)
     regen_effects: List[Affliction] = field(default_factory=list)
     poison_counters: int = 0
     regen_counters: int = 0
+    regen_source: Optional[str] = None   # who placed them: the ticks pay their gauge (M1.27a)
     # Charge (D8-2.4): the visible windup gauge the `charge` verb fills. The count
     # is public; what it feeds (the on_charge_full component) is hidden until it fires.
     charge: int = 0
@@ -756,6 +777,11 @@ class StackItem:
     mode: Optional[int] = None  # chosen modal mode index (None for a non-modal cast)
     cast_mode: str = "action"   # "action" (proactive) | "reaction" (cast into a window)
     x: int = 0                  # the X chosen at cast (0 for a non-X card)
+    color: Optional[str] = None  # the colour picked at cast for a `choice` ramp / ritual
+    # A boss's Enrage or a race escalation: its `create_token` is exempt from
+    # the per-creator token cap (T-27), so §D18-2's party-size wave spawns whole
+    # (roadmap M1.22, ruled 2026-09-25).
+    uncapped_spawns: bool = False
     attack_mode: Optional[str] = None  # melee | ranged, for an attack action (R-1)
     # A positional intent's row (§L-5): the item strikes every character standing
     # in this row when it RESOLVES (target_id stays None). Read by Mitigate
@@ -773,17 +799,18 @@ class StackItem:
     # RESOLUTION as max(0, attack_power + source.power_bonus) — so a wound/anthem landing
     # while the swing sits on the stack changes what lands (R-7). None for spells/abilities.
     attack_power: Optional[int] = None
-    # A declared Mitigate on this attack (Update 02 §M-A): `mitigate_by` is the
-    # mitigator's id, `mitigate_for` the protected character (== mitigate_by for self
-    # mode, an ally's id for interception). Applied per hit at resolution.
-    mitigate_by: Optional[str] = None
-    mitigate_for: Optional[str] = None
-    # What that Mitigate actually did, filled in as the damage resolves: keys
-    # `protected` (whose hit it answered), `landed_on` (who took the residual —
-    # the mitigator in ally mode) and `residual` (total damage that got through).
-    # Read by the §M-A.7 rider rule. Lives on the ITEM, not the resolution
-    # context, so it survives a mid-resolution pause for a player's pick.
-    mitigation_outcome: Optional[Dict[str, Any]] = None
+    # The Mitigates declared on this attack (Update 02 §M-A; §L-5: EACH character
+    # struck by a positional swipe may self-Mitigate — roadmap M1.17, ruled
+    # 2026-09-25): protected character id → guard id (the same id for self mode,
+    # another hero for an ally's interception). One guard per struck character.
+    # Applied per hit at resolution.
+    mitigations: Dict[str, str] = field(default_factory=dict)
+    # What each Mitigate actually did, filled in as the damage resolves, keyed by
+    # the protected id: `protected`, `landed_on` (who took the residual — the
+    # guard in ally mode) and `residual` (total damage that got through). Read by
+    # the §M-A.7 rider rule. Lives on the ITEM, not the resolution context, so it
+    # survives a mid-resolution pause for a player's pick.
+    mitigation_outcomes: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     # A COMBAT ABILITY (§M-A.7): an ability-class action (ability / activated /
     # triggered) that DEALS DAMAGE. Derived from the verbs as the item is pushed
     # (engine._is_combat_ability), never authored. It puts the hit in the

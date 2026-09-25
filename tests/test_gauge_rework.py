@@ -299,3 +299,34 @@ def test_charge_and_drain_verbs_are_percent_denominated():
     st = _do(st, kind="cast", card_id="sap_ult")
     st = _pass_all(st)
     assert st.character("p").ultimate_gauge == 140 - 70   # 50% of the bar
+
+
+def test_countering_a_basic_swing_pays_its_damage_once():
+    """Roadmap M1.21: a swing carries both `attack_power` and its own
+    `deal_damage` verb, and `_denied_value` added both, so a counter on a
+    5-power swing banked about 10."""
+    parry = _card("parry", [{"kind": "counter", "filter": "attack",
+                             "target": {"class": "action", "side": "enemy"}}],
+                  timing="instant")
+    st = _state([_char("p", library=[parry])], [_enemy(amount=5, level=3)])
+    st = _drive_to_enemy_window(st)
+    assert st.stack[-1].attack_power == 5
+    st = _do(st, kind="cast", card_id="parry")
+    st = _pass_all(st)
+    assert any(ev.type == "countered" for ev in st.log)
+    assert st.character("p").ultimate_gauge == 5
+
+
+def test_amplify_multiplies_before_mitigate_subtracts():
+    """Roadmap M1.27b (ruled 2026-09-25): an amplified hit is h×m − X (it was
+    (h − X)×m), and a fully mitigated hit still spends the amplify."""
+    from ltg_combat.state import AmplifyTag
+
+    def primed(st):
+        st.enemies[0].amplify_tags.append(AmplifyTag(event="any_damage", multiplier=2))
+    st = _state([_char("p", power=4)], [_rammer(amount=3)], tweak=primed)   # X = 2
+    st = _drive_to_enemy_window(st)
+    st = _do(st, kind="mitigate", target_id="p")
+    st = _pass_all(st)
+    assert st.character("p").hp == 30 - (3 * 2 - 2)
+    assert st.enemies[0].amplify_tags == []

@@ -115,3 +115,46 @@ def test_reaction_lands_as_triggered_and_spell_counter_ignores_it():
     assert casts == []                             # a spell counter can't touch it
     assert action_mode("triggered", "melee") == "ability"
     assert action_mode("triggered", "melee", True) == "combat ability"
+
+def _front_archer(components):
+    e = _enemy(components, eid="archer")
+    e.update({"attack_mode": "ranged", "row": "front", "home_row": "mid"})
+    e["intent"] = dict(e["intent"], mode="ranged")
+    return e
+
+
+def test_a_ranged_caster_in_front_still_casts():
+    """Roadmap M1.23 / §D23-3: spells are not attacks, so the point-blank bar
+    never silences them. A ranged body standing in Front could aim no
+    component at a hero at all, its spells included."""
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "P", "hp": 20, "power": 3, "hand_size": 0,
+                   "identity": ["U"], "row": "front", "attack_mode": "melee",
+                   "library": []}],
+        "enemies": [_front_archer([dict(_FIREBALL)])],
+    })
+    st = _run_to_enemy_stack(st)
+    (row,) = _stack_list(st)
+    assert "Fireball" in row["label"] and row["kind"] == "spell"
+    # …cast from Front in round 1, not after spending a turn falling back.
+    assert st.turn == 1 and st.enemy("archer").row == "front"
+
+
+def test_an_untargeted_blast_declares_with_nobody_in_reach():
+    """Roadmap M1.23: a rule whose verbs are all `mode: all` needs no pick, so
+    an empty reachable set must not skip it (here, a ground melee brute facing
+    an all-flying party it cannot reach)."""
+    quake = {"id": "quake", "archetype": "Burst", "timing": "proactive",
+             "priority": 20, "cooldown": 2, "target_rule": "valuation",
+             "telegraph": "Quake — 2 to every hero",
+             "verbs": [{"kind": "deal_damage", "amount": 2,
+                        "target": {"mode": "all", "side": "ally"}}]}
+    st = state_from_dict({
+        "party": [{"id": "p", "name": "P", "hp": 20, "power": 3, "hand_size": 0,
+                   "identity": ["U"], "row": "front", "attack_mode": "melee",
+                   "keywords": ["flying"], "library": []}],
+        "enemies": [_enemy([quake], eid="brute")],
+    })
+    st = _run_to_enemy_stack(st)
+    (row,) = _stack_list(st)
+    assert "Quake" in row["label"]

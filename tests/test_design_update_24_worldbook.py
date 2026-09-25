@@ -155,3 +155,11 @@ def test_backfill_is_idempotent(monkeypatch):
     assert world.entry_for("karzum")["added_by"] == "backfill"
     bf.backfill(["karzum", "nalindor"])      # nothing to do the second time
     assert n_calls["n"] == 2
+
+
+def test_a_new_town_with_a_repeated_name_gets_its_own_id():
+    """Roadmap M1.16: a `new` hook whose seed repeats a town name overwrote it."""
+    a = sc.save_town(town_raw("Hollowmere"))
+    b = sc.save_town(town_raw("Hollowmere"))
+    assert a["id"] == "hollowmere" and b["id"] == "hollowmere_2"
+    assert sc.town_detail("hollowmere") is not None and sc.town_detail("hollowmere_2") is not None

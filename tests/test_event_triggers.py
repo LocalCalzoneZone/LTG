@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import pytest
 
-from ltg_core.schema import Card, EventTrigger
+from ltg_core.schema import Card, DealDamage, EventTrigger, t_chosen
 from ltg_core.translation import render_effects
 from ltg_combat.engine import apply_action, legal_actions
 from ltg_combat.scenario import state_from_dict
+from ltg_combat.state import Component
 
 
 def _channel(cid, trigger, effect=None):
@@ -444,3 +445,38 @@ def test_other_ally_is_offered_to_the_deckbuilder_and_labelled():
     from ltg_core.schema import TRIGGER_WHO, trigger_key_label
     assert "other_ally" in TRIGGER_WHO
     assert trigger_key_label("attack:other_ally") == "Whenever another ally attacks"
+
+
+def test_a_channel_watching_enemy_spells_fires_when_an_enemy_casts():
+    """Roadmap M1.31 (ruled 2026-09-25): enemy spell components fire
+    `spell_cast`, so "whenever an enemy casts a spell" works."""
+    st = _state([_channel("ward", {"event": "spell_cast", "who": "enemy"})], hp=20)
+    st.enemies[0].components.append(Component(
+        id="hex", archetype="Burst", priority=10, target_rule="valuation",
+        action_type="spell", telegraph="Hex — deal 3",
+        verbs=[DealDamage(amount=3, target=t_chosen("ally", targeted=True))]))
+    st.character("p").hp = 15                      # room for the ward's mend
+    st = _cast(st, "ward")
+    for _ in range(100):
+        if any(ev.type == "intent_execute" for ev in st.log):
+            break
+        acts = legal_actions(st)
+        st = apply_action(st, next((a for a in acts if a.kind in ("pass", "end_turn")),
+                                   acts[0]))[0]
+    st = _settle(st)
+    assert st.character("p").hp == 15 + 1 - 3      # the ward mended 1 as the Hex was cast
+
+
+def test_an_enemy_channels_event_triggered_drop_ends_it():
+    """M1.31 (ruled 2026-09-25): an enemy channel's `channel_drop` on an EVENT
+    trigger used to find no channel (the trigger item carried no component)."""
+    from ltg_combat.engine import _fire_event
+    from ltg_combat.state import EnemyChannel
+    from ltg_core.schema import ChannelDrop
+    st = _state([])
+    ogre = st.enemy("ogre")
+    ogre.channels.append(EnemyChannel(
+        component_id="rite", name="Rite", holder_id="ogre",
+        effects=[ChannelDrop(trigger=EventTrigger(event="damage_taken", who="you"))]))
+    _fire_event(st, "damage_taken", ogre)
+    assert ogre.channels == []

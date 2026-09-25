@@ -170,6 +170,23 @@ def test_positional_intent_can_be_mitigated_by_a_struck_character():
     assert st.character("p").hp == 17                         # 4 − 1 = 3 landed
 
 
+def test_every_struck_character_may_mitigate_their_own_hit():
+    """Roadmap M1.17 (ruled 2026-09-25, §L-5): a Cleave on a row of two lets
+    BOTH heroes blunt their own hit. The item held one guard, so the second
+    Mitigate replaced the first and the first hero's use was wasted."""
+    st = _state([_char("a", row="front", power=2, hp=20),      # X = 1
+                 _char("b", row="front", power=4, hp=20)],     # X = 2
+                [_cleaver()])
+    st = _drive_to_enemy_window(st)
+    st = _do(st, kind="mitigate", actor_id="a", target_id="a")
+    # `a` is covered now: nobody is offered a second guard for them.
+    offers = [x for x in legal_actions(st) if x.kind == "mitigate"]
+    assert all(x.target_id != "a" for x in offers)
+    st = _do(st, kind="mitigate", actor_id="b", target_id="b")
+    st = _pass_all(st)
+    assert st.character("a").hp == 17 and st.character("b").hp == 18   # 4−1, 4−2
+
+
 # --- §L-6.2: relentless -------------------------------------------------------- #
 def test_relentless_pursues_through_the_wall():
     st = _state([_char("tank", row="front", hp=30), _char("mage", row="front", hp=10)],

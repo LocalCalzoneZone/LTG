@@ -583,11 +583,7 @@ class RunManager:
         adv = st.get(block["adventure_ref"]) if block.get("adventure_ref") else None
         # Update 24 §D24-6: identity is read LIVE from the character file on
         # every load; the instance keeps its points-buy and progression.
-        notices: List[str] = []
-        for cid, lo in zip(block.get("character_ids", []), loadouts):
-            live = content.loadout_for(cid)
-            if live is not None:
-                notices += content.refresh_instance(lo, live)
+        notices = content.refresh_party(block.get("character_ids", []), loadouts)
         scenario = ScenarioRun(town, arc, block["character_ids"], loadouts,
                                block.get("options"), town_id=block.get("town_id", ""),
                                scenario_id=block.get("scenario_id", ""))

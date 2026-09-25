@@ -107,7 +107,7 @@ Singleton means no two cards share a name. Deck status is **advisory**: warnings
 2. **Lints (advisory).** Examples: a counter that is not an instant, a zero amount, an unused slot, a channeled effect with neither a duration nor a trigger.
 3. **Ratification.** Export and "Update Game Character" send only structurally valid, `validated` cards; the rest are left out and listed.
 
-**Consumables** on the belt enter each encounter as extra, mana-free cards above the opening hand. They stack as abilities and are exiled when used (§13.4).
+**Consumables** on the belt enter each encounter as extra, mana-free cards above the opening hand. They stack as **activated** abilities, so an `activated` counter answers them, and are exiled when used (§13.4; ruled 2026-09-25, M1.27c).
 
 *Sources: GDD §3, §4.5 · §R-8, §R-9 · §X-1, §X-7 (T-42, T-43) · §D8-3.5 · §D17-4.4 · `schema.Card`, `Cost`, `deck_status`, `RARITY_MINIMUMS`; `lints.LINT_RULES`; deckbuilder `_build_engine_loadout`.*
 
@@ -126,7 +126,7 @@ Every combatant holds exactly one live `row` (§4.10). A hero starts on the row 
 - A **flying** melee attacker ignores the wall, but cannot strike rows behind a defender with **reach**.
 - A **reach** melee attacker may also strike a flyer in the wall row, or the front-most flyers if the line is all flyers.
 
-When an enemy aims at the party, only heroes count: they form the wall and are the only targets (a controlled enemy can also take a basic swing). Ordinary ally tokens are never singled out and never wall; area and row effects are what hit them.
+When an enemy aims at the party, heroes **and the party's tokens** count: grounded tokens form the wall like anyone, and enemies may single them out (ruled 2026-09-25, roadmap M1.27d).
 
 Rows decide: melee reach; the ranged-from-Front ban; Mitigate adjacency (§4.8); interposition and positional intents (§4.10); row and blast splash shapes (§6); the trample carry (§4.7); and the fixed order of enemies and tokens: **row (Front first), then Level (low to high), then name**.
 
@@ -167,8 +167,8 @@ Anything put on the stack opens a reaction window (§5), in any step. Enemy cool
 **Effective HP = `hp + temp_mod`** (§4.9). Every lethality check reads it, and a creature is alive exactly while effective HP > 0.
 
 **How one hit resolves**, in order:
-1. Mitigate, if one was declared on the action and covers this hit; it may redirect the hit onto the guard (§4.8).
-2. The source's primed `amplify`, if one matches (§11).
+1. The source's primed `amplify`, if one matches (§11): the hit is multiplied first, and the tag is spent even if Mitigate then swallows the hit (ruled 2026-09-25, roadmap M1.27b).
+2. Mitigate, if one was declared on the action and covers this hit; it may redirect the hit onto the guard (§4.8). So an amplified, mitigated hit deals h × m − X.
 3. A matching `prevent` shield nullifies the hit (a `next` shield is spent).
 4. A matching `protection` charge negates the hit (the charge is spent).
 5. If what remains is ≥ ceil(max HP ÷ 4), the target's channels break after the resolution (§8).
@@ -183,7 +183,7 @@ Damage that **connects** = temp HP soaked + HP lost. Lifelink, infect, deathtouc
 - A **player-character** is **incapacitated**. It stays on its row but takes no turns, holds no priority and draws nothing. Its stack items are removed and its channels break. Each other standing character gains 25% gauge (§4.12). The **death event fires** (§8). Its counters stay. Harmful area effects pass it by and enemies never aim at it. Restorative verbs still reach it: heal, revive, pump, counters, grant_keyword, prevent, protection, amplify, double_next.
 - A character **stands back up** the moment effective HP > 0. That can come from a heal (which fills any wound first), `revive` (to `max(1, floor(max_hp × to_fraction))`, default ½, temp layers cleared), a regen tick, or a turn-scoped wound expiring.
 
-**Death is permanent.** Death removes the creature from the board. The End Step reaps creatures **before** resetting temporary layers, so an expiring −X/−X never hands back the toughness that killed them; characters are judged after the reset. Deathtouch executes a minion its damage connects with (a boss only within its execute window, ≤ 25% HP; §9.5). `indestructible` stops damage at 1 HP but does not stop exile, wounds or negative counters.
+**Death is permanent.** Death removes the creature from the board. The End Step reaps creatures **before** resetting temporary layers, so an expiring −X/−X never hands back the toughness that killed them; characters are judged after the reset. Deathtouch executes any creature its damage connects with: an enemy (a boss only within its execute window, ≤ 25% HP; §9.5), a party token, or a hero, who is downed as by any blow to 0 (ruled 2026-09-25, M1.30). `indestructible` stops damage, life loss and poison at 1 HP and is immune to destroy and deathtouch; only exile, wounds and negative counters kill it (ruled 2026-09-25, M1.31).
 
 *Sources: GDD §4.3 · §R-7, §R-10, §R-11 · §X-2.3, §X-3.2 · §D10-2 (T-59) · §D23-7.3, §D23-7.6 · engine `_deal_damage`, `_after_damage`, `_kill_enemy`, `_heal`, `_r_revive`, `_party_pool`, `_end_step`; `state.CharacterState.alive`.*
 
@@ -192,14 +192,14 @@ Damage that **connects** = temp HP soaked + HP lost. Lifelink, infect, deathtouc
 Each character has its own mana: a colour-locked **capacity** that curves up. There are no lands.
 
 - **Starting capacity** is the character's starting-mana slots, one colour each, from the build (§10). Mana returns to this base every encounter; the pool fills at the round-1 refresh.
-- **Curve-up.** From round 2, each Upkeep adds **+1 capacity** before the draw, spendable that same round. The player locks its colour from the character's colours. As the engine reads them, these are the distinct colours of its starting mana (at most 3); a single-colour character locks automatically. Any capacity rise fires `capacity_increase` channel triggers.
+- **Curve-up.** From round 2, each Upkeep adds **+1 capacity** before the draw, spendable that same round. The player locks its colour from the character's colours (at most 3), whether or not the starting mana has that colour; a single-colour character locks automatically. Any capacity rise fires `capacity_increase` channel triggers.
 - **Refresh.** At each Upkeep the pool becomes every capacity slot not reserved by a held channel. Unspent mana does not carry over.
 - **Paying.** A coloured pip needs that colour; generic takes any. Payment is automatic (generic paid in W, U, B, R, G order) unless the player names the exact pips.
 - **X costs.** The caster picks any X it can afford (0 upward) and pays X as extra generic mana. The `x` and `casting_cost` refs read it.
-- **Ramp** (`ramp`) raises capacity above the curve. **Immediate:** capacity and pool now. **Tapped:** capacity now, spendable from the next refresh. **Deferred:** arrives at the next Upkeep. A `choice` colour resolves to the character's first mana colour.
+- **Ramp** (`ramp`) raises capacity above the curve. **Immediate:** capacity and pool now. **Tapped:** capacity now, spendable from the next refresh. **Deferred:** arrives at the next Upkeep. A `choice` colour (ramp or ritual) is picked at cast, one offer per colour of the character, like a mode or X; a single-colour character, or a choice fired by a trigger, takes the character's first colour.
 - **Rituals** (`add_mana`) add to the current pool only, are lost at the next refresh, and never raise capacity.
 - **Channel reservation.** A channeled card reserves exactly the pips paid for it. They are left out of every refresh while it is held, and return straight to the pool (not via the stack) when it ends (§8).
-- **Sap** (`sap`) lowers capacity by N (never below 0), for `this_turn` or the `encounter`. It trims the unspent, unreserved pool at once and caps later refreshes at the sapped capacity; reserved mana is never stripped. Cards cannot sap an enemy.
+- **Sap** (`sap`) lowers capacity by N (never below 0), for `this_turn` or the `encounter`. Sap and channel reservation **stack**: the pool refreshes to capacity − sap − reserved pips. It trims the unspent pool to that at once and caps every later refresh; a held channel's reserved pips are never stripped. Cards cannot sap an enemy.
 
 *Sources: GDD §4.4, §8 · §P-1, §P-4c · engine `_lock_capacity`, `_refreshed_pool`, `_pay`, `_cast_actions`, `_r_ramp`, `_r_add_mana`, `_end_channels`, `_r_sap` (code-only ruling, 2026-08-21); `state.CharacterState.capacity`.*
 
@@ -244,7 +244,7 @@ A character's **turn** is its main phase in the Players step: it holds priority 
 - A **stunned** character's main phase offers only End Turn, and each stunned turn it ends uses up one stun; its reactions stay open.
 - `prevent attack` (Pacifism) forbids the basic attack.
 - `prevent cast` (Silence) forbids casting cards other than consumables. It does not stop the Attack, Skill or Ultimate.
-- An enemy **taunt** forces the character's basic attacks onto the taunter while that enemy lives and is reachable, until the next Upkeep.
+- An enemy **taunt** forces the character's basic attacks onto the taunter while that enemy lives and is reachable, through the character's next turn.
 - A held **stance** may remove or replace Attack, Defend, Move and Mitigate (§8).
 
 **Delay.** At the start of its turn a character may Delay: before any verb, once per round, not while stunned, and only if another character still has a turn this round. It moves to the end of the party turn order for the rest of the encounter.
@@ -271,9 +271,9 @@ A character's **turn** is its main phase in the Players step: it holds priority 
 
 **Keywords in brief** (full glossary §7):
 - **double strike:** the basic attack strikes twice, including a first-strike swing.
-- **first strike:** during the Enemies step, a character that has not used its basic attack this round may make it as a reaction. It resolves before the action it answers and can kill the attacker first.
+- **first strike:** during the Enemies step, a character that has not used its basic attack this round may make it as a reaction, at an enemy that has an action on the stack (ruled 2026-09-25, roadmap M1.28). It resolves before the action it answers and can kill the attacker first.
 - **trample:** a killing blow's overkill carries to exactly one more creature. The carry target is on the victim's side, in the same or an adjacent row, and legally strikable; the lowest effective HP is chosen (then row, then name). The carry goes through that creature's defences and never carries again; with no legal target it is lost.
-- **lifelink** heals by the damage that connects; **deathtouch** executes a minion (§4.3); **hexproof** does not stop attacks.
+- **lifelink** heals by the damage that connects; **deathtouch** executes what it connects with, heroes included (§4.3); **hexproof** does not stop attacks.
 
 **The combat-damage lane.** `prevent`, `protection` and `amplify` name a damage lane:
 - **combat lane:** basic attacks, activated and enemy component abilities, fights, and triggered Combat Abilities (§4.8);
@@ -306,7 +306,7 @@ Movement adds a positional answer: put a body in the way, or step out of a targe
 - **Ally mode:** available for a struck ally in your row or an **adjacent** row. Every hit aimed at that ally is redirected onto you and reduced by X: all of them or none.
 - **The dash.** If the ally stands in another row, you move to it as you declare. This is an action-bound move, so the re-check runs (§4.10). Defenders dash too.
 - **Riders (§M-A.7).** When a Mitigate is declared, a Combat Ability resolves its damage first, then its other effects on the protected character. If the Mitigate absorbed every hit, those riders **do not land**. If damage got through, they land on **whoever took the leftover damage**, which is the guard in ally mode: interpose against "deal 5 and stun" and you are the one stunned. On-hit effects such as lifelink fire off the damage that lands on the guard.
-- **One per action.** Only one Mitigate applies to a stack item: the last one declared.
+- **One guard per struck character.** Each character a stack item strikes may be covered by one Mitigate: their own, or one ally's interception. So every hero caught by a row swipe may blunt their own hit (§L-5). A character already covered is not offered again, so no Mitigate is wasted (ruled 2026-09-25, roadmap M1.17).
 - The guard earns +1 gauge per point it prevents (§4.12).
 
 **Defend: the defensive action.** Grants **temporary HP equal to base Power**. Pumps and wounds don't count; counters do; `defend_double` doubles it. The buffer soaks damage before HP and fades at End Step (§4.9). Defend is half of the pair, once per round, and earns +1 gauge per point. `defend_as_reaction` lets it be taken in a reaction window without touching the turn. **Defender** (hero-only; enemies ignore it) frees Defend and forbids the basic attack, first strike included (§4.6).
@@ -330,7 +330,7 @@ Each has an **encounter share**, and End Step resets the layer to that share (0 
 
 - A wound, negative pump or negative counters that bring effective HP to ≤ 0 kill or incapacitate **at once**, even through `indestructible`.
 - Damage uses up an encounter buffer for good; healing closes an encounter wound for good.
-- **Fades at End Step:** turn-scoped pump, wound and Defend layers; turn-scoped `sap`; every `prevent` shield, one-shots included; enemy taunt binds; turn-scoped keywords and action modifiers. Channel auras re-apply straight after (§8).
+- **Fades at End Step:** turn-scoped pump, wound and Defend layers; turn-scoped `sap`; every `prevent` shield, one-shots included; turn-scoped keywords and action modifiers. Channel auras re-apply straight after (§8). **Except** an enemy's turn-scoped lockdown on a hero (wound, sap, Silence/Pacify, a hostile modifier, a taunt), which holds through the hero's next turn (§9.9).
 - **Persists:** encounter-scoped layers, +1/+1 counters, `protection` charges, `amplify` and `double_next` primings (until spent), typed counters (§4.11), stuns (until used up), and HP lost.
 
 *Sources: GDD §4.9 · §R-7, §R-11 · engine `_r_pump`, `_r_wound`, `_r_counters`, `_do_defend`, `_reset_temp_layers`, `_sync_enc_temp`, `_expire_keywords`, `_expire_action_mods`, `_end_step`.*
@@ -402,7 +402,7 @@ Both are **turn-spending verbs** (§4.6); a freed verb can go with either, in ei
 | another party member is downed | +25% to each standing character, once per downing |
 | `charge_ultimate` / `drain_ultimate` action modifiers | + or − the authored % |
 
-Regen ticks pay no one, and mana paid for the Skill earns nothing beyond the Skill's +5%.
+Regen ticks pay the gauge of whoever placed the counters, as healing (+1 per point restored), and mana paid for the Skill earns +1 per point like a cast's, on top of the Skill's +5% (ruled 2026-09-25, roadmap M1.27a).
 
 **Primed.** At **80% or more** (T-69) with the Ultimate unspent, or while holding an `amplify` or `double_next` priming, a hero counts as a **primed threat** for enemy targeting. Enemy rules can also read the gauge and react to an Ultimate on the stack (§9).
 
@@ -478,12 +478,12 @@ An enemy action lives twice: first as a veiled **intent**, off the stack, then a
 
 **Target lock.** The target is fixed at declaration. It moves only in three cases:
 - **Interposition.** After any occupancy change, a *redirectable* intent whose target has left reach re-aims at the best reachable body (a reachable taunter first). Redirectable: a melee swing or melee single-target Combat Ability from a non-flying, non-relentless enemy, at a living hero.
-- **Taunt.** A taunt re-aims declared intents at the taunter.
+- **Taunt.** A taunt re-aims the enemy's declared **hostile**, single-hero intents at the taunter, when the intent can reach them. It respects the wall: a melee body cannot be drawn onto a taunter behind grounded bodies, so its swing stays where it was aimed. Heals and buffs on the enemy's own side are never re-aimed, and row-aimed intents ignore taunt. While the taunt holds, the enemy's hostile rules and its basic swing declare at a reachable taunter (ruled 2026-09-25, roadmap M1.18 and M1.31).
 - **Redirect.** Once the intent is on the stack, `redirect` can move it.
 
 A **row-aimed** intent aims at ground: it hits whoever stands in the row at resolution, so leaving the row dodges it (§4.10).
 
-**The veil.** Before the stack, players see only the category, template line, locked target (a name, rows, or none), status (declared · stripped · stunned · executed · fizzled), a stripped intent's reveal, the slot, and the redirectable bit. They never see names, verbs, amounts, keywords or channel status. Reactive components never telegraph. The seat snapshot carries only veiled lines and drops `intent_declared` log entries. The stack shows the action in full.
+**The veil.** Before the stack, players see only the category, template line, locked target (a name, rows, or none), status (declared · stripped · stunned · executed · fizzled), a stripped intent's reveal, the slot, and the redirectable bit. They never see names, verbs, amounts, keywords or channel status. Reactive components never telegraph. The seat snapshot carries only veiled lines, drops `intent_declared` log entries, and rewrites redirect and spoil lines without the intent's name. A teammate's draw or scry is logged without the card. The stack shows the action in full.
 
 **Category.** The first match wins:
 1. a Move intent → manoeuvre;
@@ -621,7 +621,7 @@ An **Ultimate** stacks as `activated`. Negate (`spell`) never stops it; `action`
 | `attack` | an attack or Combat Ability goes on the stack (hero, token or enemy) |
 | `damage_taken` | damage connects: temp HP soaked plus HP lost is more than 0 |
 | `life_gain` | a heal restores HP or closes a wound |
-| `spell_cast` | a hero casts a card; `spell_type` narrows it to instant, sorcery or channeled |
+| `spell_cast` | a hero casts a card, or an enemy's spell-classed rule goes on the stack (since 2026-09-25, M1.31); `spell_type` narrows it to instant, sorcery or channeled (an enemy spell has none, so it matches only an untyped trigger) |
 | `card_draw` | a hero draws a card (once per card) |
 | `death` | an enemy dies (not exile), a token is destroyed or crumbles, or a hero is incapacitated |
 
@@ -691,7 +691,7 @@ Targeting is mechanical: it decides who may be named, what hexproof stops, and w
 
 **Sides are fixed to the table**, not to the caster: `ally` is the party side (heroes, party tokens, controlled units), `enemy` is the enemy side, and `any` is both. Enemy components use the same frame, so their hostile verbs aim at `ally`. A copy that crosses the table swaps sides (§5.4). `all ally` reaches downed heroes only with a restorative verb: heal, revive, pump, counters, grant_keyword, prevent, protection, amplify or double_next.
 
-**`targeted`** is valid only on `chosen`, and the Deckbuilder turns it on by default. For authors, "target …" is targeted and "choose a …" is not. A targeted pick can't name a hostile hexproof creature, and is re-checked at resolution (§5.3). An untargeted pick ignores hexproof and fizzles only if its creature no longer exists. Card text doesn't show the difference.
+**`targeted`** is valid only on `chosen`, and the Deckbuilder turns it on by default. For authors, "target …" is targeted and "choose a …" is not. A targeted pick can't name a hostile hexproof creature, and is re-checked at resolution (§5.3). An untargeted pick ignores hexproof and fizzles only if its creature no longer exists or has left the field (bounced to hand, or suspended by a channel; ruled 2026-09-25, M1.31). Card text doesn't show the difference.
 
 **Hexproof** stops hostile targeted spells and abilities: a party effect on an enemy, or an enemy effect on a hero or party token. Friendly targeting is fine. Basic attacks ignore it both ways, so a hexproof hero can still taunt. It is checked at the pick, when an enemy aims, at intent re-validation (§5.2), and at resolution. Untargeted picks, `all`, splash and ground ignore it. Shroud doesn't exist.
 
@@ -752,11 +752,11 @@ Keywords are static abilities, stored as `{keyword: duration}`. They come from a
 | defender | Frees the Defend. Can never basic-attack, even with first strike; moves and dashes as normal | grant only | ignored |
 | haste | Frees the Move (own turn, empty stack) | buy 15 | never |
 | trample | When a basic attack fells its target, the excess spills onto one creature on that side, in the same or an adjacent row: the lowest effective HP that the attack's mode can strike. The spill is combat damage and never spills again | buy 10 · *Trampling* (weapon, rare, L2, 10) | L2 / 2 (T-29) |
-| deathtouch | Connecting damage executes an **enemy**; a boss only in its execute window | creation-banned · *Venomed* (weapon, rare, L5, 25) | L3 / 4 (T-32); currently inert: it executes only enemies (roadmap M1.30) |
+| deathtouch | Connecting damage executes the victim: an enemy (a boss only in its execute window), a party token, or a hero (downed) | creation-banned · *Venomed* (weapon, rare, L5, 25) | L3 / 4 (T-32) |
 | lifelink | Heals its source by any damage it connects, spells included; temp-HP soak counts | buy 15 · *Thirsting* (weapon, rare, L3, 15) | L3 / 3 (T-31) |
 | infect | Each connecting hit gives the victim 1 poison counter | banned · *Blighted* (weapon, mythic, L6, 30) | L3 / 3 (T-51); at most one per encounter |
 | hexproof | Can't be picked or hit by a hostile targeted spell or ability. Attacks and untargeted, area or splash effects still land (§6) | banned · *Warded* (accessory, mythic, L6, 40) | L5 / 6 (T-34) |
-| indestructible | Damage can't take HP below 1. Destroy, exile, deathtouch, life loss, poison and a lethal −X/−X still kill | banned · *Unbroken* (accessory, mythic, L6, 35) | L6 / 6 (T-35) |
+| indestructible | Damage, life loss and poison can't take HP below 1; destroy and deathtouch fail. Exile and a lethal −X/−X still kill | banned · *Unbroken* (accessory, mythic, L6, 35) | L6 / 6 (T-35) |
 | relentless | Its intents never redirect, and `redirect` can't turn them | n/a | enemy-only; not grantable; hand-authored only |
 | protection, menace, ward, convoke | Retired; can't be granted. Use the `protection` effect | n/a | n/a |
 
@@ -806,7 +806,7 @@ A channeled card (an enchantment) is **concentration** held by its caster, not a
 | the holder is incapacitated | all |
 | `break_channel` | all |
 | voluntary drop: free, whenever the holder has priority, even the round it was cast | the named channel, or all |
-| `channel_drop`, fired by the channel's own trigger | that channel only |
+| `channel_drop`, fired by the channel's own trigger (an enemy channel's event trigger included) | that channel only |
 
 Life loss and poison never break a channel. Damage *reduction* protects a channel; temp-HP *absorption* doesn't.
 
@@ -893,7 +893,7 @@ An enemy without a legacy `intent` gets a synthesised basic attack: "<Name> Atta
 | `target_rule` | whom it aims at (§9.3); default `valuation` |
 | `action_type` | `ability` (default), `spell` (spell counters answer it), or `attack` (a positional swipe that lands as an attack) |
 | `channel`, `target_row`, `move_home` | starts a held channel; aims at a row (§9.9); a verbless Move back to `home_row` |
-| `phase` | `pre_enrage` / `post_enrage` boss gate (§9.5) |
+| `phase` | `pre_enrage` / `post_enrage` gate on the encounter's boss (§9.5); a minion's reads its boss |
 | `telegraph` | the on-stack name and strip-reveal text. Never shown while declared |
 
 **Budget and Level.** B(L) = 5·L + 5 (L1 10, L2 15, L3 20, L4 25, L5 30, L8 45, L10 55). Total cost = chassis + upgrades + keywords + traits + components after modifiers (§9.2). An enemy's Level is the smallest L whose budget covers its cost. Underspending is legal; overspending is impossible, so complexity prices itself into Level. A boss spends up to 2.5 × B(L). Pricing happens at authoring: the engine takes `level` as written.
@@ -1010,9 +1010,10 @@ Moves and positional rules need no target. Any other rule whose non-`self` targe
 | `hero_primed` | heroes holding a live `amplify` or `double_next` tag |
 | `corpse_count` | corpses on the field |
 
-**Target rules.** A hero-aimed pick draws from the **pickable** heroes: those the enemy could strike with its own attack mode (§R-1 reach). Two consequences follow:
+**Target rules.** A hero-aimed pick draws from the **pickable** heroes and party tokens: those the enemy could strike with its own attack mode (§R-1 reach; tokens since 2026-09-25, M1.27d). Two consequences follow:
 - A melee body's spells reach only the front-most occupied grounded row.
-- A ranged body standing in Front reaches nobody.
+- A ranged body standing in Front reaches nobody with its attacks and abilities. Its **spells** are not attacks (§D23-3), so they reach as a ranged body's would.
+- A rule whose verbs are all untargeted (`mode: all`, `self`) needs no pick: it declares even when nobody is pickable.
 
 Two filters then remove heroes from that pool:
 - **Hexproof** heroes, whenever any verb in the rule is targeted.
@@ -1040,7 +1041,7 @@ Two filters then remove heroes from that pool:
 
 Ties break by row (Front→Rear), then name. Ranks 1–2 apply only when D > 0.
 
-**The basic attack.** A component-built enemy's swing targets by valuation over the heroes and controlled units it can reach. Hexproof never shelters anyone from a basic attack. A taunted enemy swings at its taunter wherever the taunter stands. Legacy templates may name `lowest_hp_party` (the lowest HP in reach, which enemy tokens and raised undead also use), `lowest_hp`, or a fixed hero. The swing carries its base Power, so a later wound or anthem changes what lands.
+**The basic attack.** A component-built enemy's swing targets by valuation over the heroes and party tokens (controlled units included) it can reach. Hexproof never shelters anyone from a basic attack. A taunted enemy swings at its taunter when it can reach them (a melee body is stopped by the wall, §4.1); otherwise it picks among the reachable as usual. Legacy templates may name `lowest_hp_party` (the lowest HP in reach, which enemy tokens and raised undead also use), `lowest_hp`, or a fixed hero. The swing carries its base Power, so a later wound or anthem changes what lands.
 
 **The sword competes with the kit.**
 - **Outclass.** A rule made only of single-target `deal_damage` at a hero, totalling no more than this turn's swing, is skipped. A rule with a rider, a row or blast shape, or a self or ally aim is never skipped.
@@ -1057,9 +1058,9 @@ Ties break by row (Front→Rear), then name. Ranks 1–2 apply only when D > 0.
   - its target gained Hexproof against a targeted hostile spell or ability (attacks are exempt).
 
   A spoiled intent fizzles and the enemy swings instead, as a real stack action. It is never re-aimed.
-- **Disruption.** `strip_intent` clears a declared intent and reveals it. A strip that lands before anything is declared lingers and smothers the next declaration. A channel-held `prevent attack` or `prevent cast` cancels matching declared intents.
+- **Disruption.** `strip_intent` clears a declared intent and reveals it. A strip that lands before anything is declared lingers and smothers the next declaration. A `prevent attack` or `prevent cast` on an enemy, channel-held or one-shot, cancels its matching declared intents (a one-shot shield is spent doing so; M1.25).
 
-**The reactive pass.** Enemies answer only after every hero has passed. Each time a window closes, every in-play enemy that has not yet reacted in this window offers its top matching eligible rule. The lowest priority number fires; ties go by canonical order. It stacks as a triggered ability (or as a spell, if spell-classed) and reopens the party's window. An enemy reacts at most once per window.
+**The reactive pass.** Enemies answer only after every hero has passed. Each time a window closes, every in-play enemy that has not yet reacted in this window offers its top matching eligible rule. The lowest priority number fires; ties go by canonical order. It stacks as a triggered ability (or as a spell, if spell-classed) and reopens the party's window. An enemy reacts at most once per window. After a resolution, the whole enemy side answers with **one** post-resolution reaction, the best-ranked: an area hit on three `on_hit` enemies draws one punish (kept as-is, ruled 2026-09-25, M1.31).
 
 **The pile-on rule.** A trigger episode (one stack item, before or after it resolves) is answered at most once per reaction signature: trigger, class, verb kinds and aims. Identical reactions on other bodies stay armed. `counter`, `copy_spell` and `redirect` reactions aim at the stack item that tripped them.
 
@@ -1095,7 +1096,7 @@ Inside the window, every removal works except `control`. An encounter holds at m
 ### §9.5 Bosses
 
 **The threshold.** A boss has one line at ≤25% of max HP, measured on effective HP. The line is both its enrage line and its execute window. The first time the boss is alive and at or below the line, three things happen:
-- **It enrages** (one-way). Stun charges and taunt drop off. Every cooldown resets except spent once-per-encounter rules. `pre_enrage` rules retire and `post_enrage` rules wake.
+- **It enrages** (one-way). Stun charges and taunt drop off. Every cooldown resets except spent once-per-encounter rules. `pre_enrage` rules retire and `post_enrage` rules wake, the boss's and its minions' alike (a minion's gate reads its encounter's boss). A wound that drops a boss to 25% enrages it at once (ruled 2026-09-25, roadmap M1.26).
 - **Its Enrage component fires** as a reaction in the next post-resolution window, normally right after the blow that bloodied it. The party can answer it on the stack, and mitigating or dodging it is fair play.
 - **Removal starts working** (§9.4).
 
@@ -1109,16 +1110,15 @@ A boss killed in one blow from above the line never enrages.
 All results round up, and the telegraph is rewritten to match. For example, "+2/+2 and burn 3" becomes "+8/+5 and 8" against four heroes.
 
 **Two intents.** A boss runs the proactive pass twice per round:
-- from turn 1, if it carries `double_intent` (set at build on Standard and Hard);
+- from turn 1, if it carries `double_intent` (set at build on Standard and Hard, from the run's difficulty or, for a standalone encounter, the one it was made at; Easy bosses start on one);
 - always, once enraged.
 
 The second pass never forces the cadence swing. Slot 1's spent cooldown stops the same rule firing twice, and the basic attack backstops slot 2. Both slots execute in order during the boss's turn, each as its own stack action. A stun suppresses one slot. A chosen strip removes the slot the player picks, and a side-wide strip removes both. The intents window and the inspect panel show both lines.
 
-*(Bug: current code stamps `double_intent` on every boss, Easy included — roadmap M1.24.)*
 
 **Pressure dials** (required on generated bosses):
 - **Timed enrage**, `enrage_round: R` (generated 3–5). If the boss has not enraged by the Upkeep of its own round R, it enrages there: the same hard reset, with its Enrage component on the stack in the same beat. This does not open the execute window, which stays HP-based.
-- **Neglect**, `neglect: N` (generated 1–2). At each End Step from the body's own round 2 onward, an enemy that lost no HP that round permanently gains +N Power, +N max HP and +N HP, as counters. Any HP drop counts as a hit: damage (even a blow soaked by temp HP), a poison tick, life loss, or a wound that eats toughness.
+- **Neglect**, `neglect: N` (generated 1–2), **bosses only**. At each End Step from the body's own round 2 onward, a boss that lost no HP to the **party** that round permanently gains +N Power, +N max HP and +N HP, as counters. Any party-caused HP drop counts as a hit: damage (even a blow soaked by temp HP), a poison tick, life loss, or a wound that eats toughness. An enemy's own blow, or its side's, does not (ruled 2026-09-25, roadmap M1.26).
 - **Counted from arrival.** Both dials count from the turn the body arrived. A reserve body deployed on turn 6 treats turn 6 as its round 1.
 
 **Placement.** A boss counts double toward a layout's Level total. It appears in every layout, except under `waves`, where it appears only in the final wave (§12.2).
@@ -1144,7 +1144,7 @@ A created token is an **autonomous ally** with its own intent. The party can hel
 **Enemy-side tokens.** An enemy's `create_token` spawns full enemies:
 - stats come from the verb or the token definition (Level 1 by default);
 - a basic Strike at the lowest-HP body in reach, and no components;
-- at most **2** alive per creator. Surplus spawns are lost, and a Swarm rule at the cap is skipped;
+- at most **2** alive per creator (T-27). Surplus spawns are lost (logged), and a Swarm rule at the cap is skipped. A boss's **Enrage** and a race **escalation** are exempt, so the party-size Enrage wave (§9.5) spawns whole (ruled 2026-09-25, roadmap M1.22);
 - they first act the round after they arrive;
 - they must be defeated to win, and they leave no corpse.
 
@@ -1172,7 +1172,7 @@ Tokens never leave corpses, so a raised body cannot rise again. That includes a 
 
 **Rises.** `rises: N` (2 by convention) makes the corpse **stir**. While it stirs, the enemy is not defeated. After N Upkeeps it revives on its row at half max HP (floor, min 1), with temporary effects, statuses and afflictions stripped, and declares that round. It rises once per encounter; killed again, it stays down. Exiling, consuming or raising the stirring corpse cancels the rise.
 
-**Necromancy.** An enemy's `control` and `exile` are legal only on corpses. With `target_rule: corpse`, it takes the nearest usable corpse, never a boss's and never a stirring one. Nearest means the closest row to the necromancer, then front-most, then lowest Level, then name. The body rises on the enemy side as a permanent undead **enemy token**:
+**Necromancy.** An enemy's `control` and `exile` are legal only on corpses. With `target_rule: corpse`, it takes the nearest usable corpse, never a boss's and never a stirring one. Nearest means the closest row to the necromancer, then front-most, then lowest Level, then name. The body rises on the enemy side as a **permanent** undead **enemy token** (kept as-is, ruled 2026-09-25, M1.26):
 - half the corpse's max HP (floor, min 1);
 - its Power, attack mode and Level;
 - types `["undead", <what it was>]`;
@@ -1221,16 +1221,11 @@ Under a declared Mitigate, damage resolves first and riders follow it:
 - If the blow is absorbed whole, no rider lands.
 - If a guard took the residual for an ally, the guard takes the rider.
 
-**Taunt has teeth.** An enemy verb list with `taunt` and no damage gains a `deal_damage` equal to the enemy's Power **at execution**, aimed at the taunted hero. The taunt binds that hero's basic attacks to the taunter until the next Upkeep, as long as the taunter lives and can be reached.
+**Taunt has teeth.** An enemy verb list with `taunt` and no damage gains a `deal_damage` equal to the enemy's Power **at execution**, aimed at the taunted hero. The taunt binds that hero's basic attacks to the taunter through the hero's next turn, as long as the taunter lives and can be reached.
 
-**When lockdown lands.** Enemies act after the party, so anything that expires at the End Step or the next Upkeep is gone before the hero acts again: a one-shot `prevent` (whatever its duration), a `this_turn` modifier or sap, a taunt.
+**When lockdown lands.** Enemies act after the party, so an enemy's turn-scoped lockdown on a hero **holds through that hero's next turn** (ruled 2026-09-25, roadmap M1.25): a one-shot Silence or Pacify (`prevent cast` / `prevent attack`), a `this_turn` wound, sap or hostile action modifier, and a taunt. Each survives the End Step and the Upkeep, and lapses as the hero ends a turn in a later round than the one it landed in (a `lockdown_lapses` log line). Stun already works this way. `encounter` durations, instant discard and gauge drain, and channel-held auras last as before.
 
-These do reach the hero's next turn:
-- stun (spent when the hero ends the stunned turn);
-- `encounter`-duration modifiers and sap;
-- instant discard and gauge drain;
-- channel-held auras;
-- reactions that land during the party's turns.
+A hero's one-shot Pacify or Silence on an **enemy** also cuts short the intent that enemy already declared, if the shield forbids it; a one-shot shield is spent doing so.
 
 **Resource attacks and lockdown.**
 - **Forced discard:** `move_card` hand → graveyard, aimed at a hero, who picks the card. Enemy-legal only against a hero.
@@ -1396,7 +1391,7 @@ Every verb takes a `target` (a descriptor or `$slot`, §6) unless noted. On a ch
 
 | verb | what it does | key params | Enemy | notes |
 |---|---|---|---|---|
-| `deal_damage` | Damage. It meets, in order: Mitigate, the source's `amplify`, `prevent`, `protection`, the break check, temp-HP soak, then HP | `amount` | yes | lane from the stack kind (§5.5); trample on attacks only |
+| `deal_damage` | Damage. It meets, in order: the source's `amplify`, Mitigate, `prevent`, `protection`, the break check, temp-HP soak, then HP | `amount` | yes | lane from the stack kind (§5.5); trample on attacks only |
 | `heal` | Restores HP, closing a wound first; never above max; removes all poison, even when it heals 0 | `amount` | yes | reaches downed heroes; fires `life_gain` |
 | `lose_life` | Removes HP directly; not damage | `amount` | yes | ignores Mitigate, shields, temp HP and indestructible; never breaks a channel |
 | `poison` | N poison counters; each drains 1 life per Upkeep | `amount` (1) | yes | any heal removes all; cancels regen 1:1 |
@@ -1427,8 +1422,8 @@ Every verb takes a `target` (a descriptor or `$slot`, §6) unless noted. On a ch
 | `draw` | Draws N | `amount` | — | heroes only |
 | `scry` | Looks at the top N and orders them top or bottom | `amount` | — | the player chooses only at top level |
 | `move_card` | Moves N of a hero's cards between zones | `count`, `source`, `destination`, filters, `shuffle_after` | D | the affected hero picks |
-| `create_token` | Creates N autonomous allies | `token_id`, `count`, `power`, `hp`, `keywords` | yes | an enemy may have at most 2 tokens alive (T-27); tokens leave no corpse |
-| `taunt` | By a hero: the enemy's declared intents re-aim at the hero until the End Step. By an enemy: the hero's basic attacks must target it until Upkeep | `duration` | yes | an enemy taunt always comes with a hit for its Power at execution (§D18-1) |
+| `create_token` | Creates N autonomous allies | `token_id`, `count`, `power`, `hp`, `keywords` | yes | an enemy may have at most 2 tokens alive (T-27; an Enrage or escalation is exempt); tokens leave no corpse |
+| `taunt` | By a hero: the enemy's declared hostile intents re-aim at the hero, if they can reach them, until the End Step. By an enemy: the hero's basic attacks must target it through the hero's next turn | `duration` | yes | an enemy taunt always comes with a hit for its Power at execution (§D18-1) |
 | `revive` | Stands a downed hero up at a fraction of max HP | `to_fraction` (0.5, T-44) | — | downed heroes only |
 | `control` | A living enemy fights for the caster, keeping its stats but not its kit; or a corpse rises as an undead token at half max HP (T-52) | `turns` (none = the whole encounter) | C | never bosses; control never wins; ends at the Nth End Step |
 | `move` | A forced move, applied at once | `direction` | yes | relative to the target's side; corpses stay put; triggers the intent re-check |
@@ -1460,12 +1455,12 @@ On an item with no pick, a `target_property` condition (other than `is_dead`) fi
 
 | duration | lasts | used by |
 |---|---|---|
-| `this_turn` (default; `end_of_turn` is a legacy alias) | until the End Step | pump, wound, sap, grant_keyword, modify_action, prevent, taunt |
+| `this_turn` (default; `end_of_turn` is a legacy alias) | until the End Step; an enemy's lockdown on a hero (wound, sap, modify_action, prevent attack/cast, taunt) through that hero's next turn | pump, wound, sap, grant_keyword, modify_action, prevent, taunt |
 | `encounter` | through every End Step | pump, wound and sap (as an encounter layer), grant_keyword, modify_action |
 | `while_channeled` | while the channel holds (§8.1) | pump, wound and counters (as auras), grant_keyword, modify_action, prevent, taunt, exile |
 
 Exceptions:
-- `prevent` and `taunt` always end at the End Step unless a channel re-applies them.
+- `prevent` and `taunt` end at the End Step unless a channel re-applies them, except an enemy's Silence/Pacify or taunt on a hero, which holds through the hero's next turn.
 - `counters` and `remove_keyword` are permanent.
 - `protection`, `amplify` and `double_next` last until spent.
 - Poison and regen counters last until removed.
@@ -1478,7 +1473,7 @@ Exceptions:
 |---|---|
 | `x` · `casting_cost` | X chosen · mana paid (generic + pips + X) |
 | `target_power` / `caster_power` | current Power (≥ 0) |
-| `target_base_power` / `caster_base_power` | printed Power before pumps and wounds (+1/+1 counters included) |
+| `target_base_power` / `caster_base_power` | printed Power: before pumps and wounds, and without +1/+1 counters (ruled 2026-09-25, M1.31) |
 | `target_hp` / `caster_hp` | effective HP |
 | `target_base_hp` / `caster_base_hp` | max HP |
 | `target_charge` / `caster_charge` | charge counters |
@@ -1584,7 +1579,7 @@ The prompt also asks for a boss on Hard, a channeler on Standard and up, and lea
 | layout keys are party sizes; rosters are non-empty and draw on the pool; the boss appears in every layout (in the final wave under `waves`) | every save |
 | objective schema and ids; the race target and guards are fielded in every layout; the target is not a guard | every save |
 | every roster builds in the engine: condition kinds, `target_row`, no `stance`, enemy `control`/`exile` only on corpses, T-70 | every save |
-| layouts "1"–"4"; 2× bodies per size; every enemy described | adventure phases |
+| layouts "1"–"4"; 2× bodies per size; every enemy described | adventure phases (hand-authored standalone encounters are exempt, kept as-is 2026-09-25, M1.26) |
 | scene and descriptions; 2× bodies | generation |
 | **variety floor:** at least party size + 1 distinct designs per layout; at most 3 copies of any design | generation |
 | a ranged enemy standing in Front is a layout fault | generation |
@@ -1602,7 +1597,7 @@ An encounter may carry one objective, an alternate win or loss condition. Object
 
 | kind | fields | win / loss |
 |---|---|---|
-| `survive` | `turns` N; `reinforcements`: `[{turn ≥ 2, layouts or ids}]` | win when round N's End Step completes; survivors withdraw with no kill credit and no death triggers |
+| `survive` | `turns` N; `reinforcements`: `[{turn ≥ 2, layouts or ids}]` | win when round N's End Step completes; survivors withdraw with no kill credit and no death triggers. Killing everything fielded does not win early while reinforcements wait in reserve (kept as-is, ruled 2026-09-25, M1.26) |
 | `waves` | `waves`: the later rosters (the top-level layouts are wave 1) | win when every wave is defeated |
 | `race` | `target` (a pool id); `turns` N; `fail`: `escalate` (default) or `defeat`; `escalation` {telegraph, verbs}, required if and only if `fail` is `escalate`; `guards` (pool ids) | defeat the marked enemy in time and the clock vanishes while the fight goes on; if the clock expires, you lose or the escalation fires |
 | `deadline` | `turns` N | lose when round N's End Step completes unless every enemy is dead |
@@ -1615,7 +1610,7 @@ An encounter may carry one objective, an alternate win or loss condition. Object
   - When the clock expires on `escalate`, the marked enemy first returns from bounce, suspension or control. Then the payload goes on the stack from it as a triggered ability, with targeted verbs aimed by valuation. It is answerable like an enrage and costs no budget.
 - **Deadline** is a hard clock. It has no target, no payload and nothing that interacts with it. It takes no reinforcements, waves or guards.
 - **Generated ranges.** Race: 3–5 rounds with 1–2 guards, `escalate` preferred. Survive: 4–6 rounds with ≥ 2 reinforcement entries. Deadline: 4–6 rounds. Waves: up to 1.5× the phase's Level budget. The standalone encounter generator writes no objectives.
-- **Adventures.** At most one objective per adventure. Phases I–II take any kind. On Phase III an objective may only modify the boss fight, in one of three shapes: a guarded `race` that marks the boss, a `waves` schedule whose final wave fields the boss, or a `deadline`. *(Bug: `content.save_adventure` currently refuses every Phase III objective — roadmap M1.4.)*
+- **Adventures.** At most one objective per adventure. Phases I–II take any kind. On Phase III an objective may only modify the boss fight, in one of three shapes: a guarded `race` that marks the boss, a `waves` schedule whose final wave fields the boss, or a `deadline`.
 
 *Sources: §D12-1, §D23-5, T-65–T-68 · schema `EncounterObjective`; engine `_deploy_objective_arrivals`, `_objective_tick`, `_objective_shielded`, `_race_expire`, `_check_end`; content `_validate_objective`, `save_adventure`; llm `_objective_problems`.*
 
@@ -1723,7 +1718,7 @@ Gear carries statics, never effects; a consumable carries ≥ 1 card-vocabulary 
 A belt consumable is an **always-in-hand card**: at every encounter (every phase) it is dealt above the drawn opening hand from turn 1 until used. It shows the item's name, art and flavour; its effects are the card vocabulary verbatim.
 
 - **No mana cost**, no gauge. Speed is the item's: `instant` (whenever the hero could react) or `sorcery` (own turn, empty stack, spending the Cast verb).
-- On the stack it is an **activated ability** (kind `ability`): a spell-filtered counter cannot stop it; an ability- or action-filtered counter can. Silence does not stop it.
+- On the stack it is an **activated ability** (kind `activated`): a spell-filtered counter cannot stop it; an activated-, ability- or action-filtered counter can. Silence does not stop it.
 - Using it **consumes** it, even if countered: the card is exiled (never reshuffled at a phase boundary) and the item leaves the belt when the adventure ends. Unused, it stays on the belt.
 - Only the belt's three are dealt, never inventory consumables. Nothing is shared mid-encounter; trade in town (§13.6).
 
@@ -1780,7 +1775,7 @@ A belt consumable is an **always-in-hand card**: at every encounter (every phase
 
 **Trading** — town only, via the character sheet: an item and/or gold between two heroes. If another connected player holds the receiver, it becomes an offer that player accepts (either side may cancel); otherwise it is immediate. One offer pends at a time.
 
-**Rest.** The inn's rest is a dialogue choice carrying `rest` (the innkeeper's "Take a room."): a party-wide confirmation, a **free full HP restore** for every hero, then a manual `inn` save. Mana, hand, gauge and uses reset at adventure start anyway; without rest, heroes keep the HP they returned with (floored at 25 % of max, T-59). In the interlude, rest opens the rest screen instead; the heal comes with the chosen hook (§14.6).
+**Rest.** The inn's rest is a dialogue choice carrying `rest` (the innkeeper's "Take a room."). It is guaranteed: when no tree at the inn offers one this act, the inn's first resident gets "Take a room." on their opening node. Taking it is a party-wide confirmation, a **free full HP restore** for every hero, then a manual `inn` save. Mana, hand, gauge and uses reset at adventure start anyway; without rest, heroes keep the HP they returned with (floored at 25 % of max, T-59). In the interlude, rest opens the rest screen instead; the heal comes with the chosen hook (§14.6).
 
 *Sources: §D17-4.3, §D17-5.3, §D17-5.5, §D24-5.3 · items `roll_stock`, `buy_price`, `sell_price`; scenario `_take_materialization`, `buy`, `sell`, `give`, `rest`; session `economy_verb`, `_fire_choice`.*
 
@@ -1806,7 +1801,7 @@ The party returns to town only between adventures, never between phases. Every s
 
 ### §14.2 Runs, saves & the content store
 
-A **run** is a party + immutable options + a branching tree of saves. A scenario game's run is a **campaign** (`kind: "campaign"`); a lone adventure may also be played as a run (`kind: "adventure"`). **Options**, fixed at creation: difficulty (easy / standard / hard, applied to every adventure the run plays) and Normal / Hardcore (§14.5). Everything lives under `saves/<run_id>/` — gitignored runtime data, self-contained, portable as a directory:
+A **run** is a party + immutable options + a branching tree of saves. A scenario game's run is a **campaign** (`kind: "campaign"`); the server can still play a lone adventure as a run (`kind: "adventure"`), but the client no longer offers it, since Load Game never listed those runs (ruled 2026-09-25, roadmap M1.37). **Options**, fixed at creation: difficulty (easy / standard / hard, applied to every adventure the run plays) and Normal / Hardcore (§14.5). Everything lives under `saves/<run_id>/` — gitignored runtime data, self-contained, portable as a directory:
 
 ```
 saves/<run_id>/
@@ -1983,16 +1978,16 @@ Build fields, points, level, gear, gold and carried HP live on the run's hero co
 
 **The interlude** is the victorious town, act-shaped with no quest. The planner's one call writes an arrival, dialogue trees, flavour and topics in the light of what happened (quest hooks forbidden, payment hooks such as `give_gold` allowed), a `town_state_delta`, the days since the victory, and **three hooks**. The party arrives in the closing act's town with the delta and days applied: shops open with fresh stock, no spoils, no Start Adventure, the quest card reading *Between scenarios*; an `interlude` save is written.
 
-**Hooks** are `{kind: stay | neighbour | new, town_id | town_seed, narration, bridge, days, foreshadow}`. The narration is the rest-screen card (3–5 sentences, second-person narrator); the bridge is the arrival the next arc must honour; up to two `foreshadow` exchanges per hook join the interlude's NPC topics, so the party hears every road in town before the rest screen offers it. At least one hook stays and at least one leaves; a `neighbour` names one of this town's worldbook neighbours; a `new` hook carries a seed (a name and a line) anchored to a known town. The planner proposes premises, never outcomes, and never touches hero backstory (it receives no lore).
+**Hooks** are `{kind: stay | neighbour | new, town_id | town_seed, narration, bridge, days, foreshadow}`. The narration is the rest-screen card (3–5 sentences, second-person narrator); the bridge is the arrival the next arc must honour; up to two `foreshadow` exchanges per hook join the interlude's NPC topics, so the party hears every road in town before the rest screen offers it. Only an NPC **without** an interlude tree may carry one, since an NPC with a tree speaks the tree and offers no topics (§D24-5.1; roadmap M5.3 would merge topics into trees). At least one hook stays and at least one leaves; a `neighbour` names one of this town's worldbook neighbours; a `new` hook carries a seed (a name and a line) anchored to a known town. The planner proposes premises, never outcomes, and never touches hero backstory (it receives no lore).
 
 **The rest screen** opens from the inn's rest or the console's *The road ahead*: the three hook cards (narration, destination, days), a fourth card — "You decide to [stay in ‹town›] / [travel to ‹any worldbook town›] / [somewhere new: name + one line], but…" with a free-text note — and each hero's situation editor. *Not yet* returns to town; nothing is committed until a hook is chosen, as a party-wide confirmation ("Take this road — ‹destination›?"). Then:
 1. full heal; the hook's days are added (the custom card covers 7); the bridge closes the scenario's journal; `hooks_chosen` is saved;
 2. for `new`, the town generator writes the town and its worldbook entry beside the anchor;
 3. the arc writer writes the next arc for the destination from the ledger, the party's layers, the world block, the hook and the note;
 4. the scenario closes: custom flags stored as the left town's state, all flags cleared, the destination's town state applied, the old cast and places gone, a fresh loot lexicon, the scenario counter up;
-5. Act I materializes as in a new game (`act_start` save). Levels, points, gold, gear and chronicles carry on.
+5. Act I materializes as in a new game (`act_start` save); its writer also reads the hook, bridge and note, so the arrival honours the road. Levels, points, gold, gear and chronicles carry on.
 
-**Live identity.** On every load of a campaign save (Load → Continue or an older save) each hero's copy is refreshed from the character file first. **Replaced:** the deck and the identity fields — name, description, portrait, animations, colours, keyword, attack mode, row, type line, Skill, Ultimate, ability flavour, brief, default situation, lore, combat lore. **Kept:** everything else (HP, starting mana, starting cards, bought Power, points, level, gear; purse, pools and HP live on the run). A starting-mana pip in a colour the file no longer has is re-rolled to its colours. The load splash names cards the deck lost or gained and any re-roll; a missing file leaves the copy untouched. Within play the validator still locks these (§13.2).
+**Live identity.** On every load of a campaign save (Load → Continue or an older save), and when an in-session Continue starts the next scenario, each hero's copy is refreshed from the character file first. **Replaced:** the deck and the identity fields — name, description, portrait, animations, colours, row, type line, Skill, Ultimate, ability flavour, brief, default situation, lore, combat lore. **Kept:** everything else (HP, starting mana, starting cards, bought Power, points, level, gear; purse, pools and HP live on the run), including the **keyword and attack mode**, which the points-buy prices (the keyword's cost; the mode's base Power). A file whose keyword or mode differs gets a splash notice, never a free respec (ruled 2026-09-25, roadmap M1.7). A starting-mana pip in a colour the file no longer has is re-rolled to its colours. The load splash names cards the deck lost or gained and any re-roll; a missing file leaves the copy untouched. Within play the validator still locks these (§13.2).
 
 *Sources: §D24-1–§D24-6, §D24-7.4, §D24-8.1, §D24-8.2, §D24-10 · scenario `_ledger_entry`, `note_boss_death`, `begin_interlude`, `choose_hook`, `_custom_hook`, `begin_next_scenario`; scenario_content `validate_interlude`; jobs `InterludeJobRunner`; session `continue_campaign`; app `_continue_sync`; runs `load_scenario_save`; content `refresh_instance`.*
 

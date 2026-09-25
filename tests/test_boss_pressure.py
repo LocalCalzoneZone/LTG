@@ -364,3 +364,52 @@ def test_the_adventure_gate_still_allows_only_one_objective():
     phases[0]["objective"] = {"kind": "deadline", "turns": 5}
     with pytest.raises(ValueError, match="at most one objective"):
         _validate_adventure(phases, ["one", "two", "three"])
+
+
+# --------------------------------------------------------------------------- #
+# Roadmap M1.26 (ruled 2026-09-25)
+# --------------------------------------------------------------------------- #
+def test_an_enemys_own_blow_does_not_count_as_hurting_it():
+    from ltg_combat.engine import _deal_damage
+    st = state_from_dict({"party": [_char("p")],
+                          "enemies": [_boss(neglect=1), _minion()]})
+    st.turn = 2
+    _begin_turn(st)
+    _deal_damage(st, st.enemy("boss"), 2, source="blood price",
+                 source_obj=st.enemy("minion"))
+    _end_step(st)
+    assert st.enemy("boss").counters == 1      # hurt by its own side: still neglected
+
+
+def test_neglect_is_a_boss_dial_only():
+    st = state_from_dict({"party": [_char("p")],
+                          "enemies": [_boss(), dict(_minion(), neglect=1)]})
+    st.turn = 2
+    _begin_turn(st)
+    _end_step(st)
+    assert st.enemy("minion").counters == 0
+
+
+def test_a_wound_into_the_window_enrages_the_boss_at_once():
+    from types import SimpleNamespace
+
+    from ltg_combat.engine import _r_wound
+    from ltg_core.schema import Wound, t_chosen
+    st = state_from_dict({"party": [_char("p")], "enemies": [_boss(hp=20)]})
+    boss = st.enemy("boss")
+    item = SimpleNamespace(source_side="party", source_id="p", label="Agony")
+    _r_wound(st, item, Wound(power=0, toughness=16, target=t_chosen("enemy", targeted=True)),
+             boss, {})
+    assert boss.effective_hp == 4 and boss.enraged
+
+
+def test_a_minions_post_enrage_rule_wakes_with_the_boss():
+    from ltg_combat.engine import _component_eligible
+    from ltg_combat.state import Component
+    st = state_from_dict({"party": [_char("p")], "enemies": [_boss(), _minion()]})
+    frenzy = Component(id="frenzy", phase="post_enrage", priority=20, target_rule="self",
+                       telegraph="Frenzy", verbs=[])
+    minion = st.enemy("minion")
+    assert not _component_eligible(st, minion, frenzy)
+    st.enemy("boss").enraged = True
+    assert _component_eligible(st, minion, frenzy)

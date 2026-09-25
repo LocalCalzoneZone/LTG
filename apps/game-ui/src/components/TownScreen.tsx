@@ -150,6 +150,14 @@ export function TownScreen({ onNewGame }: { onNewGame?: () => void }) {
       {showSplash && (
         <TownSplash town={town} onContinue={() => setSplashSeen(splashKey)} />
       )}
+      {town.materialize_error && !town.materializing && !showSplash && (
+        <div className="absolute inset-x-0 top-24 z-10 flex justify-center">
+          <div className="flex items-center gap-3 border border-blood/60 bg-ink-0/90 px-4 py-2">
+            <span className="text-sm font-light text-blood">The chronicle faltered: {town.materialize_error}</span>
+            <button className={SMALL_BTN} onClick={() => sendTown("retry_materialize")}>Try again</button>
+          </div>
+        </div>
+      )}
       {town.materializing && !town.splash && (
         <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center">
           <span className="caps-label border border-line bg-ink-0/80 px-3 py-1.5 text-[10px] tracking-[0.2em] text-mist">
@@ -690,6 +698,7 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function TownSplash({ town, onContinue }: { town: TownSnapshot; onContinue: () => void }) {
+  const sendTown = useGame((s) => s.sendTown);
   const sp = town.splash!;
   const art = sp.kind === "town" ? town.town.art_url : town.location?.art_url ?? "";
   // Waits while the act (or the road between scenarios, §D24-5.3) generates —
@@ -715,9 +724,18 @@ function TownSplash({ town, onContinue }: { town: TownSnapshot; onContinue: () =
         {town.materialize_error && (
           <p className="text-sm font-light text-blood">The chronicle faltered: {town.materialize_error}</p>
         )}
-        <button onClick={onContinue} className={BRASS_BTN} disabled={waiting}>
-          {waiting ? "Arriving…" : "Continue"}
-        </button>
+        {town.materialize_error && !waiting ? (
+          <div className="flex items-center gap-3">
+            <button onClick={() => sendTown("retry_materialize")} className={BRASS_BTN}>
+              Try again
+            </button>
+            <button onClick={onContinue} className={SMALL_BTN}>Enter anyway</button>
+          </div>
+        ) : (
+          <button onClick={onContinue} className={BRASS_BTN} disabled={waiting}>
+            {waiting ? "Arriving…" : "Continue"}
+          </button>
+        )}
       </div>
     </div>
   );

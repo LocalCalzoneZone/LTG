@@ -42,6 +42,17 @@ CONFIRM_TIMEOUT_S = 30.0
 # advances the game, but cap the chain so a rules bug can never spin forever.
 _AUTO_CAP = 200
 
+
+def _warn_auto_cap(where: str, state: Optional[GameState]) -> None:
+    """Running into `_AUTO_CAP` means an automatic loop never reached a
+    decision (a runaway like roadmap M1.2's Skill loop). Say so loudly rather
+    than stopping quietly mid-drain (M1.32)."""
+    import sys
+    turn = getattr(state, "turn", "?")
+    phase = getattr(state, "phase", "?")
+    print(f"[ltg-game] WARNING: {where} hit the {_AUTO_CAP}-step cap without reaching a "
+          f"decision (turn {turn}, phase {phase}) — a rules loop?", file=sys.stderr)
+
 # Resolution pacing (the MTG-Arena beat): over the WebSocket path, synthetic
 # auto-advance steps drain asynchronously — one broadcast per step, with a
 # pause after any step worth watching — so a chain of auto-passes and stack
@@ -307,6 +318,8 @@ class Session:
                 break
             new_state, _events = apply_action(self.state, action)
             self.state = new_state
+        else:
+            _warn_auto_cap("auto-advance", self.state)
         # Adventure hook: a won phase opens the level-up gate; a won finale marks
         # the run complete. No-op (and never reached) for plain encounters.
         if self.adventure is not None:
@@ -320,8 +333,24 @@ class Session:
         a live pacer already drains everything there is to drain."""
         if self._pacer is not None and not self._pacer.done():
             return
-        self._pacer = asyncio.get_event_loop().create_task(
-            self._drain_paced(broadcast))
+        self._pacer = asyncio.get_running_loop().create_task(
+            self._drain_paced_guarded(broadcast))
+
+    async def _drain_paced_guarded(self, broadcast: Any) -> None:
+        """The pacer task, which must never die silently (roadmap M1.32): an
+        engine fault mid-drain is printed and the table re-broadcast, so the
+        players see the last good state instead of a frozen one."""
+        try:
+            await self._drain_paced(broadcast)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — see the docstring
+            import traceback
+            traceback.print_exc()
+            try:
+                await broadcast(self)
+            except Exception:  # noqa: BLE001 — nothing left to tell anyone
+                pass
 
     async def _drain_paced(self, broadcast: Any) -> None:
         """The synchronous `_auto_advance` chain, unrolled over wall time: one
@@ -381,6 +410,8 @@ class Session:
                          else PACE_STEP_S)
             await broadcast(self)
             await asyncio.sleep(dwell)
+        else:
+            _warn_auto_cap("paced drain", self.state)
 
     # -- runs (Update 17 §D17-3) ---------------------------------------------- #
     def save_point(self, kind: str, seed: Optional[int], auto: bool = True) -> None:
@@ -525,17 +556,32 @@ class Session:
         """First arrival (a fresh scenario run) — public wrapper."""
         self._enter_town(materialization)
 
-    def materialize_act(self) -> None:
+    def materialize_act(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         """Run the act's town-portion generation (BLOCKING — the app runs it in
-        a thread); on success auto-save the act start."""
+        a thread); on success auto-save the act start. On a worker thread
+        (``loop`` given) the session is read and written only under its lock
+        on the loop; the writer call alone runs unlocked (roadmap M1.8)."""
+        from .jobs import call_locked
         sc = self.scenario
         if sc is None:
             return
+        args, kw = call_locked(self, loop, sc.materialize_inputs)
         try:
-            sc.materialize()
-        except ValueError:
+            m = sc.materializer(*args, **kw)
+        except Exception as exc:  # noqa: BLE001 — any writer failure must un-wedge the town (M1.9)
+            msg = str(exc) if isinstance(exc, ValueError) else f"{type(exc).__name__}: {exc}"
+
+            def failed() -> None:
+                sc.materialize_failed(msg)
+                # An act-less arrival save: a reload re-materializes from here.
+                self.save_point("act_start", None)
+            call_locked(self, loop, failed)
             return
-        self.save_point("act_start", None)
+
+        def apply() -> None:
+            sc.take_materialization(m)
+            self.save_point("act_start", None)
+        call_locked(self, loop, apply)
 
     # -- the campaign continues (Update 24 §D24-5) --------------------------- #
     def continue_campaign(self) -> bool:
@@ -635,6 +681,10 @@ class Session:
             sc.rest_back()
             return []
         if verb == "set_situation":
+            # The situation editor lives on the rest screen (§D24-7.4); the
+            # server enforces it, not just the client (roadmap M1.34).
+            if sc.mode != "interlude" or not sc.rest_screen:
+                raise ValueError("situations are edited on the rest screen")
             sc.set_situation(str(payload.get("character_id") or ""), str(payload.get("text") or ""))
             return []
         if verb == "choose_hook":
@@ -700,9 +750,19 @@ class Session:
                 raise ValueError("there is no road to ride between scenarios — rest at the inn")
             if not sc.adventure_ready:
                 raise ValueError("the adventure is not ready yet")
+            # The client greys the button out inside a location; the server
+            # holds the same line (roadmap M1.34).
+            if sc.location_id is not None or sc.conversation is not None:
+                raise ValueError("leave the location first — the party rides out from the square")
             name = sc.adventure_detail.get("name", "the adventure") if sc.adventure_detail else "the adventure"
             self.request_confirm(client_id, "start_adventure", f"Ride out — {name}?",
                                  self.start_adventure)
+            return []
+        if verb == "retry_materialize":
+            # The writer failed (roadmap M1.9): re-run the act's town portion,
+            # or the whole road ahead when a continuation never began.
+            kind = sc.retry_materialize()
+            self._request_async("continue" if kind == "road" else "materialize")
             return []
         if verb == "save":
             self.save_point("interlude" if sc.mode == "interlude" else "town", None, auto=False)
@@ -818,17 +878,10 @@ class Session:
         sc = self.scenario
         if sc is None or sc.rewards is None:
             return
-        # Land the items on the ADVENTURE's copies (still the live ones), then
-        # let the finale's transition harvest them into the run.
-        if self.adventure is not None:
-            saved = sc.loadouts
-            sc.loadouts = self.adventure.loadouts
-            try:
-                sc.accept_rewards()
-            finally:
-                sc.loadouts = saved
-        else:
-            sc.accept_rewards()
+        # The items land on the ADVENTURE's copies (still the live ones; see
+        # `ScenarioRun._gear_loadouts`), and the finale's transition harvests
+        # them into the run. A plan that no longer fits raises to the players.
+        sc.accept_rewards()
         self.save_point("rewards", None)
         self._scenario_transitions()
 

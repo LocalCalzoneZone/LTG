@@ -438,11 +438,12 @@ def _action_mods(char) -> Dict[str, str]:
 
 def _mitigate_value(char) -> int:
     """X = ceil(current Power / 2) — the per-hit Mitigate reduction (Update 02
-    §M-A.2), or full Power under a `mitigate_full` action modifier."""
+    §M-A.2), or full Power under a `mitigate_full` action modifier; never 0,
+    mirroring engine._mitigate_value's floor of 1 (§D19-5)."""
     power = max(0, char.current_power)
     if "mitigate_full" in _action_mods(char):
-        return power
-    return math.ceil(power / 2)
+        return max(1, power)
+    return max(1, math.ceil(power / 2))
 
 
 def _defend_value(char) -> int:

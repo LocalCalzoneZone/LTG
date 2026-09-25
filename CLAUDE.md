@@ -43,8 +43,8 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
    - `content/` is git-tracked and is also the **live write target** for shared content: encounters, adventures, towns, `world/`, and generated art in `art/`. Editors and generators write and delete there, and a commit ships it. `content/equipment/` is the tracked base item catalogue, which the game only reads.
    - `apps/deckbuilder/loadouts/` is gitignored and per-install: characters, `llm_settings.json` (contains the API key — never print it), hidden-id files, user-made `equipment/`, lore, animations, and run-scoped art (spoils, cast, places).
    - `saves/` is gitignored and holds campaign runs.
-   - Never write per-install or runtime data into `content/`. (The code currently breaks this: quest-accept adventures and new campaign towns are written there. Roadmap M1.15.)
-4. **Identity lives on the character file, history on the campaign, geography in the worldbook** (§D24-2). Deck, skills, and art are read live from the character file whenever a campaign save loads. An in-session Continue doesn't refresh them yet (roadmap M1.7). Levels, gear, purse, and chronicle live in the campaign's instanced copy.
+   - Never write per-install data (characters, keys, saves) into `content/`. Content *generated* during play is the exception, on purpose (ruled 2026-09-25, M1.15): quest-accept adventures, their art, and campaign towns and worldbook edits write to `content/`. The owner generates and commits them; the keyless Windows install only pulls.
+4. **Identity lives on the character file, history on the campaign, geography in the worldbook** (§D24-2). Deck, skills, and art are read live from the character file whenever a campaign save loads and at an in-session Continue. Levels, gear, purse, chronicle, and the priced keyword and attack mode live in the campaign's instanced copy.
 5. **Dependencies run one way:** `core` ← `deckbuilder`, and `core` ← `combat` ← `game-server` ← `autoplay-tester`. The game server imports engine and serializer helpers, some of them private (`_character_dict`, `_ordered`…), so changing those changes the client contract. The Deckbuilder imports only `core`, which is why its `flavour.py` keeps its own copy of the retired-model map. The autoplay runner hand-copies some server balance constants; keep them in sync.
 6. **Saves are made only at boundaries**: phase ends, quest accept, the inn, the interlude. There are no mid-combat saves (no `GameState` deserializer exists). Saves reference immutable content and never regenerate it.
 
@@ -69,6 +69,7 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 - **The Deckbuilder is custom-cards-only.** No MTG/Scryfall import UI. Legacy fields load but are pruned on save. Rarity stays as a balance lever.
 - **Autoplay harness numbers are not balance evidence.** Keep the harness working and versioned (bump the policy `version` on heuristic changes). Use it for crash/anomaly detection and A/B deltas within one run. Don't cite its win rates as balance evidence or gate work on a run.
 - **No quests hooked to hero backstory.** Knowledge is party-level. Party composition is fixed per campaign.
+- **M1 rulings (2026-09-25),** recorded in the canon and the roadmap's M1 rows: generated play content stays in `content/`; an enemy's turn-scoped lockdown on a hero holds through that hero's next turn; a taunt respects the wall; enemy deathtouch downs heroes; enemies aim at party tokens; each struck hero may Mitigate their own hit; keyword and attack mode stay as the campaign bought them.
 
 ## Gotchas
 

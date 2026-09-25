@@ -19,6 +19,13 @@ DECKBUILDER_PORT = int(os.environ.get("LTG_DECKBUILDER_PORT", "8000"))
 router = APIRouter(prefix="/api")
 
 
+@router.get("/app/info")
+def info() -> Dict[str, Any]:
+    """Where the sibling apps answer, so the client's Edit-in-Deckbuilder link
+    follows the port the host actually runs (roadmap M1.36)."""
+    return {"deckbuilder_port": DECKBUILDER_PORT}
+
+
 @router.get("/update/check")
 def check() -> Dict[str, Any]:
     return selfupdate.check_update()

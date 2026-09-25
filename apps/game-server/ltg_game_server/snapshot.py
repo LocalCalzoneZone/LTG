@@ -44,6 +44,48 @@ LOG_TAIL = 60  # how many recent log entries to ship (newest-first)
 HIDDEN_LOG_TYPES = {"intent_declared"}
 
 
+# Log lines that name a hidden card (a draw, a scry's look) are private to the
+# seat that drew them; teammates read that a card moved, not which (M1.33).
+PRIVATE_CARD_LOG_TYPES = {"draw", "scry"}
+# Log lines that name a VEILED intent before it is on the stack (§D8-1.1: the
+# pre-stack contract is a category and a target, never a name). A redirect
+# and a spoiled intent are rewritten without the name (M1.35).
+VEILED_LOG_TYPES = {"intent_redirect", "intent_spoiled"}
+
+
+def _seat_log_line(view: GameState, e, controlled_ids: Set[str]):
+    """``(msg, data, private)`` for one log entry as this seat may see it.
+    The engine's own log keeps everything (the harness and the cockpit read
+    it); only the client feed is filtered."""
+    if e.type in PRIVATE_CARD_LOG_TYPES:
+        who = e.data.get("character") if e.type == "draw" else e.data.get("target")
+        if who is not None and who not in controlled_ids:
+            ch = view.character(who)
+            name = ch.name if ch is not None else "A hero"
+            n = e.data.get("amount")
+            msg = (f"{name} draws a card." if e.type == "draw"
+                   else f"{name} looks at the top {n or 'few'} card(s) of their library.")
+            data = {k: v for k, v in e.data.items()
+                    if k not in ("card", "card_name", "cards", "revealed")}
+            return msg, data, True
+        return e.msg, e.data, False
+    if e.type in VEILED_LOG_TYPES:
+        data = {k: v for k, v in e.data.items() if k not in ("intent", "label")}
+        src = view.enemy(e.data.get("enemy")) if e.data.get("enemy") else None
+        if src is None and e.data.get("token"):
+            return e.msg, e.data, False          # an ally token's attack is unveiled
+        name = src.name if src is not None else "An enemy"
+        if e.type == "intent_redirect":
+            tgt = view.combatant(e.data.get("target"))
+            was = view.combatant(e.data.get("was"))
+            msg = (f"{name}'s intent redirects — {was.name if was else 'its target'} is "
+                   f"covered; it now falls on {tgt.name if tgt else 'another hero'}.")
+        else:
+            msg = f"{name}'s intent comes to nothing. It attacks instead."
+        return msg, data, False
+    return e.msg, e.data, False
+
+
 # --------------------------------------------------------------------------- #
 # priority.kind — derived (INTERFACE_NOTES §2)
 # --------------------------------------------------------------------------- #
@@ -439,10 +481,11 @@ def build_snapshot(stored: GameState, controlled_ids: Set[str],
     # keys its one-shot effects off exactly that).
     visible = [(i, e) for i, e in enumerate(stored.log)
                if e.type not in HIDDEN_LOG_TYPES]
-    log = [
-        {"seq": i, "type": e.type, "msg": e.msg, "data": e.data, "card": _log_card(e)}
-        for i, e in reversed(visible[-LOG_TAIL:])  # newest-first tail
-    ]
+    log = []
+    for i, e in reversed(visible[-LOG_TAIL:]):  # newest-first tail
+        msg, data, private = _seat_log_line(view, e, controlled_ids)
+        log.append({"seq": i, "type": e.type, "msg": msg, "data": data,
+                    "card": None if private else _log_card(e)})
 
     return {
         "turn": view.turn,

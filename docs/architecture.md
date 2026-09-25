@@ -289,7 +289,7 @@ The server is an authority and relay. Every combat action goes through the engin
 |---|---|
 | `app.py` (1.3k) | FastAPI `app`, `MANAGER`, `RUNS`. All routes, `ws_endpoint`, and `_broadcast` (sends seats, state and prompt to every socket, plus game_over once a result exists). `_scenario_async(session, kind)` does off-lock work: `materialize`, `interlude`, `continue`, `adventure_job`, `confirm_timer`. `_open_save` and `_continue_sync`. It serves `/art/*` (`content/art`, then `loadouts/art`), `/anim/*`, and `dist` (`index.html` no-store). |
 | `session.py` (1.05k) | `Session`: one `GameState` (`None` in town), `seats`, `clients`, a lazy lock, `pass_all`, `confirm`. `SessionManager` is in-memory and never evicts. `apply_index`. `_auto_advance` is a synchronous drain (cap 200). It also runs at phase openings, so those are unpaced. `_drain_paced` is one task per session: one broadcast per synthetic step, with 1.1 s, 0.6 s or 0.18 s pauses, holding the lock only while stepping. Confirmations (T-84): all sockets must say yes, one "no" cancels, 30 s of silence counts as yes, and a lone socket skips the vote. `set_pass_all` works per character, per turn step. Also `town_verb`, `economy_verb`, `start_adventure`, `materialize_act` (blocking), `continue_campaign`, `choose_hook`, `_scenario_transitions` (the act wrap-up and defeat), `confirm_level_up`, `save_point`, `snapshot_for`. |
-| `snapshot.py` (475) | `build_snapshot`, `priority_fields`, `priority_kind`, `LOG_TAIL=60`, `HIDDEN_LOG_TYPES={"intent_declared"}`, and the per-entity reshapers. |
+| `snapshot.py` (475) | `build_snapshot`, `priority_fields`, `priority_kind`, `LOG_TAIL=60`, `HIDDEN_LOG_TYPES={"intent_declared"}`, the seat log filter `_seat_log_line`, and the per-entity reshapers. |
 | `scenario.py` (1.9k) | `ScenarioRun`: town + arc + three acts. `mode` is town, adventure, complete or interlude. It holds the `campaign` record and run copies of the party's loadouts, points, gold and HP. Verbs: `arrive`, `materialize`, `visit`, `talk`, `choose`, `buy`, `sell`, `give`, `accept_rewards`, `start_adventure`, `on_adventure_complete`, `on_adventure_defeat`, `begin_interlude`, `choose_hook`, `begin_next_scenario`, `town_snapshot`, `snapshot`, `restore`. Its generators can be swapped out in tests. |
 | `scenario_content.py` | CRUD for towns (`content/towns/`) and pre-generated scenarios (`content/scenarios/`). Validators: `validate_town`, `validate_arc`, `validate_materialization`, `validate_interlude`. `town_for_act` merges the base town with the arc's cast and places and the campaign's overrides. |
 | `dialogue.py` | `validate_dialogue` (the closed `HOOKS` vocabulary) and the `Conversation` walker. |
@@ -302,9 +302,9 @@ The server is an authority and relay. Every combat action goes through the engin
 | `llm.py` (3.5k) | OpenRouter client, settings, and every text generator. See [generation.md](generation.md). |
 | `art.py` | OpenRouter image model or ComfyUI. `ART_DIR = content/art`. `LEGACY_ART_DIR = loadouts/art` is the read fallback and also receives the run-scoped spoils, cast and places art. `ArtQueue` runs sequentially, is idempotent, and skips failures. |
 | `world.py` | Worldbook in `content/world/`: `append_entry` (neighbours are symmetric), `update_entry`, `context_for`, `placement_context`. |
-| `appctl.py` | `/api/update/*` and `/api/quit`, wrapping `ltg_core.selfupdate`. `LTG_DECKBUILDER_PORT` defaults to 8000. |
+| `appctl.py` | `/api/update/*`, `/api/quit` and `/api/app/info` (the Deckbuilder's port for the client's Edit link), wrapping `ltg_core.selfupdate`. `LTG_DECKBUILDER_PORT` defaults to 8000. |
 | `launch.py` | The `ltg-game` CLI. Defaults: host `0.0.0.0`, port 8020. Flags: `--reload`, `--no-browser`, `--skip-build`, `--rebuild`, `--dev`. It rebuilds `dist` when source mtimes are newer. Without npm it serves the committed `dist`. |
-| `launch_all.py` | `ltg-start` takes no arguments. It reuses or spawns the Deckbuilder on :8000, runs the game in-process, and kills the child on exit. |
+| `launch_all.py` | `ltg-start` takes no arguments. It reuses or spawns the Deckbuilder on `LTG_DECKBUILDER_PORT` (8000), runs the game in-process on `LTG_GAME_PORT` (8020), exports both so each app's Quit finds its sibling, and kills the child on exit. |
 
 ## 7. The wire protocol
 
@@ -321,13 +321,15 @@ On connect the server sends `hello {client_id, session_id}`, then `seats`, `stat
 | `pass_all` | `on`, `character_ids[]` (required) | Runs under the lock. Then broadcast and start the pacer. |
 | `submit_action` | `action {index, mana?[]}` | `apply_index(drain=False)` under the lock. Any exception sends an `error` and a fresh `state` to that client. Otherwise broadcast and start the pacer. |
 | `town` | `verb`, `payload{}` | Runs `economy_verb` during a scenario fight, `town_verb` otherwise. A `ValueError` becomes an `error`. |
-| `confirm` | `id`, `yes` (default true) or `cancel` | `answer_confirm` / `cancel_confirm`. **No try/except.** |
+| `confirm` | `id`, `yes` (default true) or `cancel` | `answer_confirm` / `cancel_confirm`. |
 | `retry_job` | – | Re-fires the adventure job. |
 | `confirm_level_up` | `character_id`, `build{}` | A `ValueError` becomes an `error` and a re-sync. |
 | other | – | `error "unknown message"` |
 
+**The guard.** Every message goes through `_dispatch` inside one guard in `ws_endpoint`. A non-JSON or non-object frame, a bad shape (`character_ids` not a list of ids, `action` or `payload` not an object), or any exception raised while handling a message is answered with an `error` frame and a broadcast. The socket stays open, so the player's seats survive. The pacer task (`_drain_paced_guarded`) and the confirm timer print a fault instead of dying silently, and hitting `_AUTO_CAP` prints a warning.
+
 **Town verbs.** Verbs marked ★ need every player to confirm.
-- `town_verb`: `continue_campaign`, `dismiss_splash`, `dismiss_notices`, `rest_screen`, `rest_back`, `set_situation`, `choose_hook {index}`★, `visit {location_id}`★, `leave`★, `talk {npc_id}`, `attribute`, `end_talk`, `choose {index}` (★ when party-wide), `start_adventure`★, `save`.
+- `town_verb`: `continue_campaign`, `dismiss_splash`, `dismiss_notices`, `rest_screen`, `rest_back`, `set_situation` (rest screen only), `retry_materialize`, `choose_hook {index}`★, `visit {location_id}`★, `leave`★, `talk {npc_id}`, `attribute`, `end_talk`, `choose {index}` (★ when party-wide), `start_adventure`★, `save`.
 - `economy_verb`. Gear verbs all take `character_id`: `equip {item_id, slot}`, `unequip {slot}`, `to_belt`, `from_belt`, `discard` and `sell` (each `{item_id}`), `buy {item_id, location_id?}`, and `give {to, item_id?, gold?}` (if another player controls the recipient, that player must accept). Also `trade_answer {yes}`, `reward_assign {index, target}`, `reward_accept`★ and `flee`.
 
 **Server → client:** `hello`; `seats {seats, you, pass_all}`; `state` (§3); `prompt {holder_character_id, kind}`, which the client ignores; `game_over {result}`, sent on every broadcast while the result stands and shown by the client after choreography; `error {message, fatal?}`; `heartbeat`. Confirmations, notices and saves ride inside `state`: `confirm {id, kind, label, initiator, you_are_initiator, answered, yes_count, player_count, seconds_left}`, `notices` and `run.last_save`.
@@ -384,7 +386,7 @@ On connect the server sends `hello {client_id, session_id}`, then `seats`, `stat
 - Only the controlling client receives `hand`, `library` (in draw order), `graveyard`, the Skill and Ultimate faces, and the level-up build rows.
 - It also receives `legal_actions`, but only if it controls the holder, and `pending_choice` candidates, but only if it is the chooser.
 - Intents are **veiled** for everyone: category and target only. `intent_declared` log lines are dropped.
-- **The log is not seat-filtered.** The engine's `draw` line names the card, and `_log_card` attaches the full card for any party zone, so teammates see each other's draws.
+- **The log is seat-filtered** (`_seat_log_line`): a teammate's `draw` or `scry` reads "X draws a card." with no card attached (`PRIVATE_CARD_LOG_TYPES`), and `intent_redirect` / `intent_spoiled` are rewritten without the intent's name (`VEILED_LOG_TYPES`). The engine's own log keeps everything.
 - `log` is the 60 newest visible entries, **newest first**. `seq` is the absolute index in the stored log.
 
 **[`INTERFACE_NOTES.md`](design/INTERFACE_NOTES.md) status** (the July Phase-1 contract, now kept in `docs/design/`; still cited by `session.py`, `snapshot.py`, `content.py`, `app.py`, `CreatureCard.tsx`):
@@ -477,7 +479,7 @@ About 16.6k lines. Stack: React 18, zustand, Tailwind 3, Vite 5, strict TypeScri
 **`CUSTOM_CARD_SCHEMA.md`** is the paste-ready JSON format for Import Deck, so an LLM or a person can author cards outside the tool. Fields: `name`, `type`, `mana_cost`, `effect` (MTG oracle wording), optional `flavour` and `rarity`.
 
 **Update Game Character**
-1. In the game, Options → Characters → Edit opens `http://<host>:<port>/?edit=<id>` (port from localStorage `ltg_deckbuilder_port`, default 8000).
+1. In the game, Options → Characters → Edit opens `http://<host>:<port>/?edit=<id>` (port from localStorage `ltg_deckbuilder_port` if set, else the server's `/api/app/info`, default 8000).
 2. The export button becomes "Update Game Character".
 3. It writes **validated cards only** over `loadouts/<id>.json`, keeping the id through a rename. Unvalidated draft cards are dropped.
 4. The game re-scans on every request.
@@ -620,7 +622,7 @@ Because the sandbox starts like a clean clone, tests must use the bundled `examp
 There is **no typed registry**. The engine emits **148 distinct literal `type` strings** from 210 `_log` calls, and `LogEntry.type` is a plain `string` on the client.
 
 1. Call `_log(st, "type", msg, **data)` with JSON-plain data only. The game server sends `e.data` unchanged through `ws.send_json`.
-2. `snapshot.py` ships the newest 60 entries (`LOG_TAIL`), minus `HIDDEN_LOG_TYPES`.
+2. `snapshot.py` ships the newest 60 entries (`LOG_TAIL`), minus `HIDDEN_LOG_TYPES`, through `_seat_log_line`. A line that names a hidden card or a veiled intent belongs in `PRIVATE_CARD_LOG_TYPES` or `VEILED_LOG_TYPES`.
 3. Add a case to `switch (e.type)` in `apps/game-ui/src/lib/fx.ts` (35 types handled today), and a new `FxKind` if it needs a new visual.
 4. Add the type to the tint sets in `SidePanel.tsx`.
 5. If it should be counted, add it to `runner._collect_metrics`.
@@ -642,10 +644,8 @@ Each of these is tracked as an objective in [roadmap.md](roadmap.md) (mostly M1,
 
 **Server, client and ops**
 
-- **Confirm branch:** the ws `confirm` branch has no exception guard. A raising confirm action exits the loop, and `finally: remove_client` drops the player's seats.
-- **Pacer:** `_drain_paced` has no guard, so a fault silently kills the pacer and the next message restarts it into the same fault. `_AUTO_CAP` exhaustion is also silent, and the code uses `get_event_loop()`.
 - **Seats:** seats are keyed by socket, with no player token. A reconnect loses them, and confirmations count sockets.
-- **Worker threads** mutate session state without the lock: `_materialize_task`, `_continue_task`, `generate_sync`, and the art painters. `InterludeJobRunner._generate_locked` takes no lock despite its name.
+- **Worker threads** (the act writer, the road ahead, the adventure and interlude jobs, the art painters) read and write the session only through `jobs.call_locked`, which runs the step under the session lock on the event loop; the LLM calls and file writes run unlocked. `load_save` / `continue_run` are still synchronous routes (roadmap M8.4).
 - **Sync loads:** `load_save` and `continue_run` are synchronous, so the scenario hooks run inline and block HTTP on LLM calls.
 - **Open admin routes:** CORS is `*` on a `0.0.0.0` bind, and the admin routes have no authentication (the Deckbuilder's too).
 - **Untested surfaces:** CI runs the suite, the client build and a lint, but nothing tests the client's behaviour, the WebSocket, `selfupdate` or the launchers.
@@ -653,4 +653,3 @@ Each of these is tracked as an objective in [roadmap.md](roadmap.md) (mostly M1,
 - **Art in git:** about 918 MB of PNG art is tracked, written raw, and repaints only add to it.
 - **`types.ts`** is hand-mirrored and has already drifted.
 - **Sessions** live in memory and are never evicted. A restart loses mid-fight state back to the last boundary save.
-- **Log leak:** the log is not seat-filtered, so teammates' draws are visible.

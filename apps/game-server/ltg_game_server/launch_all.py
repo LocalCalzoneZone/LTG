@@ -19,6 +19,7 @@ of scrolling past.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -26,7 +27,10 @@ import urllib.request
 
 from . import launch
 
-DECKBUILDER_PORT = 8000
+# One source for the pair's ports (roadmap M1.36): both children read them
+# from the environment, so the game's Quit and Edit follow a moved Deckbuilder.
+DECKBUILDER_PORT = int(os.environ.get("LTG_DECKBUILDER_PORT", "8000"))
+GAME_PORT = int(os.environ.get("LTG_GAME_PORT", "8020"))
 DECKBUILDER_URL = f"http://localhost:{DECKBUILDER_PORT}"
 
 
@@ -39,12 +43,15 @@ def _deckbuilder_up() -> bool:
 
 
 def main() -> int:
+    os.environ["LTG_DECKBUILDER_PORT"] = str(DECKBUILDER_PORT)
+    os.environ["LTG_GAME_PORT"] = str(GAME_PORT)
     deckbuilder = None
     if _deckbuilder_up():
         print(f"Deckbuilder already running at {DECKBUILDER_URL} — reusing it.")
     else:
         deckbuilder = subprocess.Popen(
-            [sys.executable, "-m", "ltg_deckbuilder", "--no-browser"])
+            [sys.executable, "-m", "ltg_deckbuilder", "--no-browser",
+             "--port", str(DECKBUILDER_PORT)])
         # Give it a moment; a port clash or import error exits at once.
         for _ in range(30):
             if deckbuilder.poll() is not None:
@@ -62,7 +69,7 @@ def main() -> int:
             print(f"Deckbuilder starting at {DECKBUILDER_URL} (no tab — reach it "
                   "from the game's Edit buttons, or open it yourself).")
     try:
-        return launch.main([])
+        return launch.main(["--port", str(GAME_PORT)])
     finally:
         if deckbuilder is not None:
             deckbuilder.terminate()

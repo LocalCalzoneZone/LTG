@@ -3,7 +3,7 @@
 §D12-1 Alternate objectives: the closed set survive / waves / race — reserve
 zone, End-Step timer ticks, wave/reinforcement deployment, race expiry and the
 escalation payload, the win/loss variants, snapshot surfaces, and the content
-validation (one objective per adventure, Phases I–II only, mini-boss in the final
+validation (one objective per adventure, Phase III only as a §D23-5 modifier, mini-boss in the final
 wave, T-66 wave body minimums).
 
 Encounters WITHOUT an objective staying byte-identical is asserted by the whole
@@ -461,9 +461,32 @@ def test_adventure_rejects_two_objectives():
             act2_objective=_survive_objective()))
 
 
-def test_adventure_rejects_an_phase_three_objective():
+def test_adventure_rejects_a_climax_replacing_phase_three_objective():
+    """§D23-5: a `survive` on Phase III would win the finale without the kill."""
+    survive = {"kind": "survive", "turns": 5, "reinforcements": [
+        {"turn": 3, "layouts": {str(s): ["footman"] for s in range(1, 5)}}]}
     with pytest.raises(ValueError, match="Phase III"):
-        content.save_adventure(_adventure(act3_objective=_survive_objective()))
+        content.save_adventure(_adventure(act3_objective=survive))
+
+
+def test_save_adventure_keeps_a_modifier_objective_on_phase_three():
+    """Roadmap M1.4: `save_adventure` used to veto EVERY Phase III objective, so
+    each generated boss-phase objective was repaired away. The §D23-5 shapes
+    (a deadline; a guarded race on the boss) now persist."""
+    meta = content.save_adventure(_adventure(
+        act3_objective={"kind": "deadline", "turns": 5}))
+    detail = content.adventure_detail(meta["id"])
+    assert detail["phases"][2]["objective"]["kind"] == "deadline"
+
+    race = {"kind": "race", "target": "tyrant", "turns": 4, "guards": ["footman"],
+            "fail": "escalate", "escalation": {"telegraph": "The Tyrant Rises",
+                                               "verbs": [{"kind": "deal_damage",
+                                                          "amount": 3,
+                                                          "target": {"mode": "all",
+                                                                     "side": "ally"}}]}}
+    meta = content.save_adventure(_adventure(act3_objective=race))
+    obj = content.adventure_detail(meta["id"])["phases"][2]["objective"]
+    assert obj["target"] == "tyrant" and obj["guards"] == ["footman"]
 
 
 def test_waves_phase_requires_the_miniboss_in_the_final_wave():
@@ -909,3 +932,15 @@ def test_autoplay_cli_smoke_slice(tmp_path):
     assert out_a.read_text() == out_b.read_text()  # byte-identical reruns
     assert main(["report", str(out_a)]) == 0
     assert main(["diff", str(out_a), str(out_b)]) == 0
+
+
+def test_a_new_adventure_never_overwrites_one_of_the_same_name():
+    """Roadmap M1.16: content keyed by its name's slug overwrote an older piece
+    of the same name. A NEW save (no id) takes the next free id instead; an
+    edit (an explicit id) still writes in place."""
+    first = content.save_adventure(_adventure())
+    second = content.save_adventure(_adventure())
+    assert first["id"] != second["id"] and second["id"].startswith("test_keep")
+    assert content.adventure_detail(first["id"]) is not None
+    again = content.save_adventure(_adventure(), adventure_id=first["id"])
+    assert again["id"] == first["id"]

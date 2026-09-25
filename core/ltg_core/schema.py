@@ -494,17 +494,17 @@ StatValue = Union[int, Ref]
 KEYWORDS = {
     "flying": {"display": "Flying", "gloss": "on defence, struck only by ranged, other flyers, or reach (R-1); transparent to the melee wall — it never shields allies and cannot interpose (L-4)", "grantable": True, "params": []},
     "reach": {"display": "Reach", "gloss": "its melee may strike flyers, and pins an enemy melee-flyer to rows not behind it (R-1)", "grantable": True, "params": []},
-    "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction that may kill the attacker first (R-12)", "grantable": True, "params": []},
+    "first_strike": {"display": "First Strike", "gloss": "act/cast on your turn, then hold the basic attack as a reaction at an enemy acting on the stack — it may kill the attacker first (R-12)", "grantable": True, "params": []},
     "double_strike": {"display": "Double Strike", "gloss": "the basic attack strikes twice", "grantable": True, "params": []},
     "vigilance": {"display": "Vigilance", "gloss": "frees the Attack (D23-2): swing, then take one more verb — Cast, Defend, Move, Skill or Ultimate", "grantable": True, "params": []},
     "defender": {"display": "Defender", "gloss": "frees the Defend (D23-2): raise the shield, then take one more verb — Cast, Move, Skill or Ultimate. Can never basic-attack; it walks and dashes like anyone else. Hero-only: enemies ignore it", "grantable": True, "params": []},
     "haste": {"display": "Haste", "gloss": "frees the Move (D23-2): step, then take one more verb — Attack, Cast, Defend, Skill or Ultimate. Live, though never while its own action is unresolved (L-6.1)", "grantable": True, "params": []},
     "trample": {"display": "Trample", "gloss": "excess damage cleaves past the target", "grantable": True, "params": []},
-    "deathtouch": {"display": "Deathtouch", "gloss": "mini-execute: its damage can destroy a minion", "grantable": True, "params": []},
+    "deathtouch": {"display": "Deathtouch", "gloss": "its damage that connects executes the victim — a minion dies, a hero is downed; a boss only at ≤25% HP", "grantable": True, "params": []},
     "lifelink": {"display": "Lifelink", "gloss": "heal equal to the damage it deals", "grantable": True, "params": []},
-    "infect": {"display": "Infect", "gloss": "its damage that connects also poisons the victim — a −0/−1 per Upkeep until cured by any healing (D8-2.5)", "grantable": True, "params": []},
+    "infect": {"display": "Infect", "gloss": "each hit that connects gives the victim a poison counter — 1 life lost per counter each Upkeep, until any healing clears them all (§D22-2)", "grantable": True, "params": []},
     "hexproof": {"display": "Hexproof", "gloss": "can't be targeted by enemy effects (attacks still hit)", "grantable": True, "params": []},
-    "indestructible": {"display": "Indestructible", "gloss": "can't be reduced below 1 HP by damage; still dies to exile or a −X/−X to effective HP ≤ 0", "grantable": True, "params": []},
+    "indestructible": {"display": "Indestructible", "gloss": "damage, life loss and poison can't take it below 1 HP, and destroy and deathtouch fail; only exile or a −X/−X to effective HP ≤ 0 kills it", "grantable": True, "params": []},
     # Enemy-only (§L-6.2) — authored on enemy JSON, never granted by player cards.
     "relentless": {"display": "Relentless", "gloss": "its intents never redirect — they pursue the declared target wherever it stands (L-6.2); enemy-only", "grantable": False, "params": []},
     # Retired — not grantable.
