@@ -130,6 +130,31 @@ export async function createGame(
   return data.session_id as string;
 }
 
+// Roadmap M3.1 (a playtest tool): build a campaign run at a chosen state
+// through the real scenario code, and open its newest save.
+export interface JumpRequest {
+  town_id: string;
+  character_ids: string[];
+  state: string;
+  act: number;
+  difficulty: string;
+  hardcore: boolean;
+  writers: "stub" | "llm";
+  fights: "instant" | "autopilot";
+}
+export async function jumpTo(req: JumpRequest): Promise<string> {
+  const res = await fetch("/api/playtest/jump", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `jump failed: ${res.status}`);
+  }
+  return (await res.json()).session_id as string;
+}
+
 // ---- Runs & saves (Update 17 §D17-3) — Load Game ---------------------------- //
 export interface RunSummary {
   run_id: string;

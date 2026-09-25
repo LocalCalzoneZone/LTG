@@ -553,6 +553,9 @@ export interface GameSnapshot {
   gear_editable?: boolean;
   defeat_pending?: boolean;
   adventure_name?: string;
+  // Autopilot (roadmap M3.2, a playtest tool): `available` while the playtest
+  // profile is on; `note` says why it last handed the fight back.
+  autopilot?: { on: boolean; available: boolean; note: string | null };
 }
 
 export interface SeatsMsg {
@@ -718,6 +721,10 @@ export interface SetupOptions {
   adventures: AdventureOption[];
   scenarios: ScenarioOption[];
   towns: TownOption[];
+  // Roadmap M3.1 (playtest profile only): Town + New may start at a
+  // fabricated campaign state ("act", "ready", "defeat", "between", …).
+  playtest?: boolean;
+  jump_states?: string[];
 }
 
 // LLM / encounter generation (Options → LLM).
@@ -740,6 +747,15 @@ export interface LlmSettings {
   models: LlmModel[];
   has_key: boolean; // the raw key is never sent to the client
   difficulties: string[]; // e.g. ["easy","standard","hard"]
+  // Playtest tools (roadmap M3.2–M3.4). `*_forced`: set by the server's
+  // environment (LTG_PLAYTEST / LTG_LLM_TAPE), so the control is read-only.
+  playtest: boolean;
+  playtest_model: string;
+  playtest_forced: boolean;
+  tape: string; // off | record | replay | replay_only
+  tape_forced: boolean;
+  tape_modes: LlmModel[];
+  tape_counts: Record<string, number>; // recordings per writer kind
 }
 // Partial update; omit `api_key` (or send "") to leave the stored key untouched.
 // `instructions: null` / `art_style: null` reset that prompt to the server's
@@ -754,6 +770,9 @@ export interface LlmSettingsPatch {
   art_backend?: string;
   comfyui_url?: string;
   comfyui_workflow?: string;
+  playtest?: boolean;
+  playtest_model?: string;
+  tape?: string;
 }
 
 // ---- Scenario Mode (Design Update 17) --------------------------------------- //

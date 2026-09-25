@@ -242,6 +242,7 @@ interface StoreState {
   release: (ids: string[]) => void;
   // §D23-8: set/clear Pass-All for named seats (per character, not per player).
   setPassAll: (on: boolean, characterIds: string[]) => void;
+  setAutopilot: (on: boolean) => void;
 
   // adventures (Update 10): confirm one controlled character's level-up.
   confirmLevelUp: (characterId: string, build: Record<string, unknown>) => void;
@@ -344,6 +345,14 @@ export const useGame = create<StoreState>((set, get) => ({
           break;
         }
         if (get().town) set({ town: null }); // riding out: the fight takes over
+        if ((msg as GameSnapshot).autopilot?.on) {
+          // Autopilot (M3.2): each state is a chunk of decisions the policy
+          // already played. Show the board as it now stands, no beats — a
+          // fight resolves in seconds instead of queueing minutes of FX.
+          set({ _snapQueue: [], holdUntil: 0, fx: [], _preroll: null, lastLogSeq: null });
+          get()._applySnapshot(msg as GameSnapshot);
+          break;
+        }
         // THE PRESENTATION QUEUE: states are not applied on arrival — they
         // are applied in order, each held until the PREVIOUS state's
         // choreography has fully landed. Without this, every batch's effect
@@ -522,6 +531,7 @@ export const useGame = create<StoreState>((set, get) => ({
   claim: (ids) => get().socket?.send({ type: "claim_seat", character_ids: ids }),
   setPassAll: (on, characterIds) =>
     get().socket?.send({ type: "pass_all", on, character_ids: characterIds }),
+  setAutopilot: (on) => get().socket?.send({ type: "autopilot", on }),
   // Scenario Mode (Update 17): town verbs, the all-players confirmation, jobs.
   sendTown: (verb, payload) => get().socket?.send({ type: "town", verb, payload: payload ?? {} }),
   answerConfirm: (id, yes) => get().socket?.send({ type: "confirm", id, yes }),

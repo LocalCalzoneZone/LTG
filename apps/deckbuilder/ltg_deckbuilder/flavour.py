@@ -12,6 +12,7 @@ loadouts dir is shared), so the Deckbuilder needs no settings of its own.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -35,6 +36,8 @@ _RETIRED_MODELS = {
     "anthropic/claude-opus-4.8": "anthropic/claude-opus-5",
     "anthropic/claude-sonnet-5": "openai/gpt-5.6-sol",
 }
+# The game's `llm.PLAYTEST_MODEL` (copied, not imported — see above).
+PLAYTEST_MODEL = "openai/gpt-5.6-luna-pro"
 MAX_TOKENS = 16000
 TIMEOUT = 300.0
 
@@ -67,7 +70,9 @@ Output contract:
 def load_llm_settings(loadout_dir: Path) -> Dict[str, Any]:
     """The api_key and the model for the "flavour" task, from the game's
     shared settings file (Options → LLM → Card Flavour; empty when unset):
-    the per-task override if one is set, else the file's default model."""
+    the per-task override if one is set, else the file's default model. The
+    game's playtest profile (roadmap M3.3: `playtest` + `playtest_model` in the
+    file, or `LTG_PLAYTEST=1`) routes this task to the playtest model too."""
     out: Dict[str, Any] = {"api_key": "", "model": DEFAULT_MODEL}
     try:
         data = json.loads((loadout_dir / "llm_settings.json").read_text())
@@ -79,6 +84,12 @@ def load_llm_settings(loadout_dir: Path) -> Dict[str, Any]:
             task = (data.get("task_models") or {}).get("flavour") if isinstance(data.get("task_models"), dict) else None
             if isinstance(task, str) and task:
                 out["model"] = task
+            env = (os.environ.get("LTG_PLAYTEST") or "").strip().lower()
+            playtest = (env in ("1", "true", "yes", "on") if env
+                        else data.get("playtest") is True)
+            if playtest:
+                pm = data.get("playtest_model")
+                out["model"] = pm if isinstance(pm, str) and pm else PLAYTEST_MODEL
     except (OSError, json.JSONDecodeError):
         pass
     out["model"] = _RETIRED_MODELS.get(out["model"], out["model"])

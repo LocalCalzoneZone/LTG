@@ -18,6 +18,9 @@ export function LlmSettingsPanel() {
   const [artBackend, setArtBackend] = useState("openrouter");
   const [comfyUrl, setComfyUrl] = useState("");
   const [comfyWorkflow, setComfyWorkflow] = useState("");
+  const [playtest, setPlaytest] = useState(false);
+  const [playtestModel, setPlaytestModel] = useState("");
+  const [tapeMode, setTapeMode] = useState("off");
   const [apiKey, setApiKey] = useState(""); // "" == leave stored key untouched
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -33,6 +36,9 @@ export function LlmSettingsPanel() {
     setArtBackend(s.art_backend);
     setComfyUrl(s.comfyui_url);
     setComfyWorkflow(s.comfyui_workflow);
+    setPlaytest(s.playtest);
+    setPlaytestModel(s.playtest_model);
+    setTapeMode(s.tape);
   };
 
   useEffect(() => {
@@ -49,6 +55,7 @@ export function LlmSettingsPanel() {
       const patch: {
         model: string; task_models: Record<string, string>; instructions: string; art_style: string;
         scenario_tone: string; art_backend: string; comfyui_url: string; comfyui_workflow: string;
+        playtest: boolean; playtest_model: string; tape: string;
         api_key?: string;
       } = {
         model,
@@ -59,6 +66,9 @@ export function LlmSettingsPanel() {
         art_backend: artBackend,
         comfyui_url: comfyUrl,
         comfyui_workflow: comfyWorkflow,
+        playtest,
+        playtest_model: playtestModel,
+        tape: tapeMode,
       };
       if (apiKey.trim()) patch.api_key = apiKey.trim();
       const s = await saveLlmSettings(patch);
@@ -107,6 +117,62 @@ export function LlmSettingsPanel() {
         <div className="mt-1.5 text-[11px] font-light text-dimmed">
           Stored locally on the server (gitignored), never sent to the browser. Get one at
           openrouter.ai/keys. {settings?.has_key ? "A key is currently set." : "No key set yet."}
+        </div>
+      </section>
+
+      {/* Playtest tools (roadmap M3.2–M3.4): cheap flow testing */}
+      <section className="border border-line bg-black/25 p-3">
+        <div className="caps-label mb-3 text-[10px] tracking-[0.25em] text-brass">
+          Playtest
+        </div>
+        <label className="mb-3 flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-[#c9b37e]"
+            checked={playtest}
+            disabled={settings?.playtest_forced}
+            onChange={(e) => setPlaytest(e.target.checked)}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className={label}>Playtest profile</span>
+            <span className="text-[11px] font-light text-dimmed">
+              Every text task uses the playtest model below instead of the picks under Encounter
+              Generation, the automatic art queues stay idle, and fights offer Autopilot. For
+              testing the flow, not for judging generated quality.
+              {settings?.playtest_forced ? " Set for this server by LTG_PLAYTEST." : ""}
+            </span>
+          </span>
+        </label>
+        <div className="grid grid-cols-2 gap-x-4">
+          <label className="flex flex-col gap-1">
+            <span className={label}>Playtest model</span>
+            <select className={field} value={playtestModel} onChange={(e) => setPlaytestModel(e.target.value)}>
+              {settings?.models.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={label}>Response tape</span>
+            <select
+              className={field}
+              value={tapeMode}
+              disabled={settings?.tape_forced}
+              onChange={(e) => setTapeMode(e.target.value)}
+            >
+              {settings?.tape_modes.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="mt-1.5 text-[11px] font-light text-dimmed">
+          The tape keeps generated replies on this machine and answers a repeated request from them,
+          so replaying a flow costs nothing. Replay works without an API key.
+          {settings?.tape_forced ? " Set for this server by LTG_LLM_TAPE." : ""}{" "}
+          {settings && Object.keys(settings.tape_counts).length > 0
+            ? `Recorded: ${Object.entries(settings.tape_counts).map(([k, n]) => `${n} ${k}`).join(", ")}.`
+            : "Nothing recorded yet."}
         </div>
       </section>
 

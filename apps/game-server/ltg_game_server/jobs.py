@@ -144,7 +144,8 @@ class AdventureJobRunner:
         await broadcast(session)
         await asyncio.to_thread(self.generate_sync, session, asyncio.get_running_loop())
         await broadcast(session)
-        if sc.adventure_job.get("state") == "ready" and sc.adventure_id:
+        # The playtest profile (M3.3) leaves the adventure unpainted.
+        if sc.adventure_job.get("state") == "ready" and sc.adventure_id and not llm.playtest_on():
             detail = sc.adventure_detail or {}
             phase_ids = [p["encounter_id"] for p in detail.get("phases", [])]
             try:

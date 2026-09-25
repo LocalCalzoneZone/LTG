@@ -64,17 +64,17 @@ towns, world, equipment, art) ──────▶ game server (:8020) ──�
 
 | Path | Git | Holds |
 |---|---|---|
-| `content/` | **tracked** | The live library; **the game writes and deletes here.** 16 adventures, 6 encounters, `towns/` (4), `scenarios/` (empty), `world/`, `equipment/` (76 catalogue items) and `art/`. |
-| `apps/deckbuilder/loadouts/` | ignored | Per install: characters, `llm_settings.json` (**the API key**), `*hidden.json`, user `equipment/`, `lore/`, `anim/`, and `art/` (portrait cache, spoils, cast, places). |
+| `content/` | **tracked** | The live library; **the game writes and deletes here.** Encounters and adventures were purged for regeneration on 2026-09-25 (roadmap M3.11), so it holds `towns/` (4), `scenarios/` (empty), `world/`, `equipment/` (76 catalogue items) and `art/` (towns and items). |
+| `apps/deckbuilder/loadouts/` | ignored | Per install: characters, `llm_settings.json` (**the API key**), `*hidden.json`, user `equipment/`, `lore/`, `anim/`, `llm_tape/` (recorded LLM replies, M3.4), and `art/` (portrait cache, spoils, cast, places). |
 | `saves/` | ignored | `<run>/run.json`, `content/<sha>.json`, `saves/<id>.json`. Currently empty. |
 | `examples/` | tracked | Last-resort fixtures the tests use; deleting one only hides it. |
 | `scripts/` | tracked | `backfill_worldbook.py`. |
 | `docs/` | tracked | Canon, architecture, generation, register, roadmap; `design/` history; `reviews/2026-09/` audit briefs. |
 
 Sizes:
-- `git ls-files content/art | wc -l` = **564** PNGs, about **918 MB**.
+- After the 2026-09-25 purge, `content/art` holds 185 files, about 315 MB (towns and items). Git history still carries the deleted art.
 - `du -sh .git` = **1.0 GB**.
-- Two orphaned town-art folders (`medusel`, `windmill_town`; 69 files, about 120 MB) exist because `delete_town` leaves art behind.
+- `delete_town` leaves the town's art behind; the two orphaned folders it had left (`medusel`, `windmill_town`) went in the purge.
 
 ## 3. `core/ltg_core/` — the shared vocabulary
 
@@ -295,11 +295,14 @@ The server is an authority and relay. Every combat action goes through the engin
 | `dialogue.py` | `validate_dialogue` (the closed `HOOKS` vocabulary) and the `Conversation` walker. |
 | `adventure.py` | `AdventureRun`: three phases, carry-over (`HP_FLOOR_PCT`, `GAUGE_CARRY`), the per-seat level-up gate, `advance` / `restore` / `snapshot_block`. |
 | `runs.py` | `RunManager` / `RunStore`: `saves/<run>/run.json`, a SHA-256 content store, and save snapshots at boundaries only, never mid-combat. `load_scenario_save` applies `content.refresh_instance`, so the character's identity is read live. `RUN_SCHEMA_VERSION=2`. |
-| `content.py` (1.7k) | Registry, validation and persistence. `CONTENT_DIR` is tracked and is the write target. `_SCAN_DIRS = [content, loadouts, examples]`; the first file to claim an id wins. `portrait_url` caches portraits in `loadouts/art/portraits/`. `save_encounter` writes through `_write_content`. `delete_encounter` removes the JSON and art, then hides the id. Adventure phases are `<adv>__phase<n>`. `build_state_from_loadouts` applies the balance register. Also lore and `refresh_instance`. |
+| `content.py` (1.7k) | Registry, validation and persistence. `CONTENT_DIR` is tracked and is the write target. `_SCAN_DIRS = [content, loadouts, examples]`; the first file to claim an id wins. `portrait_url` caches portraits in `loadouts/art/portraits/`. `save_encounter` writes through `_write_content`. `delete_encounter` removes the JSON and art, then hides the id. Adventure phases are `<adv>__phase<n>`. `build_state_from_loadouts` applies the balance register and the T-88 default boss dials (`apply_boss_dials`). Also lore and `refresh_instance`. |
 | `items.py` | Catalogue in `content/equipment/` (read). User items go to `loadouts/equipment/`. Also `AFFIXES`, `roll_stock` and the gear helpers. |
 | `loot.py` | `forge_drops` uses the arc's frozen `loot_lexicon`. Deterministic, with no LLM call. |
 | `jobs.py` | `RUNNER` generates the adventure at quest accept (idle → pending → ready or failed, persisted in run.json). `INTERLUDE` runs the planner at boss death. |
-| `llm.py` (3.5k) | OpenRouter client, settings, and every text generator. See [generation.md](generation.md). |
+| `llm.py` (3.5k) | OpenRouter client, settings, and every text generator. See [generation.md](generation.md). `_chat` consults the tape; `model_for` honours the playtest profile (`playtest_on`, `require_key`). |
+| `tape.py` | The LLM tape (roadmap M3.4): `record`, `lookup` (exact prompt hash, else the closest same-kind prompt at the same depth), `summary`. `loadouts/llm_tape/`. Modes `off`, `record`, `replay`, `replay_only`; `LTG_LLM_TAPE` overrides. |
+| `autopilot.py` | Autopilot fights (roadmap M3.2): `play_chunk(state, seed)` plays up to `CHUNK_ACTIONS` party decisions with `GreedyPolicy` on a copy (`ROUND_CAP`, per-fight `ACTION_CAP`). `Session.set_autopilot` / `start_autopilot` / `_drive_autopilot` run it off the lock on a worker thread and commit a chunk only if nobody acted meanwhile (`_autopilot_commit`). Playtest profile only; level-ups, spoils and towns stay with the players. |
+| `devstates.py` | Jump-to campaign states (roadmap M3.1): `build(state, town_id, character_ids, act, …)` drives the real `ScenarioRun`/`Session` verbs to `STATES` (`act`, `ready`, `defeat`, `between`, `interlude`, `scenario2`) and leaves an ordinary run in `saves/`. Writers `stub` (stand-ins built from the town plus library adventures; no key, no content writes) or `llm`; fights `instant` or `autopilot` (a loss is a real defeat and is retried). Level-ups spend through the policy's balanced plan. CLI: `python -m ltg_game_server.devstates <state>`; REST: `POST /api/playtest/jump`. |
 | `art.py` | OpenRouter image model or ComfyUI. `ART_DIR = content/art`. `LEGACY_ART_DIR = loadouts/art` is the read fallback and also receives the run-scoped spoils, cast and places art. `ArtQueue` runs sequentially, is idempotent, and skips failures. |
 | `world.py` | Worldbook in `content/world/`: `append_entry` (neighbours are symmetric), `update_entry`, `context_for`, `placement_context`. |
 | `appctl.py` | `/api/update/*`, `/api/quit` and `/api/app/info` (the Deckbuilder's port for the client's Edit link), wrapping `ltg_core.selfupdate`. `LTG_DECKBUILDER_PORT` defaults to 8000. |
@@ -324,6 +327,7 @@ On connect the server sends `hello {client_id, session_id}`, then `seats`, `stat
 | `confirm` | `id`, `yes` (default true) or `cancel` | `answer_confirm` / `cancel_confirm`. |
 | `retry_job` | – | Re-fires the adventure job. |
 | `confirm_level_up` | `character_id`, `build{}` | A `ValueError` becomes an `error` and a re-sync. |
+| `autopilot` | `on` | `set_autopilot` (refused unless the playtest profile is on). After every message the dispatcher calls `start_autopilot`, so a fight that opens while it is on is played. The snapshot carries `autopilot {on, available, note}`. |
 | other | – | `error "unknown message"` |
 
 **The guard.** Every message goes through `_dispatch` inside one guard in `ws_endpoint`. A non-JSON or non-object frame, a bad shape (`character_ids` not a list of ids, `action` or `payload` not an object), or any exception raised while handling a message is answered with an `error` frame and a broadcast. The socket stays open, so the player's seats survive. The pacer task (`_drain_paced_guarded`) and the confirm timer print a fault instead of dying silently, and hitting `_AUTO_CAP` prints a warning.
@@ -334,10 +338,11 @@ On connect the server sends `hello {client_id, session_id}`, then `seats`, `stat
 
 **Server → client:** `hello`; `seats {seats, you, pass_all}`; `state` (§3); `prompt {holder_character_id, kind}`, which the client ignores; `game_over {result}`, sent on every broadcast while the result stands and shown by the client after choreography; `error {message, fatal?}`; `heartbeat`. Confirmations, notices and saves ride inside `state`: `confirm {id, kind, label, initiator, you_are_initiator, answered, yes_count, player_count, seconds_left}`, `notices` and `run.last_save`.
 
-### REST (55 `/api` routes, all unauthenticated; CORS `*`; bound to `0.0.0.0`)
+### REST (56 `/api` routes, all unauthenticated; CORS `*`; bound to `0.0.0.0`)
 
 `[A]` marks admin or destructive routes. `…` repeats the group's prefix.
 
+- **Playtest:** `POST /api/playtest/jump` (`town_id`, `character_ids`, `state`, `act`, `difficulty`, `hardcore`, `writers`, `fights`) builds a `devstates` run and opens its newest save; 403 unless the playtest profile is on. `GET /api/setup-options` reports `playtest` and `jump_states`.
 - **Setup:** `GET /api/setup-options`; `POST /api/games` (`character_ids` plus one of `encounter_id`, `adventure_id`, `scenario_id`, `town_id`, with optional `run` and `note`; scenario and town games are always runs, and Town + New blocks on arc generation); `GET /api/games/{id}`.
 - **Characters:** `POST /api/characters` (imports into loadouts); `DELETE …/{id}` [A].
 - **Runs:** `GET /api/runs`; `GET …/{id}`; `POST …/{id}/continue` (newest save); `POST …/{id}/saves/{sid}/load`; `DELETE …/{id}` [A]; `DELETE …/{id}/saves/{sid}` [A].
@@ -520,6 +525,8 @@ The playtest lab from Design Update 13: a FastAPI app with a plain-JS UI on port
 - `OVER_Z = 2.0` is advisory;
 - calibrated under greedy-1.2.0 and **deliberately not recalibrated** for 1.5.0.
 
+**In the game (roadmap M3.2):** the same `GreedyPolicy` drives Autopilot in live sessions (`ltg_game_server/autopilot.py`) and the `devstates` jump-to builder's `autopilot` fights. It moves playtests through the game; its wins and losses there are not evidence either. A heuristic change that bumps the policy version changes both.
+
 **Trust caveat:** the owner does not currently trust the greedy policy's absolute numbers. Use the harness to detect crashes and anomalies, and to compare A/B deltas within one run. Never cite its win rates or verdicts as balance evidence, and don't gate work on them.
 
 ## 12. Tests
@@ -655,6 +662,6 @@ Each of these is tracked as an objective in [roadmap.md](roadmap.md) (mostly M1,
 - **Open admin routes:** CORS is `*` on a `0.0.0.0` bind, and the admin routes have no authentication (the Deckbuilder's too).
 - **Untested surfaces:** CI runs the suite, the client build and a lint, but nothing tests the client's behaviour, the WebSocket, `selfupdate` or the launchers.
 - **File encodings:** several reads and writes (`content._load_json` and `_write_content`, `scenario_content.py`, `ltg_combat.loader`, the autoplay tester) omit `encoding="utf-8"`, so on Windows they use the locale code page against UTF-8 JSON (roadmap M8.13).
-- **Art in git:** about 918 MB of PNG art is tracked, written raw, and repaints only add to it.
+- **Art in git:** about 315 MB of PNG art is tracked (more in history), written raw, and repaints only add to it.
 - **`types.ts`** is hand-mirrored and has already drifted.
 - **Sessions** live in memory and are never evicted. A restart loses mid-fight state back to the last boundary save.

@@ -25,6 +25,8 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
   const claim = useGame((s) => s.claim);
   const release = useGame((s) => s.release);
   const connected = useGame((s) => s.connected);
+  const setAutopilot = useGame((s) => s.setAutopilot);
+  const autopilot = snapshot?.autopilot;
   const [copied, setCopied] = useState(false);
 
   const youSet = new Set(you);
@@ -278,6 +280,23 @@ export function TopRibbon({ onNewGame, onOptions, onLoadGame }: {
           </button>
         )}
         {seatRoster.length > 0 && <div className="mx-2 h-4 w-px bg-line" />}
+        {/* Autopilot (roadmap M3.2): a playtest tool, offered only while the
+            playtest profile is on. The policy plays the party's fights. */}
+        {autopilot?.available && snapshot && !snapshot.result && (
+          <button
+            onClick={() => setAutopilot(!autopilot.on)}
+            data-tip={autopilot.on
+              ? "Autopilot is playing the party's fights. Click to take them back."
+              : autopilot.note ?? "Let the autoplay policy play this fight and the ones after it (playtest tool)."}
+            className={`caps-label mr-1 flex items-center border px-2.5 py-[5px] text-[10px] tracking-[0.16em] transition ${
+              autopilot.on
+                ? "border-brass bg-brass/10 text-brass-hi"
+                : "border-line text-mist hover:border-line2 hover:text-brass-hi"
+            }`}
+          >
+            {autopilot.on ? "Autopilot on" : "Autopilot"}
+          </button>
+        )}
         {sessionId && (
           <button
             onClick={copyInvite}

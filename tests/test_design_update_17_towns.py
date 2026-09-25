@@ -371,7 +371,7 @@ def mocked_llm(monkeypatch):
     def fake_settings():
         return {**llm._default_settings(), "api_key": "k", "model": "m"}
 
-    def fake_chat(api_key, model, messages, max_tokens=None, timeout=None):
+    def fake_chat(api_key, model, messages, max_tokens=None, timeout=None, **kw):
         system = messages[0]["content"]
         for key, reply in replies.items():
             if key in system:
