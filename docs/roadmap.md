@@ -290,7 +290,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 | M8.10 | **Deckbuilder "Update Game Character"** keeps draft cards (or a sibling `.draft.json`); loadout errors return 422, not a raw 500. | Not built | S | R3.2.9 |
 | M8.11 | **Panel clips travel with a character** (loadout export/import), which matters for the Windows install. | Not built | M | B-28 |
 | M8.12 | **A view-only mode for a fallen Hardcore run's saves.** | Partial | S | B-53 |
-| M8.13 | **Explicit UTF-8 file I/O.** Several reads and writes omit `encoding="utf-8"` (`content._load_json`, `_read_id_set` and `_write_content`; `scenario_content`'s item write; `ltg_combat.loader` and `scenario.load_scenario`; the Deckbuilder's `api_load`; the autoplay tester's JSON reads). On Windows, Python 3.14 then uses the locale code page (cp1252) against UTF-8 JSON: 17 tracked content files hold non-ASCII text. Found in code, not reproduced on Windows yet; the non-blocking Windows CI job (M0.3) should show it. | Bug | S | found 2026-09-25 |
+| M8.13 | **Explicit UTF-8 file I/O.** Several reads and writes omit `encoding="utf-8"` (`content._load_json`, `_read_id_set` and `_write_content`; `scenario_content`'s item write; `ltg_combat.loader` and `scenario.load_scenario`; the Deckbuilder's `api_load`; the autoplay tester's JSON reads). On Windows, Python 3.14 then uses the locale code page (cp1252) against UTF-8 JSON: 17 tracked content files hold non-ASCII text. Found in code. The first Windows CI run (2026-09-25) passed every test except one unrelated path-separator assertion, so the suite doesn't reach these paths with non-ASCII data; still worth fixing before a player hits it. | Bug | S | found 2026-09-25 |
 
 ## M9 · Contracts & code health
 

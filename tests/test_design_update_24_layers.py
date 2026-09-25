@@ -9,6 +9,7 @@ never see `_`-prefixed flags."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,7 +77,7 @@ def test_the_deckbuilder_lists_a_characters_lore_folder(db, tmp_path):
     res = db.get("/api/lore/bort")
     assert res.status_code == 200
     body = res.json()
-    assert body["folder"].endswith("lore/bort")
+    assert Path(body["folder"]).parts[-2:] == ("lore", "bort")   # native separators (Windows)
     assert [e["slug"] for e in body["entries"]] == ["kettle", "notes"]
     assert body["entries"][0]["title"] == "The Order of the Kettle" and body["entries"][0]["keys"] == ["kettle", "brass ring"]
     assert body["entries"][1]["title"] == "Notes" and body["entries"][1]["words"] == 5
