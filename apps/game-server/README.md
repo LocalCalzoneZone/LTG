@@ -1,5 +1,7 @@
 # LTG-Game
 
+> **Partly stale (Phase 1, July 2026).** The launch flags below are current. For the server's module map, the full REST and WebSocket protocol, and the state contract, read [docs/architecture.md](../../docs/architecture.md) §6–§8; bosses, persistence and art, described here as deferred, all exist now.
+
 A real, playable multiplayer game UI for the Langelier Tactical Game — a new
 frontend + server layer on top of the existing headless combat engine
 (`ltg_combat`). It is a **sibling** to the playtest cockpit: both consume the same
@@ -8,7 +10,7 @@ engine; neither replaces the other.
 The server is an authority/relay around the engine; the client is a pure
 view + input layer. **Neither re-implements game rules** — all legality,
 resolution, ordering and state transitions come from the engine
-(`legal_actions` / `apply_action`). See [`INTERFACE_NOTES.md`](../../INTERFACE_NOTES.md)
+(`legal_actions` / `apply_action`). See [`INTERFACE_NOTES.md`](../../docs/design/INTERFACE_NOTES.md)
 at the repo root for the engine ↔ UI field reconciliation this is built on.
 
 ## Launch
