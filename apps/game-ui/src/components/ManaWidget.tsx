@@ -29,9 +29,9 @@ export function ManaWidget({ char, manaChoices }: {
 
   const symbol = "clamp(26px, 4.4vh, 40px)";
 
-  // Paying a cast: the player clicks the ENTIRE cost (coloured pips included) —
-  // nothing is set aside behind their back; the pool reads exactly as shown.
-  // An {X} cast (xByCount set) accepts extra pips past the base cost to raise X.
+  // Paying a cast (M2.16): the fixed part arrives already paid and counted
+  // down in the pool; a click adds X to an {X} cast (xByCount set), or picks
+  // the generic colour when the rest of the hand cares which one goes.
   const count = (arr: string[], c: string) => arr.filter((x) => x === c).length;
   const poolRecord: Record<string, number> = Object.fromEntries(
     colors.map((c) => [c, byColor[c]?.pool ?? 0]));
@@ -77,6 +77,15 @@ export function ManaWidget({ char, manaChoices }: {
         ) : (
           <span className="text-brass">Mana</span>
         )}
+        {/* A live sap (M2.13): capacity held dark until it lifts. */}
+        {!pending && (char.mana.sapped ?? 0) > 0 && (
+          <span
+            data-tip={`Sapped: ${char.mana.sapped} capacity won't refresh until the sap lifts.`}
+            className="ml-1.5 border border-blood/60 px-1 text-blood"
+          >
+            sapped −{char.mana.sapped}
+          </span>
+        )}
       </div>
 
       {/* one column per colour: symbol · pool numeral · capacity ticks */}
@@ -105,7 +114,7 @@ export function ManaWidget({ char, manaChoices }: {
                 <button
                   disabled={!clickable}
                   onClick={onClick}
-                  title={title}
+                  data-tip={title}
                   style={{ width: symbol, height: symbol, backgroundImage: `url(/assets/mana/${color}.svg)` }}
                   className={`rounded-full bg-cover bg-center transition ${
                     clickable
@@ -164,6 +173,7 @@ export function ManaPayPopup() {
   const manaSelect = useGame((s) => s.manaSelect);
   const confirmMana = useGame((s) => s.confirmMana);
   const resetMana = useGame((s) => s.resetMana);
+  const maxMana = useGame((s) => s.maxMana);
   const cancelArm = useGame((s) => s.cancelArm);
   if (!manaSelect) return null;
   const isX = !!manaSelect.xByCount;
@@ -177,7 +187,9 @@ export function ManaPayPopup() {
         {manaSelect.cardName}
         <Pips cost={manaSelect.cost} size={15} />
         {isX ? <span>· X = {xSoFar}</span> : null}
-        <span className="text-xs font-light">— click mana below</span>
+        <span className="text-xs font-light">
+          {isX ? "— click mana below to raise X" : "— pick the colour to spend"}
+        </span>
       </span>
       <button
         onClick={confirmMana}
@@ -186,16 +198,25 @@ export function ManaPayPopup() {
       >
         {isX ? `Cast (X=${xSoFar})` : "Cast"}
       </button>
+      {isX && (
+        <button
+          onClick={maxMana}
+          disabled={manaSelect.picked.length >= manaSelect.maxPicks}
+          className="caps-label bg-black/15 px-2 py-0.5 text-[10px] tracking-[0.14em] hover:bg-black/30 disabled:opacity-40"
+        >
+          Max X
+        </button>
+      )}
       <button
         onClick={resetMana}
-        disabled={manaSelect.picked.length === 0}
+        disabled={manaSelect.picked.length === manaSelect.base.length}
         className="caps-label bg-black/15 px-2 py-0.5 text-[10px] tracking-[0.14em] hover:bg-black/30 disabled:opacity-40"
       >
         Reset
       </button>
       <button
         onClick={cancelArm}
-        title="Cancel (Esc)"
+        data-tip="Cancel (Esc)"
         className="flex items-center bg-black/15 px-2 py-1 hover:bg-black/30"
       >
         <IconX size={11} />

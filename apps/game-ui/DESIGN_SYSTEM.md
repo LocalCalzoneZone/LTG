@@ -206,6 +206,23 @@ bottom scrim — never on a solid bar.
 focus:border-brass/60 focus:outline-none` (aether focus in LLM-generation
 contexts). Labels: `caps-label text-[9px] tracking-[0.2em] text-mist`.
 
+**Condition chips** (`StatusChips.tsx`): right-aligned stack on a card,
+`caps-label border bg-ink-0/85 px-1 py-px text-[clamp(8px,1.1vh,10px)]`,
+blood border/text for a hostile condition (silenced, sapped, taunted,
+guarded, swells), vigor for a boon; three shown, the rest fold into `+N`.
+The server orders them lockdown first.
+
+**Threat mark** (hero card): a blood `IconThreat` chevron and count on the
+enemy-facing edge — how many declared intents aim at the hero; it restamps
+(`fx-intent-stamp`) when the count changes.
+
+**Boss plaque**: an enraged boss wears a blood `chamfer-x-sm` "Enraged" plaque
+on its top edge (the Your-Move banner's shape) plus `boss-fury`; a race
+target shielded by guards wears a "guarded ×N" chip.
+
+**No lines across the battlefield** (owner, 2026-09-25): no threat hairlines,
+no dashed outlines — too much clutter. Threat and shields live on the cards.
+
 **Floating prompts** (arming hint, mana payment): solid brass pill —
 `border border-brass bg-gradient-to-b from-brass-hi to-brass text-ink-0` —
 floated above the console. These are the only solid-brass fills besides
@@ -227,6 +244,17 @@ All keyframes live in `index.css`. Rules: ≤2.6s, `ease-in-out`, colour-coded t
 | `anim-statpop` | floating ±N combat numeral (`StatPop.tsx`, driven by HP diffs between snapshots) | once |
 | `anim-banner` + `anim-banner-line` | transient turn/phase title card: letter-spacing condenses while hairlines draw out, holds, fades (2.4s, matched by a JS timer) | once |
 | `anim-banner-in` | persistent top-of-stack banner: sweeps in, then **holds** until the effect resolves or is replaced (keyed by stack uid) | holds |
+| `boss-fury` | blood inset glow on an enraged boss, until it dies | yes |
+| `neglect-pending` | the boss's "swells +N" chip while this round still owes it a wound | yes |
+| `fx-enter-party` / `fx-enter-enemy` | an arrival rises onto its row through a brass / crimson sheen | once |
+| `phase-herald-wash-*` via a `beat` fx | an objective or boss beat washes the screen; `PhaseBanner` flashes its words (brass good news, blood bad) | once |
+| `anim-tip-in` | the themed tooltip fading in | once |
+
+Hand cards: a sorcery or channel card wears the turn mark (a small diamond on
+the plate's top edge: "this spends your turn"), brass while the card can be
+cast and dim grey otherwise (ruled 2026-09-25, roadmap M2.21); instants carry
+none. Hovering or focusing a hand card for 150 ms floats the enlarged card
+above the console, flavour line included.
 
 Micro-interactions: hand cards lift `-translate-y-1.5` with deepening shadow on
 hover; armed card stays lifted with a brass edge; mana symbols `scale-110` when
@@ -239,7 +267,13 @@ clickable. While anything is armed, all non-targets dim to `opacity-40`.
 - **Brass = actionable.** Armed control lights solid brass; legal targets get
   brackets; everything else dims. Same grammar for cards, move-row picking, and
   stack-row counter targets.
-- **Esc / right-click** cancels any arming or open zone modal, everywhere.
+- **Esc** cancels any arming or open zone modal, everywhere; **right-click**
+  cancels on the battlefield and the console only (a window-wide handler killed
+  paste in text fields).
+- **Keys** (`lib/keyboard.ts`): Space/Enter = Pass, else End Turn (through its
+  guard); 1–9 = hand cards; A D M V S U = Attack, Defend, Mitigate, Move,
+  Skill, Ultimate; Enter casts once the mana payment is complete. Hand cards
+  are `role="button"` keyboard stops; focus enlarges them like hover.
 - **Banners**: the top of the stack is always mirrored in the persistent centre
   banner (what you'd be responding to); phase/turn changes get the transient
   title card. Phases in `SILENT_PHASES` (`reaction window`, `enemy intents`)
@@ -248,8 +282,14 @@ clickable. While anything is armed, all non-targets dim to `opacity-40`.
   verbs, numbers or keywords. The seat snapshot carries only the veiled lines,
   so the UI must not reveal more than it is sent; the full action shows once it
   reaches the stack.
-- **Tooltips** carry the full detail wherever text truncates (`title=` on
-  cards, channels, intent-adjacent chips).
+- **Tooltips** carry the full detail wherever text truncates. Use the themed
+  tooltip — put the text in `data-tip` on any element (`TooltipLayer.tsx`
+  renders it: `border-line2 bg-ink-0/95`, `font-light`, line breaks kept) —
+  not the OS `title=`.
+- **Say why, not just "no".** A dimmed hand card wears a mist chip with the
+  server's reason ("2 short", "your turn only", "no target", "waiting"); a
+  closed action cell says why in its tooltip; End Turn names what is left
+  ("2 cards · attack") and asks once more (Options → Settings → Play).
 - **Log affordance**: card names in Chronicle/Stack rows are dotted-underlined
   in `spell`; hovering pops the full card at a fixed position.
 

@@ -21,7 +21,7 @@ export function Pips({ cost, size = 16 }: { cost: string; size?: number }) {
             key={i}
             src={`/assets/mana/${p.value}.svg`}
             alt={p.value}
-            title={p.value}
+            data-tip={p.value}
             style={{ width: size, height: size }}
             className="inline-block rounded-full"
           />
@@ -36,7 +36,7 @@ export function ManaIcon({ color, size = 18, dimmed = false }: { color: string; 
     <img
       src={`/assets/mana/${color}.svg`}
       alt={color}
-      title={color}
+      data-tip={color}
       style={{ width: size, height: size, opacity: dimmed ? 0.35 : 1 }}
       className="inline-block rounded-full"
     />

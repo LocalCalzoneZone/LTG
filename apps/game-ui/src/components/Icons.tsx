@@ -121,6 +121,10 @@ export const IconGear = make(
   </>,
 );
 
+// Threat (roadmap M2.11): a double chevron pointing back at the enemy line —
+// "aimed at from over there".
+export const IconThreat = make(<path d="M13 6 7 12l6 6M18 6l-6 6 6 6" />);
+
 export const IconPlus = make(<path d="M12 5v14M5 12h14" />);
 
 export const IconX = make(<path d="M6 6l12 12M18 6L6 18" />);

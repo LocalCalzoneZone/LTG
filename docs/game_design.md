@@ -492,11 +492,14 @@ A **row-aimed** intent aims at ground: it hits whoever stands in the row at reso
 4. spell-classed → spellcraft;
 5. any `create_token` → summon;
 6. otherwise the first hostile verb decides:
-   - a lockdown verb (`stun`, `taunt`, `strip_intent`, `remove_keyword`, `counter`, `sap`, `modify_action`, `break_channel`, or `prevent`/`move_card` aimed at the party) → interference;
+   - a lockdown verb (`stun`, `taunt`, `strip_intent`, `remove_keyword`, `counter`, `sap`, `modify_action`, `break_channel`, or `prevent`/`move_card`/a forced `move` aimed at the party) → interference;
    - row- or blast-scoped → row assault;
    - `all` on the party → party assault;
    - anything else → threat;
-7. nothing hostile → support.
+7. nothing hostile, but corpse work (`control` — an enemy's only ever takes a corpse — or `consume_corpse`) → summon;
+8. nothing hostile → support.
+
+(Roadmap M2.13, 2026-09-25: a shove on a hero used to read as support, and a raise-dead as a buff.)
 
 | category | chip | template line |
 |---|---|---|
@@ -953,8 +956,8 @@ Archetypes are the design vocabulary for what a rule is **for**, and they set it
 | row assault | a positional intent | "…prepares an assault on your front row." |
 | gathering | any `charge` verb | "…gathers its power." |
 | spellcraft | spell-classed | "…begins casting a spell at Ys." |
-| summon | `create_token` | "…calls for reinforcements." |
-| interference | first hostile verb is lockdown: stun, taunt, `strip_intent`, `remove_keyword`, `counter`, `sap`, `modify_action`, `break_channel`, or `prevent`/`move_card` aimed at the party | "…moves to foil Soren." |
+| summon | `create_token`; or, with nothing hostile, corpse `control` / `consume_corpse` | "…calls for reinforcements." |
+| interference | first hostile verb is lockdown: stun, taunt, `strip_intent`, `remove_keyword`, `counter`, `sap`, `modify_action`, `break_channel`, or `prevent`/`move_card`/a forced `move` aimed at the party | "…moves to foil Soren." |
 | row assault | first hostile verb is row- or blast-scoped | as above |
 | party assault | first hostile verb is `mode: all` on the party | "…prepares an assault on your whole party." |
 | threat | any other first hostile verb | "…threatens Soren." |

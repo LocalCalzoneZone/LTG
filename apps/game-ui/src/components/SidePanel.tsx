@@ -35,12 +35,20 @@ const ENEMY_TYPES = new Set([
   "intent_declared", "enemy_react", "enemy_move", "enrage", "taunt",
   "intent_execute", "attack_declared", "boss_immune",
 ]);
+// Objective and boss beats (M2.10): the party's good news in brass, the
+// enemy's turns of the screw in blood — never the grey of a mana refresh.
+const GOOD_BEATS = new Set(["guards_down", "objective_complete", "withdraw"]);
+const BAD_BEATS = new Set([
+  "wave_deployed", "reinforcements", "escalation", "neglect", "redeploy", "risen",
+]);
 const SYS_TYPES = new Set([
   "capacity_locked", "mana_refresh", "mana_released", "end_step", "end_turn",
   "pass", "shuffle", "scry_done", "add_mana",
 ]);
 
 function logTint(type: string): string {
+  if (GOOD_BEATS.has(type)) return "text-brass-hi !font-normal";
+  if (BAD_BEATS.has(type)) return "text-blood !font-normal";
   if (DMG_TYPES.has(type)) return "text-[#d99e95]";
   if (HEAL_TYPES.has(type)) return "text-vigor/90";
   if (ENEMY_TYPES.has(type)) return "text-blood/90";
@@ -63,7 +71,8 @@ export function SidePanel() {
   // scrolled up to read history.
   const logRef = useRef<HTMLDivElement>(null);
   const logPinned = useRef(true);
-  const logLen = useGame((s) => s.snapshot?.log.length ?? 0);
+  const chronicle = useGame((s) => s.chronicle);
+  const logLen = chronicle.length ? chronicle[chronicle.length - 1].seq : -1;
   useEffect(() => {
     const el = logRef.current;
     if (el && logPinned.current) el.scrollTop = el.scrollHeight;
@@ -73,7 +82,7 @@ export function SidePanel() {
     const r = e.currentTarget.getBoundingClientRect();
     setHoverCard({
       card,
-      top: Math.max(8, Math.min(r.top - 120, window.innerHeight - 300)),
+      top: Math.max(8, Math.min(r.top - 120, window.innerHeight - 380)),
       right: window.innerWidth - r.left + 8,
     });
   };
@@ -173,8 +182,8 @@ export function SidePanel() {
                 {/* Hovering a card-backed action pops the FULL card, so the whole
                     effect (e.g. what a break trigger will do) is readable. */}
                 {s.card && (
-                  <div className="pointer-events-none absolute right-full top-0 z-50 mr-2 hidden h-72 w-48 group-hover:block">
-                    <HandCard card={s.card} playable active={false} onClick={() => {}} />
+                  <div className="pointer-events-none absolute right-full top-0 z-50 mr-2 hidden w-56 group-hover:block">
+                    <HandCard card={s.card} playable active={false} onClick={() => {}} large />
                   </div>
                 )}
                 {/* A non-card action (an enemy ability's flavour name means
@@ -205,12 +214,28 @@ export function SidePanel() {
         style={intentsH ? { height: intentsH } : { maxHeight: "40%" }}
       >
         <Panel title="Intents" className="min-h-0 flex-1">
-          {snapshot.objective && snapshot.objective.status === "active" && (
-            <div className="mb-1 border-b border-brass/40 px-1 pb-1 text-[12px] leading-snug">
-              <span className="caps-label mr-1.5 border border-brass/50 px-1 text-[9px] tracking-[0.12em] text-brass">
-                objective
+          {/* The banner stays up once the objective resolves (M2.9) — that is
+              when its line has the most to say — tinted by the outcome, and
+              previews who arrives next (M2.12). */}
+          {snapshot.objective && (
+            <div className={`mb-1 border-b px-1 pb-1 text-[12px] leading-snug ${
+              snapshot.objective.status === "complete" ? "border-vigor/40"
+                : snapshot.objective.status === "failed" ? "border-blood/50" : "border-brass/40"}`}>
+              <span className={`caps-label mr-1.5 border px-1 text-[9px] tracking-[0.12em] ${
+                snapshot.objective.status === "complete" ? "border-vigor/50 text-vigor"
+                  : snapshot.objective.status === "failed" ? "border-blood/60 text-blood"
+                    : "border-brass/50 text-brass"}`}>
+                {snapshot.objective.status === "active" ? "objective" : snapshot.objective.status}
               </span>
               <span className="text-parch">{snapshot.objective.line}</span>
+              {snapshot.objective.next_arrival && (
+                <div className="mt-0.5 text-[11px] font-light text-dimmed">
+                  <span className="caps-label mr-1 text-[9px] tracking-[0.12em] text-blood/80">
+                    {snapshot.objective.next_arrival.when}
+                  </span>
+                  {snapshot.objective.next_arrival.line}
+                </div>
+              )}
             </div>
           )}
           <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
@@ -245,20 +270,20 @@ export function SidePanel() {
           }}
           className="scroll-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1"
         >
-          {snapshot.log.length === 0 ? (
+          {chronicle.length === 0 ? (
             <Empty>no events yet</Empty>
           ) : (
-            snapshot.log.map((e, i) => <ChronicleLine key={i} entry={e} showCard={showCard} onLeave={() => setHoverCard(null)} />)
+            chronicle.map((e) => <ChronicleLine key={e.seq} entry={e} showCard={showCard} onLeave={() => setHoverCard(null)} />)
           )}
         </div>
       </Panel>
 
       {hoverCard && (
         <div
-          className="pointer-events-none fixed z-50 h-72 w-48"
+          className="pointer-events-none fixed z-50 w-56"
           style={{ top: hoverCard.top, right: hoverCard.right }}
         >
-          <HandCard card={hoverCard.card} playable active={false} onClick={() => {}} />
+          <HandCard card={hoverCard.card} playable active={false} onClick={() => {}} large />
         </div>
       )}
     </div>
@@ -311,7 +336,7 @@ function IntentLine({ intent }: { intent: import("../lib/types").IntentView }) {
           taking the front row; "pursues" follows its target wherever it goes. */}
       {intent.status === "declared" && intent.redirectable != null && (
         <span
-          title={intent.redirectable
+          data-tip={intent.redirectable
             ? "A swing — step in front of its target and it falls on you instead"
             : "It pursues its target: interposing will not turn it"}
           className={`caps-label ml-1.5 border px-1 text-[9px] tracking-[0.12em] opacity-80 ${

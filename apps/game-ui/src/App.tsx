@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { handleCombatKey } from "./lib/keyboard";
 import { useGame } from "./lib/store";
 import { Splitter, usePaneSize } from "./components/Splitter";
 import { Battlefield } from "./components/Battlefield";
@@ -7,6 +8,7 @@ import { BottomBar } from "./components/BottomBar";
 import { TopRibbon } from "./components/TopRibbon";
 import { AdventureFlow } from "./components/AdventureFlow";
 import { ScreenFx } from "./components/FxLayer";
+import { TooltipLayer } from "./components/TooltipLayer";
 import { InspectModal } from "./components/InspectModal";
 import { NewGameModal } from "./components/NewGameModal";
 import { LoadGameModal } from "./components/LoadGameModal";
@@ -55,26 +57,22 @@ export default function App() {
     if (sessionId) connect(sessionId);
   }, [sessionId, connect]);
 
-  // Global cancel gestures (§4.6): Esc / right-click clear arming and close modals.
+  // Global cancel gestures (§4.6): Esc clears arming and closes modals; the
+  // console keys (M2.15, lib/keyboard.ts) play the turn while no menu is up.
+  const menuOpen = showNewGame || showOptions || showLoadGame;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         cancelArm();
         openZone(null);
         setInspect(null);
+        return;
       }
-    };
-    const onCtx = (e: MouseEvent) => {
-      e.preventDefault();
-      cancelArm();
+      if (!menuOpen && handleCombatKey(e)) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("contextmenu", onCtx);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("contextmenu", onCtx);
-    };
-  }, [cancelArm, openZone, setInspect]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cancelArm, openZone, setInspect, menuOpen]);
 
   const onStarted = (sid: string) => {
     const url = new URL(location.href);
@@ -188,6 +186,7 @@ export default function App() {
       {/* Full-screen combat FX (ultimates, boss enrage) — under the modals */}
       <ScreenFx />
       <PhaseBanner />
+      <TooltipLayer />
       <Toast />
     </div>
   );

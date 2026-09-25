@@ -36,7 +36,7 @@ export function ArmingHint() {
       </span>
       <button
         onClick={cancelArm}
-        title="Cancel (Esc)"
+        data-tip="Cancel (Esc)"
         className="flex items-center bg-black/15 px-2 py-1 hover:bg-black/30"
       >
         <IconX size={11} />

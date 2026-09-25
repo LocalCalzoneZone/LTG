@@ -51,9 +51,11 @@ const SPARKS: { x: string; y: string; r: string }[] = [
   { x: "38px", y: "4px", r: "120deg" },
 ];
 
-function Chip({ text, tone }: { text: string; tone: "brass" | "blood" | "poison" | "tide" | "dim" }) {
+function Chip({ text, tone }: { text: string; tone: "brass" | "blood" | "poison" | "tide" | "vigor" | "dim" }) {
   const cls =
-    tone === "brass"
+    tone === "vigor"
+      ? "border-vigor/70 bg-ink-0/90 text-vigor"
+      : tone === "brass"
       ? "border-brass/70 bg-ink-0/90 text-brass-hi"
       : tone === "blood"
         ? "border-blood/70 bg-ink-0/90 text-blood"
@@ -166,6 +168,28 @@ function Effect({ fx }: { fx: FxEvent }) {
         <div className="fx-wrap">
           <div className="fx-flash" style={{ background: "radial-gradient(70% 70% at 50% 60%, rgba(125,160,90,0.5), transparent 72%)" }} />
           <Chip text="poisoned" tone="poison" />
+        </div>
+      );
+    case "swell":
+      return (
+        <div className="fx-wrap">
+          <div className="fx-engrave-flash" />
+          <div className="fx-ring fx-ring-big" style={{ borderColor: "rgba(194,90,80,0.9)" }} />
+          <Chip text={fx.amount ? `swells +${fx.amount}` : "swells"} tone="blood" />
+        </div>
+      );
+    case "retarget":
+      return (
+        <div className="fx-wrap">
+          <div className="fx-ring fx-ring-collapse" style={{ borderColor: "rgba(194,90,80,0.9)" }} />
+          <Chip text="drawn in" tone="blood" />
+        </div>
+      );
+    case "regen":
+      return (
+        <div className="fx-wrap">
+          <div className="fx-ring fx-ring-slow" style={{ borderColor: "rgba(132,199,147,0.7)" }} />
+          <Chip text={fx.amount ? `regen ${fx.amount}` : "regen"} tone="vigor" />
         </div>
       );
     case "skill":
@@ -355,6 +379,10 @@ function ScreenEffect({ fx }: { fx: FxEvent }) {
           </div>
         </>
       );
+    case "beat":
+      // An objective / boss beat (M2.10): the field washes in the beat's
+      // colour; PhaseBanner flashes its words.
+      return <div className={fx.tone === "blood" ? "phase-herald-wash-blood" : "phase-herald-wash-brass"} />;
     default:
       return <div className="fx-screen-pulse" />;
   }

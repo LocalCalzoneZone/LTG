@@ -71,6 +71,9 @@ def card_dict(card: Card) -> Dict[str, Any]:
         # Card art, when the card carries any: today only a consumable (it
         # inherits its item's art — §D17-4.4). "" leaves the sigil placeholder.
         "image": card.image or "",
+        # The card's in-character line (Deckbuilder "Flavour"), shown on the
+        # enlarged card and the Stack hover (M2.5); "" when it has none.
+        "flavor": card.flavor_text or "",
     }
 
 
@@ -125,12 +128,19 @@ _HOSTILE_KINDS = {"deal_damage", "lose_life", "destroy", "exile", "bounce", "stu
 # Hamstring or a Silence never wears the same word as a sword swing — the player
 # needs to know which kind of trouble is coming, since the answers differ.
 _CONTROL_KINDS = {"stun", "taunt", "strip_intent", "remove_keyword", "counter",
-                  "sap", "modify_action", "prevent", "move_card", "break_channel"}
+                  "sap", "modify_action", "prevent", "move_card", "break_channel",
+                  "move"}
 
 # Side-sensitive verbs: hostile only when they reach the PARTY. An enemy's
 # `prevent` is usually a Ward on itself (support); aimed at a hero it is a
-# Silence or a Pacifism. A `move_card` means nothing unless it hits a hand.
-_SIDE_SENSITIVE_HOSTILE = {"prevent", "move_card"}
+# Silence or a Pacifism. A `move_card` means nothing unless it hits a hand, and
+# a forced `move` is a shove only when it moves a hero (roadmap M2.13).
+_SIDE_SENSITIVE_HOSTILE = {"prevent", "move_card", "move"}
+
+# Corpse work reads as summon, not as a buff (roadmap M2.13): an enemy's
+# `control` only ever takes a corpse (§D9-1.4), and `consume_corpse` feeds on
+# one. A hostile payload riding the same intent still wins (it is checked first).
+_CORPSE_KINDS = {"control", "consume_corpse"}
 
 
 def _aims_at_party(effect) -> bool:
@@ -187,6 +197,8 @@ def intent_category(intent) -> str:
         if mode == "all" and side in ("ally", "any"):
             return "party assault"  # hostile mode:all on the hero side
         return "threat"
+    if any(k in _CORPSE_KINDS for k in kinds):
+        return "summon"
     if intent.effects:
         return "support"
     return "threat"
@@ -430,6 +442,50 @@ def _status_tags(char) -> List[str]:
     if not char.alive:
         tags.append("incapacitated")
     return tags
+
+
+def status_chips(state: GameState, c) -> List[Dict[str, str]]:
+    """The conditions a combatant's CARD wears as chips (roadmap M2.8), each
+    ``{"label", "tone", "tip"}``: ``tone`` is ``"bane"`` (a hostile
+    condition, blood) or ``"boon"`` (vigor). Only what the card shows nowhere
+    else — keywords, counters, wards, Power/HP modifiers and the channel strip
+    have their own chrome. Lockdown first: it is what the player looks for."""
+    chips: List[Dict[str, str]] = []
+
+    def add(label: str, tone: str, tip: str) -> None:
+        chips.append({"label": label, "tone": tone, "tip": tip})
+
+    hero = hasattr(c, "mana_colors")
+    stunned = getattr(c, "stunned", 0)
+    if stunned:
+        add("stunned", "bane",
+            f"Loses its next {stunned} turn(s): only End Turn is offered." if hero
+            else f"Skips its next {stunned} intent(s).")
+    for tag in getattr(c, "prevent_tags", []):
+        if tag.parameter == "cast":
+            add("silenced", "bane", "Can't cast spells (a carried consumable still works).")
+        elif tag.parameter == "attack":
+            add("pacified", "bane", "Can't make its basic attack.")
+    sap = getattr(c, "capacity_mod", 0)
+    if sap < 0:
+        add(f"sapped −{-sap}", "bane",
+            f"Mana capacity {sap}: that many slots don't refresh until the sap lifts.")
+    if "lock_skill" in _action_mods(c):
+        add("hamstrung", "bane", "Can't use its Skill (the Ultimate is untouched).")
+    taunter = getattr(c, "taunted_to", None) if hero else getattr(c, "taunted_by", None)
+    if taunter:
+        who = state.enemy(taunter) if hero else state.character(taunter)
+        name = who.name if who is not None else "its taunter"
+        add("taunted", "bane", f"Its attacks must aim at {name} while {name} can be reached.")
+    for mod in _action_mods(c):
+        if mod != "lock_skill":
+            add(_ACTION_MOD_TAG.get(mod, mod.replace("_", " ")), "boon", "An action modifier.")
+    for ptag in getattr(c, "protection_tags", []):
+        add("protected", "boon",
+            f"Protection from {_lane_text(ptag.parameter, ptag.combat_kind)}.")
+    if getattr(c, "amplify_tags", []) or getattr(c, "double_next", []):
+        add("primed", "boon", "Its next matching effect is amplified.")
+    return chips
 
 
 def _action_mods(char) -> Dict[str, str]:
@@ -883,12 +939,43 @@ def objective_block(state: GameState) -> Optional[Dict[str, Any]]:
         "kind": obj.kind,
         "status": obj.status,
         "line": line,
+        # The "next round: 2 Raiders" preview (roadmap M2.12), or None.
+        "next_arrival": _next_arrival(state, obj),
         "rounds_remaining": (remaining if obj.kind in ("survive", "race", "deadline")
                              else None),
         "wave": obj.wave_index + 1 if obj.kind == "waves" else None,
         "waves_total": waves_total if obj.kind == "waves" else None,
         "target_id": obj.target_id,
     }
+
+
+def _roster_line(state: GameState, ids: List[str]) -> str:
+    """'2 Raiders, 1 Shaman' for a list of reserve enemy ids, first-seen order."""
+    names: Dict[str, int] = {}
+    for eid in ids:
+        e = next((x for x in state.enemies if x.id == eid), None)
+        if e is not None:
+            names[e.name] = names.get(e.name, 0) + 1
+    return ", ".join(f"{n} {name}" for name, n in names.items())
+
+
+def _next_arrival(state: GameState, obj) -> Optional[Dict[str, str]]:
+    """Who comes next and when, for the objective banner (roadmap M2.12):
+    ``{"when", "line"}`` — a survive objective's next scheduled
+    reinforcement, or a waves objective's next wave. None when nothing waits."""
+    if obj.kind == "survive":
+        pending = [r for r in obj.reinforcements if not r.get("arrived")]
+        if not pending:
+            return None
+        nxt = min(pending, key=lambda r: r.get("turn", 0))
+        turn = int(nxt.get("turn", 0))
+        when = "next round" if turn <= state.turn + 1 else f"round {turn}"
+        line = _roster_line(state, list(nxt.get("ids") or []))
+        return {"when": when, "line": line} if line else None
+    if obj.kind == "waves" and obj.wave_index < len(obj.waves):
+        line = _roster_line(state, obj.waves[obj.wave_index])
+        return {"when": "next wave", "line": line} if line else None
+    return None
 
 
 def doom_clock(state: GameState, enemy) -> Optional[int]:

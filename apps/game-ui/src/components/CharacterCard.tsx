@@ -6,6 +6,8 @@ import { FxLayer } from "./FxLayer";
 import { KeywordBadges } from "./KeywordBadges";
 import { PanelAnim } from "./PanelAnim";
 import { StatPop } from "./StatPop";
+import { StatusChips } from "./StatusChips";
+import { IconThreat } from "./Icons";
 import { WardAura, wardTitle } from "./WardAura";
 
 interface Props {
@@ -14,6 +16,8 @@ interface Props {
   isHolder: boolean;
   waiting: boolean; // holder we don't control -> "waiting on X"
   isTarget?: boolean; // this card is a legal target of the current armed site
+  // A narrower card when the row is crowded (M2.4); defaults to CARD_WIDTH.
+  width?: string;
 }
 
 // Card height scales with the viewport (aspect-ratio drives the width). Fonts use
@@ -42,13 +46,18 @@ function channelTint(reservedPips: string): string {
   return CHANNEL_TINT_DEFAULT;
 }
 
-export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Props) {
+export function CharacterCard({ char, focused, isHolder, waiting, isTarget, width }: Props) {
   const setFocus = useGame((s) => s.setFocus);
   const pickTargetId = useGame((s) => s.pickTargetId);
   const armed = useGame((s) => s.armed);
   const setInspect = useGame((s) => s.setInspect);
   // Intents-window hover (D8-1.5): light up when a hovered intent locks onto us.
   const intentLit = useGame((s) => s.hoverIntent?.targetId === char.id);
+  // Persistent threat (M2.11): how many declared enemy intents aim at this
+  // hero right now — readable without hovering anything.
+  const threats = useGame((s) => (s.snapshot?.intents ?? []).filter(
+    (i) => i.target_id === char.id && (i.status === "declared" || i.status === "executed"),
+  ).length);
 
   const onClick = () => {
     if (isTarget) {
@@ -76,9 +85,9 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
   return (
     <div
       onClick={onClick}
-      title={`${char.name} — click to inspect${wardTitle(char.wards)}`}
+      data-tip={`${char.name} — click to inspect${wardTitle(char.wards)}`}
       style={{
-        width: CARD_WIDTH,
+        width: width ?? CARD_WIDTH,
         ...(char.portrait
           ? { backgroundImage: `url(${char.portrait})`, backgroundSize: "cover", backgroundPosition: "top" }
           : {}),
@@ -91,7 +100,8 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
     >
       {/* Panel animation (Update 16): a clip over the portrait while an action
           resolves; renders nothing when the loadout has no clips. */}
-      <PanelAnim charId={char.id} bundle={char.anims} incapacitated={char.incapacitated} />
+      <PanelAnim charId={char.id} bundle={char.anims} incapacitated={char.incapacitated}
+        stanceCardId={char.stance?.card_id ?? null} />
 
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />
@@ -127,6 +137,24 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
         </div>
       )}
 
+      {/* condition chips (M2.8) — top-right, opposite the keyword sigils */}
+      <div className="absolute right-1.5 top-1.5 z-[2]">
+        <StatusChips chips={char.status_chips ?? []} />
+      </div>
+
+      {/* threat mark (M2.11) — a blood chevron and count on the enemy-facing
+          edge; it stamps in again whenever the count changes */}
+      {threats > 0 && !char.incapacitated && (
+        <div
+          key={threats}
+          data-tip={`${threats} enemy intent${threats === 1 ? "" : "s"} aimed at ${char.name}`}
+          className="fx-intent-stamp caps-label absolute -right-2.5 top-[30%] z-[3] flex items-center gap-0.5 border border-blood/70 bg-ink-0/90 py-0.5 pl-0.5 pr-1 text-[clamp(8px,1.1vh,11px)] leading-none text-blood"
+        >
+          <IconThreat size={11} strokeWidth={2} />
+          {threats}
+        </div>
+      )}
+
       {/* keyword sigils + counters — top-left, off the face */}
       <div className="absolute left-1.5 top-1.5">
         <KeywordBadges keywords={char.keywords} counters={char.counters}
@@ -137,7 +165,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget }: Pr
       {/* ultimate gauge (D8-3.3) — a thin brass meter above the stat gems */}
       {char.ultimate != null && (
         <div
-          title={`Ultimate gauge ${char.ultimate_gauge}/100${char.ultimate.used ? " — spent this encounter" : char.ultimate_gauge >= 100 ? " — READY" : ""}`}
+          data-tip={`Ultimate gauge ${char.ultimate_gauge}/100${char.ultimate.used ? " — spent this encounter" : char.ultimate_gauge >= 100 ? " — READY" : ""}`}
           className="absolute inset-x-1.5 bottom-[8%] h-[3px] bg-black/60 ring-1 ring-line"
         >
           <div

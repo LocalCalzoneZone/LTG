@@ -397,7 +397,7 @@ export function Toast() {
   );
 }
 
-type PlainBanner = { id: number; title: string; sub?: string };
+type PlainBanner = { id: number; title: string; sub?: string; tone?: "brass" | "blood" };
 
 // Phases we never announce: reaction windows are already carried by the (more
 // specific) stack banner, and enemy intents are not broadcast to players.
@@ -431,6 +431,17 @@ export function PhaseBanner() {
       setPlain({ id, title: phase });
     }
   }, [turn, phase]);
+
+  // Objective and boss beats (M2.10) flash the same title card, in their tone.
+  const beat = useGame((s) => s.fx.find((e) => e.kind === "beat") ?? null);
+  const beatKey = beat?.key ?? "";
+  useEffect(() => {
+    if (!beat) return;
+    const id = seq.current + 1;
+    seq.current = id;
+    setPlain({ id, title: beat.label ?? "", tone: beat.tone });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beatKey]);
 
   // Auto-dismiss the transient banner (matches the 2.4s banner-sweep keyframe).
   useEffect(() => {
@@ -474,8 +485,10 @@ export function PhaseBanner() {
         {/* no explicit tracking here — the sweep keyframe animates the
             container's letter-spacing and the title inherits it */}
         <div
-          className="whitespace-nowrap font-display text-xl uppercase text-brass-hi"
-          style={{ textShadow: "0 0 24px rgba(233,204,130,.45)" }}
+          className={`whitespace-nowrap font-display text-xl uppercase ${
+            plain.tone === "blood" ? "text-blood" : "text-brass-hi"}`}
+          style={{ textShadow: plain.tone === "blood"
+            ? "0 0 24px rgba(194,90,80,.45)" : "0 0 24px rgba(233,204,130,.45)" }}
         >
           {plain.title}
         </div>

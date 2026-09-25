@@ -25,7 +25,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0, charg
         return (
           <span
             key={kw.id}
-            title={kw.gloss ? `${kw.name}: ${kw.gloss}` : kw.name}
+            data-tip={kw.gloss ? `${kw.name}: ${kw.gloss}` : kw.name}
             className={`${BADGE} border-line2 text-brass`}
           >
             {Icon ? (
@@ -40,7 +40,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0, charg
       })}
       {counters > 0 && (
         <span
-          title={`+${counters}/+${counters} counters: permanently +${counters} Power and +${counters} HP (already included in the stats shown)`}
+          data-tip={`+${counters}/+${counters} counters: permanently +${counters} Power and +${counters} HP (already included in the stats shown)`}
           className={`${BADGE} border-vigor/50 font-display text-[clamp(7px,1.1vh,10px)] text-vigor`}
         >
           +{counters}
@@ -48,7 +48,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0, charg
       )}
       {poison > 0 && (
         <span
-          title={`${poison} poison counter(s): loses ${poison} life at each Upkeep. Any healing removes all poison counters.`}
+          data-tip={`${poison} poison counter(s): loses ${poison} life at each Upkeep. Any healing removes all poison counters.`}
           className={`${BADGE} border-[#a9bf5e]/60 font-display text-[clamp(7px,1.1vh,10px)] text-[#a9bf5e]`}
         >
           −{poison}
@@ -56,7 +56,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0, charg
       )}
       {regen > 0 && (
         <span
-          title={`${regen} regen counter(s): heals ${regen} at each Upkeep. Damage that connects removes all regen counters.`}
+          data-tip={`${regen} regen counter(s): heals ${regen} at each Upkeep. Damage that connects removes all regen counters.`}
           className={`${BADGE} border-vigor/60 font-display text-[clamp(7px,1.1vh,10px)] text-vigor`}
         >
           ~{regen}
@@ -64,7 +64,7 @@ export function KeywordBadges({ keywords, counters, poison = 0, regen = 0, charg
       )}
       {charge > 0 && (
         <span
-          title={`${charge} charge counter(s): stored power — cards can spend it or scale by it ("equal to your charge counters").`}
+          data-tip={`${charge} charge counter(s): stored power — cards can spend it or scale by it ("equal to your charge counters").`}
           className={`${BADGE} border-brass/50 font-display text-[clamp(7px,1.1vh,10px)] text-brass`}
         >
           ◆{charge}
