@@ -60,8 +60,11 @@ def baseline():
 
 @pytest.fixture(scope="module")
 def soren():
+    # A copy of the owner's full Soren build (portrait stripped): the bundled
+    # examples/loadout_soren.json is an older 6-card build, and loadouts/ is
+    # per-install, so neither a clean clone nor the test sandbox has this one.
     return json.loads(
-        (REPO / "apps/deckbuilder/loadouts/soren.json").read_text())
+        (REPO / "tests/fixtures/soren.json").read_text())
 
 
 _CH_ENEMY = {"mode": "chosen", "side": "enemy", "targeted": True}

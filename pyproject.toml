@@ -13,3 +13,14 @@
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Lint (CI, roadmap M0.3): deliberately permissive — unused imports, and blind
+# `except Exception`. The broad excepts that existed when the rule landed carry
+# `# noqa: BLE001`; a new one should say why it must swallow everything.
+# Run: ruff check .   (CI pins the ruff version in .github/workflows/ci.yml)
+[tool.ruff]
+target-version = "py39"
+extend-exclude = ["apps/game-ui", "**/node_modules", "**/*.egg-info"]
+
+[tool.ruff.lint]
+select = ["F401", "BLE001"]

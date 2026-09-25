@@ -959,7 +959,7 @@ def _example_cards():
         if isinstance(raw, dict) and "timing" in raw and "effects" in raw:
             try:
                 Card.model_validate(raw)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             out.append((path.stem, raw))
     return out

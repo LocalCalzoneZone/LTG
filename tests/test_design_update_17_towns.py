@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from ltg_game_server import content, dialogue, llm, scenario_content as sc
+from ltg_game_server import dialogue, llm, scenario_content as sc
 
 
 # --------------------------------------------------------------------------- #

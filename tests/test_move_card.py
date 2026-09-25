@@ -94,6 +94,27 @@ def test_engine_tutor_picks_matching_type_and_shuffles():
     assert any(e.type == "shuffle" for e in st.log)
 
 
+
+PINNED_SHUFFLE = ["c2", "c1", "c5", "c7", "c4", "c3", "c6"]   # rng_seed=7, first shuffle
+
+
+def test_seeded_shuffle_is_pinned_and_runs_on_every_python():
+    """M1.1: a seeded shuffle derives its RNG from a str, never a tuple (a tuple
+    seed raises TypeError on Python 3.11+). The order is pinned so a change to
+    the derivation shows up here, not as silent drift in replays."""
+    cards = [_mkcard(f"c{i}") for i in range(8)]
+    orders = []
+    for _ in range(2):
+        ch = _mkchar(library=list(cards))
+        eff = card([{"kind": "move_card", "count": 1, "source": "library",
+                     "destination": "hand", "shuffle_after": True}]).effects[0]
+        st = GameState(party=[ch], enemies=[], rng_seed=7)
+        _r_move_card(st, None, eff, ch, {})
+        assert st.shuffle_count == 1
+        orders.append([c.id for c in ch.library])
+    assert orders[0] == orders[1]
+    assert orders[0] == PINNED_SHUFFLE
+
 def test_engine_draw_then_put_one_on_top():
     c1, c2, c3, c4 = (_mkcard(f"c{i}") for i in range(1, 5))
     ch = _mkchar(library=[c1, c2, c3, c4])

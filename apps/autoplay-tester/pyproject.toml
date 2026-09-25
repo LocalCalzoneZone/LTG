@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ltg-autoplay-tester"
 version = "0.1.0"
 description = "LTG Autoplay Tester — the playtest lab (Design Update 13): probes, gauntlets, and verdicts over the ltg-autoplay harness. Imports ltg-game as a library (one-way edge; the game server never imports this app)."
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.15"   # tested on 3.9 and 3.14 (CI); raise after CI passes on a newer one
 dependencies = [
     "ltg-core",
     "ltg-combat",

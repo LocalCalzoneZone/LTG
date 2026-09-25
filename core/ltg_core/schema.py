@@ -5,13 +5,13 @@ Everything else (frontend, registry, API) round-trips what these models validate
 
 Design rule: effects DECLARE intent; they never execute it. A model carries
 `destroy` + a target — never branching game-state logic. Interpretation lives in
-the (future) resolver, not here.
+the combat engine (`ltg_combat.engine.RESOLVERS`), not here.
 
-To add a new effect primitive:
-  1. Add a model class below (Literal `kind`, its params, sensible defaults).
-  2. Add it to the `Effect` union.
-  3. Add a renderer in `mappings.RENDERERS` so it produces translated text.
-That is the whole change.
+Adding an effect primitive touches about ten places: the model class here and
+the `Effect` union, the engine's classification sets and `RESOLVERS`,
+`translation.RENDERERS`, the lints, the serializer sets, the Deckbuilder's JS
+copies, and the LLM vocabulary. Follow the checklist in docs/architecture.md
+§14, "Adding an effect verb".
 """
 
 from __future__ import annotations

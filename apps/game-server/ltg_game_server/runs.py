@@ -47,7 +47,7 @@ if False:  # typing only
     from .scenario import ScenarioRun  # noqa: F401
 
 REPO_ROOT = content.REPO_ROOT
-SAVES_DIR = REPO_ROOT / "saves"
+SAVES_DIR = content.data_dir("LTG_SAVES_DIR", REPO_ROOT / "saves")
 
 # Schema 2 (Update 24 §D24-3): a scenario run is a CAMPAIGN — `kind`,
 # `state`, `scenario_count` / `current_scenario`, and the campaign fields
@@ -157,7 +157,7 @@ class RunStore:
         for path in sorted(self.saves_dir.glob("*.json")):
             try:
                 snap = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             out.append({
                 "save_id": path.stem,
@@ -277,7 +277,7 @@ class RunManager:
                 continue
             try:
                 run = st.read_run()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             saves = st.list_saves()
             newest = max(saves, key=lambda s_: (s_["saved_at"], s_["save_id"])) if saves else None

@@ -27,7 +27,9 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 .venv/bin/python -m ltg_combat harness          # the scripted §A/§C proof fights
 ```
 
-- **Tests use the real data dirs.** The suite reads and writes `content/` and `apps/deckbuilder/loadouts/` and cleans up afterwards. Don't run it while a game or Deckbuilder server is running. A session lock in `tests/conftest.py` serializes concurrent suites.
+- **Tests run in a sandbox.** `tests/conftest.py` points `LTG_CONTENT_DIR` / `LTG_LOADOUTS_DIR` / `LTG_SAVES_DIR` at a temp copy (content without art; empty loadouts and saves, like a clean clone) before any app import. So the suite is safe beside a live server, and tests must not rely on per-install characters: use `examples/` (`loadout_soren`…) or `tests/fixtures/`.
+- **CI** (`.github/workflows/ci.yml`) runs pytest on Python 3.9 and 3.14, the client build with a `dist/` drift check, and `ruff check .` (unused imports; a new blind `except Exception` needs a reason and `# noqa: BLE001`).
+- **Dependencies are pinned** in `constraints.txt`, applied from `requirements.txt`. Supported Python: 3.9–3.14 (`requires-python`).
 - **Restart after Python edits.** The :8020 server is normally started without `--reload`, so it keeps serving stale code until restarted.
 - **Commit `apps/game-ui/dist/` after every client change.** The Windows standalone install serves the committed bundle without Node. `tsc` runs only inside `build`.
 - **Bump the Deckbuilder cache-busters.** On every edit to `apps/deckbuilder/frontend/app.js` or `styles.css`, bump the matching `?v=N` in `apps/deckbuilder/frontend/index.html`. Otherwise browsers keep the old script and buttons silently "do nothing".
@@ -71,10 +73,10 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 ## Gotchas
 
 - `engine.py` is about 8.2k lines. Navigate by function name using the region map in docs/architecture.md; line numbers drift.
-- **Adding an effect verb touches about 10 places**: schema class, several engine classification sets, `RESOLVERS`, `translation.RENDERERS`, lints, serializer sets, the Deckbuilder JS copies, and the LLM vocabulary. Follow the checklist in docs/architecture.md. The docstring at the top of `schema.py` is out of date on this.
+- **Adding an effect verb touches about 10 places**: schema class, several engine classification sets, `RESOLVERS`, `translation.RENDERERS`, lints, serializer sets, the Deckbuilder JS copies, and the LLM vocabulary. Follow the checklist in docs/architecture.md.
 - **`apps/game-ui/src/lib/types.ts` is hand-mirrored** from `snapshot.py`/`serialize.py`; change them together. `fx.ts` switches on engine log event type strings, and there is no registry, so keep the data keys in sync.
 - `starting_cards` is an INT (opening-hand size), not a card list. Decks are 20 cards (1 mythic / 3 rare / 6 uncommon / 10+ common), advisory only.
-- The dev venv is **Python 3.9.6**, and nothing is tested on newer Pythons. `engine._move_shuffle`'s tuple seed raises TypeError on 3.11+ (roadmap M1.1).
+- The dev venv is **Python 3.9.6**; CI also runs 3.14, and the Windows install uses a current Python. Don't use 3.10+ syntax (`match`, `X | Y` types at runtime), and never seed `random.Random` with a tuple (TypeError on 3.11+).
 - Ultimates are `kind="activated"` on the stack. An Ultimate counter must use filter `action`, `ability` or `activated`; a `"spell"` filter is rejected at load (T-70).
 - `content/scenarios/` is empty right now. Scenario mode generates on demand and needs an OpenRouter key in Options → LLM. Installs without a key play standalone encounters and adventures only.
 - The design docs in `docs/design/` still contain stale "not yet built" status lines; trust `docs/design/README.md` and the roadmap instead.

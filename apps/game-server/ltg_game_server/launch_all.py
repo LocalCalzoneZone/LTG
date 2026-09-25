@@ -34,7 +34,7 @@ def _deckbuilder_up() -> bool:
     try:
         with urllib.request.urlopen(f"{DECKBUILDER_URL}/api/character-model", timeout=1.0) as r:
             return r.status == 200
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 

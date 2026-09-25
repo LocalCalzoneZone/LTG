@@ -25,7 +25,7 @@ exit /b 0
 
 :fail
 echo.
-echo Setup failed. Make sure Python 3 is installed from python.org
+echo Setup failed. Make sure Python 3.9 to 3.14 is installed from python.org
 echo (tick "Add python.exe to PATH" in its installer), then run this again.
 echo If it still fails, delete the .venv folder and retry.
 pause

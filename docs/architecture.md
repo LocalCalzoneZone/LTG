@@ -54,8 +54,8 @@ towns, world, equipment, art) ──────▶ game server (:8020) ──�
 | `ltg-autoplay-tester` | `ltg_autoplay_tester.launch:main` | 8030 |
 
 **Installing:**
-- `pip install -r requirements.txt` installs all five packages editable (core first), plus pytest and httpx.
-- `.venv` runs **Python 3.9.6**. The packages declare `requires-python >=3.9` with no upper bound.
+- `pip install -r requirements.txt` installs all five packages editable (core first), plus pytest and httpx. It applies `constraints.txt` (`-c`), which pins every third-party version, so the launchers, the updater and CI all resolve the same set.
+- `.venv` runs **Python 3.9.6**. The packages declare `requires-python >=3.9,<3.15`; CI tests 3.9 and 3.14. Raise the bound only after CI passes on the newer Python.
 - Editable installs map each import name to its directory, so new modules work without reinstalling. New console scripts or dependencies need the install run again.
 - The `.command`/`.bat` launchers create `.venv` on first run.
 - `ltg_core.selfupdate.apply_update` runs `git merge --ff-only`, then the same pip install.
@@ -259,10 +259,9 @@ The `_mitigate_value` copy has **already drifted**: it is missing the engine's `
 
 **Randomness enters only through `rng_seed`:**
 - `state_from_dict` shuffles each library, then the turn order, from one `random.Random(seed)`.
-- In-game shuffles use `random.Random((rng_seed, shuffle_count))`.
+- In-game shuffles use `random.Random(f"{rng_seed}:shuffle:{shuffle_count}")`. A str seed is stable across processes and Pythons (the old tuple seed raised `TypeError` on 3.11+); `tests/test_move_card.py` pins the order.
 - Equal-priority enemy rules tie-break through `_seeded_key` (a crc32 of seed, enemy, turn and component). Without a seed it uses 0, which is still deterministic.
 - Callers choose the seeds: the game server picks `random.randrange(2**31)` for each fight, the cockpit a fresh seed per start, and the runner seeds each run (`seed·1000003 + i` for each adventure phase).
-- **The tuple seed is a latent bug.** Python 3.9 only warns, but **Python 3.11 and later raise `TypeError`**.
 
 **Deep copy on every call.** `legal_actions`, `settle`, `apply_action`, `auto_pass_action` and `pass_all_action` each deep-copy the whole state. `legal_actions` and `apply_action` also both re-run `_advance`. I measured with 3 heroes holding 20-card decks against 3–7 enemies:
 
@@ -530,15 +529,17 @@ The playtest lab from Design Update 13: a FastAPI app with a plain-JS UI on port
 - `python -m ltg_combat harness` takes about 0.2 s.
 
 **Fixtures in `conftest.py`:**
-- `_one_suite_at_a_time`: session-scoped and autouse; takes a flock on `tests/.suite.lock`. On Windows it does nothing, because there is no `fcntl`.
+- **The data sandbox** (module level, before any app import): a fresh temp dir holds a copy of `content/` without `art/`, plus empty `loadouts/` and `saves/`, and `LTG_CONTENT_DIR`, `LTG_LOADOUTS_DIR` and `LTG_SAVES_DIR` point at it. `content.data_dir` (and the Deckbuilder's `LOADOUT_DIR`) read those variables at import, so every derived path follows. `_sandboxed_data_dirs` (session, autouse) fails the run if any root escaped the sandbox. It is removed at exit.
 - `gate_clean_pool` / `clean_pool`: builds an encounter that passes every generation gate.
 
-**Tests touch real data.** Many read and write the real `content/` and `apps/deckbuilder/loadouts/`. Isolation is per module and mixed:
-- `_isolate`, `_isolate_content` and `_isolate_hidden_roster` snapshot the real directories, then delete new JSON and restore the hidden lists afterwards.
+**Tests never touch the real data dirs.** Within the sandbox, per-test isolation is still per module:
+- `_isolate`, `_isolate_content` and `_isolate_hidden_roster` snapshot the (sandbox) directories, then delete new JSON and restore the hidden lists afterwards.
 - `_dirs`, `_isolate_dirs` and `_world_dir` monkeypatch the directory constants to `tmp_path`, which is the cleaner pattern.
-- Some tests write into the real directories with a `finally: unlink`.
+- Some tests write with a `finally: unlink`.
 
-**Don't run the suite while a server is hosting.**
+Because the sandbox starts like a clean clone, tests must use the bundled `examples/` characters (`loadout_soren`, `loadout_ys`, …) or `tests/fixtures/`, never a per-install `loadouts/` file. The suite can run beside a live server, and two suites can run at once.
+
+**CI** (`.github/workflows/ci.yml`): pytest on Ubuntu with Python 3.9 and 3.14, plus a non-blocking Windows 3.14 job; the client build (tsc) with a `dist/` drift check; `ruff check .` (F401 unused imports and BLE001 blind except, configured in the root `pyproject.toml`; the broad excepts that predate the rule carry `# noqa: BLE001`). Checkouts skip `content/art/`.
 
 **Command:** `.venv/bin/python -m pytest tests/ -q` takes about 80 s (the 2026-09-02 review recorded 1,221 passing in 78 s).
 
@@ -547,7 +548,7 @@ The playtest lab from Design Update 13: a FastAPI app with a plain-JS UI on port
 **Launchers.** `LTG-Start.command` / `.bat` is the front door. It creates `.venv` and runs `ltg-start`: the Deckbuilder on :8000 and the game on :8020. `LTG-Game`, `LTG-Deckbuilder` and `LTG-Autoplay-Tester` launch one app each.
 
 **Updater** (`core/ltg_core/selfupdate.py`)
-- It fetches, then `merge --ff-only` toward the branch's upstream (`origin/main` if none), then `pip install -r requirements.txt`.
+- It fetches, then `merge --ff-only` toward the branch's upstream (`origin/main` if none), then `pip install -r requirements.txt` (which applies `constraints.txt`).
 - `_ff_failure` names what blocks the merge. Usually that is files the game dirtied under `content/`.
 - The UI is Options → Settings → Updates, which runs a quiet check on open. Relaunch after updating.
 
@@ -638,7 +639,6 @@ Each of these is tracked as an objective in [roadmap.md](roadmap.md) (mostly M1,
 - **Saves:** `GameState` has no round trip, so saves happen only at boundaries. `ScenarioRun.snapshot`/`restore` (in the game server) are hand-maintained field lists.
 - **Enemy JSON has no schema:** a typo in `target_rule` or `trigger` fails silently.
 - **Hand-copied constants:** the runner copies the game server's balance constants and carry-over rules by hand.
-- **Environment:** tests share live data directories, and the interpreter is unpinned.
 
 **Server, client and ops**
 
@@ -648,8 +648,8 @@ Each of these is tracked as an objective in [roadmap.md](roadmap.md) (mostly M1,
 - **Worker threads** mutate session state without the lock: `_materialize_task`, `_continue_task`, `generate_sync`, and the art painters. `InterludeJobRunner._generate_locked` takes no lock despite its name.
 - **Sync loads:** `load_save` and `continue_run` are synchronous, so the scenario hooks run inline and block HTTP on LLM calls.
 - **Open admin routes:** CORS is `*` on a `0.0.0.0` bind, and the admin routes have no authentication (the Deckbuilder's too).
-- **No CI:** there is no `.github/` and no lint config. Nothing tests the client, the WebSocket, `selfupdate` or the launchers.
-- **Tests:** they use the real `content/` and `loadouts/`, serialized by an `fcntl` flock that does nothing on Windows.
+- **Untested surfaces:** CI runs the suite, the client build and a lint, but nothing tests the client's behaviour, the WebSocket, `selfupdate` or the launchers.
+- **File encodings:** several reads and writes (`content._load_json` and `_write_content`, `scenario_content.py`, `ltg_combat.loader`, the autoplay tester) omit `encoding="utf-8"`, so on Windows they use the locale code page against UTF-8 JSON (roadmap M8.13).
 - **Art in git:** about 918 MB of PNG art is tracked, written raw, and repaints only add to it.
 - **`types.ts`** is hand-mirrored and has already drifted.
 - **Sessions** live in memory and are never evicted. A restart loses mid-fight state back to the last boundary save.

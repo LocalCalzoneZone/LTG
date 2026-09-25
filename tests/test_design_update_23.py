@@ -9,7 +9,6 @@ the §D23-7 corrections that no existing suite owns, the two turn GROUPS
 
 from __future__ import annotations
 
-import pytest
 
 from ltg_combat.engine import apply_action, legal_actions
 from ltg_combat.scenario import state_from_dict

@@ -17,10 +17,9 @@ from ltg_core.schema import Brief, Character, Loadout
 from ltg_deckbuilder import app as db_app
 from ltg_game_server import content, llm, scenario_content as sc, world
 from ltg_game_server.runs import RunManager
-from ltg_game_server.scenario import ScenarioRun
 
 from tests.test_design_update_10 import _adventure, _isolate  # noqa: F401 (fixture)
-from tests.test_design_update_17_towns import arc_raw, materialization_raw, town_raw
+from tests.test_design_update_17_towns import arc_raw, town_raw
 from tests.test_design_update_24_campaign import _dirs, _play_act, _start  # noqa: F401 (fixture)
 
 

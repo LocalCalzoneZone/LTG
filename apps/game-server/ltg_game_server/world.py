@@ -64,7 +64,7 @@ def _read(path: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     return raw if isinstance(raw, dict) else None
 

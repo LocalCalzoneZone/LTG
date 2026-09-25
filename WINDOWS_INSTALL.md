@@ -9,8 +9,11 @@ that it's just double-clicking a launcher.
 
 ### a. Install Python
 
-1. Go to <https://www.python.org/downloads/> and click the big yellow
-   **Download Python** button.
+1. Go to <https://www.python.org/downloads/>. LTG runs on **Python 3.9 up to
+   3.14**. If the big yellow **Download Python** button offers 3.14 or older,
+   click it. If it offers 3.15 or newer, scroll down to the list of releases
+   and download the newest **3.14.x** Windows installer instead; the game
+   refuses to install on a Python it hasn't been tested on.
 2. Run the installer. On the FIRST screen, **tick the box that says
    "Add python.exe to PATH"** (bottom of the window) — this matters.
 3. Click **Install Now** and let it finish.

@@ -236,10 +236,5 @@ These need a decision or a fix, and each is tracked in [roadmap.md](roadmap.md):
 - **The prompt contradicts itself on single-target damage.** Its magnitude table says L+2 (T-20, §D18-2), but its T-55 line still says "single target = L+1". `enemy_analysis.LEVERS` also still quotes L+1 and Drain ceil(L/2)+1.
 - **Literals without constants (M9.7).** T-27 (`2`, twice), T-52 (`// 2`, twice) and T-45/T-46 (1 per counter).
 - **Tunables without T-ids (M9.7).** Updates 18–24 added none. Candidates for T-88 onward: the stat buffs, the ability and row bonuses, `enrage_scale`, `ATTACK_CADENCE`, `EMERGENCY_BAND`, `DOUBLE_INTENT_DIFFICULTIES`, the lockdown budget, `GAUGE_LEVEL_STEP`, the boss-dial ranges, the variety floor, `_defend_value`, the later archetype costs, and the `lose_life` / `sap` / `drain_ultimate` magnitudes.
-- **Stale comments quoting old values (M0.6).**
-  - `runner`'s docstring says "T-57 (30 points per level)".
-  - `adventure.POINTS_PER_LEVEL` is tagged T-57 but is `LEVEL_UP_POINTS`.
-  - `llm._adventure_request_block` says "default L / L+1 / L+2, T-62"; the real ramp is 1.0 / 2.0 / 2.4 from L1.
-  - The `content.enrage_scale` docstring scales AoE at the full party-size rate; the code uses the padding rate.
 - **The history's own register tables are stale** (T-40, T-78, T-79, T-81 rows in §X-7 and §D17-11). This page supersedes them.
 

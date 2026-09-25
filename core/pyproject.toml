@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ltg-core"
 version = "0.1.0"
 description = "LTG shared core — effect schema, target descriptors, keyword & translation registry, validator, loadout JSON schema. The single source of truth, depended on by both apps."
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.15"   # tested on 3.9 and 3.14 (CI); raise after CI passes on a newer one
 dependencies = [
     "pydantic>=2.5",
     "typing-extensions>=4.8",

@@ -84,7 +84,7 @@ def card_text(card: Card) -> str:
     try:
         return render_effects(list(card.effects), dict(card.targets),
                               channeled=card.timing == Timing.channeled)
-    except Exception:  # never let a display render break a snapshot
+    except Exception:  # never let a display render break a snapshot  # noqa: BLE001
         return ""
 
 
@@ -388,8 +388,6 @@ def _status_tags(char) -> List[str]:
     tags = []
     if getattr(char, "temp_mod", 0):
         tags.append(f"{'+' if char.temp_mod >= 0 else ''}{char.temp_mod} temp HP")
-    if char.prevent_pool:
-        tags.append(f"reduce {char.prevent_pool}")
     if getattr(char, "capacity_mod", 0):
         tags.append(f"{char.capacity_mod} mana capacity")   # `sap` (always negative)
     for mod in _action_mods(char):
@@ -502,7 +500,6 @@ def _character_dict(state: GameState, char) -> Dict[str, Any]:
         "row": char.row,
         "mitigate_value": _mitigate_value(char),
         "temp_mod": char.temp_mod,
-        "prevent_pool": char.prevent_pool,
         "acted_mode": char.acted_mode,
         # §D23-1: what the turn still allows, per verb — the action bar's greying.
         "turn_open": _turn_open(char),
@@ -635,7 +632,6 @@ def _enemy_dict(state: GameState, enemy) -> Dict[str, Any]:
         "in_hand": enemy.in_hand,   # bounced: off the battlefield, pending redeploy (Update 03)
         "zone": "in_hand" if enemy.in_hand else ("exile" if enemy.exiled else "in_play"),
         "temp_mod": enemy.temp_mod,
-        "prevent_pool": enemy.prevent_pool,
         "prevent_tags": [f"{'next ' if t.uses is not None else ''}"
                          f"{_lane_text(t.parameter, getattr(t, 'combat_kind', 'all'))}"
                          for t in enemy.prevent_tags],
@@ -767,7 +763,7 @@ def _stack_mechanics(state: GameState, item) -> str:
     if item.effects:
         try:
             text = render_effects(list(item.effects))
-        except Exception:
+        except Exception:  # noqa: BLE001
             text = ""
         if text:
             if item.target_row:

@@ -1,13 +1,15 @@
 """Generation jobs — the adventure job behind Start Adventure (Design Update 17
 §D17-6.3).
 
-``adventure_job = {state: idle | pending | generated | art_queued | ready |
-failed, progress [n, m], adventure_ref, error?}`` — persisted with the run
+``adventure_job = {state: idle | pending | ready | failed, progress [n, m],
+adventure_ref, error?}`` — persisted with the run
 (written into run.json as it changes) and reflected on the greyed Start
 Adventure button. `ready` is reached at *adventure generated*: art is
 best-effort and continues in the background even after the adventure starts.
 Failure after retries → "Generation failed — Retry"; the quest stays accepted;
 the town never wedges. A reload/restart resumes the job from its saved state.
+(§D17-6.3 also names `generated` and `art_queued`; nothing sets them. Readers
+still accept them — `scenario.py`, `types.ts` — so old saves stay valid.)
 
 Save-consistency rule: the generated adventure is written to the run's content
 store the moment it validates, so a manual inn save after accepting the quest
@@ -44,7 +46,7 @@ class AdventureJobRunner:
         if session.run_id and session.run_manager and session.scenario:
             try:
                 session.run_manager.set_job(session.run_id, session.scenario.adventure_job)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
     def prepare_pregenerated(self, session: Any, adventure_id: str) -> None:
@@ -83,7 +85,7 @@ class AdventureJobRunner:
             sc.attach_adventure(meta["id"], detail, ref)
             self.set_state(sc, "ready", adventure_ref=ref, error=None,
                            progress=[0, len(detail["phases"])])
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.set_state(sc, "failed", error=str(exc))
         self.persist(session)
 
@@ -152,9 +154,9 @@ class InterludeJobRunner:
             if session.run_id and session.run_manager:
                 try:
                     session.run_manager.update_campaign(session.run_id, sc)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             sc.pending_interlude = None
             sc.interlude_job = {"state": "failed", "error": str(exc)}
         if sc.interlude_job.get("state") == "ready" and sc.continue_requested:
@@ -174,10 +176,9 @@ class InterludeJobRunner:
         await broadcast(session)
 
     def _generate_locked(self, session: Any) -> None:
-        # The generation itself runs off-thread; only the hand-over back into
-        # the session (a Continue pressed meanwhile) needs the lock, which the
-        # sync path takes for the whole call — cheap, since the call is the
-        # slow part and nothing else moves the session at the scenario's end.
+        # Runs off-thread and does NOT take the session lock: `generate_sync`
+        # writes the scenario and may call `continue_campaign()` unlocked.
+        # Known race (roadmap M1.8); despite the name, nothing here locks.
         self.generate_sync(session)
 
     def start(self, session: Any, broadcast: Optional[Callable[[Any], Awaitable[None]]]) -> None:

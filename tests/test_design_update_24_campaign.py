@@ -27,7 +27,7 @@ from tests.test_design_update_10 import _adventure, _isolate  # noqa: F401 (fixt
 from tests.test_design_update_17_scenario import (_accept_quest, _fake_adventure_generator,
                                                   _fake_materializer, _take_rewards,
                                                   _win_adventure)
-from tests.test_design_update_17_towns import arc_raw, materialization_raw, town_raw
+from tests.test_design_update_17_towns import arc_raw, town_raw
 
 
 @pytest.fixture(autouse=True)

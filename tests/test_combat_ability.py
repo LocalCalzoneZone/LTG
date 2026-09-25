@@ -13,7 +13,6 @@ from __future__ import annotations
 from ltg_combat.engine import (_is_combat_ability, _mitigable, apply_action,
                                legal_actions)
 from ltg_combat.scenario import state_from_dict
-from ltg_combat.state import StackItem
 
 
 # --------------------------------------------------------------------------- #

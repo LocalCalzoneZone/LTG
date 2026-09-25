@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from ltg_game_server import content, llm
 
@@ -155,7 +154,7 @@ def test_generation_repairs_missing_scene_and_descriptions(monkeypatch):
     monkeypatch.setattr(llm, "_chat", fake_chat)
     monkeypatch.setattr(llm, "load_settings",
                         lambda: {**llm._default_settings(), "api_key": "sk"})
-    meta = llm.generate_encounter(["soren", "ys"], "standard", "")
+    meta = llm.generate_encounter(["loadout_soren", "loadout_ys"], "standard", "")
     path = content.CONTENT_DIR / f"{meta['id']}.json"
     try:
         assert len(calls) == 2                             # rejected, then repaired

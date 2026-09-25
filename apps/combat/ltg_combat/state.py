@@ -256,7 +256,6 @@ class CharacterState:
     # touches `attack_mode` so it can be restored when the modifier expires.
     # Empty until then — `attack_mode` is the live value everything else reads.
     base_attack_mode: str = ""
-    prevent_pool: int = 0     # numeric pre-damage reduction (R-11 numeric prevent)
     prevent_tags: List[PreventTag] = field(default_factory=list)  # shields (R-11 prevent)
     # Combo primings: one-shot outgoing-damage/heal multipliers (`amplify`) and
     # "next action resolves twice" tags (`double_next` — a list of filter nodes).
@@ -433,7 +432,6 @@ class TokenState:
     temp_mod: int = 0
     enc_temp_mod: int = 0     # the encounter-scoped share (see CharacterState)
     enc_power_bonus: int = 0
-    prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
     amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
     double_next: List[str] = field(default_factory=list)
@@ -673,7 +671,6 @@ class EnemyState:
     temp_mod: int = 0
     enc_temp_mod: int = 0     # the encounter-scoped share (see CharacterState)
     enc_power_bonus: int = 0
-    prevent_pool: int = 0
     prevent_tags: List[PreventTag] = field(default_factory=list)
     amplify_tags: List[AmplifyTag] = field(default_factory=list)  # combo primings
     double_next: List[str] = field(default_factory=list)

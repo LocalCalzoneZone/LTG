@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ltg_core.schema import (
-    BANNED_CREATION_KEYWORDS, BELT_SIZE, BUY_MULT, INVENTORY_CONSUMABLES,
+    BELT_SIZE, BUY_MULT, INVENTORY_CONSUMABLES,
     INVENTORY_GEAR, LEVEL_UP_POINTS, SELL_MULT, Item,
 )
 from ltg_core.translation import render_effects
@@ -55,7 +55,7 @@ def _load_items(d: Path, source: str) -> Dict[str, Dict[str, Any]]:
         raw.pop("kind", None)
         try:
             item = Item.model_validate(raw)
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
         out[item.id] = {"item": item, "source": source, "path": p}
     return out
@@ -85,7 +85,7 @@ def _consumable_text(item: Item) -> str:
     ally."), falling back to the bare verb list only if rendering fails."""
     try:
         text = render_effects(list(item.effects), dict(item.targets))
-    except Exception:
+    except Exception:  # noqa: BLE001
         text = ""
     return text or ", ".join(e.kind.replace("_", " ") for e in item.effects)
 
@@ -130,7 +130,7 @@ def describe(item: Item) -> str:
             try:
                 text = (st.card.translated_text or st.card.original_text
                         or render_effects(list(st.card.effects), dict(st.card.targets)))
-            except Exception:
+            except Exception:  # noqa: BLE001
                 text = ""
             lines.append(f"Grants the card “{st.card.name}” each encounter"
                          + (f": {text}" if text else "."))

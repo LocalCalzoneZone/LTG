@@ -255,7 +255,7 @@ SCENARIO_C: Dict[str, Any] = {
         {
             "id": "mira", "name": "Mira", "archetype": "Channeler",
             "hp": 15, "power": 1, "attack_mode": "ranged", "level": 1,
-            "hand_size": 2, "parry_reduce": 2, "identity": ["U", "U", "B", "B"],
+            "hand_size": 2, "identity": ["U", "U", "B", "B"],
             "library": [
                 # With `disable` retired (R-11), Still the Blade now blunts the
                 # enemy's attack: a continuous −2/−0 wound aura while channeled.
@@ -662,7 +662,6 @@ def party_entry_from_loadout(raw_loadout: Dict[str, Any]) -> Dict[str, Any]:
         "types": list(getattr(char, "types", []) or []),        # §D21 type line
         "classes": list(getattr(char, "classes", []) or []),
         "keywords": list(block["keywords"]),  # the one bought keyword (§P-3), if any
-        "parry_reduce": 2,
         "library": [c.model_dump(mode="json") for c in lo.cards],
         # Heroic actions + evergreen flavour (D8-3): character-sheet content, not
         # library cards — never drawn, outside the 20-card deck.
@@ -694,7 +693,7 @@ def fold_gear(entry: Dict[str, Any], gear: Dict[str, Any]) -> None:
             return None
         try:
             return Item.model_validate(raw)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
 
     keywords = list(entry.get("keywords") or [])

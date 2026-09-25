@@ -33,7 +33,7 @@ from .scenario import (
     state_from_dict,
 )
 from .serialize import build_menu, serialize_actions, serialize_state, to_jsonable
-from .state import Action, GameState
+from .state import GameState
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = APP_ROOT / "frontend"

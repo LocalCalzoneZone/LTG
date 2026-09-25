@@ -2189,7 +2189,9 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
                              phase_levels: Optional[List[float]] = None) -> str:
     """Per-request parameters: the party, the single difficulty, and each phase's
     per-party-size budget lines computed at the levels in ``phase_levels``
-    (default L / L+1 / L+2, T-62), anchored on ``base_level`` — the party's
+    (default ``phase_budget_levels``: the continuous level the earned points
+    reach at each phase, 1.0 / 2.0 / 2.4 from a fresh L1, T-62), anchored on
+    ``base_level`` — the party's
     effective level at adventure start (Update 17 §D17-2.1 / §D17-4.2; 1 outside
     a run). ``context`` (§D17-6.3) is the scenario's arc / town / quest block,
     passed verbatim."""
@@ -3444,7 +3446,7 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
             lore = _content.lore_in_play(party_state.get("members", []), town, arc,
                                          {**flags, **{k: True for k in party_state.get("knows") or []}},
                                          act_index, str(town.get("id") or ""))
-        except Exception:
+        except Exception:  # noqa: BLE001
             lore = []
     user = act_prompt(town, arc, act_index, party_state, previous_summary,
                       ledger=ledger, world_ctx=world_ctx, lore=lore)

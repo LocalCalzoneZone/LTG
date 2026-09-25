@@ -13,6 +13,7 @@ import base64
 import copy
 import hashlib
 import json
+import os
 import re
 import secrets
 import shutil
@@ -35,18 +36,28 @@ from ltg_combat.state import GameState
 # Repo root: apps/game-server/ltg_game_server/content.py -> up 3 == repo root.
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+
+def data_dir(env_var: str, default: Path) -> Path:
+    """A data root, overridable by environment variable. The test suite points
+    ``LTG_CONTENT_DIR`` / ``LTG_LOADOUTS_DIR`` / ``LTG_SAVES_DIR`` at a sandbox
+    before anything imports this module (tests/conftest.py), so every path
+    derived from these roots at import time follows them."""
+    raw = os.environ.get(env_var)
+    return Path(raw).expanduser().resolve() if raw else default
+
+
 # Gitignored per-install user data: characters (imported Deckbuilder loadouts),
 # LLM settings (with the API key), and the hidden-id files. NOT encounters or
 # adventures — those are shared content (CONTENT_DIR) so they reach every install
 # through git. Pre-split installs may still hold legacy encounter/art files here;
 # they are read (and superseded on the next save) but never written afresh.
-LOADOUTS_DIR = REPO_ROOT / "apps" / "deckbuilder" / "loadouts"
+LOADOUTS_DIR = data_dir("LTG_LOADOUTS_DIR", REPO_ROOT / "apps" / "deckbuilder" / "loadouts")
 
 # Shared, git-TRACKED content: encounters, adventures, and their art. This is
 # where the game WRITES them (generation and the editor alike) and where a
 # delete removes the file — so the tracked folder mirrors the live library and
 # a commit ships it to every install. Characters/settings stay in LOADOUTS_DIR.
-CONTENT_DIR = REPO_ROOT / "content"
+CONTENT_DIR = data_dir("LTG_CONTENT_DIR", REPO_ROOT / "content")
 
 # Directories scanned for encounter / adventure / character JSON, in priority
 # order — the first file to claim an id wins. Shared content leads (it is the
@@ -97,7 +108,7 @@ def portrait_url(portrait: str) -> str:
         return portrait
     try:
         raw = base64.b64decode(m.group(2))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return portrait
     if not raw:
         return portrait
@@ -242,10 +253,11 @@ def enrage_scale(party_size: int) -> "tuple[float, float]":
     "+2/+2 and a small burn" a solo hero saw, against four times the incoming
     damage and four times the actions.
 
-    Lethality (the Power half of a pump, the AoE, the token wave) scales with the
-    full party size — the fury must threaten a board that big. Padding (the
-    toughness half) scales at half rate: an enrage should hit much harder, not
-    merely last much longer."""
+    Lethality (the Power half of a pump or counters) scales with the full party
+    size — the fury must threaten a board that big. Padding scales at half rate:
+    the toughness and HP half, and also every damage, life-loss and heal amount
+    (an enrage should hit much harder, not merely last much longer). A token
+    wave adds n−1 bodies rather than multiplying (`_scale_enrage`)."""
     n = max(1, int(party_size))
     return float(n), 1.0 + (n - 1) / 2.0
 
@@ -409,7 +421,7 @@ def _character_registry() -> Dict[str, Dict[str, Any]]:
             continue
         try:
             lo = Loadout.model_validate(raw)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             # A character that fails validation drops out of the picker with no
             # other signal (it's still a valid *file*, just not a valid loadout
             # under the current schema — e.g. a retired keyword) — silent enough
@@ -1549,7 +1561,7 @@ def lore_entries_for(character_id: str) -> List[Dict[str, Any]]:
     for path in sorted(folder.glob("*.md")):
         try:
             raw = path.read_text(encoding="utf-8")
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
         meta, body = _parse_front_matter(raw)
         title = str(meta.get("title") or path.stem.replace("_", " ").replace("-", " ").title())

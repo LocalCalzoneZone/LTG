@@ -19,7 +19,6 @@ from ltg_core.schema import (
     Charge,
     DealDamage,
     Poison,
-    Regen,
     t_chosen,
     t_self,
 )

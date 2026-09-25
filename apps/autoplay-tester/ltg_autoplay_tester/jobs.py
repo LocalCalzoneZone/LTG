@@ -19,7 +19,6 @@ import queue
 import threading
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import enemy_analysis, gauntlets, probes
@@ -134,7 +133,7 @@ class JobRunner:
                     job["status"] = "cancelled"
                     job["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                     self._save(job)
-            except Exception as exc:  # surfaced to the queue view, never fatal
+            except Exception as exc:  # surfaced to the queue view, never fatal  # noqa: BLE001
                 with self._lock:
                     job["status"] = "failed"
                     job["error"] = f"{type(exc).__name__}: {exc}"

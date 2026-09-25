@@ -1,6 +1,10 @@
 # LTG monorepo — editable installs of every package in one resolve.
 # `core` is listed first; the apps declare `ltg-core` as a dependency and pip
 # resolves it from this local checkout (never PyPI) since all three are present.
+# Third-party versions are pinned in constraints.txt; every installer (the
+# launchers, the in-app updater, CI) reads this file, so the pins ride along.
+-c constraints.txt
+
 -e ./core
 -e ./apps/deckbuilder
 -e ./apps/combat
