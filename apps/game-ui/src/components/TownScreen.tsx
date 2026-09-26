@@ -239,7 +239,12 @@ function TownConsole({ town }: { town: TownSnapshot }) {
   if (!town.adventure_unlocked) startHint = "Accept a quest first";
   else if (job.state === "pending") { startLabel = "Preparing the road…"; startHint = "the adventure is being written"; }
   else if (job.state === "failed") { startLabel = "Generation failed"; startHint = job.error ?? ""; }
-  else if (town.adventure_ready) startHint = town.adventure_name;
+  else if (town.adventure_ready) {
+    startHint = town.adventure_name;
+    // §D25-3: Phase I is enough to ride out; the rest is written on the road.
+    if (job.writing && (job.phases_ready ?? 0) < (job.phases_total ?? 0))
+      startHint += ` · phases ${job.phases_ready} of ${job.phases_total} written, the rest on the road`;
+  }
   return (
     <div className="flex items-end justify-between gap-4 border-t border-line bg-ink-0/80 px-5 py-3 backdrop-blur-[2px]">
       <div className="flex items-end gap-2">

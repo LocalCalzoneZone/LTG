@@ -220,6 +220,7 @@ function draftCost(d: Draft, base: BuildView, prices: BuildPrices): number {
 function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
   const you = useGame((s) => s.you);
   const confirmLevelUp = useGame((s) => s.confirmLevelUp);
+  const retryJob = useGame((s) => s.retryJob);
   const lu = adventure.level_up!;
 
   // The first of MY characters still to confirm (each client confirms its own).
@@ -266,13 +267,27 @@ function LevelUpScreen({ adventure }: { adventure: AdventureBlock }) {
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 overflow-y-auto px-8 py-4 text-center">
           <div className="h-2 w-2 rotate-45 border border-brass/60" aria-hidden />
           <div className="caps-label text-[12px] tracking-[0.2em] text-parch">
-            {mine.length ? "Your characters are ready" : "Claim a seat to level up"}
+            {adventure.awaiting_phase
+              ? "The road ahead is still being written"
+              : mine.length ? "Your characters are ready" : "Claim a seat to level up"}
           </div>
           <div className="max-w-md text-sm font-light text-mist">
-            {mine.length
-              ? "Waiting for the other players to confirm — the next phase begins when every character is confirmed."
-              : "You control no characters. Claim a seat in the top ribbon to confirm its level-up."}
+            {adventure.awaiting_phase
+              ? adventure.phase_error
+                ? `The next phase could not be written: ${adventure.phase_error}`
+                : "Everyone is ready. The next phase begins the moment it is written."
+              : mine.length
+                ? "Waiting for the other players to confirm — the next phase begins when every character is confirmed."
+                : "You control no characters. Claim a seat in the top ribbon to confirm its level-up."}
           </div>
+          {adventure.awaiting_phase && adventure.phase_error && (
+            <button
+              className="caps-label mt-1 border border-brass/70 px-3 py-1 text-[10px] tracking-[0.18em] text-brass hover:bg-brass/10"
+              onClick={retryJob}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
     </div>

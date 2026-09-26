@@ -107,6 +107,9 @@ class Session:
         # A pre-generated Act I adventure waiting on the party's answer: it fits
         # one of the act's quest options, and is only taken up if they choose it.
         self.pregenerated_act1: Optional[Dict[str, Any]] = None
+        # A loaded save whose adventure job must resume once a client (and so
+        # an event loop) is here — app.ws_endpoint starts it (§D25-3).
+        self.resume_adventure_job: bool = False
         # The all-players confirmation (T-84), or None.
         self.confirm: Optional[Dict[str, Any]] = None
         self._confirm_seq = 0
@@ -1081,18 +1084,39 @@ class Session:
                 self._scenario_transitions()
             return
         if self.adventure.all_confirmed():
-            seed = random.randrange(2**31)
-            # The phase-boundary auto-save (§D17-3.2) is taken BEFORE the next
-            # phase composes, with the seed it will compose with — a reload
-            # replays `advance` and lands on the identical state.
-            self.save_point("phase_boundary", seed)
-            state, portraits, art, encounter_id = self.adventure.advance(seed=seed)
-            self.state = state
-            self.state.paced = True  # a fresh phase's state is paced like the first
-            self.portraits = portraits
-            self.art = art
-            self.encounter_id = encounter_id
-            self._auto_advance()
+            if not self.adventure.next_phase_ready():
+                # §D25-3: the next phase is still being written. The party
+                # waits on this screen; `phase_landed` composes it on arrival.
+                self.adventure.awaiting_phase = True
+                return
+            self._compose_next_phase()
+
+    def _compose_next_phase(self) -> None:
+        seed = random.randrange(2**31)
+        # The phase-boundary auto-save (§D17-3.2) is taken BEFORE the next
+        # phase composes, with the seed it will compose with — a reload
+        # replays `advance` and lands on the identical state.
+        self.save_point("phase_boundary", seed)
+        state, portraits, art, encounter_id = self.adventure.advance(seed=seed)
+        self.state = state
+        self.state.paced = True  # a fresh phase's state is paced like the first
+        self.portraits = portraits
+        self.art = art
+        self.encounter_id = encounter_id
+        self._auto_advance()
+
+    def phase_landed(self, detail: Dict[str, Any]) -> bool:
+        """§D25-3: a later phase of the running adventure was written. Extend
+        the run with it; a party already waiting at the boundary rides on now.
+        Returns whether the next phase composed."""
+        run = self.adventure
+        if run is None or not run.add_phase(detail):
+            return False
+        if run.awaiting_phase and run.all_confirmed() and run.next_phase_ready() \
+                and not run.is_final_gate:
+            self._compose_next_phase()
+            return True
+        return False
 
     def set_art(self, art: Dict[str, Any]) -> None:
         """Swap in fresh art references (scene + pool-enemy urls), keeping this

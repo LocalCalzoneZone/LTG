@@ -994,6 +994,12 @@ def _adventure_registry() -> Dict[str, Dict[str, Any]]:
             # Update 17: an adventure generated for a run (a scenario act) is
             # kept out of the New Game picker; it stays editable/inspectable.
             "run_only": bool(raw.get("run_only")),
+            # §D25-3: a PARTIAL adventure is being written a phase at a time —
+            # it carries its outline and the phase count it will reach, and is
+            # never offered in a picker until it is whole.
+            "partial": bool(raw.get("partial")),
+            "phases_total": int(raw.get("phases_total") or len(phases)),
+            "outline": copy.deepcopy(raw.get("outline")) if raw.get("partial") else None,
             "source": "user" if path.parent == LOADOUTS_DIR else "example",
             "path": path,
         }
@@ -1033,7 +1039,8 @@ def list_adventures(include_run_only: bool = False) -> List[Dict[str, Any]]:
     hidden = _adv_hidden()
     return [_adventure_meta(aid, adv)
             for aid, adv in _adventure_registry().items()
-            if aid not in hidden and (include_run_only or not adv.get("run_only"))]
+            if aid not in hidden and not adv.get("partial")
+            and (include_run_only or not adv.get("run_only"))]
 
 
 def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
@@ -1050,9 +1057,13 @@ def adventure_detail(adventure_id: str) -> Optional[Dict[str, Any]]:
             return None  # a wrapper pointing at a missing phase file is unusable
         phases.append({"narration": str(phase.get("narration") or ""),
                      "encounter_id": eid, **enc})
-    return {"id": adventure_id, "name": adv["name"], "flavor": adv["flavor"],
-            "difficulty": adv.get("difficulty", ""), "phases": phases,
-            **({"run_only": True} if adv.get("run_only") else {})}
+    detail = {"id": adventure_id, "name": adv["name"], "flavor": adv["flavor"],
+              "difficulty": adv.get("difficulty", ""), "phases": phases,
+              **({"run_only": True} if adv.get("run_only") else {})}
+    if adv.get("partial"):
+        detail.update(partial=True, phases_total=adv["phases_total"],
+                      outline=copy.deepcopy(adv.get("outline")))
+    return detail
 
 
 def _phase_boss_levels(enemies: List[Dict[str, Any]]) -> "tuple[List[int], int]":
@@ -1246,6 +1257,74 @@ def save_adventure(raw: Dict[str, Any],
     return _adventure_meta(aid, adv) if adv else {"id": aid, "name": name}
 
 
+def save_adventure_phase(adventure_id: Optional[str], index: int,
+                         phase: Dict[str, Any], wrapper: Dict[str, Any]) -> str:
+    """§D25-3: validate and persist ONE phase of an adventure being written a
+    phase at a time, and (re)write its PARTIAL wrapper. ``index`` is 0-based;
+    ``wrapper`` carries ``name``, ``flavor``, ``difficulty``, ``run_only`` and
+    the ``outline``. Phases land in order. Returns the adventure id (a fresh
+    one on the first phase). The whole-adventure check runs in
+    `finalize_adventure`, once every phase is in."""
+    if not isinstance(phase, dict):
+        raise ValueError(f"phase {index + 1} must be an object")
+    try:
+        cleaned = _validate_encounter(phase)
+        _validate_phase(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"phase {index + 1}: {exc}") from exc
+    narration = str(phase.get("narration") or "").strip()
+    if not narration:
+        raise ValueError(f"phase {index + 1} is missing its narration")
+    name = str(wrapper.get("name") or "Adventure")
+    aid = adventure_id or fresh_id(
+        _slug(name) or "adventure", _taken_content_ids(),
+        also=lambda a: [phase_encounter_id(a, i) for i in range(1, PHASE_COUNT + 1)])
+    existing = _adventure_registry().get(aid)
+    entries = list(existing["phases"]) if existing else []
+    if index != len(entries):
+        raise ValueError(f"phase {index + 1} arrived out of order "
+                         f"({len(entries)} phase(s) already written)")
+    eid = phase_encounter_id(aid, index + 1)
+    _write_content(f"{eid}.json", json.dumps(cleaned, indent=2))
+    entries.append({"narration": narration, "encounter_id": eid})
+    out = {"kind": "adventure", "name": name,
+           "flavor": str(wrapper.get("flavor") or ""), "phases": entries,
+           "partial": True, "phases_total": PHASE_COUNT,
+           "outline": copy.deepcopy(wrapper.get("outline") or {})}
+    if str(wrapper.get("difficulty") or "").strip():
+        out["difficulty"] = str(wrapper["difficulty"]).strip()
+    if wrapper.get("run_only"):
+        out["run_only"] = True
+    _write_content(f"{aid}.json", json.dumps(out, indent=2))
+    return aid
+
+
+def finalize_adventure(adventure_id: str) -> Dict[str, Any]:
+    """§D25-3: the last phase is in — run the §D10-4.1 adventure checks over all
+    three and make the wrapper whole (the outline and partial marks drop).
+    Returns the meta, as `save_adventure` does."""
+    adv = _adventure_registry().get(adventure_id)
+    if adv is None:
+        raise ValueError(f"unknown adventure: {adventure_id}")
+    detail = adventure_detail(adventure_id)
+    if detail is None or len(detail["phases"]) != PHASE_COUNT:
+        raise ValueError(f"adventure {adventure_id} has "
+                         f"{len((detail or {}).get('phases') or [])} of {PHASE_COUNT} phases")
+    _validate_adventure(detail["phases"], [p.get("narration", "") for p in detail["phases"]])
+    wrapper = {"kind": "adventure", "name": adv["name"], "flavor": adv["flavor"],
+               "phases": copy.deepcopy(adv["phases"])}
+    if adv.get("difficulty"):
+        wrapper["difficulty"] = adv["difficulty"]
+    if adv.get("run_only"):
+        wrapper["run_only"] = True
+    _write_content(f"{adventure_id}.json", json.dumps(wrapper, indent=2))
+    hidden = _adv_hidden()
+    if adventure_id in hidden:
+        hidden.discard(adventure_id)
+        _set_adv_hidden(hidden)
+    return _adventure_meta(adventure_id, _adventure_registry()[adventure_id])
+
+
 def save_adventure_info(adventure_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     """Update the adventure-level fields only — name, flavor, the per-phase
     narrations — leaving the phase encounters untouched. Returns the meta."""
@@ -1301,6 +1380,11 @@ def _check_phase_edit(eid: str, cleaned: Dict[str, Any]) -> None:
         if eid not in phase_ids:
             continue
         _validate_phase(cleaned)
+        if adv.get("partial"):
+            # §D25-3: still being written — the ladder was checked against its
+            # outline as each phase landed; the whole-adventure check runs when
+            # the last phase does (`finalize_adventure`). An art write lands here.
+            return
         phases: List[Dict[str, Any]] = []
         reg = _encounter_registry()
         for phase_eid in phase_ids:

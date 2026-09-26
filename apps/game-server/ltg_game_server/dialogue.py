@@ -45,7 +45,7 @@ STANDING_PREFIXES = ("item_", "town:")   # give_item writes item_<id>; town: is 
 # Hooks whose choice is party-wide: they open the all-players confirmation
 # (§D17-5.4). Flavour choices don't.
 PARTY_WIDE_HOOKS = frozenset({"grant_quest", "unlock_adventure", "rest"})
-MAX_DEPTH = 10
+MAX_DEPTH = 8   # the ACT prompt: "never more than 8, counting every branch" (M4.11)
 MIN_CHOICES = 1     # a leaf may carry one "Farewell"; the prompt asks 2–3
 # An offer node carries every quest option the NPC has plus the "let us think
 # on it" out, so the ceiling is a little above the 2–3 the prompt asks for.

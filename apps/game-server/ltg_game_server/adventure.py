@@ -179,12 +179,17 @@ class AdventureRun:
         self.difficulty: Optional[str] = None
         self.name: str = detail["name"]
         self.flavor: str = detail["flavor"]
-        # [{encounter_id, narration, name}] in phase order.
-        self.phases: List[Dict[str, Any]] = [
-            {"encounter_id": a["encounter_id"], "narration": a["narration"],
-             "name": a["name"]}
-            for a in detail["phases"]
-        ]
+        # [{encounter_id, narration, name}] in phase order — the phases WRITTEN
+        # so far. §D25-3: an adventure written a phase at a time arrives with
+        # Phase I alone; `add_phase` extends it as the rest land, and
+        # `phases_total` is the count it will reach.
+        self.phases: List[Dict[str, Any]] = self._phase_rows(detail)
+        self.phases_total: int = int(detail.get("phases_total") or len(self.phases))
+        # Runtime only (never saved): every seat has confirmed the boundary
+        # but the next phase is still being written — the party waits on the
+        # level-up screen (§D25-3); and why the writer stopped, if it did.
+        self.awaiting_phase: bool = False
+        self.phase_error: Optional[str] = None
         self.phase_index = 0
         self.complete = False
         # Filled by start(): the picked roster ids, the run's loadouts (deep
@@ -213,6 +218,30 @@ class AdventureRun:
         self.final_screen: bool = False
         # Phase indices whose points have been paid out (grants are once each).
         self.granted_phases: set = set()
+
+    @staticmethod
+    def _phase_rows(detail: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return [{"encounter_id": a["encounter_id"], "narration": a["narration"],
+                 "name": a["name"]} for a in detail["phases"]]
+
+    def next_phase_ready(self) -> bool:
+        """Is the phase after the current one written yet (§D25-3)?"""
+        return self.phase_index + 1 < len(self.phases)
+
+    def add_phase(self, detail: Dict[str, Any]) -> bool:
+        """Take a fuller detail of THIS adventure (a phase landed, §D25-3).
+        Only a strict extension is taken — same phases so far, more of them —
+        so nothing the party has played can change under it. Returns whether
+        the detail was taken."""
+        rows = self._phase_rows(detail)
+        have = [p["encounter_id"] for p in self.phases]
+        if len(rows) < len(have) or [p["encounter_id"] for p in rows[:len(have)]] != have:
+            return False
+        self.detail = copy.deepcopy(detail)
+        self.phases = rows
+        self.phases_total = int(detail.get("phases_total") or len(rows))
+        self.phase_error = None
+        return True
 
     # -- phase composition ------------------------------------------------------ #
     def _scenario(self, phase_index: int) -> Dict[str, Any]:
@@ -270,7 +299,7 @@ class AdventureRun:
         return self.phases[self.phase_index]
 
     def is_final_phase(self) -> bool:
-        return self.phase_index >= len(self.phases) - 1
+        return self.phase_index >= max(len(self.phases), self.phases_total) - 1
 
     # -- the phase boundary ------------------------------------------------------ #
     def on_state_change(self, state: GameState) -> None:
@@ -402,6 +431,9 @@ class AdventureRun:
         ``(state, portraits, art, phase_encounter_id)``."""
         if not self.all_confirmed():
             raise ValueError("not every character has confirmed the level-up")
+        if not self.next_phase_ready():
+            raise ValueError("the next phase is still being written")
+        self.awaiting_phase = False
         heals = {lid: e["heal"] for lid, e in (self.level_up or {}).items()}
         self.phase_index += 1
         self.level_up = None
@@ -554,7 +586,11 @@ class AdventureRun:
             "name": self.name,
             "flavor": self.flavor,
             "phase": self.phase_index + 1,
-            "phases_total": len(self.phases),
+            "phases_total": max(len(self.phases), self.phases_total),
+            # §D25-3: how many phases exist yet, and the boundary wait.
+            "phases_ready": len(self.phases),
+            "awaiting_phase": self.awaiting_phase,
+            "phase_error": self.phase_error,
             "phase_name": phase["name"],
             "narration": phase["narration"],
             "character_ids": list(self.character_ids),

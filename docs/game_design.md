@@ -901,7 +901,9 @@ An enemy without a legacy `intent` gets a synthesised basic attack: "<Name> Atta
 
 **Budget and Level.** B(L) = 5·L + 5 (L1 10, L2 15, L3 20, L4 25, L5 30, L8 45, L10 55). Total cost = chassis + upgrades + keywords + traits + components after modifiers (§9.2). An enemy's Level is the smallest L whose budget covers its cost. Underspending is legal; overspending is impossible, so complexity prices itself into Level. A boss spends up to 2.5 × B(L). Pricing happens at authoring: the engine takes `level` as written.
 
-Enemy-eligible keywords (min Level / cost): reach 1/1 · trample 2/2 · flying 2/4 · lifelink 3/3 · infect 3/3 · deathtouch 3/4 · hexproof 5/6 · indestructible 6/6. The trait `rises` is 2/3. `relentless` is enemy-only and unpriced.
+Enemy-eligible keywords (min Level / cost): reach 1/1 · trample 2/2 · flying 2/4 · lifelink 3/3 · infect 3/3 · deathtouch 3/4 · hexproof 5/6 · indestructible 6/6 · relentless 3/3 (enemy-only, T-91, §D25-11). The trait `rises` is 2/3.
+
+**Pricing is enforced at generation** (§D25-5). `llm.price_enemy` prices every generated enemy from these tables (body = HP + 3 × Power, +2 if ranged; keywords; `rises`; each component after its modifiers; a boss against 2.5 × B(L)), reading the model's own numbers before any difficulty scaling. A Level written below the price is raised to it in code; a Level above it is legal (underspending). Hand-authored content is not priced.
 
 **Level is fixed and distinct from HP.** Damage, counters and neglect never change it. Level feeds level-gates (`target_property` level: exactly, or more, or less), `destroyed_target.level`, gauge credit for removal and denial, the canonical order, and budgets. The execute window, enrage and `self_hp_pct` read effective HP instead.
 
@@ -1560,7 +1562,11 @@ Each enemy also carries `flavor` (a one-line hint), `description` (its look, use
 - Power × the same stat buff (minimum 1);
 - token HP and token-definition Power buffed the same way.
 
-The prompt also asks for a boss on Hard, a channeler on Standard and up, and lean designs on Easy.
+The prompt also asks for a boss on Hard and lean designs on Easy. A **channeler on Standard and Hard** is checked (§E6-5, §D25-6).
+
+**Lockdown floor** (T-93, §D25-6). Each generated layout fields at least 0 / 1 / 2 / 3 **lockdown pieces** at party sizes 1–4 (−1 on Easy, +1 on Hard): bodies, clones included, whose kit carries stun, taunt, silence (`prevent` cast), forced discard, `sap`, hamstring, drain-ultimate or strip-reach. A `waves` objective adds its waves' bodies. There is no ceiling; the owner wants more control pressure.
+
+**One of each scarce kind per pool** (§D25-6): at most one design that is a resource attacker (discard, silence or sap), a poisoner, an infect creature, a counter piece, or a gauge-punisher (`on_ultimate_cast`, or a `hero_gauge_pct` gate). Clones of that design are fine. A boss's `on_ultimate_cast` counter is governed by T-70 instead.
 
 *At build, every game:*
 1. The layout is picked.
@@ -1589,10 +1595,13 @@ The prompt also asks for a boss on Hard, a channeler on Standard and up, and lea
 | ≥2 components per enemy; a self-only proactive pump needs cooldown ≥2 (unless reactive, once per encounter, or a gather); a gather needs its detonation | generation |
 | a taunt must deal damage; corpse fuel uses `consume_corpse`; 1–2 types and 1–2 classes | generation |
 | no two enemies share a kit; 3 or more hero-aimed rules may not all use one `target_rule`; at least min(4, pool size) archetypes; a pool of 3+ spans 2 rows and both attack modes | generation |
-| boss dials (`enrage_round`, `neglect`); objective ranges (§12.2) | generation |
-| pool of 5–8 designs; Level budgets; lockdown budget; one-per-encounter pieces; forced-mover cap | taught, not checked |
+| boss dials (`enrage_round` 3–5, `neglect` 1–2; missing or out-of-range values are set or clamped in code); objective ranges (§12.2) | generation |
+| no more than 2 enemies share one reactive signature (trigger and verb shape) | generation |
+| priced Level (§9.1); lockdown floor; one of each scarce kind; a channeler at Standard and Hard | generation (§D25-5, §D25-6) |
+| every `target_rule` and `trigger` is in the closed vocabulary (grudges, `on_self_below_N` / `on_ally_below_N` and combatant ids are the open forms) | every save (M4.11) |
+| pool of 5–8 designs; Level budgets; forced-mover cap | taught, not checked |
 
-*Sources: §F-6, §E6-6, §X-5, §D10-4.1, §D12-0, §D14, §D18-2, §D21-1, §D23-6, T-37, T-38, T-40, T-41, T-64 · scenario `scale_encounter`; content `_validate_encounter`, `_bump_enemy_power`, `build_state_from_loadouts`; llm `_scale_hp`, `_check_layouts`, `_design_problems`, `_sameness_problems`.*
+*Sources: §F-6, §E6-6, §X-5, §D10-4.1, §D12-0, §D14, §D18-2, §D21-1, §D23-6, §D25-5, §D25-6, T-37, T-38, T-40, T-41, T-64, T-93 · scenario `scale_encounter`, `_check_rule_vocabulary`; content `_validate_encounter`, `_bump_enemy_power`, `build_state_from_loadouts`; llm `_scale_hp`, `_layout_problems`, `_design_problems`, `_sameness_problems`, `_coerce_encounter`, `price_enemy`, `_lockdown_problems`, `_cap_problems`, `_channeler_problems`.*
 
 ### §12.2 Objectives
 
@@ -1630,6 +1639,8 @@ An adventure is three encounters, **phases** I, II and III, fought in sequence b
 
 **The ramp.** Each phase is budgeted for the level the party's earned points will have reached by the time it opens (a continuous level, plus gear), using the formula in §12.1. Difficulty therefore climbs by construction.
 
+**Written a phase at a time** (§D25-3). A generated adventure is an **outline** (the place, the faction, the boss and its Level, each phase's station, threat and beats, and which phase, if any, carries the one objective), then one call per phase, each checked against the outline and repaired alone. In a scenario the adventure is playable once Phase I is written; II and III are written while Phase I is played. If every seat confirms a boundary's level-up before the next phase exists, the party waits on that screen ("The road ahead is still being written…") and the next phase composes the moment it lands. A phase that fails after its repairs shows its error at the boundary with a Retry, which resumes at that phase. A written phase is never written again: a save made mid-writing loads the fuller copy of the same adventure.
+
 **Between phases:**
 1. the victory splash;
 2. the level-up screen, which every character must confirm (points are paid per phase won, §13.2);
@@ -1646,7 +1657,7 @@ An adventure is three encounters, **phases** I, II and III, fought in sequence b
 
 **Victory and defeat.** Winning Phase III wins the adventure. A lone adventure ends on defeat and offers a restart from Phase I with the same party and a fresh state. Inside a scenario, defeat returns the party to town to retry the quest against a freshly generated adventure, or ends a Hardcore run (§14).
 
-*Sources: §D10-1, §D10-2, §D10-4, §D10-6.3, §D17-2.3, §D17-6.4, T-58, T-59, T-61, T-62 · content `save_adventure`, `_validate_phase`, `_validate_adventure`; adventure `AdventureRun._open_gate`, `advance`; llm `phase_budget_levels`, `_narration_problems`.*
+*Sources: §D10-1, §D10-2, §D10-4, §D10-6.3, §D17-2.3, §D17-6.4, §D25-3, T-58, T-59, T-61, T-62 · content `save_adventure`, `save_adventure_phase`, `finalize_adventure`, `_validate_phase`, `_validate_adventure`; adventure `AdventureRun._open_gate`, `advance`, `add_phase`; session `phase_landed`; jobs `AdventureJobRunner`; llm `generate_adventure`, `phase_budget_levels`, `_narration_problems`.*
 
 ---
 
@@ -1768,7 +1779,7 @@ A belt consumable is an **always-in-hand card**: at every encounter (every phase
 
 ### §13.6 Shops, selling & trading; rest
 
-**Stock.** Rolled in code when the act materializes (interlude included): weaponsmith 4 weapons, artificer 4 accessories, apothecary 6 consumables, at **stock tier = act tier − 1** (minimum 1). Each entry is a catalogue template with `level_min` ≤ stock tier and rarity ≤ uncommon; weapons and accessories take 0–1 affix (weighted 1 : 2) from the affix table, capped at uncommon, never a banned keyword; consumables sell as catalogued; no two entries share a name.
+**Stock.** Rolled in code when the act materializes (interlude included), before the act writer runs, so the writer may give any item a name and a one-line flavour (`stock_names`; names only — stats, price and rarity stay the roll's; §D25-9): weaponsmith 4 weapons, artificer 4 accessories, apothecary 6 consumables, at **stock tier = act tier − 1** (minimum 1). Each entry is a catalogue template with `level_min` ≤ stock tier and rarity ≤ uncommon; weapons and accessories take 0–1 affix (weighted 1 : 2) from the affix table, capped at uncommon, never a banned keyword; consumables sell as catalogued; no two entries share a name.
 
 **Fixed per act.** Stock is frozen onto the act (it survives reloads); a bought item leaves the shelf, and nothing restocks until the next act or a Normal-mode return re-materializes it. Sold items never join the stock.
 
@@ -1780,7 +1791,7 @@ A belt consumable is an **always-in-hand card**: at every encounter (every phase
 
 **Rest.** The inn's rest is a dialogue choice carrying `rest` (the innkeeper's "Take a room."). It is guaranteed: when no tree at the inn offers one this act, the inn's first resident gets "Take a room." on their opening node. Taking it is a party-wide confirmation, a **free full HP restore** for every hero, then a manual `inn` save. Mana, hand, gauge and uses reset at adventure start anyway; without rest, heroes keep the HP they returned with (floored at 25 % of max, T-59). In the interlude, rest opens the rest screen instead; the heal comes with the chosen hook (§14.6).
 
-*Sources: §D17-4.3, §D17-5.3, §D17-5.5, §D24-5.3 · items `roll_stock`, `buy_price`, `sell_price`; scenario `_take_materialization`, `buy`, `sell`, `give`, `rest`; session `economy_verb`, `_fire_choice`.*
+*Sources: §D17-4.3, §D17-5.3, §D17-5.5, §D24-5.3, §D25-9 · items `roll_stock`, `buy_price`, `sell_price`; scenario `roll_stock`, `_take_materialization`, `buy`, `sell`, `give`, `rest`; scenario_content `name_stock`; session `economy_verb`, `_fire_choice`.*
 
 ---
 
@@ -1876,7 +1887,7 @@ tree = { root, nodes: { id: { speaker: npc | party | narration, text,
                              choices: [ { label, next?, requires: [flag…], effects: [hook…] } ] } } }
 ```
 
-- A choice without `next` ends the conversation. Writers are asked for 2–4 nodes deep and 2–3 choices; the validator allows up to 5 choices and depth 10, and rejects loops and dangling `next`s.
+- A choice without `next` ends the conversation. Writers are asked for 2–4 nodes deep and 2–3 choices; the validator allows up to 5 choices and depth 8 (the act prompt's "never more than 8", M4.11), and rejects loops and dangling `next`s.
 - `narration` nodes are unvoiced stage directions. A tree of 4+ nodes needs at least one (the questgiver's, two).
 - The **initiating player chooses**; everyone sees the same transcript. Party lines are attributed to the initiator's own hero (first claimed seat in roster order); the initiator may re-attribute to any hero (cosmetic).
 
@@ -1917,7 +1928,7 @@ tree = { root, nodes: { id: { speaker: npc | party | narration, text,
 arc = { title, villain, stakes,
         acts: [ { title, hook, questgiver_npc, questgiver_location, handoff?,
                   adventure_theme, tone_notes } × 3 ],
-        cast?:   [ { id, name, role, persona, portrait_desc, location, acts?, secret?, topics? } ],  # 0–4
+        cast?:   [ { id, name, role, persona, portrait_desc, location, acts?, secret?, topics? } ],  # 0–3
         places?: [ { id, name, function, description, interior_scene, exterior_scene, acts? } ],  # 0–2
         loot_lexicon }
 ```
@@ -1925,11 +1936,13 @@ arc = { title, villain, stakes,
 Each act's questgiver is a town resident or a cast member present that act (the location follows the NPC). **Cast** are people the scenario brings to town, optionally for certain acts only; a `secret` is one line only writers see (a betrayal set up in Act I, paid off in Act III). **Places** are flavour-only locations the scenario adds. Both are painted on the art queue and merged by `town_for_act` (§14.3).
 
 **Act materialization — at arrival.** Under the entry splash one writer call produces the act's town portion; code rolls the stock (§13.6) and forges the spoils (§13.5); the act is frozen into the content store with an `act_start` save. It carries 2–4 **quest options** `{id, title, text, adventure_theme}`, the arrival paragraph, dialogue trees, flavour lines, act topics, optional per-NPC re-ask / accepted / declined / committed lines, and an optional `town_state_delta` (≤ 2 locations). Validation requires:
-- a distinct `adventure_theme` per option — different troubles, or branches landing in different places with different objectives, never one objective by two roads;
+- a distinct `adventure_theme` per option — different troubles, or branches landing in different places with different objectives, never one objective by two roads (two themes sharing 60 % of their content words are one ride, M4.11);
 - an accept choice for every option somewhere in town, carrying `grant_quest` (with its id) **and** `unlock_adventure`;
 - a `defer_quest` beside every offer;
 - a tree for the outline's questgiver, the narration floor and flag reachability (§14.4);
-- **nobody a closed door:** every resident of the composed town has a tree, a topic or a flavour line.
+- **nobody a closed door:** every resident of the composed town has a tree, a topic or a flavour line;
+- no line, topic or flavour for anyone who is not in the composed town (M4.11, C-08);
+- after a Normal-mode defeat, a `defeated_once`-gated branch in the questgiver's tree (M4.11, C-07).
 
 A failed materialization shows an error in town; reloading the save resumes it.
 
@@ -1938,7 +1951,7 @@ A failed materialization shows an error in town; reloading the save resumes it.
 - **Accept** (party-wide, irreversible) fixes the act's quest (id, title, text, theme), sets `quest_accepted`, logs the option taken and every option refused on the ledger and in each hero's chronicle, journals "We took on …", opens the gate, auto-saves (`quest_accept`) and starts the **adventure job**.
 - **One quest at a time:** while committed, every other accept in town becomes a refusal in the party's voice (with the NPC's reply), the sworn questgiver's re-offer becomes a reminder of the word given, and defers vanish. A party beaten back to town may choose again.
 
-**The adventure job** generates the adventure only for the accepted option — so every option is equally real — with a context block (arc, town, quest, the option's theme) at the party's effective level and per-phase budget levels (§10.2, §12). States `idle → pending → ready | failed`, persisted on the run. The validated adventure enters the content store at once; its art queues Phase I first and keeps painting after the ride out. On failure the quest stays accepted and the console offers *Generation failed — Retry*; a reload resumes an unfinished job. A pre-generated scenario's Act I adventure is ready at once if the party takes the option it was written for (`act1.quest_id`); any other option generates its own.
+**The adventure job** generates the adventure only for the accepted option — so every option is equally real — with a context block (arc, town, quest, the option's theme) at the party's effective level and per-phase budget levels (§10.2, §12). States `idle → pending → ready | failed`, persisted on the run. The adventure is written a phase at a time (§12.3, §D25-3): the job is `ready` once the outline and Phase I are written (`phases_ready`/`phases_total`, `writing`), and each phase enters the content store as it lands, its art queued at once. If a later phase fails, the job stays ready with a `phase_error` and a Retry that resumes at that phase. On an outright failure the quest stays accepted and the console offers *Generation failed — Retry*; a reload resumes an unfinished job (once a client connects), and a restart re-queues a ready adventure's unpainted art (M4.16). A pre-generated scenario's Act I adventure is ready at once if the party takes the option it was written for (`act1.quest_id`); any other option generates its own.
 
 **Start Adventure** — enabled when the gate is open and the adventure ready, from the town map with no conversation open, never in the interlude; a party-wide confirmation ("Ride out — ‹name›?"). Phase I composes from the run's hero copies (pools, levels, gear, carried HP); the day advances by 1; `adventure_start` is saved.
 

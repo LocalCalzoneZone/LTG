@@ -507,14 +507,7 @@ class ScenarioRun:
         # for the act, refreshed each act — unless the materialization already
         # carries it (a reload, a pre-generated Act I).
         if not self.act.get("stock"):
-            seed = random.randrange(2**31)
-            stock: Dict[str, List[Dict[str, Any]]] = {}
-            for loc in self.town.get("locations") or []:
-                rolled = items.roll_stock(loc.get("function", ""), self.act_tier(),
-                                          seed=seed + sum(ord(ch) for ch in loc["id"]))
-                if rolled:
-                    stock[loc["id"]] = [it.model_dump(mode="json", exclude_none=True) for it in rolled]
-            self.act["stock"] = stock
+            self.act["stock"] = self.roll_stock()
         # The act's SPOILS (§D17-4.5): forged here, on arrival — the same moment
         # the stock is rolled — and frozen onto the act, so the art queue has the
         # whole town visit and the whole ride out to paint them. What the boss
@@ -544,6 +537,18 @@ class ScenarioRun:
         if self.splash and self.splash.get("kind") == "town":
             self.splash["text"] = m.get("arrival", "")
 
+    def roll_stock(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Roll every shop's stock at the act's tier (§D17-5.5), in code. Rolled
+        BEFORE the act writer runs, so the writer can name it (§D25-9)."""
+        seed = random.randrange(2**31)
+        stock: Dict[str, List[Dict[str, Any]]] = {}
+        for loc in self.town.get("locations") or []:
+            rolled = items.roll_stock(loc.get("function", ""), self.act_tier(),
+                                      seed=seed + sum(ord(ch) for ch in loc["id"]))
+            if rolled:
+                stock[loc["id"]] = [it.model_dump(mode="json", exclude_none=True) for it in rolled]
+        return stock
+
     def materialize(self) -> Dict[str, Any]:
         """Generate this act's town portion (blocking; the app runs it in a
         thread under the entry splash). Returns the materialization."""
@@ -566,7 +571,7 @@ class ScenarioRun:
                 if self.scenario_number > 0 and self.act_index == 0 else None)
         args = (self.town, self.arc, self.act_index, self.party_state(), prev)
         kw = dict(ledger=self.ledger_for_writers(), world_ctx=self.world_context(),
-                  hook=hook, town_id=self.town_id)
+                  hook=hook, town_id=self.town_id, stock=self.roll_stock())
         return copy.deepcopy(args), copy.deepcopy(kw)
 
     def materialize_failed(self, error: str, retry: str = "act") -> None:
@@ -2011,12 +2016,20 @@ def pregenerate_scenario(town_id: str, difficulty: str = "standard",
     town = sc.town_detail(town_id)
     if town is None:
         raise ValueError(f"unknown town: {town_id}")
-    arc = llm.generate_arc(town, _generic_party(), difficulty, note=note)
+    # M4.14: the library arc reads what a Town + New arc reads, as far as it
+    # can before a party exists — this town and its neighbours in the
+    # worldbook, and (inside generate_arc) the avoid-list.
+    try:
+        from . import world
+        world_ctx = world.context_for(town_id)
+    except Exception:  # noqa: BLE001 — a town with no page is written without one
+        world_ctx = None
+    arc = llm.generate_arc(town, _generic_party(), difficulty, note=note, world_ctx=world_ctx)
     # Draw the scenario's loot verbiage HERE — when the scenario is made — so
     # the spoils of every act are already spoken in its voice (§D17-4.5).
     arc["loot_lexicon"] = loot.build_lexicon(town, arc)
     party_state = {"members": [{"name": "the party", "level": 1}], "flags": {}, "gold": {}}
-    act1 = llm.generate_act(town, arc, 0, party_state)
+    act1 = llm.generate_act(town, arc, 0, party_state, world_ctx=world_ctx, town_id=town_id)
     return sc.save_scenario({
         "town_id": town_id, "arc": arc, "difficulty": difficulty,
         "act1": {"adventure_id": "", "quest_id": "", "materialization": act1},

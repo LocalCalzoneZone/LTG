@@ -1,6 +1,6 @@
 # LTG roadmap — milestones & objectives
 
-**As of 2026-09-25** (M1 and M2 merged; M3's tooling done on branch `Milestone-M3`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
+**As of 2026-09-25** (M1–M3 merged; M4 built on branch `Milestone-M4`; statuses of other milestones as checked at `a2cce25`, 2026-09-24). This page lists everything designed but not built, built but never tested, or verified as broken. Its sources are:
 
 - the design history (v1 GDD, Updates 01–24);
 - the 2026-09-02 review briefs;
@@ -43,7 +43,7 @@ Proposals that come from no design document are marked *Proposed*. They need a d
 | **M1** | Make it correct | **Done 2026-09-25**: every row fixed or ruled, each with a test. | 37 |
 | **M2** | Legibility | **Done 2026-09-25** except M2.22's clip coverage (owner). | 22 |
 | **M3** | The playtest loop | **Tooling done 2026-09-25** (M3.1–M3.4, M3.12); M3.8 and M3.11 ruled and done. The owed playtests and M3.5 remain. | 12 |
-| **M4** | Generation pipeline | Faster, cheaper, sturdier, less samey generation, with gates that match the prompts | 18 |
+| **M4** | Generation pipeline | **Done 2026-09-25** (Design Update 25, rulings confirmed); real-model judging owed. | 18 |
 | **M5** | The world remembers | NPCs and towns react at runtime, not only in the next act's writing | 11 |
 | **M6** | Economy & progression | Gold, gear and the deck get a job | 10 |
 | **M7** | Voice & narration | Narrator, barks, party lines, and the sound of the world | 9 |
@@ -188,7 +188,7 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 | M3.2 | **Autopilot fights.** Built: the ribbon's Autopilot toggle (playtest profile) lets `GreedyPolicy` play every party decision, a chunk at a time, off the lock; level-ups, spoils and towns stay with the players. A fight takes seconds. Its results are not balance evidence. | Done | M | advisory |
 | M3.3 | **Cheap-model dev profile.** Built: Options → LLM → Playtest (or `LTG_PLAYTEST=1`) routes every text task, the Deckbuilder's flavour included, to `playtest_model` (Luna Pro by default) and idles the automatic art queues. | Done | S | advisory |
 | M3.4 | **Record and replay LLM responses.** Built: `ltg_game_server/tape.py` inside `llm._chat`. Record, replay (a miss goes live and is recorded) and replay-only (never calls out, needs no key). A miss on the exact prompt hash replays the closest same-kind prompt. Stored in `loadouts/llm_tape/`. | Done | M | advisory |
-| M3.5 | **Regenerate the scenario library** (`content/scenarios/` is empty). Do M4.5 (the avoid-list) first. Decide whether library scenarios bring back a pre-baked Act I adventure, which gives an instant start and lets a keyless install play Act I. | Not built / Decide | S–M | C-05, C-04, B-52 |
+| M3.5 | **Regenerate the scenario library** (`content/scenarios/` is empty). M4.5 (the avoid-list) is in place (2026-09-25). Decide whether library scenarios bring back a pre-baked Act I adventure, which gives an instant start and lets a keyless install play Act I. | Not built / Decide | S–M | C-05, C-04, B-52 |
 | M3.6 | **Play the campaign loop.** Now cheap: jump to `interlude` (or `between`), rest at the inn, and choose each hook kind once (stay / neighbour / new). After the jump, play is live: a neighbour or new hook generates town, arc and Act I (use the playtest profile and the tape for flow; a premium model to judge). Kholdrun is deleted, so start from Karzum. | Untested | M | C-42; §D24 Part E |
 | M3.7 | **Regenerate Karzum Act I with a briefed party** and judge the `# THE PARTY` block. The baseline is in git at `1ae6620^`. Judge on the premium model, not the playtest one. | Untested | S | C-41 |
 | M3.8 | **Review the four backfilled worldbook entries.** Reviewed 2026-09-25: each notable matches its town file, and Karzum in `frostcap_peaks` agrees with the town's own text (the doc example was only stale prose). The book was a star through Azure, so a neighbour hook from Karzum, Millhaven or Nalindor could only name Azure. **Ruled 2026-09-25: add links.** Millhaven now joins Karzum (twelve days by the drove road) and Nalindor (nine days over the hill-marches). Karzum–Nalindor was dropped: the regions put the Frostcaps in the north and the Elderwood in the south. Still open: Karzum–Azure reads "six weeks", while a hook's `days` usually runs 4–14. | Done | S | C-43 |
@@ -199,35 +199,37 @@ Suggested order: M0 → M1 → (M2 ∥ M3 ∥ M4) → M5 → M6 → M7, with M8�
 
 ## M4 · Generation pipeline
 
-*Why:* an adventure is one call: a ≈23k-token system prompt, up to 64k output tokens, and a 15-minute timeout. A single bad enemy re-emits all three phases, there is no caching and no transport retry, and quest-accept latency is the wait players feel. Gates are also looser than the prompts in several places.
+*Why:* an adventure was one call: a ≈23k-token system prompt, up to 64k output tokens, and a 15-minute timeout. A single bad enemy re-emitted all three phases, there was no caching and no transport retry, and quest-accept latency is the wait players feel. Gates were also looser than the prompts in several places.
+
+**Built 2026-09-25** on branch `Milestone-M4`, designed in [Design Update 25](design/ltg_design_update_25_generation_pipeline.md) and pinned by `tests/test_design_update_25_pipeline.py` and `tests/test_design_update_25_gates.py`. Its four defaults were confirmed by the owner on 2026-09-25. **Owed:** judge real output on a premium model (§1 of [generation.md](generation.md): count cost, latency and repair rate). The new gates are stricter, so the first real runs show whether the prompt now teaches enough for them to pass on the first try.
 
 **Latency, cost, resilience**
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M4.1 | **Prompt caching** (`cache_control`) on the ≈21k-token encounter system prompt and the scenario prompts. | Proposed | S | advisory |
-| M4.2 | **Phased adventures.** An outline call (villain, boss, phase themes, narration beats), then Phase I, then Phases II–III generated in the background while Phase I is played. The quest-accept wait drops to the outline plus one phase. | Proposed | M–L | advisory; C-04 |
-| M4.3 | **Per-phase repair.** Validate every phase before re-prompting, report all problems, and re-generate only what failed. | Proposed | M | generation §7 |
-| M4.4 | **Transport resilience.** Bounded retry with backoff on 429/5xx/timeouts; treat `TypeError` / `AttributeError` from the gates as repair turns; coerce deterministic faults in code. Give encounters a real timeout: 120 s against a 24k ceiling, with only 2 attempts. | Not built | M | R3.2.8; generation notes |
+| M4.1 | **Prompt caching.** `_wire_messages` marks the system prompt and the newest user turn `cache_control: ephemeral` for Anthropic and Google slugs (OpenAI caches by itself); the tape still hashes the plain messages. The three phase calls and their repairs share one cached prefix. | Done | S | advisory; §D25-2 |
+| M4.2 | **Phased adventures.** An outline call (place, faction, boss and its Level, each phase's station, threat, signature and beats, the objective's phase), then one call per phase, each saved as it lands (`content.save_adventure_phase`, a partial wrapper hidden from pickers) and finalized after Phase III. In a run the job is ready at Phase I; II–III are written while Phase I is played, and a party that confirms a boundary early waits on the level-up screen until the phase lands (`Session.phase_landed`). A later failure shows at the boundary with a Retry that resumes; a save made mid-writing loads the fuller copy. **Ruled 2026-09-25:** Start Adventure opens at Phase I. | Done | M–L | advisory; C-04; §D25-3 |
+| M4.3 | **Per-phase repair.** Each phase (and the outline) has its own repair loop; a failure re-prompts that phase only, and the encounter/phase gates report every problem, one per line. | Done | M | generation §7; §D25-4 |
+| M4.4 | **Transport resilience.** `_live_chat` retries connection errors, 429 and 5xx (and a provider error inside a 200) up to 3 tries with backoff and `Retry-After` (T-89), a timeout once; encounters get a 420 s timeout (T-90). Shape faults (`TypeError`, `AttributeError`, `KeyError`, `IndexError`) are repair turns in every writer (`_repair_loop`). `_coerce_encounter` fixes one-right-answer faults in code: numeric strings, `supertypes`, stray tags, ranged-in-Front, boss dials, underpriced Levels. | Done | M | R3.2.8; generation notes; §D25-1 |
 
 **Quality and variety**
 
 | ID | Objective | Status | Size | Sources |
 |---|---|---|---|---|
-| M4.5 | **Avoid-list** of existing town and NPC names and villains for the arc and town writers. Cross-model convergence (Hedda, Pip, Rook, the ledger-necromancer) doesn't regenerate away. | Not built | S–M | C-11 |
-| M4.6 | **Party tactical facts** to the enemy designer and act writer: keyword, attack mode, row, Skill/Ultimate, types/classes, gear, deeds. Today it sends name, level, colours and concept only. | Partial | S | R4.2.1, C-57 |
-| M4.7 | **Teach grudges** (`hero_class:` / `hero_type:`): the engine has them, the prompt never mentions them. | Partial | S | C-25; §D23-6 |
-| M4.8 | **Enemy pricing gate.** Compute each generated enemy's cost from the §F tables and reject a self-reported Level that doesn't match. Today the model's Level feeds budgets, level-gated removal and gauge credit unchecked. | Not built | M | A-26; §F-6 |
-| M4.9 | **Lockdown budget in play.** Adventure requests carry no lockdown lines, and nothing counts pieces. Add both, and reconcile with the prompt's "one resource attack" caps. | Bug | S | generation notes |
-| M4.10 | **Gate the prompt-only rules**: a channeler at standard and above (§E6-5), and the one-per-encounter caps (resource attack, poisoner, infect, counter, gauge-punisher). | Not built | S | A-39 |
-| M4.11 | **Validator blind spots:**<br>• the `defeated_once` branch (C-07)<br>• lines for absent NPCs dropped silently (C-08)<br>• duplicate JSON keys (C-09)<br>• identical reactions across different kits (C-10)<br>• quest themes compared as exact strings<br>• gates looser than their prompts (`enrage_round` 2–6 vs 3–5, depth 10 vs 8, cast 4 vs 3)<br>• enemy `target_rule` and `trigger` strings not validated at load (a typo silently never fires) | Bug | S each | C-07…C-10; generation and arch notes |
-| M4.18 | **The enemy prompt's own examples are wrong.**<br>• The "bodyguard" `redirect` turns the blow back on the hero (it needs `new_target: self`), and on `on_ally_hit` it never fires (post-resolution, empty stack).<br>• The `conditional` example uses component-condition vocabulary that the schema rejects. | Bug | S | GDD v2 §5–§11 notes |
-| M4.12 | **Standalone encounter generation learns objectives.** | Not built | S | B-01; §D12-7 |
-| M4.13 | **Teach the rest of the vocabulary:** `relentless` (priced), composite moving actions (charge then strike; hit-and-fade), and enemy countdown rites (`channel_drop`, `after_turns`). | Partial | S each | B-24, B-25, C-16 |
-| M4.14 | **Library scenarios**, once regenerated (M3.5), take the arc through the same reader matrix as Town + New. | Not built | S | generation notes |
-| M4.15 | **An LLM naming pass for merchant stock** (shops are voiceless). | Not built | S | B-51; §D17-6.2 |
-| M4.16 | **Re-queue an adventure's art after a server restart** (nothing does today). | Not built | S | generation notes |
-| M4.17 | **Generated gauntlets** for the tester (freshness check, enemy-schema sample). | Untested | S | B-19 |
+| M4.5 | **Avoid-list.** `# ALREADY TAKEN` (tracked and worldbook towns, town NPCs, run villains, and the bake-off attractors: Hedda, Pip, Rook, Tobiah Rell, the Seven Lamps, Quill, the ledger necromancer, the iron Bosun) goes to the town, arc and interlude writers, capped at 60 names (T-94). A new town may not take an existing name, nor a `new` hook's seed; an arc's villain may not wear a taken or attractor name. | Done | S–M | C-11; §D25-8 |
+| M4.6 | **Party tactical facts** to the enemy designer: attack mode and row, keyword, types and classes, Skill and Ultimate (name and text), carried gear, the 3 latest chronicle deeds (`_roster_text`). Lore, wants, voice and ties stay out. | Done | S | R4.2.1, C-57; §D25-7 |
+| M4.7 | **Grudges taught.** `hero_class:<class>` / `hero_type:<type>` in the target-rule vocabulary and the JSON contract, with the rule that a grudge names a tag the roster shows. | Done | S | C-25; §D23-6 |
+| M4.8 | **Enemy pricing.** `price_enemy` prices every generated enemy from the §F tables (body, keywords, `rises`, components after modifiers; a boss against 2.5 × B(L)) before any scaling; an underpriced Level is raised in code, an overpriced one is legal. The prompt's own worked examples were re-priced. **Ruled 2026-09-25:** raise, don't reject. | Done | M | A-26; §F-6; §D25-5 |
+| M4.9 | **Lockdown floor in play.** Adventure requests print the floor per phase and size; `_lockdown_problems` counts pieces per layout (clones and waves included) against `_lockdown_budget` (T-93). The one-resource-attack cap counts designs, so clones of it fill the budget. **Ruled 2026-09-25:** the budget is a floor. | Done | S | generation notes; §D25-6 |
+| M4.10 | **Prompt-only rules gated:** a channeler at standard and hard (§E6-5); one design per pool of each of resource attacker, poisoner, infect creature, counter piece, gauge-punisher (a boss's T-70 ultimate counter excepted). | Done | S | A-39; §D25-6 |
+| M4.11 | **Validator blind spots closed:** the `defeated_once` branch after a defeat (C-07); lines for absent NPCs rejected by name (C-08); duplicate JSON keys (C-09); ≤ 2 enemies per shared reaction (C-10); quest themes compared by content overlap; gate ranges equal to the prompts (`enrage_round` 3–5, depth 8, cast 3); `target_rule` and `trigger` checked at load (`scenario._check_rule_vocabulary`). | Done | S each | C-07…C-10; generation and arch notes |
+| M4.18 | **The enemy prompt's own examples fixed:** the bodyguard `redirect` carries `new_target: self` on `on_attack` / `on_spell_cast` (never post-resolution); the `conditional` example uses the effect-condition vocabulary; "single target = L+1" reads L+2. | Done | S | GDD v2 §5–§11 notes |
+| M4.12 | **Standalone encounters learn objectives** (`ENCOUNTER_EXTENSION`, sharing `OBJECTIVE_KINDS` with the phase prompt). | Done | S | B-01; §D12-7 |
+| M4.13 | **The rest of the vocabulary taught:** `relentless` priced at min Level 3 / cost 3 (T-91; ruled 2026-09-25), composite self-moving intents (charge; hit-and-fade — verified in the engine), and countdown rites (`after_turns` + `channel_drop`, verified). | Done | S each | B-24, B-25, C-16 |
+| M4.14 | **Library scenarios read the world:** `pregenerate_scenario` passes the worldbook context to the arc and Act I writers, and the arc gets the avoid-list. The party is still unknown at pregeneration (M3.5 decides the rest). | Done | S | generation notes |
+| M4.15 | **Merchant stock named by the act writer:** stock is rolled before the act call, listed in `# THE MERCHANTS' STOCK`, and `stock_names` renames items (names and flavour only; `name_stock`). No extra call. | Done | S | B-51; §D17-6.2; §D25-9 |
+| M4.16 | **Adventure art re-queues after a restart:** on every client connect a ready adventure's unpainted images queue (painted ones are adopted). | Done | S | generation notes |
+| M4.17 | **Generated gauntlets:** `generate_gauntlet` is pinned end to end by a mocked test (quarantine, manifest, hash). A paid run (freshness, the enemy-schema sample) is the owner's. | Untested (paid run) | S | B-19 |
 
 ## M5 · The world remembers
 
@@ -391,6 +393,7 @@ M3.5, M5.11, M6.8, M6.9. Also:
 - M0 Foundations (2026-09-25): the test sandbox, CI, pinned dependencies, doc and comment debt; M0.3 awaits its first green run and branch protection.
 - **M1 Make it correct (2026-09-25):** all 37 rows fixed or ruled (see the M1 table).
 - **M2 Legibility (2026-09-25):** 21 of 22 rows done; M2.22 waits on clip generation.
+- **M4 Generation pipeline (2026-09-25):** Design Update 25 — transport retry, prompt caching, phased adventures playable at Phase I, per-phase repair, enemy pricing, the lockdown floor and caps, party facts and grudges, the avoid-list, stock naming, the validator blind spots; M4.17's paid run owed.
 - **M3 tooling (2026-09-25):** jump-to states, autopilot fights, the playtest profile and the LLM tape (M3.1–M3.4); A-20 pinned (M3.12); worldbook links (M3.8); default boss dials, T-88, and the library purged for regeneration (M3.11).
 - Update 23 in full.
 - Update 24 in full.

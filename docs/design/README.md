@@ -19,7 +19,7 @@ The files keep their original names and section numbers, because code comments c
 | `§P-` | [Update 05](ltg_design_update_05_character_build.md) | character points-buy |
 | `§E6-` | [Update 06](ltg_design_update_06_enemy_intelligence.md) | enemy intelligence, counterspells, wards, encounter scaling |
 | `§X-` | [Update 07](ltg_design_update_07_errata_and_rebalance.md) | errata and rebalance |
-| `§D8-` … `§D24-` | Updates 08–24 (table below) | — |
+| `§D8-` … `§D25-` | Updates 08–25 (table below) | — |
 | `§L-` | [Update 15](ltg_design_update_15_live_movement.md) | live movement |
 | `§A-` | [Update 16](ltg_design_update_16_panel_animations.md) | panel animations |
 | `§G13-` / `§G14-` | *tests only* | greedy-policy change notes in `tests/test_greedy_1_3.py` |
@@ -55,6 +55,7 @@ The files keep their original names and section numbers, because code comments c
 | 22 | 2026-08-30 | [Counters and countdowns](ltg_design_update_22_counters_and_countdowns.md): readable charge, poison/regen as clocks, self-terminating enchantments, trigger countdowns | Built |
 | 23 | 2026-09-05 / 06 | [Turn groups, reach, and fight shape](ltg_design_update_23_turn_groups_and_reach.md): the turn as groups, freed verbs, no ranged shots from Front, interposition for combat abilities, boss and objective fixes, less-solved AI, rules corrections, Pass-All, the action bar | Built 2026-09-06 (8a40137), except that a leftover save check vetoes Phase III objectives (M1.4); T-74 recalibration skipped on purpose |
 | 24 | 2026-09-06 | [Campaigns, the interlude, and the worldbook](ltg_design_update_24_campaigns_and_the_worldbook.md), plus character layers; Everquest retired | Built 2026-09-06 (3cee7bc); three bugs on the continue path (M1.5–M1.7); the loop has never been playtested (M3.6) |
+| 25 | 2026-09-25 | [The generation pipeline](ltg_design_update_25_generation_pipeline.md): transport retry, prompt caching, phased adventures (outline + one call per phase, playable at Phase I), per-phase repair, enemy pricing, the lockdown floor and caps, party tactical facts, the avoid-list, stock naming, validator tightening | Built 2026-09-25 on `Milestone-M4` (roadmap M4); its four defaults confirmed by the owner 2026-09-25; not yet folded into GDD v2 beyond the rules it changed |
 
 ## Rulings recorded only in code
 

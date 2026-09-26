@@ -77,21 +77,32 @@ def _v_heal(n: int) -> Dict[str, Any]:
 
 
 # Eight distinct roles: varied archetypes, triggers, target_rules, rows, reaches.
+# The first two are ANCHORS (§D25-6): both are lockdown pieces, the second also
+# channels, and their kits collide with nothing a test brings — so they always
+# sit right after a test's own designs, and every pool the factory builds meets
+# the lockdown floor and the channeler rule at standard.
 _FILLERS: List[Dict[str, Any]] = [
     {"id": "gc_brute", "row": "front", "attack_mode": "melee", "comps": [
-        {"id": "smash", "archetype": "Burst", "timing": "proactive", "priority": 30,
-         "cooldown": 2, "target_rule": "valuation", "telegraph": "Smash — deal 4",
-         "verbs": [_v_hit(4)]},
+        {"id": "smash", "archetype": "Debilitate", "timing": "proactive", "priority": 30,
+         "cooldown": 2, "target_rule": "valuation",
+         "telegraph": "Smash — deal 4 and taunt",
+         "verbs": [_v_hit(4), {"kind": "taunt",
+                               "target": {"mode": "chosen", "side": "ally", "targeted": True}}]},
         {"id": "spite", "archetype": "Punish", "timing": "reactive", "trigger": "on_hit",
          "cooldown": 2, "priority": 25, "target_rule": "trigger_source",
          "telegraph": "Spite — deal 2", "verbs": [_v_hit(2)]}]},
-    {"id": "gc_medic", "row": "rear", "attack_mode": "ranged", "comps": [
-        {"id": "mend", "archetype": "Fortify", "timing": "proactive", "priority": 20,
-         "cooldown": 2, "target_rule": "lowest_hp_ally",
-         "telegraph": "Mend — heal an ally 4", "verbs": [_v_heal(4)]},
-        {"id": "sting", "archetype": "Burst", "timing": "proactive", "priority": 40,
-         "cooldown": 2, "target_rule": "channeling_player",
-         "telegraph": "Sting — deal 2", "verbs": [_v_hit(2)]}]},
+    {"id": "gc_chanter", "row": "rear", "attack_mode": "ranged", "comps": [
+        {"id": "anthem", "archetype": "Fortify", "timing": "proactive", "priority": 35,
+         "cooldown": 3, "target_rule": "self", "channel": True,
+         "telegraph": "War-Anthem — the warband +1/+0 while held",
+         "verbs": [{"kind": "pump", "power": 1, "toughness": 0,
+                    "duration": "while_channeled",
+                    "target": {"mode": "all", "side": "enemy"}}]},
+        {"id": "hush", "archetype": "Debilitate", "timing": "proactive", "priority": 28,
+         "cooldown": 3, "target_rule": "valuation",
+         "telegraph": "Hush — deal 2 and taunt",
+         "verbs": [_v_hit(2), {"kind": "taunt",
+                               "target": {"mode": "chosen", "side": "ally", "targeted": True}}]}]},
     {"id": "gc_hexer", "row": "mid", "attack_mode": "ranged", "comps": [
         {"id": "hush", "archetype": "Debilitate", "timing": "proactive", "priority": 28,
          "cooldown": 3, "target_rule": "highest_threat",
@@ -107,9 +118,18 @@ _FILLERS: List[Dict[str, Any]] = [
          "telegraph": "Coil — +1/+1, permanently",
          "verbs": [{"kind": "counters", "power": 1, "toughness": 1,
                     "target": {"mode": "self"}}]},
-        {"id": "lash", "archetype": "Burst", "timing": "proactive", "priority": 30,
-         "cooldown": 2, "target_rule": "highest_threat", "telegraph": "Lash — deal 3",
-         "verbs": [_v_hit(3)]}]},
+        {"id": "lash", "archetype": "Debilitate", "timing": "proactive", "priority": 30,
+         "cooldown": 3, "target_rule": "highest_threat",
+         "telegraph": "Lash — deal 3 and stun",
+         "verbs": [_v_hit(3), {"kind": "stun",
+                               "target": {"mode": "chosen", "side": "ally", "targeted": True}}]}]},
+    {"id": "gc_medic", "row": "rear", "attack_mode": "ranged", "comps": [
+        {"id": "mend", "archetype": "Fortify", "timing": "proactive", "priority": 20,
+         "cooldown": 2, "target_rule": "lowest_hp_ally",
+         "telegraph": "Mend — heal an ally 4", "verbs": [_v_heal(4)]},
+        {"id": "sting", "archetype": "Burst", "timing": "proactive", "priority": 40,
+         "cooldown": 2, "target_rule": "channeling_player",
+         "telegraph": "Sting — deal 2", "verbs": [_v_hit(2)]}]},
     {"id": "gc_leech", "row": "rear", "attack_mode": "ranged", "comps": [
         {"id": "drain", "archetype": "Drain", "timing": "proactive", "priority": 30,
          "cooldown": 2, "target_rule": "valuation",
@@ -176,12 +196,16 @@ def gate_clean_pool(extra_enemies: Optional[List[Dict[str, Any]]] = None,
     fillers = [e for e in fillers if kit(e) not in have_kits]
     pool = (extras + fillers)[:10]
     assert len(pool) >= 8, "extras collided with too many fillers"
+    assert len(extras) <= 4, "the anchors must stay inside the size-3 layout"
     ids = [e["id"] for e in pool]
+    anchors = ["gc_brute", "gc_chanter"]
     return {"name": name,
             "scene": "A proving ground of packed sand under storm-lantern light.",
             "enemies": pool,
             "layouts": {"1": ids[:2], "2": ids[:4], "3": ids[:6],
-                        "4": ids[:8] + ids[:2]},   # 10 bodies, 8 distinct, ≤2 clones
+                        # 10 bodies, 8 distinct, ≤2 clones — the clones are the
+                        # anchors, so size 4 carries 4 lockdown pieces
+                        "4": ids[:8] + anchors},
             "tokens": {}}
 
 

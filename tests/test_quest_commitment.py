@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from ltg_game_server import scenario_content as sc
 from ltg_game_server.scenario import (
     DEFAULT_ACCEPT_REPLY, DEFAULT_COMMITTED_LABEL, DEFAULT_COMMITTED_REPLY,
@@ -150,7 +152,13 @@ def test_a_beaten_party_may_choose_again():
 def test_committed_default_reply_and_the_maps_validate():
     m = materialization_raw()
     m["dialogues"]["corwen"] = _second_giver_tree()
+    # Roadmap M4.11 (C-08): a line for someone not in town is a repair turn,
+    # no longer a silent drop.
     m["declined"] = {"nobody_here": "dropped", "corwen": "  Suit yourselves.  "}
+    with pytest.raises(ValueError, match="nobody_here"):
+        sc.validate_materialization(
+            m, sc.validate_town(town_raw()), sc.validate_arc(arc_raw(), sc.validate_town(town_raw()))["acts"][0])
+    del m["declined"]["nobody_here"]
     out = sc.validate_materialization(
         m, sc.validate_town(town_raw()), sc.validate_arc(arc_raw(), sc.validate_town(town_raw()))["acts"][0])
     assert out["declined"] == {"corwen": "Suit yourselves."}
