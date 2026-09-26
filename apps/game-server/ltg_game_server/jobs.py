@@ -19,7 +19,7 @@ reloads the SAME adventure — never a re-roll.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from . import art, content, llm
 
@@ -59,6 +59,9 @@ class AdventureJobRunner:
 
     def __init__(self, generator: Optional[Generator] = None) -> None:
         self.generator: Generator = generator or llm.generate_adventure
+        # Sessions with a job running in this process (a persisted flag would
+        # survive a crash and wedge the resume).
+        self._inflight: set = set()
 
     # -- the state machine (sync; the caller holds the session lock) -------- #
     @staticmethod
@@ -94,76 +97,135 @@ class AdventureJobRunner:
         self.persist(session)
 
     def generate_sync(self, session: Any,
-                      loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+                      loop: Optional[asyncio.AbstractEventLoop] = None,
+                      on_art: Optional[Callable[[str, List[str]], None]] = None) -> None:
         """Generate the act's adventure NOW (blocking): the body of the
         background task, also usable inline by tests. ``loop`` is the event
         loop when this runs on a worker thread: the session is read and
-        written only through `call_locked` (M1.8)."""
+        written only through `call_locked` (M1.8).
+
+        §D25-3: the adventure is written a phase at a time. The job turns
+        `ready` the moment Phase I lands (Start Adventure lights up) and keeps
+        writing II and III; each phase is frozen into the run as it lands and
+        handed to a running adventure (`Session.phase_landed`), so a party
+        waiting at a boundary rides on. A job that already holds an outline
+        and some phases RESUMES from the first missing one. ``on_art(aid,
+        encounter_ids)`` (called on the loop) queues a landed phase's art."""
         sc = session.scenario
+        key = id(session)
+        if key in self._inflight:
+            return
+        self._inflight.add(key)
 
         def inputs() -> Dict[str, Any]:
             import copy as _copy
+            job = sc.adventure_job
+            resume = None
+            if job.get("adventure_id") and job.get("outline") and sc.adventure_detail:
+                resume = {"adventure_id": job["adventure_id"], "outline": job["outline"]}
+            deeds = [[str(e.get("text") or "") for e in sc.chronicle_of(cid)]
+                     for cid in sc.character_ids] if hasattr(sc, "chronicle_of") else None
             return dict(difficulty=sc.options.get("difficulty", "standard"),
                         loadouts=_copy.deepcopy(sc.loadouts), levels=sc.levels(),
                         base_level=sc.effective_level(), context=sc.adventure_context(),
-                        phase_levels=sc.phase_budget_levels())
+                        phase_levels=sc.phase_budget_levels(), deeds=deeds, resume=resume)
 
-        try:
-            kw = call_locked(session, loop, inputs)
-            meta = self.generator(
-                [], kw.pop("difficulty"), note="", run_only=True, **kw)
-            detail = content.adventure_detail(meta["id"])
+        def freeze(aid: str) -> "tuple[Dict[str, Any], Optional[str]]":
+            detail = content.adventure_detail(aid)
             if detail is None:
                 raise ValueError("the generated adventure did not persist")
             ref = None
             if session.run_id and session.run_manager:
                 ref = session.run_manager.put_content(session.run_id, detail)
+            return detail, ref
 
-            def apply() -> None:
-                sc.attach_adventure(meta["id"], detail, ref)
-                self.set_state(sc, "ready", adventure_ref=ref, error=None,
-                               progress=[0, len(detail["phases"])])
-                self.persist(session)
-            call_locked(session, loop, apply)
+        def landed(aid: str, detail: Dict[str, Any], ref: Optional[str]) -> None:
+            """Apply one landed phase (on the loop, under the lock)."""
+            n = len(detail["phases"])
+            total = int(detail.get("phases_total") or n)
+            if sc.adventure_id not in (None, aid) and sc.adventure_detail is not None:
+                return  # the act moved on (a defeat re-roll); this job is stale
+            sc.attach_adventure(aid, detail, ref)
+            self.set_state(sc, "ready", adventure_ref=ref, error=None,
+                           progress=[n, total], phases_ready=n, phases_total=total,
+                           adventure_id=aid, outline=detail.get("outline"),
+                           writing=n < total, phase_error=None)
+            self.persist(session)
+            if getattr(session, "adventure", None) is not None and \
+                    session.adventure.adventure_id == aid:
+                session.phase_landed(detail)
+            if on_art is not None:
+                on_art(aid, [p["encounter_id"] for p in detail["phases"]])
+
+        try:
+            kw = call_locked(session, loop, inputs)
+
+            def on_phase(index: int, aid: str) -> None:
+                detail, ref = freeze(aid)
+                call_locked(session, loop, lambda: landed(aid, detail, ref))
+
+            meta = self.generator(
+                [], kw.pop("difficulty"), note="", run_only=True, on_phase=on_phase, **kw)
+            detail, ref = freeze(meta["id"])
+            call_locked(session, loop, lambda: landed(meta["id"], detail, ref))
         except Exception as exc:  # noqa: BLE001
             def fail() -> None:
-                self.set_state(sc, "failed", error=str(exc))
+                job = sc.adventure_job
+                if int(job.get("phases_ready") or 0) > 0 and sc.adventure_detail is not None:
+                    # Phase I (at least) is playable: the job stays ready and
+                    # the boundary shows the error with a Retry (§D25-3).
+                    self.set_state(sc, "ready", writing=False, phase_error=str(exc))
+                    if getattr(session, "adventure", None) is not None:
+                        session.adventure.phase_error = str(exc)
+                else:
+                    self.set_state(sc, "failed", error=str(exc), writing=False)
                 self.persist(session)
             call_locked(session, loop, fail)
+        finally:
+            self._inflight.discard(key)
 
     # -- async driver ------------------------------------------------------- #
     async def run(self, session: Any, broadcast: Callable[[Any], Awaitable[None]],
                   refresh_art: Callable[[str], Awaitable[None]]) -> None:
-        """Generate off-thread, then queue the adventure's art (Phase I first)."""
+        """Generate off-thread; each landed phase queues its art (Phase I
+        first) and is broadcast."""
         sc = session.scenario
         if sc is None:
             return
+        loop = asyncio.get_running_loop()
         async with session.lock():
-            self.set_state(sc, "pending", error=None)
+            if sc.adventure_job.get("state") != "ready":
+                self.set_state(sc, "pending", error=None)
+            else:
+                self.set_state(sc, "ready", writing=True, phase_error=None)
             self.persist(session)
         await broadcast(session)
-        await asyncio.to_thread(self.generate_sync, session, asyncio.get_running_loop())
-        await broadcast(session)
-        # The playtest profile (M3.3) leaves the adventure unpainted.
-        if sc.adventure_job.get("state") == "ready" and sc.adventure_id and not llm.playtest_on():
-            detail = sc.adventure_detail or {}
-            phase_ids = [p["encounter_id"] for p in detail.get("phases", [])]
+
+        def on_art(aid: str, encounter_ids: List[str]) -> None:
+            # Runs on the loop (inside call_locked): queue, then broadcast.
+            loop.create_task(broadcast(session))
+            if llm.playtest_on():   # the playtest profile (M3.3) leaves it unpainted
+                return
             try:
-                art.QUEUE.start(f"adventure:{sc.adventure_id}", phase_ids, refresh_art)
+                art.QUEUE.start(f"adventure:{aid}", encounter_ids, refresh_art)
             except RuntimeError:
                 pass  # no running loop (tests)
+
+        await asyncio.to_thread(self.generate_sync, session, loop, on_art)
+        await broadcast(session)
 
     def start(self, session: Any, broadcast: Callable[[Any], Awaitable[None]],
               refresh_art: Callable[[str], Awaitable[None]]) -> None:
         """Schedule `run` on the event loop; a no-op if a job is in flight."""
         sc = session.scenario
-        if sc is None or sc.adventure_job.get("state") == "pending":
+        if sc is None or id(session) in self._inflight:
             return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             # No loop (tests / sync callers): run inline.
-            self.set_state(sc, "pending", error=None)
+            if sc.adventure_job.get("state") != "ready":
+                self.set_state(sc, "pending", error=None)
             self.generate_sync(session)
             return
         loop.create_task(self.run(session, broadcast, refresh_art))

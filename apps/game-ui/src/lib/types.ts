@@ -503,6 +503,12 @@ export interface AdventureBlock {
   character_ids: string[]; // roster ids — Restart from Phase I re-picks these
   complete: boolean;
   level_up: LevelUpBlock | null;
+  // §D25-3: an adventure written a phase at a time — how many phases exist
+  // yet, whether the party is waiting at the boundary for the next one, and
+  // why the writer stopped (a Retry resumes it).
+  phases_ready?: number;
+  awaiting_phase?: boolean;
+  phase_error?: string | null;
 }
 
 export interface GameSnapshot {
@@ -966,6 +972,11 @@ export interface AdventureJobView {
   progress: [number, number];
   adventure_ref: string | null;
   error: string | null;
+  // §D25-3: ready at Phase I; the rest keeps writing.
+  phases_ready?: number;
+  phases_total?: number;
+  writing?: boolean;
+  phase_error?: string | null;
 }
 export interface TownSnapshot {
   mode: "town" | "complete";

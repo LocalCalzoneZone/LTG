@@ -22,7 +22,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import TypeAdapter
 
-from ltg_core.schema import Card, Effect, EncounterObjective, Loadout
+from ltg_core.schema import (CREATURE_CLASSES, CREATURE_TYPES, Card, Effect,
+                             EncounterObjective, Loadout)
 
 from .state import CharacterState, Component, EnemyState, GameState, Objective
 
@@ -150,6 +151,57 @@ def _component_from_dict(spec: Dict[str, Any]) -> Component:
                      else "ability"),
         # A channelled component starts an EnemyChannel instead of firing once.
         channel=bool(spec.get("channel", False)))
+
+
+# The closed vocabularies a component's `target_rule` and `trigger` are read
+# against (roadmap M4.11): the engine compares these as strings, so a typo
+# ("lowest_hp_aly", "on_ally_hurt") used to load fine and then silently never
+# fire. `hero_class:` / `hero_type:` grudges (§D23-6), `on_self_below_N` /
+# `on_ally_below_N` and a fixed combatant id are the open forms.
+TARGET_RULES = frozenset({
+    "valuation", "highest_threat", "primed_hero", "channeling_player",
+    "trigger_source", "self", "lowest_hp_ally", "wounded_ally", "corpse",
+})
+TRIGGERS = frozenset({
+    "on_targeted", "on_hit", "on_ally_hit", "on_ally_death", "on_spell_cast",
+    "on_attack", "on_incoming_lethal", "on_ultimate_cast", "on_enrage",
+    "on_hero_downed", "on_hero_healed", "on_charge_full",
+})
+_BELOW_TRIGGER = re.compile(r"^on_(self|ally)_below_(\d{1,3})$")
+
+
+def _check_rule_vocabulary(enemies: List["EnemyState"], party: List[Any],
+                           tokens: Dict[str, Any]) -> None:
+    """Reject a component whose target_rule or trigger names nothing the engine
+    knows. A fixed id may name any enemy (a clone's base id included), a hero,
+    or a token design."""
+    ids = {e.id for e in enemies} | {re.sub(r"_\d+$", "", e.id) for e in enemies}
+    ids |= {c.id for c in party} | {str(t) for t in tokens}
+    for e in enemies:
+        for comp in e.components:
+            rule = comp.target_rule or "valuation"
+            if rule not in TARGET_RULES and rule not in ids:
+                field, _, tag = rule.partition(":")
+                registry = {"hero_class": CREATURE_CLASSES,
+                            "hero_type": CREATURE_TYPES}.get(field)
+                if registry is None:
+                    raise ValueError(
+                        f"{e.name}: component '{comp.id}' has an unknown target_rule "
+                        f"{rule!r} — use one of {sorted(TARGET_RULES)}, a grudge "
+                        "(hero_class:<class> / hero_type:<type>), or a combatant id")
+                if _slug(tag) not in registry:
+                    raise ValueError(
+                        f"{e.name}: component '{comp.id}' holds a grudge against an "
+                        f"unknown {field.split('_')[1]} {tag!r} — one of "
+                        f"{', '.join(registry)}")
+            trig = comp.trigger
+            if trig and trig not in TRIGGERS:
+                m = _BELOW_TRIGGER.match(str(trig))
+                if not m or not 0 < int(m.group(2)) < 100:
+                    raise ValueError(
+                        f"{e.name}: component '{comp.id}' has an unknown trigger "
+                        f"{trig!r} — use one of {sorted(TRIGGERS)}, or "
+                        "on_self_below_N / on_ally_below_N (N a percentage)")
 
 
 def _default_attack_template(e: Dict[str, Any]) -> Dict[str, Any]:
@@ -551,6 +603,8 @@ def state_from_dict(spec: Dict[str, Any], seed: Optional[int] = None) -> GameSta
             # Reserve zone (§D12-1): an undeployed wave/reinforcement body.
             reserve=(e.get("id", _slug(e["name"])) in reserve_ids),
         ))
+
+    _check_rule_vocabulary(enemies, party, spec.get("tokens") or {})
 
     # Party TURN ORDER: randomized once at setup when a seed is given (initiative
     # roll), else the authored order. Fixed for the whole encounter — repositioning

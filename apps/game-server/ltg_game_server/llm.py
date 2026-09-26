@@ -13,6 +13,7 @@ so the key never enters version control and survives restarts.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import random
@@ -445,7 +446,13 @@ skips allies at full HP, so the healer never wastes a turn) ·
 "channeling_player" (sniper: the hero holding a channeled spell — break it) ·
 "primed_hero" (the hero primed to spike: holding a live amplify/double_next
 combo tag, or with a nearly-full ultimate gauge; falls back to valuation when
-nobody is primed, so a rule using it never wastes its turn).
+nobody is primed, so a rule using it never wastes its turn) ·
+"hero_class:<class>" / "hero_type:<type>" (a GRUDGE: the lowest-HP reachable
+hero wearing that tag — "hero_class:cleric", "hero_type:elf". The undead hunt
+the cleric; the goblins hate the dwarf. Name a tag the party ACTUALLY wears —
+the roster in the parameters lists each hero's tags. With nobody wearing it
+the rule falls back to valuation, so it never wastes a turn. One or two
+grudges per pool make a rivalry the party can see and play around).
 
 condition (optional gate on any component):
 {"kind": "self_hp_pct", "op": "<", "value": 50}   — bloodied behaviour
@@ -543,12 +550,23 @@ play, not a soft stun. Blessed patterns:
 - The LINE-BREAKER: a shove `"back"` on the party's wall, opening your own
   melee lanes to the squishy rows behind it.
 At most ONE forced-mover per encounter at standard difficulty; two only at hard.
+An enemy can move ITSELF inside one intent (§L-2.3) — `move` with
+`"target": {"mode": "self"}`, ordered with its strike in the same verbs list:
+- a CHARGE: `[{"kind": "move", "direction": "to_front", "target": {"mode":
+  "self"}}, {"kind": "deal_damage", …}]` — a second-rank brute that crashes
+  into the line and strikes, now standing where the heroes' swords can reach it;
+- HIT-AND-FADE: `[{"kind": "deal_damage", …}, {"kind": "move", "direction":
+  "to_rear", "target": {"mode": "self"}}]` — a skirmisher that strikes, then
+  slips back behind the wall, out of melee reach, so the party must chase it
+  with reach or spells.
+The move is part of the one intent and prices with it (Burst or Evasive); it is
+never a Move the party can see coming separately.
 Row-scoped damage shapes (use them for area attacks):
 - a whole row: `{"mode": "all", "side": "ally", "rows": ["front"]}`;
 - splash around the picked hero: add `"scope": "row"` (their whole row) or
   `"scope": "blast"` (their row plus adjacent rows; front↔mid, mid↔rear) to a
   chosen target. Only the pick is targeted; the splash is incidental.
-Magnitude schedule by scope (T-55): single target = L+1 · a whole row = L per
+Magnitude schedule by scope (T-55): single target = L+2 · a whole row = L per
 creature · blast / party-wide = ceil(L/2)+1 — wider is always shallower.
 
 ## Positional intents — attacks aimed at a ROW (Design Update 15 §L-5)
@@ -612,6 +630,19 @@ threat with a clear answer. Give one to a ritualist/warlock-type enemy (or a
 boss phase) and give the channeler real HP so breaking it costs the party a
 real hit. A channel can be a "spell" (action_type) — counterable by Negate.
 Price a channelled component at its archetype ×1.5 (ongoing value).
+A COUNTDOWN RITE (§D22-3/4) is a channel with a fuse: a verb carrying
+`"trigger": {"after_turns": N}` fires ONCE, at the Upkeep N turns after the
+channel began, and a `{"kind": "channel_drop", "trigger": {"after_turns": N}}`
+beside it ends the rite on the same beat. The party sees the channel and must
+break it in time or eat the payload — a visible clock with a clear answer:
+  "channel": true, "once_per_encounter": true, "target_rule": "self",
+  "telegraph": "The Drowning Count",
+  "verbs": [{"kind": "deal_damage", "amount": 8, "trigger": {"after_turns": 3},
+             "target": {"mode": "all", "side": "ally"}},
+            {"kind": "channel_drop", "trigger": {"after_turns": 3}}]
+Give the countdown 2–4 turns, a payload worth fearing (up to 2× the schedule,
+like a detonation) and a channeler with real HP; a ward or a taunting wall in
+front of it makes the race a decision.
 At standard difficulty and above, include at least ONE channeler in the
 encounter — an aura (party-wide wound / warband anthem) or a ritual tick
 (recurring damage / token spawn). Pair it with a guard whose condition
@@ -643,7 +674,11 @@ so write them freely — but write them as what they are.
 
 ## Keywords (min level / cost)
 reach (1/1) · trample (2/2) · flying (2/4) · lifelink (3/3) · infect (3/3) ·
-deathtouch (3/4) · hexproof (5/6) · indestructible (6/6).
+deathtouch (3/4) · hexproof (5/6) · indestructible (6/6) · relentless (3/3).
+Relentless (enemy-only): its intents are never redirected — no body can step
+in front of the swing; it pursues its declared target wherever that hero
+stands (it fizzles only if the target falls). The elite's or boss's signature
+dread: the party cannot shield the victim, only kill, stun or out-heal.
 Infect: any damage the creature deals that CONNECTS also poisons the victim
 (one poison counter per connecting hit — it drains 1 life at each Upkeep until
 healing removes the counters). An infected biter turns every landed hit into a healer assignment —
@@ -664,6 +699,10 @@ Per-enemy budget by level: B(L) = 5·L + 5  → L1=10, L2=15, L3=20, L4=25, L5=3
 L8=45, L10=55. An enemy's **level is the smallest L whose budget covers its total
 cost** (chassis + upgrades + keywords + components after modifiers). Underspending
 is fine; overspending is impossible. Complexity self-prices into level.
+The game PRICES every enemy you write from these tables (body = HP + 3 × Power,
++2 if ranged; keywords; each component after modifiers; a boss against
+2.5 × B(L)). An enemy written below its price is RAISED to its priced level —
+so write the Level your design actually costs, or trim the design.
 
 # Design guidance (make it fun, challenging, thematic)
 - All enemies share ONE faction/theme — cohesive palette (no frost giants in a
@@ -891,7 +930,7 @@ One enemy may carry `"is_boss": true` — never more than one. A boss:
           "cooldown": <int>,            // turns between uses, e.g. 2
           "once_per_encounter": true,   // optional; a single dramatic use
           "priority": <int>,            // lower = evaluated first
-          "target_rule": "valuation" | "highest_threat" | "primed_hero" | "channeling_player" | "trigger_source" | "self" | "lowest_hp_ally" | "wounded_ally",  // WHO this component picks; VARY it across the pool
+          "target_rule": "valuation" | "highest_threat" | "primed_hero" | "channeling_player" | "trigger_source" | "self" | "lowest_hp_ally" | "wounded_ally" | "hero_class:<class>" | "hero_type:<type>",  // WHO this component picks; VARY it across the pool
           "action_type": "spell",       // MAGIC components only (counterable by spell counters); omit for physical
           "channel": true,              // ongoing held effect (see channel rules); omit for one-shots
           "phase": "pre_enrage" | "post_enrage",   // boss components only; optional
@@ -974,12 +1013,21 @@ FIVE VERBS THE POOL UNDER-USES (§D23-6) — reach for these before writing anot
 "deal N to a hero", which is what most kits collapse into:
 - `conditional` INSIDE a component: one rule that reads the board and does two
   different things, instead of two rules the party learns separately.
-  {"kind": "conditional", "condition": {"kind": "self_hp_pct", "op": "<", "value": 50},
+  {"kind": "conditional", "condition": {"kind": "self_hp", "percent": 50, "compare": "or_less"},
    "effects": [{"kind": "deal_damage", "amount": 6, "target": {"mode": "all", "side": "ally"}}]}
+  NOTE: a conditional's `condition` is an EFFECT condition — `self_hp` (percent,
+  compare "or_less"/"or_more"), `target_property` (has_keyword / row / level /
+  type / class / is_dead), `caster_property`, `enemy_count`, `spells_cast`. It is
+  NOT the component-gate vocabulary (`self_hp_pct` / `turn` / `ally_count` …),
+  which only goes in a component's own "condition" field.
 - `redirect` — a BODYGUARD: it turns an action aimed at its charge onto ITSELF.
-  Reactive on "on_ally_hit" / "on_targeted", no target field. It makes the
-  bodyguard a kill-priority puzzle rather than another damage stat.
-  {"kind": "redirect"}
+  Reactive on "on_attack" (a hero's attack or Combat Ability is on the stack)
+  or "on_spell_cast" (a hero's spell) — a trigger that fires while the action
+  is still on the stack. NEVER "on_ally_hit" or "on_hit": those fire after the
+  blow has landed, with nothing left to turn. The `new_target` MUST be
+  {"mode": "self"} — without it the blow turns back on the hero who threw it.
+  It makes the bodyguard a kill-priority puzzle rather than another damage stat.
+  {"kind": "redirect", "new_target": {"mode": "self"}}
 - `fight` — a DUELLIST that forces a trade: the two bodies deal each other their
   Power, simultaneously. Give it to a body whose Power is its whole threat, so
   the party must decide whether it can afford the exchange. `target` is the
@@ -1011,16 +1059,16 @@ ignores it on an enemy), so putting it on one buys nothing.
 # Three worked examples that build correctly (study these, then design your own)
 
 EXAMPLE A — a B/R vampire coven (pool of 3 designs, scaled 1–4 by layouts):
-{"name":"Crimson Coven — Drain & Reactions","scene":"A desecrated hillside chapel at midnight: pews toppled, red votive candles guttering in pools of wax, and a shattered rose window casting broken moonlight across a blood-slick altar.","enemies":[{"id":"grave_thrall","types":["undead"],"classes":["warrior"],"name":"Grave Thrall","flavor":"A wall that shambles forward and drags heroes into its reach.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"corpse_grip","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Corpse-Grip — deal 5 and drag a hero into the wall","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"grave_chill","archetype":"Debilitate","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Grave-Chill — wound the attacker -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"bloodbat","types":["beast"],"classes":["scout"],"name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers — it shrieks when hunted.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":3,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],"components":[{"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Flit to the shadows"},{"id":"shriek","archetype":"Debilitate","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Piercing Shriek — wound the hunter -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"vampire_adept","types":["undead"],"classes":["wizard"],"name":"Vampire Adept","flavor":"Drains from safety, punishes your casting.","description":"A gaunt aristocrat in a high-collared black robe, chalk-white skin stretched over sharp bones, fingertips stained to the knuckle with old blood.","hp":6,"power":1,"level":4,"row":"rear","attack_mode":"ranged","keywords":["lifelink"],"components":[{"id":"drain","archetype":"Drain","timing":"proactive","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Life Drain — deal 3, heal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"heal","amount":3,"target":{"mode":"self"}}]},{"id":"curse","archetype":"Debilitate","timing":"reactive","trigger":"on_spell_cast","cooldown":2,"priority":20,"target_rule":"trigger_source","action_type":"spell","telegraph":"Withering Curse — wound the caster -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"chapel_ghoul","types":["undead"],"classes":["warrior"],"name":"Chapel Ghoul","flavor":"Frenzies over every fallen ally.","description":"A hunched cadaver in a shredded verger's cassock, jaw unhinged to the sternum, fists wrapped in snapped rosary chains.","hp":4,"power":2,"level":2,"row":"front","attack_mode":"melee","components":[{"id":"gnash","archetype":"Burst","timing":"proactive","priority":35,"cooldown":2,"target_rule":"valuation","telegraph":"Gnash — deal 4","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"grave_frenzy","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","cooldown":2,"priority":20,"target_rule":"self","telegraph":"Grave-Frenzy — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"rose_wraith","types":["spirit"],"classes":["wizard"],"name":"Rose-Window Wraith","flavor":"Snipes the strongest; wails at every mended wound.","description":"A translucent figure of stained-glass light, robes of red and violet shards drifting apart and reassembling, a smashed halo above an empty hood.","hp":3,"power":1,"level":3,"row":"mid","attack_mode":"ranged","keywords":["flying"],"components":[{"id":"moonlit_lance","archetype":"Burst","timing":"proactive","priority":30,"cooldown":2,"target_rule":"highest_threat","action_type":"spell","telegraph":"Moonlit Lance — deal 3 to the deadliest hero","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"jealous_wail","archetype":"Punish","timing":"reactive","trigger":"on_hero_healed","cooldown":2,"priority":22,"target_rule":"trigger_source","telegraph":"Jealous Wail — deal 3 to the mended","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"blood_acolyte","types":["human"],"classes":["cleric"],"name":"Blood Acolyte","flavor":"Keeps the coven fed. Kill-priority.","description":"A shaven-headed devotee in dripping red vestments, palms scarred with chalice sigils, swinging a censer that leaks black smoke.","hp":3,"power":1,"level":2,"row":"rear","attack_mode":"ranged","components":[{"id":"red_litany","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Red Litany — heal an ally 4","verbs":[{"kind":"heal","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"chalice_spite","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"channeling_player","action_type":"spell","telegraph":"Chalice-Spite — deal 2 to a channeller","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"pale_duellist","types":["undead"],"classes":["rogue"],"name":"Pale Duellist","flavor":"Parries one blow a round; answer with spells or numbers.","description":"A slender revenant in a moth-eaten brocade coat, sword-cane bare, moving with the too-smooth grace of something rehearsed for a century.","hp":5,"power":2,"level":3,"row":"mid","attack_mode":"melee","components":[{"id":"parry","archetype":"Counter","timing":"reactive","trigger":"on_attack","cooldown":3,"priority":15,"target_rule":"trigger_source","telegraph":"Perfect Parry — counter the attack","verbs":[{"kind":"counter","filter":"attack"}]},{"id":"flurry","archetype":"Burst","timing":"proactive","priority":30,"cooldown":2,"target_rule":"highest_threat","telegraph":"Cane-Flurry — deal 4","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"censer_bearer","types":["undead"],"classes":["warrior"],"name":"Censer-Bearer","flavor":"Grows heavier and meaner the longer it walks.","description":"A broad corpse sewn into bell-ringer's leathers, dragging a chapel censer the size of an anvil on a chain wound thrice around its arm.","hp":4,"power":1,"level":2,"row":"front","attack_mode":"melee","components":[{"id":"swing_wide","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Wind the Chain — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"smoke_lash","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Smoke-Lash — deal 3 to the attacker","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["grave_thrall","bloodbat"],"2":["grave_thrall","bloodbat","chapel_ghoul","blood_acolyte"],"3":["grave_thrall","bloodbat","chapel_ghoul","blood_acolyte","pale_duellist","vampire_adept"],"4":["grave_thrall","grave_thrall","bloodbat","chapel_ghoul","chapel_ghoul","blood_acolyte","pale_duellist","vampire_adept","censer_bearer","rose_wraith"]},"tokens":{}}
+{"name":"Crimson Coven — Drain & Reactions","scene":"A desecrated hillside chapel at midnight: pews toppled, red votive candles guttering in pools of wax, and a shattered rose window casting broken moonlight across a blood-slick altar.","enemies":[{"id":"grave_thrall","types":["undead"],"classes":["warrior"],"name":"Grave Thrall","flavor":"A wall that shambles forward and drags heroes into its reach.","description":"A bloated corpse in rusted chainmail, grey-green skin split at the seams, dragging a bell-heavy mace behind it.","hp":6,"power":1,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"corpse_grip","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Corpse-Grip — deal 5 and drag a hero into the wall","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"grave_chill","archetype":"Debilitate","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Grave-Chill — wound the attacker -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"bloodbat","types":["beast"],"classes":["scout"],"name":"Bloodbat","flavor":"A dodging flyer only ranged/reach answers — it shrieks when hunted.","description":"A dog-sized bat with wet crimson fur, tattered wing membranes, and a cluster of pearl-white eyes.","hp":2,"power":2,"level":4,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["flying"],"components":[{"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Flit to the shadows"},{"id":"shriek","archetype":"Debilitate","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Piercing Shriek — wound the hunter -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"vampire_adept","types":["undead"],"classes":["wizard"],"name":"Vampire Adept","flavor":"Drains from safety, punishes your casting.","description":"A gaunt aristocrat in a high-collared black robe, chalk-white skin stretched over sharp bones, fingertips stained to the knuckle with old blood.","hp":6,"power":1,"level":4,"row":"rear","attack_mode":"ranged","keywords":["lifelink"],"components":[{"id":"drain","archetype":"Drain","timing":"proactive","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Life Drain — deal 3, heal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"heal","amount":3,"target":{"mode":"self"}}]},{"id":"curse","archetype":"Debilitate","timing":"reactive","trigger":"on_spell_cast","cooldown":2,"priority":20,"target_rule":"trigger_source","action_type":"spell","telegraph":"Withering Curse — wound the caster -1/-1 and silence them","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"prevent","parameter":"cast","target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"chapel_ghoul","types":["undead"],"classes":["warrior"],"name":"Chapel Ghoul","flavor":"Frenzies over every fallen ally.","description":"A hunched cadaver in a shredded verger's cassock, jaw unhinged to the sternum, fists wrapped in snapped rosary chains.","hp":4,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"gnash","archetype":"Burst","timing":"proactive","priority":35,"cooldown":2,"target_rule":"valuation","telegraph":"Gnash — deal 4","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"grave_frenzy","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","cooldown":2,"priority":20,"target_rule":"self","telegraph":"Grave-Frenzy — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"rose_wraith","types":["spirit"],"classes":["wizard"],"name":"Rose-Window Wraith","flavor":"Snipes the strongest; wails at every mended wound.","description":"A translucent figure of stained-glass light, robes of red and violet shards drifting apart and reassembling, a smashed halo above an empty hood.","hp":3,"power":1,"level":4,"row":"mid","attack_mode":"ranged","keywords":["flying"],"components":[{"id":"moonlit_lance","archetype":"Burst","timing":"proactive","priority":30,"cooldown":2,"target_rule":"highest_threat","action_type":"spell","telegraph":"Moonlit Lance — deal 3 to the deadliest hero","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"jealous_wail","archetype":"Punish","timing":"reactive","trigger":"on_hero_healed","cooldown":2,"priority":22,"target_rule":"trigger_source","telegraph":"Jealous Wail — deal 3 to the mended","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"blood_acolyte","types":["human"],"classes":["cleric"],"name":"Blood Acolyte","flavor":"Keeps the coven fed. Kill-priority.","description":"A shaven-headed devotee in dripping red vestments, palms scarred with chalice sigils, swinging a censer that leaks black smoke.","hp":3,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"red_litany","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":3,"target_rule":"lowest_hp_ally","telegraph":"Red Litany — mend an ally 2 each turn while the hymn holds","verbs":[{"kind":"heal","amount":2,"trigger":"upkeep","target":{"mode":"chosen","side":"ally","targeted":true}}],"channel":true},{"id":"chalice_spite","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"channeling_player","action_type":"spell","telegraph":"Chalice-Spite — deal 2 to a channeller","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"pale_duellist","types":["undead"],"classes":["rogue"],"name":"Pale Duellist","flavor":"Parries one blow a round; answer with spells or numbers.","description":"A slender revenant in a moth-eaten brocade coat, sword-cane bare, moving with the too-smooth grace of something rehearsed for a century.","hp":5,"power":2,"level":3,"row":"mid","attack_mode":"melee","components":[{"id":"parry","archetype":"Counter","timing":"reactive","trigger":"on_attack","cooldown":3,"priority":15,"target_rule":"trigger_source","telegraph":"Perfect Parry — counter the attack","verbs":[{"kind":"counter","filter":"attack"}]},{"id":"flurry","archetype":"Burst","timing":"proactive","priority":30,"cooldown":2,"target_rule":"highest_threat","telegraph":"Cane-Flurry — deal 4","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"censer_bearer","types":["undead"],"classes":["warrior"],"name":"Censer-Bearer","flavor":"Grows heavier and meaner the longer it walks.","description":"A broad corpse sewn into bell-ringer's leathers, dragging a chapel censer the size of an anvil on a chain wound thrice around its arm.","hp":4,"power":1,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"swing_wide","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Wind the Chain — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"smoke_lash","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Smoke-Lash — deal 3 to the attacker","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["grave_thrall","bloodbat"],"2":["grave_thrall","bloodbat","chapel_ghoul","blood_acolyte"],"3":["grave_thrall","bloodbat","chapel_ghoul","blood_acolyte","pale_duellist","vampire_adept"],"4":["grave_thrall","grave_thrall","bloodbat","chapel_ghoul","chapel_ghoul","blood_acolyte","pale_duellist","vampire_adept","censer_bearer","rose_wraith"]},"tokens":{}}
 
 EXAMPLE B — a ritual CHANNEL, a counterspell sentinel, a bloodied moment, smart healing, and a token swarm:
-{"name":"Ironhide's Warband — Rite of the Boar","scene":"A palisaded war-camp gouged into a muddy hillside: banner poles of lashed bone, cookfires burned low, and churned earth littered with cracked shields.","enemies":[{"id":"ironhide","types":["beast","orc"],"classes":["warlord"],"name":"Ironhide Warleader","flavor":"Swings while healthy; erupts when bloodied; punishes melee.","description":"A boar-headed brute two heads taller than a man, plated in riveted scrap-iron, bronze-capped tusks, hefting a chained maul.","hp":10,"power":3,"level":5,"row":"front","attack_mode":"melee","keywords":["trample"],"components":[{"id":"bloodied_roar","archetype":"Escalate","timing":"reactive","trigger":"on_self_below_50","once_per_encounter":true,"priority":12,"target_rule":"self","telegraph":"BLOODIED ROAR — +2/+1, permanently","verbs":[{"kind":"counters","power":2,"toughness":1,"target":{"mode":"self"}}]},{"id":"punish","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Retaliate — deal 2 to the attacker","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"bonechanter","types":["orc"],"classes":["shaman","ritualist"],"name":"Bonechanter of the Sty","flavor":"Holds a rite that bleeds the party every turn — break it or drown.","description":"A hunched shaman draped in boar hides and knotted fetishes, rattling a staff of fused vertebrae that weeps a red haze.","hp":8,"power":1,"level":5,"row":"rear","attack_mode":"ranged","components":[{"id":"blood_rite","archetype":"Drain","timing":"proactive","channel":true,"action_type":"spell","cooldown":3,"priority":20,"target_rule":"valuation","telegraph":"Blood Rite — a held ritual: 2 damage every turn and the party fights at -1/-0","verbs":[{"kind":"deal_damage","amount":2,"trigger":"upkeep","target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"wound","power":1,"toughness":0,"duration":"while_channeled","target":{"mode":"all","side":"ally"}}]},{"id":"mend","archetype":"Fortify","timing":"proactive","priority":30,"cooldown":2,"target_rule":"wounded_ally","telegraph":"Knit Hide — heal the most wounded ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"broodmother","types":["spider"],"classes":["brute"],"name":"Hive Broodmother","flavor":"Spawns Husklings, at most two alive.","description":"A swollen, chitin-backed matriarch the size of an ox-cart, egg-sacs glistening along her flanks, dozens of larval eyes blinking in the dark.","hp":4,"power":2,"level":3,"row":"rear","attack_mode":"melee","components":[{"id":"swarm","archetype":"Swarm","timing":"proactive","priority":20,"cooldown":2,"target_rule":"self","telegraph":"Spawn Husklings (x2)","verbs":[{"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]},{"id":"brood_fury","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","once_per_encounter":true,"priority":15,"target_rule":"self","telegraph":"Brood-Fury — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"mistveil_hexer","types":["human","fae"],"classes":["wizard","rogue"],"name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":5,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],"components":[{"id":"hush","archetype":"Counter","timing":"reactive","trigger":"on_spell_cast","cooldown":3,"priority":15,"action_type":"spell","target_rule":"trigger_source","telegraph":"Hushing Mist — counter the spell","verbs":[{"kind":"counter","filter":"spell"}]},{"id":"hex","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":1,"target_rule":"valuation","telegraph":"Withering Hex — wound -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Miststep"}]},{"id":"tusk_charger","types":["beast","orc"],"classes":["warrior"],"name":"Tusk-Charger","flavor":"Gathers the rite in plain sight. Break it before it breaks you.","description":"A lean young boar-kin stripped to the waist, rite-scars glowing ember-red down both arms, pawing the mud as heat shimmers off its tusks.","hp":5,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"gather_rite","archetype":"Escalate","timing":"proactive","priority":30,"cooldown":1,"target_rule":"self","telegraph":"Gathers the Boar-Rite — the scars burn brighter","verbs":[{"kind":"charge","amount":1}]},{"id":"rite_breaks","archetype":"Burst","timing":"reactive","trigger":"on_charge_full","charge_threshold":3,"priority":10,"target_rule":"valuation","telegraph":"THE RITE BREAKS — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"boarhide_shield","types":["orc"],"classes":["warrior"],"name":"Boarhide Shieldman","flavor":"Answers every blow on a packmate.","description":"A squat orc behind a tower shield of layered boar-hide, iron studs black with old blood, one tusk snapped to a ragged stump.","hp":6,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"shield_ally","archetype":"Fortify","timing":"proactive","priority":25,"cooldown":3,"target_rule":"wounded_ally","telegraph":"Boar-Hide Wall — heal the most wounded packmate 3","verbs":[{"kind":"heal","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"answer_blow","archetype":"Punish","timing":"reactive","trigger":"on_ally_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Answer the Blow — deal 3 to the attacker","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"root_witch","types":["orc"],"classes":["shaman"],"name":"Root-Witch","flavor":"Stills the deadliest sword arm a whole turn.","description":"A bent crone of the warband hung with knuckle-bone charms, bare feet rooted ankle-deep in soil that follows her, eyes white as birch bark.","hp":4,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"still_roots","archetype":"Debilitate","timing":"proactive","priority":28,"cooldown":3,"target_rule":"highest_threat","action_type":"spell","telegraph":"Still-Roots — stun the deadliest hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"thorn_spit","archetype":"Burst","timing":"proactive","priority":45,"cooldown":2,"target_rule":"channeling_player","action_type":"spell","telegraph":"Thorn-Spit — deal 2 to a channeller","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"younghide","types":["beast","orc"],"classes":["warrior"],"name":"Younghide","flavor":"Avenges its elders and grows into the name.","description":"A boar-kin barely grown, scrap armour strapped over piebald bristle, knuckles white on a maul still too big for it.","hp":3,"power":2,"level":2,"row":"mid","attack_mode":"melee","components":[{"id":"avenge","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","cooldown":2,"priority":18,"target_rule":"self","telegraph":"Avenge the Fallen — +2/+1, permanently","verbs":[{"kind":"counters","power":2,"toughness":1,"target":{"mode":"self"}}]},{"id":"wild_swing","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Wild Swing — deal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["ironhide","broodmother"],"2":["ironhide","broodmother","boarhide_shield","root_witch"],"3":["ironhide","broodmother","boarhide_shield","root_witch","tusk_charger","mistveil_hexer"],"4":["ironhide","broodmother","boarhide_shield","root_witch","tusk_charger","tusk_charger","mistveil_hexer","bonechanter","younghide","younghide"]},"tokens":{"huskling":{"name":"Huskling","hp":2,"power":1,"row":"front","attack_mode":"melee"}}}
+{"name":"Ironhide's Warband — Rite of the Boar","scene":"A palisaded war-camp gouged into a muddy hillside: banner poles of lashed bone, cookfires burned low, and churned earth littered with cracked shields.","enemies":[{"id":"ironhide","types":["beast","orc"],"classes":["warlord"],"name":"Ironhide Warleader","flavor":"Swings while healthy; erupts when bloodied; punishes melee.","description":"A boar-headed brute two heads taller than a man, plated in riveted scrap-iron, bronze-capped tusks, hefting a chained maul.","hp":10,"power":3,"level":5,"row":"front","attack_mode":"melee","keywords":["trample"],"components":[{"id":"bloodied_roar","archetype":"Escalate","timing":"reactive","trigger":"on_self_below_50","once_per_encounter":true,"priority":12,"target_rule":"self","telegraph":"BLOODIED ROAR — +2/+1, permanently","verbs":[{"kind":"counters","power":2,"toughness":1,"target":{"mode":"self"}}]},{"id":"punish","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Retaliate — deal 2 to the attacker","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"bonechanter","types":["orc"],"classes":["shaman","ritualist"],"name":"Bonechanter of the Sty","flavor":"Holds a rite that bleeds the party every turn — break it or drown.","description":"A hunched shaman draped in boar hides and knotted fetishes, rattling a staff of fused vertebrae that weeps a red haze.","hp":8,"power":1,"level":5,"row":"rear","attack_mode":"ranged","components":[{"id":"blood_rite","archetype":"Drain","timing":"proactive","channel":true,"action_type":"spell","cooldown":3,"priority":20,"target_rule":"valuation","telegraph":"Blood Rite — a held ritual: 2 damage every turn and the party fights at -1/-0","verbs":[{"kind":"deal_damage","amount":2,"trigger":"upkeep","target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"wound","power":1,"toughness":0,"duration":"while_channeled","target":{"mode":"all","side":"ally"}}]},{"id":"mend","archetype":"Fortify","timing":"proactive","priority":30,"cooldown":2,"target_rule":"wounded_ally","telegraph":"Knit Hide — heal the most wounded ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"broodmother","types":["spider"],"classes":["brute"],"name":"Hive Broodmother","flavor":"Spawns Husklings, at most two alive.","description":"A swollen, chitin-backed matriarch the size of an ox-cart, egg-sacs glistening along her flanks, dozens of larval eyes blinking in the dark.","hp":4,"power":2,"level":3,"row":"rear","attack_mode":"melee","components":[{"id":"swarm","archetype":"Swarm","timing":"proactive","priority":20,"cooldown":2,"target_rule":"self","telegraph":"Spawn Husklings (x2)","verbs":[{"kind":"create_token","token_id":"huskling","count":2,"hp":2,"power":1}]},{"id":"brood_fury","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","once_per_encounter":true,"priority":15,"target_rule":"self","telegraph":"Brood-Fury — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]}]},{"id":"mistveil_hexer","types":["human","fae"],"classes":["wizard","rogue"],"name":"Mistveil Hexer","flavor":"Silences one spell a fight and chips your board; hard to pin.","description":"A wiry figure wrapped in grey rags that bleed mist, face hidden behind a cracked porcelain mask, fingers ending in needle-long silver rings.","hp":5,"power":2,"level":6,"row":"mid","home_row":"rear","attack_mode":"melee","keywords":["hexproof"],"components":[{"id":"hush","archetype":"Counter","timing":"reactive","trigger":"on_spell_cast","cooldown":3,"priority":15,"action_type":"spell","target_rule":"trigger_source","telegraph":"Hushing Mist — counter the spell","verbs":[{"kind":"counter","filter":"spell"}]},{"id":"hex","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":1,"target_rule":"valuation","telegraph":"Withering Hex — wound -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"evasive","archetype":"Evasive","timing":"proactive","priority":20,"move_home":true,"target_rule":"self","telegraph":"Miststep"}]},{"id":"tusk_charger","types":["beast","orc"],"classes":["warrior"],"name":"Tusk-Charger","flavor":"Gathers the rite in plain sight. Break it before it breaks you.","description":"A lean young boar-kin stripped to the waist, rite-scars glowing ember-red down both arms, pawing the mud as heat shimmers off its tusks.","hp":5,"power":2,"level":4,"row":"front","attack_mode":"melee","components":[{"id":"gather_rite","archetype":"Escalate","timing":"proactive","priority":30,"cooldown":1,"target_rule":"self","telegraph":"Gathers the Boar-Rite — the scars burn brighter","verbs":[{"kind":"charge","amount":1}]},{"id":"rite_breaks","archetype":"Burst","timing":"reactive","trigger":"on_charge_full","charge_threshold":3,"priority":10,"target_rule":"valuation","telegraph":"THE RITE BREAKS — deal 7 and stun","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"boarhide_shield","types":["orc"],"classes":["warrior"],"name":"Boarhide Shieldman","flavor":"Answers every blow on a packmate.","description":"A squat orc behind a tower shield of layered boar-hide, iron studs black with old blood, one tusk snapped to a ragged stump.","hp":6,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"shield_ally","archetype":"Fortify","timing":"proactive","priority":25,"cooldown":3,"target_rule":"wounded_ally","telegraph":"Boar-Hide Wall — heal the most wounded packmate 3","verbs":[{"kind":"heal","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"answer_blow","archetype":"Punish","timing":"reactive","trigger":"on_ally_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Answer the Blow — deal 3 to the attacker","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"root_witch","types":["orc"],"classes":["shaman"],"name":"Root-Witch","flavor":"Stills the deadliest sword arm a whole turn.","description":"A bent crone of the warband hung with knuckle-bone charms, bare feet rooted ankle-deep in soil that follows her, eyes white as birch bark.","hp":4,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"still_roots","archetype":"Debilitate","timing":"proactive","priority":28,"cooldown":3,"target_rule":"highest_threat","action_type":"spell","telegraph":"Still-Roots — stun the deadliest hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"thorn_spit","archetype":"Burst","timing":"proactive","priority":45,"cooldown":2,"target_rule":"channeling_player","action_type":"spell","telegraph":"Thorn-Spit — deal 2 to a channeller","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"younghide","types":["beast","orc"],"classes":["warrior"],"name":"Younghide","flavor":"Avenges its elders and grows into the name.","description":"A boar-kin barely grown, scrap armour strapped over piebald bristle, knuckles white on a maul still too big for it.","hp":3,"power":2,"level":3,"row":"mid","attack_mode":"melee","components":[{"id":"avenge","archetype":"Escalate","timing":"reactive","trigger":"on_ally_death","cooldown":2,"priority":18,"target_rule":"self","telegraph":"Avenge the Fallen — +2/+1, permanently","verbs":[{"kind":"counters","power":2,"toughness":1,"target":{"mode":"self"}}]},{"id":"wild_swing","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Wild Swing — deal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["ironhide","broodmother"],"2":["ironhide","broodmother","boarhide_shield","root_witch"],"3":["ironhide","broodmother","boarhide_shield","root_witch","tusk_charger","mistveil_hexer"],"4":["ironhide","broodmother","boarhide_shield","root_witch","tusk_charger","tusk_charger","mistveil_hexer","bonechanter","younghide","younghide"]},"tokens":{"huskling":{"name":"Huskling","hp":2,"power":1,"row":"front","attack_mode":"melee"}}}
 
 EXAMPLE C — a BOSS encounter: phase gates, enrage, a healer, an escalate clock, and
 action-economy control (total weight: boss 6×2=12 + 3 + 3 + 3 = 21). Note the
 Emberling's escalate clock: the pump is cooldown 2, so every off-turn it SWINGS
 with everything it has stacked — never a cooldown-1 self-pump (punching-bag rule):
-{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","types":["dragon","human"],"classes":["warlord"],"name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"enrage_round":4,"neglect":1,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","types":["human"],"classes":["cleric","cultist"],"name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":6,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Searing Mend — heal an ally 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","types":["elemental"],"classes":["brute"],"name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","types":["human"],"classes":["warrior","cultist"],"name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"obsidian_sentinel","types":["construct"],"classes":["warrior"],"name":"Obsidian Sentinel","flavor":"The tyrant's bodyguard. It mends the throne, not itself.","description":"A statue of volcanic glass in the shape of a kneeling knight, seams glowing forge-orange, moving only when the throne is threatened.","hp":6,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"mend_throne","archetype":"Fortify","timing":"proactive","priority":25,"cooldown":3,"target_rule":"ashen_tyrant","telegraph":"Mend the Tyrant — heal Ashen Tyrant 4","verbs":[{"kind":"heal","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"glass_fists","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Glass Fists — deal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"forge_imp","types":["demon"],"classes":["scout"],"name":"Forge-Imp","flavor":"Spits sparks at medics: healing here costs.","description":"A cat-sized imp of soot and cinders perched on a broken pillar, tail tipped with a white-hot rivet, grinning with bellows-blast teeth.","hp":2,"power":1,"level":2,"row":"mid","attack_mode":"ranged","keywords":["flying"],"components":[{"id":"spark_spit","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Spark-Spit — deal 2","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"scald_the_medic","archetype":"Punish","timing":"reactive","trigger":"on_hero_healed","cooldown":2,"priority":22,"target_rule":"trigger_source","telegraph":"Scald the Medic — deal 3 to the mended","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"slag_hound","types":["beast"],"classes":["warrior"],"name":"Slag-Hound","flavor":"Hunts the biggest sword and bites back when hunted.","description":"A mastiff-shaped mass of cooling slag, cracks of magma for veins, dripping molten slobber that hisses on the obsidian floor.","hp":4,"power":2,"level":2,"row":"front","attack_mode":"melee","components":[{"id":"hunt_the_blade","archetype":"Burst","timing":"proactive","priority":35,"cooldown":2,"target_rule":"highest_threat","telegraph":"Hunt the Blade — deal 3 to the deadliest hero","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"molten_snap","archetype":"Punish","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Molten Snap — wound the hunter -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ash_cantor","types":["human"],"classes":["cleric"],"name":"Ash-Cantor","flavor":"Sings your cards out of your hand.","description":"A blindfolded singer in charred ceremonial robes, throat tattooed with a column of flame script, voice carrying like heat over a pyre.","hp":3,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"dirge_of_cinders","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","action_type":"spell","telegraph":"Dirge of Cinders — deal 2 and a hero discards a card","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"move_card","count":1,"source":"hand","destination":"graveyard","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"last_verse","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","cooldown":3,"priority":18,"target_rule":"wounded_ally","telegraph":"The Last Verse — heal the most wounded 3","verbs":[{"kind":"heal","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["ashen_tyrant","cinderpriest"],"2":["ashen_tyrant","cinderpriest","slag_hound","forge_imp"],"3":["ashen_tyrant","cinderpriest","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot"],"4":["ashen_tyrant","cinderpriest","slag_hound","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot","emberling","emberling","ash_cantor"]},"tokens":{}}
+{"name":"Court of the Ashen Tyrant","scene":"A throne hall carved into a dead volcano: obsidian pillars veined with cooling magma, ash drifting like snow past braziers of dragonfire, and a basalt throne atop a stair of fused shields.","enemies":[{"id":"ashen_tyrant","types":["dragon","human"],"classes":["warlord"],"name":"Ashen Tyrant","flavor":"A dragon-blooded warlord. Unkillable until bloodied; furious after.","description":"A towering dragon-blooded warlord, scales of cracked basalt glowing ember-orange at the seams, cloaked in scorched war-banners, dragging a greatsword still white-hot from the forge.","hp":24,"power":3,"level":6,"row":"front","attack_mode":"melee","is_boss":true,"enrage_round":4,"neglect":1,"keywords":["trample"],"components":[{"id":"cinder_breath","archetype":"Burst","timing":"proactive","phase":"pre_enrage","priority":30,"cooldown":2,"target_rule":"valuation","telegraph":"Cinder Breath — deal 7","verbs":[{"kind":"deal_damage","amount":7,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"firestorm","archetype":"Burst","timing":"proactive","phase":"post_enrage","priority":20,"cooldown":2,"target_rule":"self","action_type":"spell","telegraph":"Firestorm — 4 to ALL heroes","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"all","side":"ally"}}]},{"id":"tyrants_fury","archetype":"Enrage","priority":5,"target_rule":"self","telegraph":"TYRANT'S FURY — +2/+2 permanently, and the hall burns for 3","verbs":[{"kind":"counters","power":2,"toughness":2,"target":{"mode":"self"}},{"kind":"deal_damage","amount":3,"target":{"mode":"all","side":"ally"}}]}]},{"id":"cinderpriest","types":["human"],"classes":["cleric","cultist"],"name":"Cinderpriest","flavor":"Keeps the court standing. Kill the healer or drown in mended wounds.","description":"A stooped acolyte in layered ash-grey vestments, face veiled in smoke-stained gauze, cradling a censer that leaks glowing cinders.","hp":5,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"mend","archetype":"Fortify","timing":"proactive","priority":20,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Pyre Vigil — mend an ally 3 each turn while the vigil holds","verbs":[{"kind":"heal","amount":3,"trigger":"upkeep","target":{"mode":"chosen","side":"ally","targeted":true}}],"channel":true},{"id":"rescue","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","priority":15,"cooldown":2,"target_rule":"lowest_hp_ally","telegraph":"Emergency Rite — heal 5","verbs":[{"kind":"heal","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"emberling","types":["elemental"],"classes":["brute"],"name":"Emberling","flavor":"Grows hotter every turn it is ignored — and spends that heat on you.","description":"A knee-high sprite of living flame, its coal-black core wrapped in dancing orange fire that flares taller each time it feeds.","hp":4,"power":1,"level":3,"row":"mid","attack_mode":"ranged","components":[{"id":"stoke","archetype":"Escalate","timing":"proactive","priority":40,"cooldown":2,"target_rule":"self","telegraph":"Stoke the Flames — +1/+1, permanently","verbs":[{"kind":"counters","power":1,"toughness":1,"target":{"mode":"self"}}]},{"id":"flare_snap","archetype":"Punish","timing":"reactive","trigger":"on_hit","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Flare-Snap — deal 4 to the attacker","verbs":[{"kind":"deal_damage","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ashfang_zealot","types":["human"],"classes":["warrior","cultist"],"name":"Ashfang Zealot","flavor":"Bullies the sword arm: dazes casters, drags attention to itself.","description":"A scarred fanatic in blackened half-plate, jaw tattooed with flame sigils, twin hooked blades smoking at their edges.","hp":8,"power":2,"level":4,"row":"front","attack_mode":"melee","components":[{"id":"skull_ring","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","telegraph":"Skull-Ringer — stun a hero (loses a turn)","verbs":[{"kind":"stun","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"challenge","archetype":"Debilitate","timing":"reactive","trigger":"on_ally_hit","priority":25,"cooldown":2,"target_rule":"trigger_source","telegraph":"Blood Challenge — deal 5 and taunt the attacker","verbs":[{"kind":"deal_damage","amount":5,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"taunt","target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"obsidian_sentinel","types":["construct"],"classes":["warrior"],"name":"Obsidian Sentinel","flavor":"The tyrant's bodyguard. It mends the throne, not itself.","description":"A statue of volcanic glass in the shape of a kneeling knight, seams glowing forge-orange, moving only when the throne is threatened.","hp":6,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"mend_throne","archetype":"Fortify","timing":"proactive","priority":25,"cooldown":3,"target_rule":"ashen_tyrant","telegraph":"Mend the Tyrant — heal Ashen Tyrant 4","verbs":[{"kind":"heal","amount":4,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"glass_fists","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Glass Fists — deal 3","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"forge_imp","types":["demon"],"classes":["scout"],"name":"Forge-Imp","flavor":"Spits sparks at medics: healing here costs.","description":"A cat-sized imp of soot and cinders perched on a broken pillar, tail tipped with a white-hot rivet, grinning with bellows-blast teeth.","hp":2,"power":1,"level":3,"row":"mid","attack_mode":"ranged","keywords":["flying"],"components":[{"id":"spark_spit","archetype":"Burst","timing":"proactive","priority":40,"cooldown":2,"target_rule":"valuation","telegraph":"Spark-Spit — deal 2","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"scald_the_medic","archetype":"Punish","timing":"reactive","trigger":"on_hero_healed","cooldown":2,"priority":22,"target_rule":"trigger_source","telegraph":"Scald the Medic — deal 3 to the mended","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"slag_hound","types":["beast"],"classes":["warrior"],"name":"Slag-Hound","flavor":"Hunts the biggest sword and bites back when hunted.","description":"A mastiff-shaped mass of cooling slag, cracks of magma for veins, dripping molten slobber that hisses on the obsidian floor.","hp":4,"power":2,"level":3,"row":"front","attack_mode":"melee","components":[{"id":"hunt_the_blade","archetype":"Debilitate","timing":"proactive","priority":35,"cooldown":2,"target_rule":"highest_threat","telegraph":"Hunt the Blade — deal 3 to the deadliest hero and hamstring them","verbs":[{"kind":"deal_damage","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"modify_action","action":"skill","modifier":"lock_skill","duration":"this_turn","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"molten_snap","archetype":"Punish","timing":"reactive","trigger":"on_targeted","cooldown":2,"priority":25,"target_rule":"trigger_source","telegraph":"Molten Snap — wound the hunter -1/-1","verbs":[{"kind":"wound","power":1,"toughness":1,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]},{"id":"ash_cantor","types":["human"],"classes":["cleric"],"name":"Ash-Cantor","flavor":"Sings your cards out of your hand.","description":"A blindfolded singer in charred ceremonial robes, throat tattooed with a column of flame script, voice carrying like heat over a pyre.","hp":3,"power":1,"level":3,"row":"rear","attack_mode":"ranged","components":[{"id":"dirge_of_cinders","archetype":"Debilitate","timing":"proactive","priority":30,"cooldown":3,"target_rule":"valuation","action_type":"spell","telegraph":"Dirge of Cinders — deal 2 and a hero discards a card","verbs":[{"kind":"deal_damage","amount":2,"target":{"mode":"chosen","side":"ally","targeted":true}},{"kind":"move_card","count":1,"source":"hand","destination":"graveyard","target":{"mode":"chosen","side":"ally","targeted":true}}]},{"id":"last_verse","archetype":"Fortify","timing":"reactive","trigger":"on_ally_below_50","cooldown":3,"priority":18,"target_rule":"wounded_ally","telegraph":"The Last Verse — heal the most wounded 3","verbs":[{"kind":"heal","amount":3,"target":{"mode":"chosen","side":"ally","targeted":true}}]}]}],"layouts":{"1":["ashen_tyrant","cinderpriest"],"2":["ashen_tyrant","cinderpriest","slag_hound","forge_imp"],"3":["ashen_tyrant","cinderpriest","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot"],"4":["ashen_tyrant","cinderpriest","slag_hound","slag_hound","forge_imp","obsidian_sentinel","ashfang_zealot","emberling","emberling","ash_cantor"]},"tokens":{}}
 
 Design a brand-new encounter (do not copy the examples' theme). Return ONLY the JSON."""
 
@@ -1231,12 +1279,44 @@ def _party_summary(character_ids: List[str]) -> Dict[str, Any]:
     return party_summary_from_loadouts(loadouts)
 
 
+def _ability_line(raw: Any) -> str:
+    """A Skill / Ultimate as one short line: its name, then its rules text."""
+    if not isinstance(raw, dict) or not raw.get("name"):
+        return ""
+    text = str(raw.get("translated_text") or raw.get("original_text") or "").strip()
+    text = " ".join(text.split())
+    if len(text) > 140:
+        text = text[:137].rstrip() + "…"
+    return f'{raw["name"]}' + (f" ({text})" if text else "")
+
+
+def _gear_names(lo: Dict[str, Any]) -> List[str]:
+    """The names of what a hero carries (worn slots and belt)."""
+    try:
+        from . import items
+        g = items.gear_of(copy.deepcopy(lo))
+    except Exception:  # noqa: BLE001 — a malformed gear block is just no gear
+        return []
+    out = []
+    for slot in ("primary", "secondary", "accessory"):
+        it = g.get(slot)
+        if isinstance(it, dict) and it.get("name"):
+            out.append(str(it["name"]))
+    out += [str(it["name"]) for it in (g.get("belt") or []) if isinstance(it, dict) and it.get("name")]
+    return out
+
+
+DEEDS_FOR_DESIGNER = 3   # §D25-7: the most recent chronicle lines per hero
+
+
 def party_summary_from_loadouts(loadouts: List[Dict[str, Any]],
-                                levels: Optional[List[int]] = None) -> Dict[str, Any]:
+                                levels: Optional[List[int]] = None,
+                                deeds: Optional[List[List[str]]] = None) -> Dict[str, Any]:
     """The same summary from raw loadout dicts (a run's frozen party copies —
     Update 17). ``levels`` overrides each member's level (the run's derived /
     effective level, §D17-4.2) so scenario adventures budget for the party as
-    it stands, not as it was saved."""
+    it stands, not as it was saved. ``deeds`` (per hero, newest last) are the
+    campaign chronicle's lines, when a run supplies them."""
     members: List[Dict[str, Any]] = []
     for i, lo in enumerate(loadouts):
         char = lo.get("character", {}) or {}
@@ -1244,6 +1324,7 @@ def party_summary_from_loadouts(loadouts: List[Dict[str, Any]],
         if levels is not None and i < len(levels):
             level = int(levels[i])
         brief = char.get("brief") if isinstance(char.get("brief"), dict) else {}
+        hero_deeds = (deeds[i] if deeds is not None and i < len(deeds) else []) or []
         members.append({
             "name": char.get("name", f"hero {i + 1}"),
             "level": level,
@@ -1251,11 +1332,49 @@ def party_summary_from_loadouts(loadouts: List[Dict[str, Any]],
             # §D24-9.5: the enemy designer sees the brief's CONCEPT and nothing
             # else of the character layers.
             "concept": str(brief.get("concept") or "").strip(),
+            # §D25-7: and the hero's TACTICAL facts — what the fight will meet.
+            "attack_mode": str(char.get("attack_mode") or "melee"),
+            "row": str(char.get("row") or "front"),
+            "keyword": str(char.get("keyword") or ""),
+            "types": [str(t) for t in (char.get("types") or [])],
+            "classes": [str(t) for t in (char.get("classes") or [])],
+            "skill": _ability_line(char.get("skill")),
+            "ultimate": _ability_line(char.get("ultimate")),
+            "gear": _gear_names(lo),
+            "deeds": [str(d) for d in hero_deeds][-DEEDS_FOR_DESIGNER:],
         })
     if not members:
         raise ValueError("choose at least one character")
     avg = sum(m["level"] for m in members) / len(members)
     return {"size": len(members), "avg_level": avg, "members": members}
+
+
+def _roster_text(party: Dict[str, Any]) -> str:
+    """The enemy designer's roster: one entry per hero with the tactical facts
+    (§D25-7) — never lore, wants, voice or ties."""
+    out = []
+    for m in party["members"]:
+        facts = [f'level {m["level"]}']
+        if m.get("colors"):
+            facts.append("/".join(m["colors"]))
+        if m.get("attack_mode"):
+            facts.append(f'{m["attack_mode"]}, {m.get("row") or "front"} row')
+        if m.get("keyword"):
+            facts.append(f'keyword {m["keyword"]}')
+        tags = list(m.get("types") or []) + list(m.get("classes") or [])
+        if tags:
+            facts.append("tags " + ", ".join(tags))
+        if m.get("skill"):
+            facts.append(f'Skill: {m["skill"]}')
+        if m.get("ultimate"):
+            facts.append(f'Ultimate: {m["ultimate"]}')
+        if m.get("gear"):
+            facts.append("carries " + ", ".join(m["gear"]))
+        if m.get("deeds"):
+            facts.append("lately: " + " / ".join(m["deeds"]))
+        out.append(f'{m["name"]} (' + "; ".join(facts) + ")"
+                   + (f' — {m["concept"]}' if m.get("concept") else ""))
+    return "; ".join(out)
 
 
 def _budget(size: int, avg_level: float, difficulty: str) -> int:
@@ -1320,7 +1439,7 @@ SIGNATURE_POOL: List[str] = [
     "circle) that punish standing still; the party pays actions to scatter",
     "the BODYGUARD KNOT — a Ward layering prevent/protection onto the one enemy "
     "that matters, so the party must peel the shield before the threat",
-    "the DREAD-WINDOW TYRANT — gauge-punishers (hero_gauge_pct / on_ultimate_cast "
+    "the DREAD-WINDOW TYRANT — a gauge-punisher (hero_gauge_pct / on_ultimate_cast "
     "/ primed_hero) that tax the party's big moment instead of their HP",
     "EXECUTIONER PACK — on_hero_downed surges that make one hero falling a "
     "crisis for the other three",
@@ -1428,12 +1547,7 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     """The per-request parameters appended after the editable instructions: the
     concrete party, difficulty, and the per-party-size budgets the layouts must
     scope to (the encounter is generated once, playable by any party of 1–4)."""
-    roster = "; ".join(
-        f'{m["name"]} (level {m["level"]}'
-        + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
-        + (f' — {m["concept"]}' if m.get("concept") else "")
-        for m in party["members"]
-    )
+    roster = _roster_text(party)
     size_lines = []
     for size in range(1, 5):
         budget = _budget(size, party["avg_level"], difficulty)
@@ -1444,7 +1558,7 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
             f"(a boss counts double); lockdown "
             + ("none at this size."
                if lock == 0 else
-               f"{lock} piece{'s' if lock != 1 else ''}."))
+               f"at least {lock} piece{'s' if lock != 1 else ''}."))
     lines = [
         "# THIS ENCOUNTER'S PARAMETERS",
         f'- Designing party (they picked this fight): {party["size"]} hero(es) — {roster}.',
@@ -1483,6 +1597,19 @@ def _request_block(party: Dict[str, Any], difficulty: str, note: str) -> str:
     return "\n".join(lines)
 
 
+def _no_duplicate_keys(pairs: List[Any]) -> Dict[str, Any]:
+    """json object hook (roadmap M4.11, C-09): a repeated key is an error, not
+    "the last one wins" — two `"layouts"` or two `"verbs"` in one object mean
+    the model wrote half a design twice, and silently keeping one hides it."""
+    out: Dict[str, Any] = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError(f'the JSON repeats the key "{key}" inside one object — '
+                             "write each key once (merge the two values)")
+        out[key] = value
+    return out
+
+
 def _extract_json(text: str) -> Dict[str, Any]:
     """Parse the model's reply into a dict, tolerating code fences / surrounding prose."""
     s = text.strip()
@@ -1490,13 +1617,16 @@ def _extract_json(text: str) -> Dict[str, Any]:
     if fence:
         s = fence.group(1).strip()
     try:
-        obj = json.loads(s)
+        obj = json.loads(s, object_pairs_hook=_no_duplicate_keys)
     except json.JSONDecodeError:
         # Fall back to the outermost { … } span.
         start, end = s.find("{"), s.rfind("}")
         if start == -1 or end <= start:
             raise ValueError("model did not return JSON")
-        obj = json.loads(s[start:end + 1])
+        try:
+            obj = json.loads(s[start:end + 1], object_pairs_hook=_no_duplicate_keys)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"the reply is not valid JSON: {exc}") from exc
     if not isinstance(obj, dict):
         raise ValueError("model returned JSON that is not an object")
     return obj
@@ -1531,25 +1661,31 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _check_layouts(encounter: Dict[str, Any]) -> None:
+def _layout_problems(encounter: Dict[str, Any]) -> List[str]:
     """Party-size scaling gate: layouts for sizes 1–4 must exist and outnumber the
-    party at every size (2× — duplicates count). Id validity and boss coverage are
-    checked by content.save_encounter's deeper validation; this catches the shape
-    problems early with a repair-friendly message."""
+    party at every size (2× — duplicates count), with size + 1 distinct designs
+    and at most 3 clones of one. Id validity and boss coverage are checked by
+    content.save_encounter's deeper validation; this catches the shape problems
+    early, ALL of them at once (§D25-4), with repair-friendly messages."""
     layouts = encounter.get("layouts") or {}
     missing = [str(s) for s in range(1, 5) if str(s) not in layouts]
+    problems: List[str] = []
     if missing:
-        raise ValueError(
+        problems.append(
             'missing "layouts" for party size(s): ' + ", ".join(missing)
             + ' — add a top-level "layouts" object with keys "1"–"4", each a list '
             "of enemy ids from your enemies pool (repeats allowed).")
     for size in range(1, 5):
+        if str(size) not in layouts:
+            continue
         roster = layouts.get(str(size))
         if not isinstance(roster, list):
-            raise ValueError(f'layouts["{size}"] must be a list of enemy ids')
+            problems.append(f'layouts["{size}"] must be a list of enemy ids')
+            continue
+        roster = [str(i) for i in roster]
         need = _min_enemies(size)
         if len(roster) < need:
-            raise ValueError(
+            problems.append(
                 f'layouts["{size}"] fields only {len(roster)} enemies — a party of '
                 f"{size} must be outnumbered with at least {need} (repeat ids to "
                 "clone more bodies).")
@@ -1558,25 +1694,33 @@ def _check_layouts(encounter: Dict[str, Any]) -> None:
         # mirrors the others'. The variety floor is party size + 1 (a first cut
         # at 2x per hero made size-3 fights "too strange" — eight unique kits vs
         # three heroes reads as noise, not variety).
-        distinct = len(set(map(str, roster)))
+        distinct = len(set(roster))
         want = size + 1
         if distinct < want:
-            raise ValueError(
+            problems.append(
                 f'layouts["{size}"] fields only {distinct} distinct enemy '
                 f"design(s) across its {len(roster)} bodies — a party of {size} "
                 f"needs at least {want} DIFFERENT designs (one per hero, plus "
                 "one), not clones. Add new enemies to the pool rather than "
                 "repeating ids: each design is a different threat to read.")
-        worst = max(((roster.count(i), str(i)) for i in set(roster)), default=(0, ""))
+        worst = max(((roster.count(i), i) for i in set(roster)), default=(0, ""))
         if worst[0] > 3:
-            raise ValueError(
+            problems.append(
                 f'layouts["{size}"] fields {worst[0]} copies of "{worst[1]}" — '
                 "no design may appear more than 3 times in a layout. Spread the "
                 "extra bodies across other designs (or add a new one).")
-    _check_ranged_placement(encounter)
+    problems.extend(_ranged_placement_problems(encounter))
+    return problems
 
 
-def _check_ranged_placement(encounter: Dict[str, Any]) -> None:
+def _check_layouts(encounter: Dict[str, Any]) -> None:
+    """`_layout_problems`, raised as one ValueError (every problem listed)."""
+    problems = _layout_problems(encounter)
+    if problems:
+        raise ValueError("; ".join(problems))
+
+
+def _ranged_placement_problems(encounter: Dict[str, Any]) -> List[str]:
     """§D23-3/§D23-6: a ranged enemy standing in the Front row is a LAYOUT FAULT.
 
     Ranged attacks cannot be made from the melee line, so such a body spends its
@@ -1588,11 +1732,18 @@ def _check_ranged_placement(encounter: Dict[str, Any]) -> None:
                  and str(e.get("attack_mode") or "melee") == "ranged"
                  and str(e.get("row") or "front") == "front"]
     if misplaced:
-        raise ValueError(
+        return [
             "ranged enemies standing in the FRONT row: " + ", ".join(misplaced)
             + ' — a ranged attack cannot be made from the melee line (D23-3), so '
             'these would spend their first turn walking backwards. Give each a '
-            '"row" of "mid" or "rear".')
+            '"row" of "mid" or "rear".']
+    return []
+
+
+def _check_ranged_placement(encounter: Dict[str, Any]) -> None:
+    problems = _ranged_placement_problems(encounter)
+    if problems:
+        raise ValueError(problems[0])
 
 
 # Verb kinds that only develop the acting enemy itself when aimed at "self" —
@@ -1822,13 +1973,14 @@ def _boss_pressure_problems(encounter: Dict[str, Any]) -> List[str]:
             continue
         name = str(e.get("name") or e.get("id") or "?")
         rnd = e.get("enrage_round")
-        if not isinstance(rnd, int) or not 2 <= rnd <= 6:
+        lo, hi = BOSS_ENRAGE_ROUNDS
+        if not isinstance(rnd, int) or not lo <= rnd <= hi:
             problems.append(
                 f'{name} is a boss without a legal "enrage_round" (an integer '
                 "3-5): the timed fuse that makes fury arrive even if nobody "
                 "bloodies it. Pick the round to fit the kit's tempo")
         neg = e.get("neglect")
-        if not isinstance(neg, int) or not 1 <= neg <= 2:
+        if not isinstance(neg, int) or not BOSS_NEGLECT[0] <= neg <= BOSS_NEGLECT[1]:
             problems.append(
                 f'{name} is a boss without a legal "neglect" (1 or 2): the '
                 "permanent +N/+N it gains at the end of any round it went "
@@ -1926,7 +2078,353 @@ def _sameness_problems(encounter: Dict[str, Any]) -> List[str]:
                 f'every enemy has attack_mode "{sorted(modes or {"melee"})[0]}" — '
                 "give the pool both melee and ranged bodies so where the heroes "
                 "stand is a real decision")
+
+    # 5. One REACTION worn by the whole pool (roadmap M4.11, C-10). Kits can
+    #    differ everywhere else and still answer the party identically — the
+    #    "eight of eight carry an on_incoming_lethal save" monoculture, where
+    #    every kill has to be double-tapped and nothing else about the fight
+    #    matters. A reaction is a threat the party must learn; learning the
+    #    same one on every body is not a puzzle.
+    by_reaction: Dict[Any, List[str]] = {}
+    for e in enemies:
+        seen = set()
+        for c in (e.get("components") or []):
+            if not isinstance(c, dict) or str(c.get("timing") or "proactive") != "reactive":
+                continue
+            if str(c.get("archetype") or "").lower() == "enrage":
+                continue
+            sig = _kit_signature(c)
+            if sig not in seen:
+                seen.add(sig)
+                by_reaction.setdefault(sig, []).append(label(e))
+    for sig, wearers in by_reaction.items():
+        if len(wearers) > MAX_SHARED_REACTION:
+            problems.append(
+                f"{len(wearers)} enemies ({', '.join(wearers)}) carry the same "
+                f'reaction (a {sig[0] or "reactive"} on "{sig[2] or "?"}") — at '
+                f"most {MAX_SHARED_REACTION} may share one. Give the others a "
+                "different answer to the party: another trigger, another verb, "
+                "or a proactive threat instead")
     return problems
+
+
+# The C-10 cap: how many enemies in one pool may wear the same reactive
+# signature (trigger + verb shape) before the pool reads as a monoculture.
+MAX_SHARED_REACTION = 2
+
+
+# --------------------------------------------------------------------------- #
+# Enemy pricing (§D25-5, §F-6 / GDD §9.1–§9.2)
+# --------------------------------------------------------------------------- #
+# Update 04's promise is that an enemy's Level is PRICED from its complexity:
+# the smallest L whose budget B(L) = 5L + 5 covers what it carries. Until M4.8
+# the model's own Level went straight into budgets, level-gated removal and
+# gauge credit. These tables price it in code. Keep them in step with the
+# "Components" and "Keywords" sections of DEFAULT_INSTRUCTIONS.
+ARCHETYPE_COSTS: Dict[str, int] = {          # T-09–T-16, §D8/§D9/§D22 additions
+    "burst": 4, "evasive": 2, "drain": 5, "swarm": 6, "fortify": 3,
+    "debilitate": 4, "punish": 3, "escalate": 4, "ward": 3, "counter": 3,
+    "resource attack": 4, "resource": 4, "necromancy": 5, "enrage": 0,
+}
+UNKNOWN_ARCHETYPE_COST = 4                   # an invented label prices as Debilitate
+SAP_COST = 5                                 # a sap (or a 20+ drain-ult) compounds: base 5
+KEYWORD_COSTS: Dict[str, int] = {            # T-28–T-35; relentless T-91
+    "reach": 1, "trample": 2, "flying": 4, "lifelink": 3, "infect": 3,
+    "deathtouch": 4, "protection": 3, "hexproof": 6, "indestructible": 6,
+    "relentless": 3,
+}
+RISES_COST = 3                               # the §D9-1 trait
+BOSS_BUDGET_MULT = 2.5                       # a boss spends up to 2.5 × B(L) (§F-9)
+
+
+def level_budget(level: int) -> int:
+    """B(L) = 5·L + 5 (T-36)."""
+    return 5 * int(level) + 5
+
+
+def _int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _all_verbs(verbs: Any) -> List[Dict[str, Any]]:
+    """A component's verbs, with a `conditional`'s / `modal`'s inner effects
+    flattened in (a stun behind a condition is still a stun)."""
+    out: List[Dict[str, Any]] = []
+    for v in (verbs or []) if isinstance(verbs, list) else []:
+        if not isinstance(v, dict):
+            continue
+        out.append(v)
+        out.extend(_all_verbs(v.get("effects")))
+        for mode in (v.get("modes") or []) if isinstance(v.get("modes"), list) else []:
+            if isinstance(mode, dict):
+                out.extend(_all_verbs(mode.get("effects")))
+    return out
+
+
+def _keywords_of(enemy: Dict[str, Any]) -> List[str]:
+    kw = enemy.get("keywords")
+    if isinstance(kw, dict):
+        return [str(k) for k in kw]
+    if isinstance(kw, list):
+        return [str(k) for k in kw]
+    return []
+
+
+def component_cost(comp: Dict[str, Any]) -> int:
+    """One component's price (§F-3.1 + modifiers): archetype base; ×1.5 for a
+    cooldown of 0–1, ×0.5 once per encounter, ×1.5 channelled; round up; +2 if
+    reactive. A charge detonation (on_charge_full) is its base +2, flat."""
+    arch = str(comp.get("archetype") or "").strip().lower()
+    base = ARCHETYPE_COSTS.get(arch, UNKNOWN_ARCHETYPE_COST)
+    if arch == "enrage":
+        return 0
+    verbs = _all_verbs(comp.get("verbs"))
+    if any(v.get("kind") == "sap" for v in verbs) or any(
+            v.get("kind") == "modify_action" and v.get("modifier") == "drain_ultimate"
+            and _int(v.get("amount")) >= 20 for v in verbs):
+        base = max(base, SAP_COST)
+    if str(comp.get("trigger") or "") == "on_charge_full":
+        return base + 2
+    mult = 1.0
+    if comp.get("once_per_encounter"):
+        mult *= 0.5
+    elif _int(comp.get("cooldown"), 0) <= 1:
+        mult *= 1.5
+    if comp.get("channel"):
+        mult *= 1.5
+    cost = ceil(base * mult)
+    if str(comp.get("timing") or "proactive") == "reactive":
+        cost += 2
+    return cost
+
+
+def price_enemy(enemy: Dict[str, Any]) -> Dict[str, Any]:
+    """Price one enemy from the §F tables: ``{cost, level, lines}``. ``level`` is
+    the smallest L whose budget covers the cost (a boss: 2.5 × B(L)); ``lines``
+    itemise the bill, for a repair message. Reads the model's own numbers —
+    call it BEFORE `_scale_hp` (difficulty is not cost)."""
+    hp, power = _int(enemy.get("hp"), 1), _int(enemy.get("power"), 1)
+    ranged = str(enemy.get("attack_mode") or "melee") == "ranged"
+    body = max(0, hp) + 3 * max(0, power) + (2 if ranged else 0)
+    lines = [f"body {body} (HP {hp} + Power {power}×3" + (" + ranged 2" if ranged else "") + ")"]
+    cost = body
+    for kw in _keywords_of(enemy):
+        price = KEYWORD_COSTS.get(kw, 0)
+        if price:
+            cost += price
+            lines.append(f"{kw} {price}")
+    if enemy.get("rises"):
+        cost += RISES_COST
+        lines.append(f"rises {RISES_COST}")
+    for c in enemy.get("components") or []:
+        if isinstance(c, dict):
+            price = component_cost(c)
+            cost += price
+            lines.append(f"{c.get('id') or c.get('archetype') or 'component'} {price}")
+    mult = BOSS_BUDGET_MULT if enemy.get("is_boss") else 1.0
+    level = 1
+    while level_budget(level) * mult < cost and level < 30:
+        level += 1
+    return {"cost": cost, "level": level, "lines": lines}
+
+
+# --------------------------------------------------------------------------- #
+# Coercion (§D25-1.4): deterministic faults fixed in code, not re-emitted
+# --------------------------------------------------------------------------- #
+BOSS_ENRAGE_ROUNDS = (3, 5)     # the prompt's range; the gate now matches it
+BOSS_NEGLECT = (1, 2)
+
+
+def _coerce_encounter(encounter: Dict[str, Any]) -> List[str]:
+    """Repair, in place, every fault with exactly one right answer, and return a
+    note per fix. Runs after `_normalize`, before `_scale_hp` and the gates, so
+    a model that spelled `supertypes` or forgot a boss dial costs nothing — only
+    faults with more than one right answer come back as repair turns."""
+    notes: List[str] = []
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        for key in ("hp", "power", "level", "enrage_round", "neglect"):
+            v = e.get(key)
+            if isinstance(v, str) and v.strip().lstrip("-").isdigit():
+                e[key] = int(v.strip())
+                notes.append(f"{name}: {key} read as a number")
+        if "classes" not in e and "supertypes" in e:
+            e["classes"] = e.pop("supertypes")
+            notes.append(f"{name}: supertypes renamed classes")
+        for field, registry in (("types", ENEMY_TYPES), ("classes", ENEMY_SUPERTYPES)):
+            raw = e.get(field)
+            if isinstance(raw, str):
+                raw = [raw]
+            if not isinstance(raw, list):
+                continue
+            tags = [str(t).strip().lower() for t in raw]
+            valid = []
+            for t in tags:
+                if t in registry and t not in valid:
+                    valid.append(t)
+            if valid and (valid != tags or len(valid) > 2):
+                dropped = [t for t in tags if t not in valid[:2]]
+                e[field] = valid[:2]
+                if dropped:
+                    notes.append(f"{name}: dropped {field} {', '.join(dropped)}")
+        if str(e.get("attack_mode") or "melee") == "ranged" and str(e.get("row") or "front") == "front":
+            e["row"] = "mid"
+            notes.append(f"{name}: ranged, moved from front to mid")
+        if e.get("is_boss"):
+            lo, hi = BOSS_ENRAGE_ROUNDS
+            rnd = e.get("enrage_round")
+            if not isinstance(rnd, int) or isinstance(rnd, bool):
+                e["enrage_round"] = content.DEFAULT_BOSS_DIALS["enrage_round"]
+                notes.append(f"{name}: enrage_round set to the default")
+            elif not lo <= rnd <= hi:
+                e["enrage_round"] = min(hi, max(lo, rnd))
+                notes.append(f"{name}: enrage_round clamped to {e['enrage_round']}")
+            lo, hi = BOSS_NEGLECT
+            neg = e.get("neglect")
+            if not isinstance(neg, int) or isinstance(neg, bool):
+                e["neglect"] = content.DEFAULT_BOSS_DIALS["neglect"]
+                notes.append(f"{name}: neglect set to the default")
+            elif not lo <= neg <= hi:
+                e["neglect"] = min(hi, max(lo, neg))
+                notes.append(f"{name}: neglect clamped to {e['neglect']}")
+        # §D25-5: Level is DERIVED — an enemy written below its price is raised
+        # to it. A Level above the price is legal (underspending, §F-6).
+        priced = price_enemy(e)
+        written = e.get("level")
+        if not isinstance(written, int) or isinstance(written, bool) or written < priced["level"]:
+            e["level"] = priced["level"]
+            notes.append(f"{name}: level {written} raised to its priced level "
+                         f"{priced['level']} (cost {priced['cost']})")
+    return notes
+
+
+# --------------------------------------------------------------------------- #
+# Lockdown, caps and the channeler (§D25-6)
+# --------------------------------------------------------------------------- #
+_HOSTILE_MODIFIERS = frozenset({"lock_skill", "drain_ultimate", "make_melee"})
+
+
+def _is_lockdown_verb(v: Dict[str, Any]) -> bool:
+    kind = str(v.get("kind") or "")
+    if kind in ("stun", "taunt", "sap"):
+        return True
+    if kind == "prevent" and str(v.get("parameter") or "") == "cast":
+        return True
+    if kind == "move_card" and str(v.get("source") or "") == "hand":
+        return True
+    return kind == "modify_action" and str(v.get("modifier") or "") in _HOSTILE_MODIFIERS
+
+
+def _is_resource_verb(v: Dict[str, Any]) -> bool:
+    kind = str(v.get("kind") or "")
+    return (kind == "sap"
+            or (kind == "prevent" and str(v.get("parameter") or "") == "cast")
+            or (kind == "move_card" and str(v.get("source") or "") == "hand"))
+
+
+def _enemy_verbs(e: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for c in e.get("components") or []:
+        if isinstance(c, dict):
+            out.extend(_all_verbs(c.get("verbs")))
+    return out
+
+
+def _is_lockdown_piece(e: Dict[str, Any]) -> bool:
+    return any(_is_lockdown_verb(v) for v in _enemy_verbs(e))
+
+
+def _roster_bodies(encounter: Dict[str, Any], size: int) -> List[str]:
+    """Every body that fights at party ``size``: the layout, plus a `waves`
+    objective's later waves at that size."""
+    bodies = [str(i) for i in ((encounter.get("layouts") or {}).get(str(size)) or [])
+              if isinstance(i, (str, int))]
+    obj = encounter.get("objective") or {}
+    if isinstance(obj, dict) and obj.get("kind") == "waves":
+        for w in obj.get("waves") or []:
+            if isinstance(w, dict):
+                bodies += [str(i) for i in (w.get(str(size)) or []) if isinstance(i, (str, int))]
+    return bodies
+
+
+def _lockdown_problems(encounter: Dict[str, Any], difficulty: str) -> List[str]:
+    """§D25-6: the lockdown budget is a FLOOR — each layout fields at least
+    `_lockdown_budget(size, difficulty)` bodies whose kit attacks the party's
+    turns. Clones count; the owner wants more control pressure, never less."""
+    pieces = {str(e.get("id")) for e in encounter.get("enemies", [])
+              if isinstance(e, dict) and _is_lockdown_piece(e)}
+    problems: List[str] = []
+    for size in range(1, 5):
+        need = _lockdown_budget(size, difficulty)
+        if need <= 0:
+            continue
+        have = sum(1 for b in _roster_bodies(encounter, size) if b in pieces)
+        if have < need:
+            problems.append(
+                f'layouts["{size}"] fields {have} lockdown piece(s) — this size needs '
+                f"{need}: bodies whose kit attacks the party's TURNS (stun, taunt with "
+                "its blow, silence, forced discard, sap, hamstring, drain-ult, strip-"
+                "reach). Add a lockdown component to a design in this layout, or "
+                "field more copies of one that has it")
+    return problems
+
+
+def _cap_problems(encounter: Dict[str, Any]) -> List[str]:
+    """§D25-6: at most ONE design per pool of each scarce kind — a resource
+    attacker, a poisoner, an infect creature, a counter piece, a gauge-punisher.
+    Clones of that one design are fine. A boss's on_ultimate_cast counter is
+    T-70's business (boss-only, once per encounter) and is not counted here."""
+    kinds: Dict[str, List[str]] = {}
+
+    def add(kind: str, name: str) -> None:
+        if name not in kinds.setdefault(kind, []):
+            kinds[kind].append(name)
+
+    for e in encounter.get("enemies", []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name") or e.get("id") or "?")
+        if "infect" in _keywords_of(e):
+            add("infect creature", name)
+        for c in e.get("components") or []:
+            if not isinstance(c, dict):
+                continue
+            verbs = _all_verbs(c.get("verbs"))
+            trig = str(c.get("trigger") or "")
+            cond = c.get("condition") if isinstance(c.get("condition"), dict) else {}
+            if any(_is_resource_verb(v) for v in verbs):
+                add("resource attacker (discard / silence / sap)", name)
+            if any(v.get("kind") == "poison" for v in verbs):
+                add("poisoner", name)
+            ult_counter = trig == "on_ultimate_cast" and any(
+                v.get("kind") == "counter" for v in verbs)
+            if any(v.get("kind") == "counter" for v in verbs) and not ult_counter:
+                add("counter piece", name)
+            if not ult_counter and (trig == "on_ultimate_cast"
+                                    or str(cond.get("kind") or "") == "hero_gauge_pct"):
+                add("gauge-punisher", name)
+    return [f"{len(names)} designs are each a {kind} ({', '.join(names)}) — at most "
+            "ONE per encounter (clones of it are fine). Keep the best one and give "
+            "the others a different job"
+            for kind, names in kinds.items() if len(names) > 1]
+
+
+def _channeler_problems(encounter: Dict[str, Any], difficulty: str) -> List[str]:
+    """§E6-5 (A-39): at standard and hard, at least one enemy channels."""
+    if difficulty == "easy":
+        return []
+    for e in encounter.get("enemies", []):
+        if isinstance(e, dict) and any(isinstance(c, dict) and c.get("channel")
+                                       for c in (e.get("components") or [])):
+            return []
+    return ['no enemy channels — at standard and hard difficulty the pool needs at '
+            'least one CHANNELER (a component with "channel": true: an aura, an '
+            "anthem, or a ritual tick the party must break)"]
 
 
 def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
@@ -1957,6 +2455,75 @@ def _chat(api_key: str, model: str, messages: List[Dict[str, str]],
     return reply
 
 
+# Transport resilience (§D25-1, T-89): a dropped connection, a timeout, a 429
+# or a 5xx is the network's fault, not the model's, so it is retried HERE —
+# with backoff, before the reply ever reaches a repair loop — rather than
+# ending a quest-accept job. Tries are in total (first call included). A
+# timeout is retried once at most: a second full wait doubles what the player
+# feels. Retry-After is honoured up to the cap.
+TRANSPORT_TRIES = 3
+RETRY_BASE_S = 2.0
+RETRY_CAP_S = 30.0
+MAX_TIMEOUT_RETRIES = 1
+_RETRY_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524, 529})
+
+
+def _sleep(seconds: float) -> None:
+    """Backoff sleep — a seam so tests don't wait."""
+    import time
+    time.sleep(seconds)
+
+
+def _retry_after(resp: Any, attempt: int) -> float:
+    """Seconds to wait before try ``attempt + 1``: the server's Retry-After when
+    it gives one, else exponential backoff from RETRY_BASE_S; capped."""
+    try:
+        hdr = (getattr(resp, "headers", None) or {}).get("retry-after")
+        if hdr is not None:
+            return min(RETRY_CAP_S, max(0.0, float(hdr)))
+    except (TypeError, ValueError):
+        pass
+    return min(RETRY_CAP_S, RETRY_BASE_S * (3 ** attempt))
+
+
+# Prompt caching (§D25-2). Anthropic and Google models on OpenRouter cache only
+# at explicit `cache_control` breakpoints; OpenAI models cache long prefixes on
+# their own and are sent as-is. Two breakpoints: the system prompt (the ≈21k
+# stable instructions every phase and repair shares) and the newest user turn
+# (so a repair re-reads the conversation so far from cache). Applied on the wire
+# only — the tape hashes the plain messages, so recordings still match.
+_CACHE_PREFIXES = ("anthropic/", "google/")
+
+
+def _wire_messages(model: str, messages: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+    if not str(model).startswith(_CACHE_PREFIXES):
+        return messages
+    out: List[Dict[str, Any]] = [dict(m) for m in messages]
+    last_user = max((i for i, m in enumerate(out) if m.get("role") == "user"), default=None)
+    for i, m in enumerate(out):
+        if isinstance(m.get("content"), str) and (m.get("role") == "system" or i == last_user):
+            m["content"] = [{"type": "text", "text": m["content"],
+                             "cache_control": {"type": "ephemeral"}}]
+    return out
+
+
+def _provider_error(resp: Any) -> int:
+    """The code of an error OpenRouter reports INSIDE a 200 body (a provider
+    that failed after the response began), else 0."""
+    if getattr(resp, "status_code", 0) >= 400:
+        return 0
+    try:
+        data = resp.json()
+    except (ValueError, AttributeError):
+        return 0
+    if isinstance(data, dict) and "choices" not in data and isinstance(data.get("error"), dict):
+        try:
+            return int(data["error"].get("code") or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
 def _live_chat(api_key: str, model: str, messages: List[Dict[str, str]],
                max_tokens: Optional[int], timeout: float) -> str:
     """One OpenRouter chat completion; returns the assistant message text.
@@ -1966,36 +2533,67 @@ def _live_chat(api_key: str, model: str, messages: List[Dict[str, str]],
     truncated JSON reply would otherwise burn a repair attempt."""
     payload: Dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": _wire_messages(model, messages),
         "temperature": 0.9,
         "response_format": {"type": "json_object"},
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
-    try:
-        resp = httpx.post(
-            OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://ltg.local",
-                "X-Title": "LTG Encounter Generator",
-            },
-            json=payload,
-            timeout=timeout,
-        )
-    except httpx.HTTPError as exc:
-        raise ValueError(f"could not reach OpenRouter: {exc}") from exc
+    timeouts = 0
+    attempt = 0
+    while True:
+        try:
+            resp = httpx.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://ltg.local",
+                    "X-Title": "LTG Encounter Generator",
+                },
+                json=payload,
+                timeout=timeout,
+            )
+        except httpx.TimeoutException as exc:
+            timeouts += 1
+            attempt += 1
+            if attempt >= TRANSPORT_TRIES or timeouts > MAX_TIMEOUT_RETRIES:
+                raise ValueError(f"OpenRouter timed out after {timeout:.0f} s "
+                                 f"({attempt} tries): {exc}") from exc
+            _sleep(_retry_after(None, attempt - 1))
+            continue
+        except httpx.HTTPError as exc:
+            attempt += 1
+            if attempt >= TRANSPORT_TRIES:
+                raise ValueError(f"could not reach OpenRouter ({attempt} tries): {exc}") from exc
+            _sleep(_retry_after(None, attempt - 1))
+            continue
+        if resp.status_code in _RETRY_STATUS or _provider_error(resp) in _RETRY_STATUS:
+            attempt += 1
+            if attempt < TRANSPORT_TRIES:
+                _sleep(_retry_after(resp, attempt - 1))
+                continue
+        break
     if resp.status_code == 401:
         raise ValueError("OpenRouter rejected the API key (401). Check Options → LLM.")
     if resp.status_code >= 400:
         detail = resp.text[:300]
-        raise ValueError(f"OpenRouter error {resp.status_code}: {detail}")
+        raise ValueError(f"OpenRouter error {resp.status_code}"
+                         + (f" after {attempt} tries" if attempt > 1 else "")
+                         + f": {detail}")
     try:
         data = resp.json()
+    except ValueError as exc:
+        raise ValueError(f"unexpected OpenRouter response: {exc}") from exc
+    if isinstance(data, dict) and "choices" not in data and isinstance(data.get("error"), dict):
+        err = data["error"]
+        raise ValueError(f"OpenRouter provider error {err.get('code', '?')}"
+                         + (f" after {attempt} tries" if attempt > 1 else "")
+                         + f": {str(err.get('message') or '')[:300]}")
+    try:
         choice = data["choices"][0]
         content = choice["message"]["content"] or ""
-    except (KeyError, IndexError, ValueError) as exc:
+    except (KeyError, IndexError, TypeError) as exc:
         raise ValueError(f"unexpected OpenRouter response: {exc}") from exc
     # A reply cut off at the ceiling is NOT a malformed reply, and the repair
     # loops must not treat it as one: re-prompting cannot make the output
@@ -2017,6 +2615,80 @@ def _live_chat(api_key: str, model: str, messages: List[Dict[str, str]],
 # reply; the default completion cap many models assume would truncate it and
 # burn a repair attempt (same reasoning as ADVENTURE_MAX_TOKENS / T-63).
 ENCOUNTER_MAX_TOKENS = 24000
+# §D25-1 (T-90): the wait must cover the ceiling at the ~75 tok/s these models
+# sustain (24k / 75 ≈ 320 s), plus headroom. It used to be `_chat`'s 120 s
+# default, so a long encounter timed out a reply that was still arriving.
+ENCOUNTER_TIMEOUT = 420.0
+
+# The shape faults a gate can raise on malformed model output (a component
+# that is a string, `enemies` as an object). They are the model's fault, so
+# they are repair turns, never a crashed job (§D25-1.3).
+_SHAPE_FAULTS = (TypeError, AttributeError, KeyError, IndexError)
+
+
+def _repair_loop(messages: List[Dict[str, str]], call, fix, what: str,
+                 attempts: int, label: Optional[str] = None) -> Any:
+    """The one repair loop every writer shares: call, parse, ``fix(raw)`` (clean
+    + validate, raising ValueError with a repair-friendly message), and on a
+    failure feed the reply and the error back, up to ``attempts`` calls. A
+    transport fault raises out of ``call`` and is not a repair turn (`_live_chat`
+    already retried it). ``label`` names the thing in the final error."""
+    last_err = ""
+    for _ in range(max(1, attempts)):
+        reply = call(messages)
+        try:
+            return fix(_extract_json(reply))
+        except ValueError as exc:
+            last_err = str(exc)
+        except _SHAPE_FAULTS as exc:
+            last_err = (f"the output had an unexpected shape ({type(exc).__name__}: "
+                        f"{exc}) — follow the JSON contract exactly")
+        messages.append({"role": "assistant", "content": reply})
+        messages.append({"role": "user", "content": (
+            f"That output was rejected: {last_err}\n"
+            f"Fix it and return ONLY the corrected {what} JSON.")})
+    raise ValueError(f"{label or what} generation failed after {attempts} attempts: {last_err}")
+
+
+def _prepare_encounter(raw: Dict[str, Any], difficulty: str) -> "tuple[Dict[str, Any], List[str]]":
+    """Normalize, coerce (§D25-1.4, which prices Levels — before any scaling),
+    then apply the stat multipliers. Returns ``(encounter, coercion notes)``."""
+    enc = _normalize(raw)
+    notes = _coerce_encounter(enc)
+    _scale_hp(enc, difficulty)   # floor enemy HP so they aren't one-shot
+    return enc, notes
+
+
+def _encounter_problems(enc: Dict[str, Any], difficulty: str) -> List[str]:
+    """Every generation gate an encounter (or an adventure phase) must clear,
+    collected — never the first alone (§D25-4)."""
+    problems = _layout_problems(enc)                     # scaling layouts for parties of 1–4
+    # Art/narration data is required: the scene and every enemy's look.
+    if not enc.get("scene"):
+        problems.append('missing the top-level "scene" (2–3 sentence setting)')
+    undescribed = [str(e.get("name", "?")) for e in enc["enemies"]
+                   if isinstance(e, dict) and not str(e.get("description") or "").strip()]
+    if undescribed:
+        problems.append('enemies missing a "description" (physical appearance): '
+                        + ", ".join(undescribed))
+    problems.extend(_design_problems(enc))               # §D14: kit floor
+    problems.extend(_taunt_problems(enc))                # §D18-1: taunt bites
+    problems.extend(_corpse_problems(enc))               # §D19-1: corpse fuel
+    problems.extend(_type_problems(enc))                 # §D21: types required
+    problems.extend(_sameness_problems(enc))             # anti-monotony
+    problems.extend(_boss_pressure_problems(enc))        # boss dials
+    problems.extend(_objective_problems(enc))            # objectives with teeth
+    problems.extend(_lockdown_problems(enc, difficulty))  # §D25-6: the floor
+    problems.extend(_cap_problems(enc))                  # §D25-6: one of each scarce kind
+    problems.extend(_channeler_problems(enc, difficulty))  # §E6-5
+    return problems
+
+
+def _problem_text(problems: List[str]) -> str:
+    """Several problems as one repair message, one per line."""
+    if len(problems) == 1:
+        return problems[0]
+    return f"{len(problems)} problems —\n" + "\n".join(f"- {p}" for p in problems)
 
 
 def generate_encounter(character_ids: List[str], difficulty: str = "standard",
@@ -2039,55 +2711,30 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
         difficulty = "standard"
 
     party = _party_summary(character_ids)
-    system = settings["instructions"]
-    user = _request_block(party, difficulty, note)
     messages: List[Dict[str, str]] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
+        {"role": "system", "content": settings["instructions"] + ENCOUNTER_EXTENSION},
+        {"role": "user", "content": _request_block(party, difficulty, note)},
     ]
 
-    last_err = ""
-    for attempt in range(max(1, attempts)):
-        reply = _chat(settings["api_key"], model_for("encounters", settings), messages,
-                      max_tokens=ENCOUNTER_MAX_TOKENS, kind="encounter")
-        try:
-            encounter = _normalize(_extract_json(reply))
-            _scale_hp(encounter, difficulty)  # floor enemy HP so they aren't one-shot
-            _check_layouts(encounter)         # scaling layouts for parties of 1–4
-            # Stamp the generation difficulty — a display flag the pickers and
-            # editors show ("made at hard"), never a rules input.
-            encounter["difficulty"] = difficulty
-            # Art/narration data is required: the scene and every enemy's look.
-            problems = []
-            if not encounter["scene"]:
-                problems.append('missing the top-level "scene" (2–3 sentence setting)')
-            undescribed = [str(e.get("name", "?")) for e in encounter["enemies"]
-                           if isinstance(e, dict)
-                           and not str(e.get("description") or "").strip()]
-            if undescribed:
-                problems.append('enemies missing a "description" (physical '
-                                'appearance): ' + ", ".join(undescribed))
-            problems.extend(_design_problems(encounter))  # §D14: kit floor
-            problems.extend(_taunt_problems(encounter))   # §D18-1: taunt bites
-            problems.extend(_corpse_problems(encounter))  # §D19-1: corpse fuel
-            problems.extend(_type_problems(encounter))    # §D21: types required
-            problems.extend(_sameness_problems(encounter))  # anti-monotony
-            problems.extend(_boss_pressure_problems(encounter))  # boss dials
-            problems.extend(_objective_problems(encounter))  # objectives with teeth
-            if problems:
-                raise ValueError("; ".join(problems))
-            if not persist:
-                # The full authored-content gate, without the save.
-                return content._validate_encounter(encounter)
-            return content.save_encounter(encounter)  # validates + persists
-        except ValueError as exc:
-            last_err = str(exc)
-            # Feed the failure back so the model can repair its own output.
-            messages.append({"role": "assistant", "content": reply})
-            messages.append({"role": "user", "content": (
-                f"That output was rejected: {last_err}\n"
-                "Fix it and return ONLY the corrected encounter JSON.")})
-    raise ValueError(f"generation failed after {attempts} attempts: {last_err}")
+    def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
+        encounter, _notes = _prepare_encounter(raw, difficulty)
+        # Stamp the generation difficulty — a display flag the pickers and
+        # editors show ("made at hard"), never a rules input.
+        encounter["difficulty"] = difficulty
+        problems = _encounter_problems(encounter, difficulty)
+        if problems:
+            raise ValueError(_problem_text(problems))
+        if not persist:
+            # The full authored-content gate, without the save.
+            return content._validate_encounter(encounter)
+        return content.save_encounter(encounter)  # validates + persists
+
+    def call(msgs: List[Dict[str, str]]) -> str:
+        return _chat(settings["api_key"], model_for("encounters", settings), msgs,
+                     max_tokens=ENCOUNTER_MAX_TOKENS, timeout=ENCOUNTER_TIMEOUT,
+                     kind="encounter")
+
+    return _repair_loop(messages, call, fix, "encounter", attempts, label="")
 
 
 # --------------------------------------------------------------------------- #
@@ -2097,103 +2744,21 @@ def generate_encounter(character_ids: List[str], difficulty: str = "standard",
 # narration overflow the default `max_tokens` most models assume, and truncated
 # JSON would otherwise waste repair attempts. Kept below common per-model output
 # ceilings so the request never 400s.
-ADVENTURE_MAX_TOKENS = 64000  # three phases x an 8-10 design pool each; 48000
-# proved too tight once the §variety floor pushed pools to 8-10 distinct designs
-# (2026-08 truncation in the wild). 64000 matches SCENARIO_MAX_TOKENS, which the
-# same model pool already accepts without a 400.
-ADVENTURE_TIMEOUT = 900.0  # one reply carries three encounters; allow the time
+# §D25-3 (T-92): an adventure is written in four calls — an outline, then one
+# phase per call — so each call's ceiling is one encounter's, not three. The
+# timeouts cover the ceilings at ~75 tok/s with headroom.
+OUTLINE_MAX_TOKENS = 6000
+OUTLINE_TIMEOUT = 180.0
+PHASE_MAX_TOKENS = 32000   # one 8–10 design pool + four layouts + a narration
+PHASE_TIMEOUT = 480.0
+# Kept for callers that size one adventure call (the tape, the budget tests):
+# the per-phase figures, since no call carries more than a phase any more.
+ADVENTURE_MAX_TOKENS = PHASE_MAX_TOKENS
+ADVENTURE_TIMEOUT = PHASE_TIMEOUT
 
-# Appended to the (editable) encounter instructions for an adventure request:
-# everything the model already knows about designing ONE encounter holds per
-# phase; this block adds the arc, the boss ladder, and the output wrapper.
-ADVENTURE_EXTENSION = r"""
-# ADVENTURE MODE — three phases, one arc (this request generates a whole adventure)
-
-You are designing an ADVENTURE: three thematically linked encounters (the ACTS)
-fought in sequence by one party — progress through a single place. Guards at the
-gate, knights in the courtyard, the tyrant in his throne room: one faction, one
-location traversed, escalating stakes. Everything in the instructions above
-applies to EACH phase individually (chassis, components, budgets, layouts, scenes,
-descriptions). This block adds the arc-level rules:
-
-- SCENES PROGRESS: the three phases' `scene` texts must read as three stations of
-  ONE location — outside it, inside it, at its heart — not three unrelated
-  arenas. Same palette, same weather-world, deepening dread.
-- DIFFICULTY ESCALATES BY DESIGN: each phase's Level budgets are given below,
-  computed for a party one level stronger per phase. Respect each phase's own
-  per-party-size layout minimums and targets.
-- ACTS DIFFER MECHANICALLY: each phase leans on a DIFFERENT signature mechanic
-  (the parameters roll one per phase) so the run escalates in KIND, not just in
-  numbers — e.g. a skirmish of evasive raiders, then the ritual they were
-  screening, then the boss spending the corpses both fights left behind.
-- PHASE III ENDS IN THE BOSS: exactly one enemy with `is_boss: true` in Phase III —
-  the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
-  Enrage, phase gates, real HP). No enemy anywhere may exceed its level.
-- PHASES I AND II MAY each field ONE MINI-BOSS, and Phase II usually SHOULD —
-  playtest: a mini-boss mid-adventure is the more fun act, a rising beat before
-  the finale. A mini-boss is mechanically a full boss (`is_boss: true`, Enrage,
-  the enrage_round/neglect dials, 2.5× budget, counts double), thematically
-  distinct (the gate-captain, not the king), and STRICTLY lower level than
-  Phase III's boss.
-- NARRATION: each phase carries a `narration` — 2 to 4 PARAGRAPHS (roughly
-  120–250 words; it is checked, a single thin paragraph is rejected), SECOND
-  PERSON, PRESENT TENSE, separated by blank lines. This is the story the player
-  reads before the board appears — the ONLY story they get — so it does a
-  scene's work, not a caption's:
-    * THE ROAD IN. How the party got here from the last beat: Phase I picks up
-      the ride out of town (the quest's own journey — hours on the wooded path,
-      the weather turning, the first wrong sign); Phases II and III open on the
-      AFTERMATH of the previous fight (the wounds, the loot-glance, the door
-      the survivors fled through) and the push deeper.
-    * THE DISCOVERY. What the party sees, rounding the bend: the scene, and the
-      enemies IN it, mid-act — not waiting on a mark. Name the bodies the
-      player is about to fight (the same designs as this phase's pool) doing
-      something: picking over an upturned wagon, hauling a chest, arguing over
-      a map, feeding something in a pit.
-    * THE REASON. Why this fight, right now: what the enemies are doing here,
-      what they want, and what tips it into violence — they spot you, you spot
-      the hostages, the ground gives way. The player should finish reading
-      knowing exactly why swords are out on both sides.
-    * A VOICE, when it earns it. Enemy dialogue in quotes brings the moment to
-      life — the lead goblin looking up first: "We got company!" he shouts.
-      "Get 'em quick before the big boss comes back!" One or two lines, in
-      character, never exposition dumped into a mouth.
-  No mechanics, no numbers. The concreteness rule binds here hardest: name what
-  the party can SEE and who is about to fight them. Like so (Phase I shape):
-  "You begin up the wooded path toward the foothills, and for a few hours the
-  only sound is your own boots. Then, past a bend, voices — harsh, quarrelling.
-  A wagon lies on its side across the track, wheels still turning, and goblins
-  are picking over it: sacks slit, crates pried, the wagon-riders sprawled
-  where they fell. The biggest of them, a snarling brute with dull green skin
-  and a leather eyepatch, looks up first. 'We got company!' he bellows. 'Get
-  'em quick, before the big boss comes back!'"
-- `flavor` is the adventure's one-line pitch, shown in the New Game list.
-
-# Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
-
-One phase MAY carry an optional `"objective"` — an alternate win condition that
-turns the phase into a set piece. The standing rules are HARD validation:
-- AT MOST ONE objective in the whole adventure.
-- On Phase I or Phase II it may be any of the four kinds below.
-- On Phase III it must MODIFY the boss fight, never replace it (§D23-5). Exactly
-  three shapes are legal there, and nothing else is: a `race` that marks THE BOSS
-  and carries `guards` (the lieutenants shield it until they fall, and a clock
-  runs on the kill); a `waves` schedule whose FINAL wave fields the boss
-  (reinforcements keep arriving through the climax, which still ends on the
-  boss); or a `deadline` (a clock over the standard kill). A Phase III without
-  an objective is the standard boss kill, and stays the common case.
-- Objectives are fully public (the party sees the goal and its countdown from
-  turn 1). Defeat by party wipe is unchanged.
-Use one in roughly two adventures out of three, when the fiction asks for it;
-let the phase's `narration` reference the objective — ESPECIALLY a shield or a
-clock, or the party learns the rule by bafflement. An objective must DO
-something (beta playtest: "Destroy X in 4 turns" where X is a minion the party
-one-shots on turn 1 is not a set piece, it is a checkbox). A fight where the
-party must kill the boss FIRST is not an objective at all — build it as a boss
-whose kit refills the field (Necromancy over corpse-leaving minions, a Swarm,
-a battlefield heal) plus the enrage_round/neglect dials. The four kinds:
-
-1. SURVIVE — hold out N rounds; the party wins the phase when round N's End Step
+# The objective kinds, shared by standalone encounters (§D12-7, M4.12) and
+# adventure phases. Each writer adds its own placement rules above it.
+OBJECTIVE_KINDS = r"""1. SURVIVE — hold out N rounds; the party wins the fight when round N's End Step
    completes (survivors withdraw). Timer 4–6 rounds. Survival must not be
    passive: the pressure must MOUNT — schedule a reinforcement entry every 1–2
    rounds (at least two entries; it is checked) so fresh bodies keep arriving,
@@ -2250,19 +2815,170 @@ a battlefield heal) plus the enrage_round/neglect dials. The four kinds:
    collapsing mine, a rising tide, a gate grinding shut; the narration MUST
    name what the clock is, because the UI shows only the count.
    {"kind": "deadline", "turns": 5}
+"""
 
-# Adventure output contract (return EXACTLY this shape, nothing else)
+_OBJECTIVE_COMMON = r"""- Objectives are fully public (the party sees the goal and its countdown from
+  turn 1). Defeat by party wipe is unchanged.
+An objective must DO something (beta playtest: "Destroy X in 4 turns" where X
+is a minion the party one-shots on turn 1 is not a set piece, it is a
+checkbox). A fight where the party must kill the boss FIRST is not an objective
+at all — build it as a boss whose kit refills the field (Necromancy over
+corpse-leaving minions, a Swarm, a battlefield heal) plus the
+enrage_round/neglect dials. The four kinds:
+
+"""
+
+# Appended to the (editable) encounter instructions for a standalone encounter
+# (§D25-11): objectives are no longer adventure-only.
+ENCOUNTER_EXTENSION = r"""
+
+# Encounter OBJECTIVES (optional — Design Update 12 §D12-1)
+
+This encounter MAY carry one optional `"objective"` — an alternate win condition
+that turns the fight into a set piece. Use one in roughly one fight in three,
+when the fiction asks for it; most fights are the standard "defeat every enemy".
+- AT MOST ONE objective. In a BOSS fight prefer a shape that MODIFIES the boss
+  kill rather than replacing it: a `race` marking THE BOSS with `guards`, a
+  `waves` schedule whose final wave fields the boss, or a `deadline`.
+""" + _OBJECTIVE_COMMON + OBJECTIVE_KINDS
+
+# Appended to the encounter instructions for each adventure PHASE call
+# (§D25-3). Everything the model knows about designing ONE encounter holds; this
+# block adds the arc (fixed by the OUTLINE in the request), the boss ladder, the
+# narration and the one-phase output wrapper.
+ADVENTURE_EXTENSION = r"""
+# ADVENTURE MODE — one phase of a three-phase adventure (this request writes ONE phase)
+
+You are writing one PHASE of an ADVENTURE: three thematically linked encounters
+fought in sequence by one party — progress through a single place. Guards at the
+gate, knights in the courtyard, the tyrant in his throne room: one faction, one
+location traversed, escalating stakes. The adventure's OUTLINE, in the request,
+has already fixed the place, the faction, the boss, and each phase's station,
+threat and beats; the phases already written are summarised there too. Write
+the phase the request names — a complete encounter plus its narration — so it
+fits the outline and follows what came before. Everything in the instructions
+above applies to it (chassis, components, budgets, layouts, scenes,
+descriptions). This block adds the arc-level rules:
+
+- SCENES PROGRESS: the three phases' `scene` texts read as three stations of
+  ONE location — outside it, inside it, at its heart — not three unrelated
+  arenas. Same palette, same weather-world, deepening dread. Write THIS
+  phase's station as the outline gives it.
+- DIFFICULTY ESCALATES BY DESIGN: this phase's Level budgets are given in the
+  request, computed for the level the party can have reached when it opens.
+  Respect its per-party-size layout minimums, targets and lockdown floor.
+- ACTS DIFFER MECHANICALLY: each phase leans on its OWN rolled signature (in
+  the outline) so the run escalates in KIND, not just in numbers — never
+  repeat a kit an earlier phase already used.
+- PHASE III ENDS IN THE BOSS: Phase III fields exactly one enemy with
+  `is_boss: true` — the outline's boss, at (at least) the outline's boss level:
+  the adventure's HIGHEST-LEVEL enemy, with the full boss kit (multi-verb
+  Enrage, phase gates, real HP). No other enemy in any phase reaches its level.
+- PHASES I AND II MAY each field ONE MINI-BOSS when the outline says so — and
+  Phase II usually should: a mini-boss mid-adventure is the more fun act, a
+  rising beat before the finale. A mini-boss is mechanically a full boss
+  (`is_boss: true`, Enrage, the enrage_round/neglect dials, 2.5× budget, counts
+  double), thematically distinct (the gate-captain, not the king), and
+  STRICTLY lower level than the outline's boss. Every enemy in Phases I and II
+  stays below the boss's level.
+- NARRATION: each phase carries a `narration` — 2 to 4 PARAGRAPHS (roughly
+  120–250 words; it is checked, a single thin paragraph is rejected), SECOND
+  PERSON, PRESENT TENSE, separated by blank lines. This is the story the player
+  reads before the board appears — the ONLY story they get — so it does a
+  scene's work, not a caption's:
+    * THE ROAD IN. How the party got here from the last beat: Phase I picks up
+      the ride out of town (the quest's own journey — hours on the wooded path,
+      the weather turning, the first wrong sign); Phases II and III open on the
+      AFTERMATH of the previous fight (the wounds, the loot-glance, the door
+      the survivors fled through) and the push deeper.
+    * THE DISCOVERY. What the party sees, rounding the bend: the scene, and the
+      enemies IN it, mid-act — not waiting on a mark. Name the bodies the
+      player is about to fight (the same designs as this phase's pool) doing
+      something: picking over an upturned wagon, hauling a chest, arguing over
+      a map, feeding something in a pit.
+    * THE REASON. Why this fight, right now: what the enemies are doing here,
+      what they want, and what tips it into violence — they spot you, you spot
+      the hostages, the ground gives way. The player should finish reading
+      knowing exactly why swords are out on both sides.
+    * A VOICE, when it earns it. Enemy dialogue in quotes brings the moment to
+      life — the lead goblin looking up first: "We got company!" he shouts.
+      "Get 'em quick before the big boss comes back!" One or two lines, in
+      character, never exposition dumped into a mouth.
+  No mechanics, no numbers. The concreteness rule binds here hardest: name what
+  the party can SEE and who is about to fight them. Like so (Phase I shape):
+  "You begin up the wooded path toward the foothills, and for a few hours the
+  only sound is your own boots. Then, past a bend, voices — harsh, quarrelling.
+  A wagon lies on its side across the track, wheels still turning, and goblins
+  are picking over it: sacks slit, crates pried, the wagon-riders sprawled
+  where they fell. The biggest of them, a snarling brute with dull green skin
+  and a leather eyepatch, looks up first. 'We got company!' he bellows. 'Get
+  'em quick, before the big boss comes back!'"
+
+# Encounter OBJECTIVES (Design Update 12 §D12-1 — adventure flavour)
+
+A phase MAY carry an optional `"objective"` — an alternate win condition that
+turns it into a set piece. The standing rules are HARD validation:
+- AT MOST ONE objective in the whole adventure, and ONLY on the phase the
+  outline names in `objective_phase` (that phase may still carry none). Every
+  other phase carries no objective.
+- On Phase I or Phase II it may be any of the four kinds below.
+- On Phase III it must MODIFY the boss fight, never replace it (§D23-5). Exactly
+  three shapes are legal there, and nothing else is: a `race` that marks THE BOSS
+  and carries `guards` (the lieutenants shield it until they fall, and a clock
+  runs on the kill); a `waves` schedule whose FINAL wave fields the boss
+  (reinforcements keep arriving through the climax, which still ends on the
+  boss); or a `deadline` (a clock over the standard kill). A Phase III without
+  an objective is the standard boss kill, and stays the common case.
+- Let the phase's `narration` reference the objective — ESPECIALLY a shield or
+  a clock, or the party learns the rule by bafflement.
+""" + _OBJECTIVE_COMMON + OBJECTIVE_KINDS + r"""
+# Phase output contract (return EXACTLY this shape, nothing else)
+{ "narration": "…", <a complete encounter object: name, scene, enemies, layouts, tokens, objective?> }
+The phase is a COMPLETE encounter exactly per the contract above (name, scene,
+enemies with descriptions, layouts for party sizes 1–4, tokens if needed), with
+its `narration` beside the encounter's own fields."""
+
+# The OUTLINE call's system prompt (§D25-3): small, because it designs no
+# enemy — it fixes what every phase call must agree on.
+OUTLINE_INSTRUCTIONS = r"""You plan ADVENTURES for Langelier Tactical Game (LTG), a tactical card-combat
+RPG in CLASSIC HIGH FANTASY (the MTG / D&D register; PG; NO CHILD COMBATANTS —
+every enemy is an adult of its kind). An adventure is three linked encounters
+(PHASES) fought in sequence through ONE place held by ONE faction, ending in a
+boss. Separate calls will write each phase in full; you write only the OUTLINE
+they must all agree on. Design no statlines and no components here.
+
+%CONCRETE%
+
+WHAT THE OUTLINE FIXES
+- The PLACE (the adventure is named for it) and the FACTION that holds it.
+- The BOSS: its name, one concrete sentence of what it is and how it fights,
+  and its LEVEL — an integer at or above the Phase III party level in the
+  parameters (a boss spends up to 2.5× an enemy's budget, so a boss at the
+  party's level is already a real fight; go higher for a harder, more complex
+  boss). Nothing in any phase may reach this level except the boss itself.
+- THREE PHASES, as three STATIONS of the place (outside it, inside it, at its
+  heart). For each: the station, the THREAT (what the faction is doing there,
+  built around that phase's rolled signature mechanic from the parameters —
+  name it), whether it has a MINI-BOSS (Phase II usually should; Phase III
+  never — its boss is the boss), and 2–3 narration BEATS (the road in, what the
+  party sees the enemies DOING, why the fight starts).
+- `objective_phase`: 0 for none, or the ONE phase (1–3) that carries an
+  alternate win condition (survive / waves / race / deadline). Use one in
+  roughly two adventures out of three, where the fiction asks for a clock or a
+  shield. On Phase III it can only modify the boss kill.
+- `flavor`: the adventure's one-line pitch.
+
+Return ONLY this JSON:
 {
-  "name": "Adventure name",
-  "flavor": "one-line pitch",
+  "name": "the place", "flavor": "one line", "faction": "who holds it",
+  "boss": {"name": "…", "level": <int>, "concept": "…"},
+  "objective_phase": <0-3>,
   "phases": [
-    { "narration": "…", <a complete encounter object: name, scene, enemies, layouts, tokens> },
-    { "narration": "…", <phase II encounter> },
-    { "narration": "…", <phase III encounter — contains the one boss> }
+    {"station": "…", "threat": "…", "mini_boss": <bool>, "beats": ["…", "…"]},
+    {"station": "…", "threat": "…", "mini_boss": <bool>, "beats": ["…", "…"]},
+    {"station": "…", "threat": "…", "mini_boss": false, "beats": ["…", "…"]}
   ]
-}
-Each phase is a COMPLETE encounter exactly per the contract above (name, scene,
-enemies with descriptions, layouts for party sizes 1–4, tokens if needed)."""
+}"""
 
 
 def phase_budget_levels(base_level: int, start_earned: Optional[int] = None
@@ -2290,30 +3006,42 @@ def phase_budget_levels(base_level: int, start_earned: Optional[int] = None
     return out
 
 
+def _phase_size_lines(lvl: float, difficulty: str) -> List[str]:
+    """One phase's per-party-size lines: bodies, Level target, lockdown floor."""
+    out = []
+    for size in range(1, 5):
+        budget = _budget(size, float(lvl), difficulty)
+        lock = _lockdown_budget(size, difficulty)
+        out.append(
+            f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies '
+            f"(2× the party, duplicates count), total enemy Levels about "
+            f"{budget} (a boss counts double); lockdown "
+            + ("none at this size." if lock == 0 else
+               f"at least {lock} piece{'s' if lock != 1 else ''}."))
+    return out
+
+
 def _adventure_request_block(party: Dict[str, Any], difficulty: str,
                              note: str, base_level: int = 1,
                              context: Optional[Dict[str, Any]] = None,
-                             phase_levels: Optional[List[float]] = None) -> str:
-    """Per-request parameters: the party, the single difficulty, and each phase's
-    per-party-size budget lines computed at the levels in ``phase_levels``
-    (default ``phase_budget_levels``: the continuous level the earned points
-    reach at each phase, 1.0 / 2.0 / 2.4 from a fresh L1, T-62), anchored on
-    ``base_level`` — the party's
-    effective level at adventure start (Update 17 §D17-2.1 / §D17-4.2; 1 outside
-    a run). ``context`` (§D17-6.3) is the scenario's arc / town / quest block,
-    passed verbatim."""
-    roster = "; ".join(
-        f'{m["name"]} (level {m["level"]}'
-        + (f', {"/".join(m["colors"])})' if m["colors"] else ")")
-        + (f' — {m["concept"]}' if m.get("concept") else "")
-        for m in party["members"]
-    )
+                             phase_levels: Optional[List[float]] = None,
+                             rolls: Optional[List[str]] = None) -> str:
+    """The adventure's parameters — the OUTLINE call's user turn (§D25-3): the
+    party, the single difficulty, and each phase's per-party-size budget lines
+    computed at the levels in ``phase_levels`` (default ``phase_budget_levels``:
+    the continuous level the earned points reach at each phase, 1.0 / 2.0 / 2.4
+    from a fresh L1, T-62), anchored on ``base_level`` — the party's effective
+    level at adventure start (Update 17 §D17-2.1 / §D17-4.2; 1 outside a run).
+    ``context`` (§D17-6.3) is the scenario's arc / town / quest block, passed
+    verbatim. ``rolls`` are the phases' signature mechanics (rolled here when
+    not given)."""
     base_level = max(1, int(base_level))
     if not phase_levels:
         phase_levels = phase_budget_levels(base_level)
     lines = [
         "# THIS ADVENTURE'S PARAMETERS",
-        f'- Designing party (they picked this run): {party["size"]} hero(es) — {roster}.',
+        f'- Designing party (they picked this run): {party["size"]} hero(es) — '
+        f"{_roster_text(party)}.",
         f"- Difficulty: {difficulty} (applies to all three phases).",
         f"- The party enters at level {base_level}. Every phase won pays points "
         "they may spend between phases, so each phase is budgeted for the level "
@@ -2323,12 +3051,7 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
         lvl = phase_levels[min(phase - 1, len(phase_levels) - 1)]
         shown = int(round(lvl))
         lines.append(f'- PHASE {phase} (party level {shown}) — required layouts "1"–"4":')
-        for size in range(1, 5):
-            budget = _budget(size, float(lvl), difficulty)
-            lines.append(
-                f'  * layouts["{size}"]: at least {_min_enemies(size)} enemies '
-                f"(2× the party, duplicates count), total enemy Levels about "
-                f"{budget} (a boss counts double).")
+        lines.extend(_phase_size_lines(lvl, difficulty))
     lines.append(
         "- Phase III must contain exactly ONE boss (is_boss: true) — the "
         "adventure's highest-level enemy. Phases I and II may each field at most "
@@ -2336,7 +3059,7 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     if difficulty != "easy":
         lines.append("- Include at least one CHANNELER (a channel component) "
                      "somewhere in each phase's pool.")
-    rolls = _signature_rolls(content.PHASE_COUNT)
+    rolls = list(rolls or _signature_rolls(content.PHASE_COUNT))
     lines.append(
         "- Rolled SIGNATURE MECHANICS, one per phase — build each phase's identity "
         "around its roll (adapt to the theme; the player's note overrides), so "
@@ -2348,7 +3071,102 @@ def _adventure_request_block(party: Dict[str, Any], difficulty: str,
     note = (note or "").strip()
     if note:
         lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
-    lines.append("\nReturn ONLY the adventure JSON.")
+    lines.append("\nReturn ONLY the adventure OUTLINE JSON.")
+    return "\n".join(lines)
+
+
+def _outline_block(outline: Dict[str, Any]) -> str:
+    """The outline, as every phase call reads it."""
+    boss = outline.get("boss") or {}
+    lines = ["# THE ADVENTURE OUTLINE (fixed — every phase agrees with it)",
+             f'- "{outline.get("name", "")}" — {outline.get("flavor", "")}',
+             f'- Held by: {outline.get("faction", "")}',
+             f'- The boss (Phase III): {boss.get("name", "")}, level {boss.get("level", "?")} — '
+             f'{boss.get("concept", "")}']
+    op = _int(outline.get("objective_phase"), 0)
+    lines.append(f"- Objective: on Phase {op} only." if op else
+                 "- Objective: none in this adventure.")
+    for i, ph in enumerate(outline.get("phases") or [], start=1):
+        beats = "; ".join(str(b) for b in (ph.get("beats") or []))
+        lines.append(f'- Phase {i}: {ph.get("station", "")}. Threat: {ph.get("threat", "")}'
+                     + (" A MINI-BOSS leads it." if ph.get("mini_boss") and i < content.PHASE_COUNT else "")
+                     + (f" Signature: {ph['signature']}." if ph.get("signature") else "")
+                     + (f" Beats: {beats}." if beats else ""))
+    return "\n".join(lines)
+
+
+def _written_digest(phases: List[Dict[str, Any]]) -> str:
+    """One line per phase already written, so the next one follows it and
+    never re-uses a kit (§D25-3)."""
+    if not phases:
+        return ""
+    lines = ["# THE PHASES ALREADY WRITTEN (follow on from them; reuse no kit)"]
+    for i, ph in enumerate(phases, start=1):
+        bodies = []
+        for e in ph.get("enemies") or []:
+            if not isinstance(e, dict):
+                continue
+            arch = "/".join(str(c.get("archetype") or "?") for c in (e.get("components") or [])
+                            if isinstance(c, dict))
+            bodies.append(f'{e.get("name", "?")} (L{e.get("level", "?")}'
+                          + (", BOSS" if e.get("is_boss") else "") + f"; {arch})")
+        obj = (ph.get("objective") or {}).get("kind")
+        lines.append(f'- Phase {i}: {ph.get("name", "")} — ' + ", ".join(bodies)
+                     + (f". Objective: {obj}." if obj else "."))
+        tail = str(ph.get("narration") or "").strip().split("\n\n")[-1][:300]
+        if tail:
+            lines.append(f"  It ended on: {tail}")
+    return "\n".join(lines)
+
+
+def _phase_request_block(party: Dict[str, Any], difficulty: str, index: int,
+                         phase_level: float, outline: Dict[str, Any],
+                         written: List[Dict[str, Any]],
+                         context: Optional[Dict[str, Any]] = None,
+                         note: str = "") -> str:
+    """One phase call's user turn (§D25-3): the outline, the phases so far, and
+    THIS phase's budgets, rules and roll. ``index`` is 0-based."""
+    n = index + 1
+    total = content.PHASE_COUNT
+    boss = outline.get("boss") or {}
+    boss_level = _int(boss.get("level"), 0)
+    ph = (outline.get("phases") or [{}] * total)[index] or {}
+    lines = [_outline_block(outline)]
+    digest = _written_digest(written)
+    if digest:
+        lines.append(digest)
+    lines += [
+        f"\n# WRITE PHASE {n} OF {total} NOW",
+        f'- Designing party: {party["size"]} hero(es) — {_roster_text(party)}.',
+        f"- Difficulty: {difficulty}.",
+        f'- PHASE {n} (party level {int(round(phase_level))}) — required layouts "1"–"4":',
+        *_phase_size_lines(phase_level, difficulty),
+    ]
+    if n == total:
+        lines.append(f"- This is the FINALE: exactly ONE boss (is_boss: true) — "
+                     f"{boss.get('name') or 'the outline boss'}, level {boss_level} or "
+                     f"higher. Every other enemy stays below the boss's level.")
+    else:
+        lines.append(
+            (f"- The outline gives this phase a MINI-BOSS: one is_boss enemy, "
+             f"strictly below level {boss_level}. "
+             if ph.get("mini_boss") else "- No boss in this phase. ")
+            + f"Every enemy stays BELOW level {boss_level} (the boss's).")
+    if difficulty != "easy":
+        lines.append("- Include at least one CHANNELER (a channel component) in "
+                     "this phase's pool.")
+    op = _int(outline.get("objective_phase"), 0)
+    lines.append("- This phase MAY carry the adventure's one objective." if op == n else
+                 "- This phase carries NO objective.")
+    if ph.get("signature"):
+        lines.append(f"- This phase's rolled SIGNATURE MECHANIC — build its identity "
+                     f"around it: {ph['signature']}.")
+    if context:
+        lines.append(_adventure_context_lines(context))
+    note = (note or "").strip()
+    if note:
+        lines.append(f"- Player's one-line request (honor the theme/flavor): {note}")
+    lines.append(f"\nReturn ONLY the Phase {n} JSON (its narration plus the encounter).")
     return "\n".join(lines)
 
 
@@ -2404,6 +3222,95 @@ def _narration_problems(narration: Any) -> List[str]:
     return []
 
 
+def _outline_fix(levels: List[float]):
+    """The outline gate (§D25-3): the shape every phase call depends on. Coerces
+    what has one right answer (a bad `objective_phase` is none; Phase III has no
+    mini-boss) and rejects the rest."""
+    def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
+        problems: List[str] = []
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            problems.append('the outline needs a "name" (the place the adventure goes)')
+        boss = raw.get("boss") if isinstance(raw.get("boss"), dict) else {}
+        floor = max(1, int(round(levels[-1] if levels else 1)))
+        level = boss.get("level")
+        if isinstance(level, str) and level.strip().isdigit():
+            level = int(level.strip())
+        if not str(boss.get("name") or "").strip():
+            problems.append('the outline needs a "boss" with a "name"')
+        if not isinstance(level, int) or isinstance(level, bool) or not floor <= level <= 30:
+            problems.append(f'the boss needs an integer "level" of at least {floor} '
+                            "(the Phase III party level)")
+        phases = raw.get("phases")
+        if not isinstance(phases, list) or len(phases) != content.PHASE_COUNT:
+            problems.append(f'the outline needs "phases": exactly {content.PHASE_COUNT} entries')
+            phases = []
+        cleaned = []
+        for i, ph in enumerate(phases, start=1):
+            ph = ph if isinstance(ph, dict) else {}
+            if not str(ph.get("station") or "").strip():
+                problems.append(f'outline phase {i} needs a "station" (where in the place)')
+            beats = ph.get("beats") if isinstance(ph.get("beats"), list) else []
+            cleaned.append({"station": str(ph.get("station") or "").strip(),
+                            "threat": str(ph.get("threat") or "").strip(),
+                            "mini_boss": bool(ph.get("mini_boss")) and i < content.PHASE_COUNT,
+                            "beats": [str(b).strip() for b in beats if str(b).strip()][:4]})
+        if problems:
+            raise ValueError(_problem_text(problems))
+        op = _int(raw.get("objective_phase"), 0)
+        return {"name": name, "flavor": str(raw.get("flavor") or "").strip(),
+                "faction": str(raw.get("faction") or "").strip(),
+                "boss": {"name": str(boss.get("name")).strip(), "level": level,
+                         "concept": str(boss.get("concept") or "").strip()},
+                "objective_phase": op if 0 <= op <= content.PHASE_COUNT else 0,
+                "phases": cleaned}
+    return fix
+
+
+def _phase_ladder_problems(enc: Dict[str, Any], index: int,
+                           outline: Dict[str, Any]) -> List[str]:
+    """§D25-3: check one phase against the outline, so no later phase can
+    invalidate an earlier one — the boss ladder (§D10-4.1) and the objective's
+    placement. The finale's boss is lifted to the outline's level first (a
+    Level above the price is legal: underspending, §F-6)."""
+    problems: List[str] = []
+    n = index + 1
+    final = n == content.PHASE_COUNT
+    boss_level = _int((outline.get("boss") or {}).get("level"), 0)
+    enemies = [e for e in enc.get("enemies", []) if isinstance(e, dict)]
+    bosses = [e for e in enemies if e.get("is_boss")]
+    if final:
+        if len(bosses) != 1:
+            problems.append(f"the finale needs exactly ONE boss (is_boss: true) — it has "
+                            f"{len(bosses)}")
+        else:
+            if _int(bosses[0].get("level"), 0) < boss_level:
+                bosses[0]["level"] = boss_level
+            boss_level = _int(bosses[0].get("level"), boss_level)
+    for e in enemies:
+        if final and e.get("is_boss"):
+            continue
+        lvl = _int(e.get("level"), 0)
+        if lvl >= boss_level:
+            priced = price_enemy(e)
+            problems.append(
+                f'{e.get("name", "?")} is level {lvl} (its kit prices at level '
+                f'{priced["level"]}, cost {priced["cost"]}: {", ".join(priced["lines"])}) — '
+                f"every enemy but the finale's boss stays BELOW the boss's level "
+                f"{boss_level}. Trim its kit or its body")
+    op = _int(outline.get("objective_phase"), 0)
+    if enc.get("objective"):
+        if op != n:
+            problems.append("this phase carries an objective, but the outline puts the "
+                            "adventure's one objective "
+                            + (f"on Phase {op}" if op else "nowhere") + " — remove it")
+        elif final:
+            why = content._phase_three_objective_problem(enc)
+            if why:
+                problems.append(why)
+    return problems
+
+
 def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                        note: str = "", attempts: int = 3,
                        loadouts: Optional[List[Dict[str, Any]]] = None,
@@ -2411,96 +3318,112 @@ def generate_adventure(character_ids: List[str], difficulty: str = "standard",
                        base_level: int = 1,
                        context: Optional[Dict[str, Any]] = None,
                        phase_levels: Optional[List[float]] = None,
-                       run_only: bool = False) -> Dict[str, Any]:
+                       run_only: bool = False,
+                       deeds: Optional[List[List[str]]] = None,
+                       on_phase: Optional[Any] = None,
+                       resume: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Generate, validate, persist an adventure and return its meta.
 
-    One request generates the whole arc (coherence by construction); the reply
-    then runs the same repair loop an encounter takes — per-phase HP scaling,
-    per-phase layout checks, then ``content.save_adventure`` (per-phase engine gate
-    + the §D10-4.1 adventure checks). Any failure re-prompts the model with the
-    engine's own error, up to ``attempts`` total.
+    §D25-3: four calls — an OUTLINE (the place, the faction, the boss and its
+    level, each phase's station and threat), then each phase in turn, each with
+    its own repair loop (§D25-4: a failure re-prompts that phase only) and its
+    own save (`content.save_adventure_phase`). ``on_phase(index, adventure_id)``
+    fires as each phase lands, so a run can start Phase I while II and III are
+    still being written. ``resume`` (``{adventure_id, outline}``) continues a
+    partial adventure from its first missing phase; nothing written is written
+    again. When Phase III lands, `content.finalize_adventure` runs the
+    whole-adventure check.
 
     Update 17: ``loadouts`` (a run's frozen party) replaces ``character_ids``;
     ``levels`` / ``base_level`` scope the budgets to the party's effective
     level; ``context`` is the scenario block (§D17-6.3); ``run_only`` marks the
-    saved adventure as a run's (kept out of the New Game picker)."""
+    saved adventure as a run's (kept out of the New Game picker). ``deeds`` are
+    the heroes' recent chronicle lines (§D25-7)."""
     settings = load_settings()
     require_key(settings)
     if difficulty not in DIFFICULTY:
         difficulty = "standard"
 
-    party = (party_summary_from_loadouts(loadouts, levels) if loadouts is not None
+    party = (party_summary_from_loadouts(loadouts, levels, deeds) if loadouts is not None
              else _party_summary(character_ids))
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": settings["instructions"] + ADVENTURE_EXTENSION},
-        {"role": "user", "content": _adventure_request_block(
-            party, difficulty, note, base_level=base_level, context=context,
-            phase_levels=phase_levels)},
-    ]
+    base_level = max(1, int(base_level))
+    plevels = list(phase_levels or phase_budget_levels(base_level))
+    while len(plevels) < content.PHASE_COUNT:
+        plevels.append(plevels[-1] if plevels else float(base_level))
+    model = model_for("adventures", settings)
 
-    last_err = ""
-    for _attempt in range(max(1, attempts)):
-        reply = _chat(settings["api_key"], model_for("adventures", settings), messages,
-                      max_tokens=ADVENTURE_MAX_TOKENS, timeout=ADVENTURE_TIMEOUT,
-                      kind="adventure")
-        try:
-            raw = _extract_json(reply)
-            phases = raw.get("phases")
-            if not isinstance(phases, list) or len(phases) != content.PHASE_COUNT:
-                raise ValueError(
-                    f'the adventure needs an "phases" list of exactly '
-                    f"{content.PHASE_COUNT} phases")
-            cleaned_phases = []
-            for i, phase in enumerate(phases, start=1):
-                if not isinstance(phase, dict):
-                    raise ValueError(f"phase {i} must be an object")
-                try:
-                    enc = _normalize(phase)
-                    _scale_hp(enc, difficulty)
-                    _check_layouts(enc)
-                    problems = []
-                    if not enc["scene"]:
-                        problems.append('missing the top-level "scene"')
-                    undescribed = [str(e.get("name", "?")) for e in enc["enemies"]
-                                   if isinstance(e, dict)
-                                   and not str(e.get("description") or "").strip()]
-                    if undescribed:
-                        problems.append('enemies missing a "description": '
-                                        + ", ".join(undescribed))
-                    problems.extend(_design_problems(enc))  # §D14: kit floor
-                    problems.extend(_taunt_problems(enc))   # §D18-1: taunt bites
-                    problems.extend(_corpse_problems(enc))  # §D19-1: corpse fuel
-                    problems.extend(_type_problems(enc))    # §D21: types required
-                    problems.extend(_sameness_problems(enc))  # anti-monotony
-                    problems.extend(_boss_pressure_problems(enc))  # boss dials
-                    problems.extend(_objective_problems(enc))  # objectives with teeth
-                    problems.extend(_narration_problems(phase.get("narration")))
-                    if problems:
-                        raise ValueError("; ".join(problems))
-                except ValueError as exc:
-                    raise ValueError(f"phase {i}: {exc}") from exc
-                enc["narration"] = str(phase.get("narration") or "").strip()
-                enc["difficulty"] = difficulty  # display flag (see generate_encounter)
-                cleaned_phases.append(enc)
-            adventure = {
-                "name": str(raw.get("name") or "Generated Adventure"),
-                "flavor": str(raw.get("flavor") or "").strip(),
-                "difficulty": difficulty,
-                "phases": cleaned_phases,
-            }
-            if run_only:
-                adventure["run_only"] = True
-            # Same gate authored content takes: per-phase engine validation plus
-            # the adventure-level checks, then persist (wrapper + phase files).
-            return content.save_adventure(adventure)
-        except ValueError as exc:
-            last_err = str(exc)
-            messages.append({"role": "assistant", "content": reply})
-            messages.append({"role": "user", "content": (
-                f"That output was rejected: {last_err}\n"
-                "Fix it and return ONLY the corrected adventure JSON.")})
-    raise ValueError(f"adventure generation failed after {attempts} attempts: "
-                     f"{last_err}")
+    def caller(max_tokens: int, timeout: float, kind: str):
+        def call(msgs: List[Dict[str, str]]) -> str:
+            return _chat(settings["api_key"], model, msgs, max_tokens=max_tokens,
+                         timeout=timeout, kind=kind)
+        return call
+
+    written: List[Dict[str, Any]] = []
+    holder: Dict[str, Optional[str]] = {"aid": None}
+    if resume and resume.get("outline") and resume.get("adventure_id"):
+        outline = copy.deepcopy(resume["outline"])
+        holder["aid"] = str(resume["adventure_id"])
+        detail = content.adventure_detail(holder["aid"])
+        if detail is None:
+            raise ValueError(f"the adventure being written ({holder['aid']}) is missing")
+        written = [copy.deepcopy(p) for p in detail["phases"]]
+    else:
+        rolls = _signature_rolls(content.PHASE_COUNT)
+        outline = _repair_loop(
+            [{"role": "system",
+              "content": OUTLINE_INSTRUCTIONS.replace("%CONCRETE%", CONCRETENESS_RULE)},
+             {"role": "user", "content": _adventure_request_block(
+                 party, difficulty, note, base_level=base_level, context=context,
+                 phase_levels=plevels, rolls=rolls)}],
+            caller(OUTLINE_MAX_TOKENS, OUTLINE_TIMEOUT, "adventure_outline"),
+            _outline_fix(plevels), "outline", attempts, label="adventure outline")
+        for ph, roll in zip(outline["phases"], rolls):
+            ph["signature"] = roll
+    wrapper = {"name": outline["name"], "flavor": outline.get("flavor", ""),
+               "difficulty": difficulty, "run_only": run_only, "outline": outline}
+    try:
+        _write_phases(settings, party, difficulty, note, context, plevels, outline,
+                      wrapper, written, holder, attempts, caller, on_phase)
+        return content.finalize_adventure(str(holder["aid"]))
+    except Exception:
+        # Outside a run nobody will resume a half-written adventure: drop it.
+        # A run's partial stays, so its job's Retry resumes at the missing phase.
+        if not run_only and holder["aid"] and not resume:
+            try:
+                content.delete_adventure(str(holder["aid"]))
+            except ValueError:
+                pass
+        raise
+
+
+def _write_phases(settings, party, difficulty, note, context, plevels, outline,
+                  wrapper, written, holder, attempts, caller, on_phase) -> None:
+    """The phase calls of `generate_adventure`, from the first missing phase."""
+    system = settings["instructions"] + ADVENTURE_EXTENSION
+    for index in range(len(written), content.PHASE_COUNT):
+        def fix(raw: Dict[str, Any], index: int = index) -> Dict[str, Any]:
+            narration = str(raw.get("narration") or "").strip()
+            enc, _notes = _prepare_encounter(raw, difficulty)
+            problems = _phase_ladder_problems(enc, index, outline)
+            problems += _encounter_problems(enc, difficulty)
+            problems += _narration_problems(narration)
+            if problems:
+                raise ValueError(f"phase {index + 1}: " + _problem_text(problems))
+            enc["narration"] = narration
+            enc["difficulty"] = difficulty  # display flag (see generate_encounter)
+            holder["aid"] = content.save_adventure_phase(holder["aid"], index, enc, wrapper)
+            return enc
+
+        messages = [{"role": "system", "content": system},
+                    {"role": "user", "content": _phase_request_block(
+                        party, difficulty, index, plevels[index], outline, written,
+                        context=context, note=note)}]
+        enc = _repair_loop(messages, caller(PHASE_MAX_TOKENS, PHASE_TIMEOUT, "adventure_phase"),
+                           fix, f"Phase {index + 1}", attempts,
+                           label=f"adventure phase {index + 1}")
+        written.append(enc)
+        if on_phase is not None:
+            on_phase(index, holder["aid"])
 
 
 # --------------------------------------------------------------------------- #
@@ -2985,6 +3908,13 @@ Write:
    runs again. A map of location id → {"description", "exterior_scene",
    "interior_scene"} (any subset; each replaces the town's text from now on,
    for this campaign only). Omit when nothing has changed.
+9. "stock_names" (optional): the MERCHANTS' STOCK block lists what each shop
+   has on its shelves this act, by item id. Give any of them a name and a
+   one-line flavour that belong to THIS town and its maker — the smith's
+   hammer-mark, the herbalist's hand-lettered label, where the thing came from.
+   A map of item id → {"name": "2–40 characters", "flavor": "one line"}. Names
+   only: the item's slot, stats, price and rarity are fixed. Plain, concrete,
+   no puns; skip anything you have nothing good for.
 
 Output contract:
 {"quests": [{"id": "...", "title": "...", "text": "...", "adventure_theme": "..."}, ×2–4],
@@ -2996,7 +3926,8 @@ Output contract:
  "accepted": {"<npc id>": "..."},
  "declined": {"<npc id>": "..."},
  "committed": {"<npc id>": "..."},
- "town_state_delta": {"<location id>": {"description": "...", "exterior_scene": "...", "interior_scene": "..."}}}
+ "town_state_delta": {"<location id>": {"description": "...", "exterior_scene": "...", "interior_scene": "..."}},
+ "stock_names": {"<item id>": {"name": "...", "flavor": "..."}}}
 """
 
 
@@ -3302,20 +4233,13 @@ def _scenario_chat(system: str, user: str, attempts: int, fix, what: str,
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
-    last_err = ""
-    for _ in range(max(1, attempts)):
-        reply = _chat(settings["api_key"], model_for(task, settings), messages,
-                      max_tokens=SCENARIO_MAX_TOKENS, timeout=SCENARIO_TIMEOUT,
-                      kind=what)
-        try:
-            return fix(_extract_json(reply))
-        except ValueError as exc:
-            last_err = str(exc)
-            messages.append({"role": "assistant", "content": reply})
-            messages.append({"role": "user", "content": (
-                f"That output was rejected: {last_err}\n"
-                f"Fix it and return ONLY the corrected {what} JSON.")})
-    raise ValueError(f"{what} generation failed after {attempts} attempts: {last_err}")
+    model = model_for(task, settings)
+
+    def call(msgs: List[Dict[str, str]]) -> str:
+        return _chat(settings["api_key"], model, msgs, max_tokens=SCENARIO_MAX_TOKENS,
+                     timeout=SCENARIO_TIMEOUT, kind=what)
+
+    return _repair_loop(messages, call, fix, what, attempts)
 
 
 def _world_placement_block(world_ctx: Optional[Dict[str, Any]]) -> str:
@@ -3340,11 +4264,98 @@ def _world_placement_block(world_ctx: Optional[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------- #
+# The avoid-list (§D25-8, roadmap M4.5)
+# --------------------------------------------------------------------------- #
+# Different vendors, with no names in the prompt, re-invent the same people
+# (the 2026-08/09 bake-offs): regenerating does not diversify them. Naming
+# what is taken is the fix. The attractors are listed even on a fresh install.
+ATTRACTOR_NAMES = ("Hedda", "Hedda Stromm", "Pip", "Rook", "Tobiah Rell", "Tobin Rale",
+                   "the Seven Lamps", "Quill")
+ATTRACTOR_MOTIFS = ("a ledger- or contract-keeping necromancer",
+                    "an iron Bosun who punishes Ultimates", "a mole-outrider")
+AVOID_MAX = 60   # T-94: names listed at most (newest towns and villains first)
+
+
+def _villain_name(villain: str) -> str:
+    """"Rook, the Lantern-Thief" → "Rook": the name before any epithet."""
+    return re.split(r",| — | - |\(", str(villain or ""), maxsplit=1)[0].strip()
+
+
+def _run_villains() -> List[str]:
+    """The villains of this install's campaigns (each run's arc), newest first."""
+    out: List[str] = []
+    try:
+        from .runs import RunManager
+        mgr = RunManager()
+        for meta in mgr.list_runs():
+            st = mgr.store(meta["run_id"])
+            ref = ((st.read_run().get("scenario") or {}).get("arc_ref"))
+            if ref:
+                name = _villain_name((st.get(ref) or {}).get("villain", ""))
+                if name and name not in out:
+                    out.append(name)
+    except Exception:  # noqa: BLE001 — an unreadable save must not block a writer
+        pass
+    return out
+
+
+def avoid_names() -> Dict[str, List[str]]:
+    """What the town and arc writers must not reuse: town names (the tracked
+    towns and the worldbook), NPC names in those towns, and run villains."""
+    from . import scenario_content as sc, world
+    towns: List[str] = []
+    npcs: List[str] = []
+    for meta in sc.list_towns():
+        if meta.get("name") and meta["name"] not in towns:
+            towns.append(meta["name"])
+        detail = sc.town_detail(meta["id"]) or {}
+        for loc in detail.get("locations") or []:
+            for npc in loc.get("npcs") or []:
+                if npc.get("name") and npc["name"] not in npcs:
+                    npcs.append(npc["name"])
+    for entry in world.list_entries():
+        if entry.get("name") and entry["name"] not in towns:
+            towns.append(entry["name"])
+    return {"towns": towns, "npcs": npcs, "villains": _run_villains()}
+
+
+def _avoid_block(taken: Optional[Dict[str, List[str]]] = None) -> str:
+    """`# ALREADY TAKEN`: names in use in this world, and the names models keep
+    reaching for. Capped at AVOID_MAX names."""
+    taken = taken if taken is not None else avoid_names()
+    budget = AVOID_MAX
+    lines = ["# ALREADY TAKEN — reuse none of these names, and no near-miss of one "
+             "(Hedda → Hedwa, Rook → Roake). They are listed so you can avoid them; "
+             "never echo them."]
+    for key, label in (("towns", "Towns"), ("villains", "Villains"), ("npcs", "People")):
+        names = [n for n in (taken.get(key) or []) if n][:budget]
+        budget -= len(names)
+        if names:
+            lines.append(f"- {label} in this world: " + ", ".join(names) + ".")
+    lines.append("- Names every model reaches for (never use them): "
+                 + ", ".join(ATTRACTOR_NAMES) + ".")
+    lines.append("- Villains every model reaches for (build something else): "
+                 + "; ".join(ATTRACTOR_MOTIFS) + ".")
+    return "\n".join(lines)
+
+
+def _reused_name(name: str, names: List[str]) -> Optional[str]:
+    """The taken name ``name`` repeats (case-insensitive, whole words), or None."""
+    low = f" {' '.join(re.findall(r'[a-z]+', str(name).lower()))} "
+    for n in names:
+        key = " ".join(re.findall(r"[a-z]+", str(n).lower()))
+        if key and f" {key} " in low:
+            return n
+    return None
+
+
 def town_prompt(note: str = "", world_ctx: Optional[Dict[str, Any]] = None,
-                seed: Optional[Dict[str, Any]] = None) -> str:
+                seed: Optional[Dict[str, Any]] = None,
+                taken: Optional[Dict[str, List[str]]] = None) -> str:
     """The user turn of a town generation — assembled here so tests can pin
     what the writer is shown (§D24-9.1) without a model call."""
-    user = [_world_placement_block(world_ctx), ""]
+    user = [_world_placement_block(world_ctx), "", _avoid_block(taken), ""]
     if seed:
         user.append("# THE SEED — the campaign's next scenario is headed here. Honour it:")
         user.append(f'Name: {seed.get("name", "")}. {seed.get("line", "")}')
@@ -3367,9 +4378,19 @@ def generate_town(note: str = "", attempts: int = 3,
     from . import scenario_content as sc, world
     ctx = world_ctx if world_ctx is not None else world.placement_context()
     known = set(ctx.get("known_towns") or [e["town_id"] for e in world.list_entries()])
+    taken = avoid_names()
+    seed_name = str((seed or {}).get("name") or "")
 
     def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
         town = sc.validate_town(raw)
+        # §D25-8: a new town may not reuse a taken town's name (a continuation
+        # keeps its seed's name, which the planner already chose).
+        if not seed_name:
+            clash = next((n for n in taken["towns"]
+                          if sc._slug(n) == sc._slug(town["name"])), None)
+            if clash:
+                raise ValueError(f'"{town["name"]}" is already a town in this world — '
+                                 "name this one something new (see ALREADY TAKEN)")
         entry_raw = raw.get("world_entry")
         if not isinstance(entry_raw, dict):
             raise ValueError("the town needs its \"world_entry\" (region, gist, notable, neighbours)")
@@ -3383,8 +4404,8 @@ def generate_town(note: str = "", attempts: int = 3,
             raise ValueError(f'the seed names the town "{seed["name"]}" — keep that name')
         return {"town": town, "world_entry": entry}
 
-    out = _scenario_chat(TOWN_INSTRUCTIONS, town_prompt(note, ctx, seed), attempts, fix, "town",
-                         task="towns")
+    out = _scenario_chat(TOWN_INSTRUCTIONS, town_prompt(note, ctx, seed, taken), attempts, fix,
+                         "town", task="towns")
     return sc.save_town(out["town"], world_entry=out["world_entry"])
 
 
@@ -3434,7 +4455,8 @@ def arc_prompt(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
                party_state: Optional[Dict[str, Any]] = None,
                ledger: Optional[List[Dict[str, Any]]] = None,
                world_ctx: Optional[Dict[str, Any]] = None,
-               hook: Optional[Dict[str, Any]] = None) -> str:
+               hook: Optional[Dict[str, Any]] = None,
+               taken: Optional[Dict[str, List[str]]] = None) -> str:
     """The arc writer's user turn (§D24-9.2), assembled here so tests can pin
     it: the town, THE PARTY (briefs + situations + chronicle summaries),
     PREVIOUSLY (the ledger), THE WORLD HERE (this town + neighbours) and, on a
@@ -3460,6 +4482,7 @@ def arc_prompt(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
     hb = _hook_block(hook)
     if hb:
         user += ["", hb]
+    user += ["", _avoid_block(taken)]
     if note.strip():
         user.append(f"\nPlayer's note (honor it): {note.strip()}")
     user.append("\nWrite the arc now. Return ONLY the arc JSON.")
@@ -3477,10 +4500,40 @@ def generate_arc(town: Dict[str, Any], party: Dict[str, Any], difficulty: str,
     (§D24-5.3), where the ledger, the party's layers, the worldbook and the
     chosen hook are passed so the new arc continues the campaign's story."""
     from . import scenario_content as sc
+    taken = avoid_names()
     user = arc_prompt(town, party, difficulty, previous_arcs, note,
-                      party_state=party_state, ledger=ledger, world_ctx=world_ctx, hook=hook)
-    return _scenario_chat(ARC_INSTRUCTIONS, user, attempts,
-                          lambda raw: sc.validate_arc(raw, town), "arc")
+                      party_state=party_state, ledger=ledger, world_ctx=world_ctx, hook=hook,
+                      taken=taken)
+    banned = list(taken["villains"]) + [n for n in ATTRACTOR_NAMES if n[0].isupper()]
+
+    def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
+        arc = sc.validate_arc(raw, town)
+        # §D25-8: the villain may not wear a taken villain's name, or an attractor.
+        clash = _reused_name(_villain_name(arc["villain"]), banned)
+        if clash:
+            raise ValueError(f'the villain\'s name reuses "{clash}", which is taken (see '
+                             "ALREADY TAKEN) — give them a name of their own")
+        return arc
+
+    return _scenario_chat(ARC_INSTRUCTIONS, user, attempts, fix, "arc")
+
+
+def _stock_block(town: Dict[str, Any], stock: Optional[Dict[str, List[Dict[str, Any]]]]) -> str:
+    """§D25-9: the code-rolled merchant stock, by shop and item id, for the act
+    writer to name (`stock_names`)."""
+    if not stock:
+        return ""
+    names = {str(loc.get("id")): str(loc.get("name") or loc.get("id"))
+             for loc in town.get("locations") or []}
+    lines = ["# THE MERCHANTS' STOCK this act (name any of them in \"stock_names\")"]
+    for loc_id, rows in stock.items():
+        if not rows:
+            continue
+        lines.append(f"- {names.get(str(loc_id), loc_id)}:")
+        for it in rows:
+            lines.append(f'  * [{it.get("id")}] {it.get("name", "")} — {it.get("rarity", "")} '
+                         f'{it.get("slot", "")}')
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def act_prompt(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
@@ -3488,7 +4541,8 @@ def act_prompt(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
                ledger: Optional[List[Dict[str, Any]]] = None,
                world_ctx: Optional[Dict[str, Any]] = None,
                lore: Optional[List[Dict[str, Any]]] = None,
-               hook: Optional[Dict[str, Any]] = None) -> str:
+               hook: Optional[Dict[str, Any]] = None,
+               stock: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> str:
     """The act writer's user turn (§D24-9.3): town, arc, this act, THE PARTY
     (briefs, situations, recent chronicles), the filtered flags and the
     knowledge list, PREVIOUSLY (the ledger), THE WORLD HERE (this town only),
@@ -3533,6 +4587,9 @@ def act_prompt(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
                      "Colour a line, never a quest."]
         for row in lore:
             user.append(f'- {row.get("hero", "")}: "{row.get("title", "")}" — {row.get("text", "")}')
+    sb = _stock_block(town, stock)
+    if sb:
+        user += ["", sb]
     user.append("\nWrite this act's town portion now. Return ONLY the JSON.")
     return "\n".join(user)
 
@@ -3544,7 +4601,8 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
                  world_ctx: Optional[Dict[str, Any]] = None,
                  lore: Optional[List[Dict[str, Any]]] = None,
                  hook: Optional[Dict[str, Any]] = None,
-                 town_id: str = "") -> Dict[str, Any]:
+                 town_id: str = "",
+                 stock: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> Dict[str, Any]:
     """The act's town portion (§D17-6.2): quest, dialogue trees (closed hooks),
     arrival paragraph, flavour lines. ``party_state`` is `ScenarioRun.party_state()`
     (members with briefs / situations / chronicles, the public flags, the
@@ -3569,19 +4627,22 @@ def generate_act(town: Dict[str, Any], arc: Dict[str, Any], act_index: int,
         except Exception:  # noqa: BLE001
             lore = []
     user = act_prompt(town, arc, act_index, party_state, previous_summary,
-                      ledger=ledger, world_ctx=world_ctx, lore=lore, hook=hook)
+                      ledger=ledger, world_ctx=world_ctx, lore=lore, hook=hook, stock=stock)
     known = {k for k, v in flags.items() if v} | set(party_state.get("knows") or [])
     return _scenario_chat(ACT_INSTRUCTIONS, user, attempts,
-                          lambda raw: sc.validate_materialization(raw, town, outline,
-                                                                 flags_known=known), "act")
+                          lambda raw: sc.validate_materialization(
+                              raw, town, outline, flags_known=known,
+                              defeated=bool(flags.get("defeated_once")), stock=stock), "act")
 
 
 def interlude_prompt(town: Dict[str, Any], arc: Dict[str, Any],
                      ledger: Optional[List[Dict[str, Any]]], party_state: Dict[str, Any],
-                     world_ctx: Optional[Dict[str, Any]]) -> str:
+                     world_ctx: Optional[Dict[str, Any]],
+                     taken: Optional[Dict[str, List[str]]] = None) -> str:
     """The planner's user turn (§D24-5.1): the town, the arc that ended,
     PREVIOUSLY, THE PARTY (recent chronicles) and THE WORLD HERE with
-    neighbours. Lore is NOT among its inputs."""
+    neighbours, plus ALREADY TAKEN for a "new" hook's seed name (§D25-8).
+    Lore is NOT among its inputs."""
     user = [_town_block(town), "", _arc_block(arc), "",
             _party_block(party_state.get("members", []), depth="full", chronicle="recent")]
     lb = _ledger_block(ledger)
@@ -3593,6 +4654,7 @@ def interlude_prompt(town: Dict[str, Any], arc: Dict[str, Any],
     else:
         user += ["", "# THE WORLD HERE — this town has no worldbook page yet; propose "
                      "\"stay\" and \"new\" hooks only (no \"neighbour\")."]
+    user += ["", _avoid_block(taken)]
     user.append(f"\nDay {party_state.get('day', 1)} of the campaign. The villain, "
                 f"{arc.get('villain', '')}, is defeated. Write the interlude and the three hooks now. "
                 "Return ONLY the JSON.")
@@ -3615,9 +4677,21 @@ def generate_interlude(town: Dict[str, Any], arc: Dict[str, Any],
         known.add(town_id)
     flags = party_state.get("flags") or {}
     known_flags = {k for k, v in flags.items() if v} | set(party_state.get("knows") or [])
-    user = interlude_prompt(town, arc, ledger, party_state, world_ctx)
-    return _scenario_chat(INTERLUDE_INSTRUCTIONS, user, attempts,
-                          lambda raw: sc.validate_interlude(raw, town, town_id,
-                                                            world_towns=known or None,
-                                                            flags_known=known_flags),
-                          "interlude")
+    taken = avoid_names()
+    user = interlude_prompt(town, arc, ledger, party_state, world_ctx, taken)
+
+    def fix(raw: Dict[str, Any]) -> Dict[str, Any]:
+        out = sc.validate_interlude(raw, town, town_id, world_towns=known or None,
+                                    flags_known=known_flags)
+        # §D25-8: a "new" hook founds a NEW town — its seed may not take a
+        # name the world already has.
+        for h in out.get("hooks") or []:
+            seed = (h.get("town_seed") or {}).get("name") if h.get("kind") == "new" else ""
+            clash = next((n for n in taken["towns"] if seed and sc._slug(n) == sc._slug(seed)), None)
+            if clash:
+                raise ValueError(f'the "new" hook\'s town "{seed}" already exists in this world — '
+                                 "a new town needs a new name (see ALREADY TAKEN), or make it a "
+                                 "neighbour hook")
+        return out
+
+    return _scenario_chat(INTERLUDE_INSTRUCTIONS, user, attempts, fix, "interlude")

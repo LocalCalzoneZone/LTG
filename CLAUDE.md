@@ -14,7 +14,7 @@ LTG (Langelier Tactical Game) is a personal project: a tactical card-combat RPG.
 | Why a rule is the way it is | [docs/design/](docs/design/README.md): v1 GDD and Design Updates 01–24 (**history**; later docs win; GDD v2 wins over all of them) |
 | UI look and feel | [apps/game-ui/DESIGN_SYSTEM.md](apps/game-ui/DESIGN_SYSTEM.md), "Brasswork & Ink" |
 
-**Resolving citations in code comments.** `§D17-6.3` means Design Update 17. The prefix table is in [docs/design/README.md](docs/design/README.md): `§R`=01, `§M`=02, `§E`=03, `§F`=04, `§P`=05, `§E6`=06, `§X`=07, `§D8`…`§D24`=08–24, `§L`=15, `§A`=16. `§M-A.7` (Combat Abilities) exists only in code and in GDD v2 §9.9. `GDD §n` resolves to docs/game_design.md, which keeps the v1 numbering for §1–§11. `T-NN` means docs/balance_register.md.
+**Resolving citations in code comments.** `§D17-6.3` means Design Update 17. The prefix table is in [docs/design/README.md](docs/design/README.md): `§R`=01, `§M`=02, `§E`=03, `§F`=04, `§P`=05, `§E6`=06, `§X`=07, `§D8`…`§D25`=08–25, `§L`=15, `§A`=16. `§M-A.7` (Combat Abilities) exists only in code and in GDD v2 §9.9. `GDD §n` resolves to docs/game_design.md, which keeps the v1 numbering for §1–§11. `T-NN` means docs/balance_register.md.
 
 ## Commands
 
@@ -54,7 +54,7 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 ## Conventions
 
 - **Keep the canon current.** When you change a rule, update `docs/game_design.md` (and `docs/balance_register.md` for magnitudes) in the same change, and cite the §. Rulings made in code comments without a doc update are how the old docs drifted.
-- **New design work** goes in `docs/design/ltg_design_update_25_<topic>.md` in the house shape: Part A canon, B implementation notes, C docs to update, D tests, E order. Once implemented, fold it into GDD v2 and tick `docs/roadmap.md`.
+- **New design work** goes in `docs/design/ltg_design_update_26_<topic>.md` in the house shape: Part A canon, B implementation notes, C docs to update, D tests, E order. Once implemented, fold it into GDD v2 and tick `docs/roadmap.md`.
 - **T-numbers.** Take the next free id, implement it as a named constant, cite `T-NN` in a comment, and add a register row.
 - **Tests** are named `test_design_update_NN_<topic>.py` or `test_<feature>.py`, and pin rules, prompts (the `*_prompt()` builders are pure), and validators. Mock the LLM; never call a real API in tests.
 - **UI** stays on the "Brasswork & Ink" theme:
@@ -74,10 +74,13 @@ npm --prefix apps/game-ui run build             # tsc --noEmit + vite build → 
 - **No quests hooked to hero backstory.** Knowledge is party-level. Party composition is fixed per campaign.
 - **M2 rulings (2026-09-25):** the hand's turn diamond stays on every sorcery and channel card, brass only while the card is castable (grey otherwise). No dashed threat lines or dashed outlines on the battlefield (clutter); threat and shields live on the cards.
 - **M3 rulings (2026-09-25):** a boss without pressure dials is given `enrage_round` 4 / `neglect` 1 at build (T-88). The worldbook is no longer a star: Millhaven links Karzum and Nalindor. The encounter and adventure library was purged for regeneration; towns, the worldbook and the equipment catalogue stay.
+- **M4 rulings (2026-09-25),** Design Update 25: Start Adventure opens once Phase I is written (a party may wait at a boundary); an underpriced generated enemy has its Level raised in code, not rejected; the lockdown budget is a floor with no ceiling; `relentless` costs 3 at min Level 3 (T-91).
 - **M1 rulings (2026-09-25),** recorded in the canon and the roadmap's M1 rows: generated play content stays in `content/`; an enemy's turn-scoped lockdown on a hero holds through that hero's next turn; a taunt respects the wall; enemy deathtouch downs heroes; enemies aim at party tokens; each struck hero may Mitigate their own hit; keyword and attack mode stay as the campaign bought them.
 
 ## Gotchas
 
+- **Adventures are written a phase at a time** (Design Update 25): an outline call, then one call per phase, each saved as it lands onto a *partial* wrapper in `content/` (hidden from pickers) and finalized after Phase III. A run can start Phase I while II–III are written; the party may wait at a boundary. Mocked generators in tests must accept `**kw` (`on_phase`, `resume`, `deeds`).
+- **Generation gates are strict on purpose** (§D25-5/6): Levels are priced and raised in code, each layout needs its lockdown floor, a channeler at standard+, and one of each scarce kind. `tests/conftest.gate_clean_pool` builds a pool that passes all of them; use it for generation tests.
 - `engine.py` is about 8.2k lines. Navigate by function name using the region map in docs/architecture.md; line numbers drift.
 - **Adding an effect verb touches about 10 places**: schema class, several engine classification sets, `RESOLVERS`, `translation.RENDERERS`, lints, serializer sets, the Deckbuilder JS copies, and the LLM vocabulary. Follow the checklist in docs/architecture.md.
 - **`apps/game-ui/src/lib/types.ts` is hand-mirrored** from `snapshot.py`/`serialize.py`; change them together. `fx.ts` switches on engine log event type strings, and there is no registry, so keep the data keys in sync.

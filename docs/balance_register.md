@@ -6,7 +6,7 @@ Every tunable magnitude in LTG carries a register ID, a **T-number** (`T-57`), s
 
 **The code is authoritative.** Where documents disagree, the later one wins. Where a document and the code disagree, *Current value* shows the code and the row is flagged `doc≠code`. Some rulings exist only in code comments.
 
-**To add a tunable:** take the next free ID (**T-89**), implement it as a named constant (not a bare literal or prompt prose), cite `T-NN` in a comment beside it, and add a row here with the § that decided it. **To change one:** edit the constant and its row in the same commit.
+**To add a tunable:** take the next free ID (**T-95**), implement it as a named constant (not a bare literal or prompt prose), cite `T-NN` in a comment beside it, and add a row here with the § that decided it. **To change one:** edit the constant and its row in the same commit.
 
 ## Register
 
@@ -79,7 +79,7 @@ Every tunable magnitude in LTG carries a register ID, a **T-number** (`T-57`), s
 | T-60 | Bought-Power cap | 2 × character level (L1: +2, so melee ≤ 4 and ranged ≤ 3) | `schema.MAX_POWER_BOUGHT` (Character validator) | §D10-3.1; §D17-2.3 | Reads the level derived from points spent. Supersedes T5-14 |
 | T-61 | Phases per adventure | 3 | `content.PHASE_COUNT` | §D10-4.1 | — |
 | T-62 | Adventure difficulty ramp | Each phase is budgeted at the party's potential level when it opens (continuous, + T-81 gear). From L1: 1.0 / 2.0 / 2.4 | `llm.phase_budget_levels`; `scenario.ScenarioRun.phase_budget_levels` | §D10-4.2; §D17-2.3 | **amended by §D17-2.3** (was "phase N at level N"). Missing from the §D17-11 table |
-| T-63 | Adventure-generation `max_tokens` | 64 000 | `llm.ADVENTURE_MAX_TOKENS` | §D10-5 | Kept below per-model ceilings. 48 000 truncated in 2026-08 |
+| T-63 | Adventure-generation `max_tokens` | — (was 64 000 for the one-call adventure) | `llm.ADVENTURE_MAX_TOKENS` (now an alias of T-92's per-phase ceiling) | §D10-5 | **superseded** by T-92 (§D25-3: no call carries more than one phase) |
 | T-64 | Enemy Power bump | +2 minion / +4 boss | `content.ENEMY_POWER_BONUS`, `BOSS_POWER_BONUS` (mirrored in `runner`) | §D12-0 (Balance Update 11) | **amended by §D18-2**, which extends the lift to hostile ability damage (no-T table) |
 | T-65 | `survive` timer | 4–6 rounds | prompt (objectives block) | §D12-1.2 | The range is prompt-only. A validator requires ≥ 2 reinforcement entries (2026-08-30) |
 | T-66 | Wave body minimums | ≥ 1× party per wave, ≥ 2× in total | `content` adventure validation; prompt | §D12-1.3 | — |
@@ -104,7 +104,13 @@ Every tunable magnitude in LTG carries a register ID, a **T-number** (`T-57`), s
 | T-85 | Gold earning rate | 1 gold per point earned (10 / 20 / 30 a phase) | `scenario.GOLD_PER_POINT` | §D17-2.3, §D17-5.3 | — |
 | T-86 | Merchant pricing | Buy at ×1.25 of `points_price` (rounded, min 1). Sell at ×0.5 (floored) | `schema.BUY_MULT`, `SELL_MULT`; `items.buy_price`, `sell_price` | §D17-5.3 | — |
 | T-87 | Starting purse | 15 gold per character | `scenario.STARTING_GOLD` | §D17-5.3 | Missing from the §D17-11 table |
-| T-88 | Default boss pressure dials | `enrage_round` 4, `neglect` 1, for a boss that carries neither (an authored value, 0 included, is kept) | `content.DEFAULT_BOSS_DIALS` / `apply_boss_dials` (in `build_state_from_loadouts`); mirrored in `autoplay.runner.DEFAULT_BOSS_DIALS` | §D23-5; roadmap M3.11 (ruled 2026-09-25) | The middle of the generated ranges. Every legacy boss in the library had none |
+| T-88 | Default boss pressure dials | `enrage_round` 4, `neglect` 1, for a boss that carries neither (an authored value, 0 included, is kept) | `content.DEFAULT_BOSS_DIALS` / `apply_boss_dials` (in `build_state_from_loadouts`); mirrored in `autoplay.runner.DEFAULT_BOSS_DIALS` | §D23-5; roadmap M3.11 (ruled 2026-09-25) | The middle of the generated ranges. Every legacy boss in the library had none. Generation also fills (or clamps) them in code (§D25-1.4) |
+| T-89 | LLM transport retry | 3 tries in total on a connection error, 429 or 5xx (a timeout retried once only); backoff 2 s × 3ⁿ, or the server's Retry-After, capped at 30 s | `llm.TRANSPORT_TRIES`, `RETRY_BASE_S`, `RETRY_CAP_S`, `MAX_TIMEOUT_RETRIES` | §D25-1 | Not a repair turn: the reply never reached a gate |
+| T-90 | Encounter call timeout | 420 s (24,000-token ceiling at ~75 tok/s, plus headroom) | `llm.ENCOUNTER_TIMEOUT` | §D25-1 | Was `_chat`'s 120 s default |
+| T-91 | `relentless` price | min Level 3, cost 3 | `llm.KEYWORD_COSTS`; taught in `DEFAULT_INSTRUCTIONS` | §L-6.2 ("priced at implementation"), §D25-11 | Ruled 2026-09-25 |
+| T-92 | Phased-adventure call budgets | outline 6,000 tokens / 180 s; each phase 32,000 / 480 s | `llm.OUTLINE_MAX_TOKENS`, `OUTLINE_TIMEOUT`, `PHASE_MAX_TOKENS`, `PHASE_TIMEOUT` | §D25-3 | Replaces the one-call 64,000 / 900 s (T-63's adventure ceiling) |
+| T-93 | Lockdown floor | Party size 1 / 2 / 3 / 4 → at least 0 / 1 / 2 / 3 lockdown pieces per layout. Easy −1 (min 0), hard +1. No ceiling | `llm._lockdown_budget`, checked by `_lockdown_problems` | §D25-6 (the budget dates from 2026-08-21) | The owner wants more control pressure: never tune it down |
+| T-94 | Avoid-list size | at most 60 names (towns, then villains, then people), plus the fixed attractors | `llm.AVOID_MAX`, `ATTRACTOR_NAMES` | §D25-8 | — |
 | T5-01 | Creation budget | 70 pts | `schema.CREATION_BUDGET` | §P-1 | — |
 | T5-02 | Creation price: +2 HP | — (5 flat) | — | §P-2 | **retired**. Superseded by T-79 |
 | T5-03 | Creation price: +1 mana | — (15 flat) | — | §P-2 | **retired**. Superseded by T-79, whose 1st purchase is still 15 |
@@ -193,9 +199,10 @@ The doc's HP row (§D17-2.2, §D17-11) is 5 / 5 / 5 / 5 / 6 / 6 / 7 / 7 / 8 / 8.
 | `ROW_ABILITY_BONUS` | +2 | `content` (mirrored in `runner`) | A further lift on row and blast shapes, because they can be dodged (§D18-2) |
 | `enrage_scale(n)` | Power half of a pump ×n. Toughness / AoE / heal ×(1 + (n−1)/2). Tokens +n−1 | `content` (mirrored in `runner`) | Scales a boss's Enrage to party size (§D18-2). At n = 4: ×4 / ×2.5 / +3 (the Enrage wave is exempt from T-27) |
 | `DOUBLE_INTENT_DIFFICULTIES` | {standard, hard} | `content` | On these difficulties, bosses declare 2 intents from round 1 (see T-54) |
-| `_lockdown_budget` | Party size 1 / 2 / 3 / 4 → 0 / 1 / 2 / 3 pieces. Easy −1 (min 0), hard +1 | `llm` | Lockdown pieces (stun, taunt, silence, hamstring, discard, sap, drain-ult, strip-reach) per layout. From 2026-08-21 |
 | Variety floor / copy cap | ≥ party size + 1 distinct designs; ≤ 3 copies of one design | `llm` layout validation | Stops a layout outnumbering the party with clones (beta playtest, 2026-08) |
-| Boss pressure dials | `enrage_round` 3–5 (the validator accepts 2–6). `neglect` 1–2 | `llm._boss_pressure_problems` | Required on generated bosses: a timed enrage fuse, and +N/+N for each round the boss goes unhurt (2026-08-30). A boss built without them takes T-88's defaults |
+| Boss pressure dials | `enrage_round` 3–5, `neglect` 1–2 (M4.11: the gate now equals the prompt) | `llm.BOSS_ENRAGE_ROUNDS`, `BOSS_NEGLECT`, `_boss_pressure_problems` | Required on generated bosses: a timed enrage fuse, and +N/+N for each round the boss goes unhurt (2026-08-30). Generation fills a missing dial (T-88) and clamps an out-of-range one |
+| Shared-reaction cap | at most 2 enemies per pool share one reactive signature | `llm.MAX_SHARED_REACTION` | The C-10 monoculture (M4.11) |
+| Quest-theme overlap | two themes sharing ≥ 60 % of their content stems (Jaccard) are one ride | `scenario_content.THEME_OVERLAP_MAX` | M4.11; was an exact-string compare |
 | Objective gates | `race` needs 1–2 guards. `survive` needs ≥ 2 reinforcements. `deadline` runs 4–6 rounds | `llm._objective_problems` | Generation-side requirements for objectives (2026-08-30) |
 | `_break_threshold` | ceil(max HP / 4) | `engine` | A single hit of ≥ 25 % max HP breaks a channel (GDD §8) |
 | `in_execute_window` | effective HP × 4 ≤ max HP | `state.EnemyState` | At ≤ 25 % HP a boss becomes removable and enrages (GDD §9.4 / §9.5, §F-9) |
@@ -212,7 +219,7 @@ The doc's HP row (§D17-2.2, §D17-11) is 5 / 5 / 5 / 5 / 6 / 6 / 7 / 7 / 8 / 8.
 | Resolution pacer | Beat 1.1 s, hold 0.6 s, step 0.18 s | `session.PACE_BEAT_S` / `PACE_HOLD_S` / `PACE_STEP_S` | Server-side pauses between auto-advance steps |
 | `_AUTO_CAP` | 200 | `session` | The longest chain of synthetic auto-passes allowed |
 | `LOG_TAIL` | 60 | `snapshot` | How many recent log entries are shipped to clients |
-| Generation budgets | Encounter 24 000 tokens. Scenario 64 000 tokens / 1 200 s. Adventure timeout 900 s. Default timeout 120 s | `llm.ENCOUNTER_MAX_TOKENS`, `SCENARIO_MAX_TOKENS`, `SCENARIO_TIMEOUT`, `ADVENTURE_TIMEOUT`, `_chat` | LLM ceilings. The adventure token budget is T-63 |
+| Generation budgets | Encounter 24 000 tokens (timeout T-90). Scenario 64 000 tokens / 1 200 s. Adventure calls T-92. Default timeout 120 s | `llm.ENCOUNTER_MAX_TOKENS`, `SCENARIO_MAX_TOKENS`, `SCENARIO_TIMEOUT`, `_chat` | LLM ceilings |
 | Harness gates | `ACTION_CAP` 20 000. Saturation `CEILING` 0.85 / `FLOOR` 0.15. `FLAG_PP` 10 pp with `MIN_SIDE` 2 | `runner`, `probes`, `enemy_analysis` | The in-turn loop backstop, the saturation warning, and the enemy-feature flag |
 
 ## Retune watch-list
@@ -232,9 +239,9 @@ The owner does not currently trust the autoplay harness's absolute numbers. It i
 
 These need a decision or a fix, and each is tracked in [roadmap.md](roadmap.md):
 
-- **About 40 values are prompt-only (M4.8, M4.10).** T-01–T-24, T-26, T-28–T-32, T-34–T-36, T-39, T-47, T-53, T-65, T-67 and the prices in T-51 and T-56 are taught to the enemy designer as prose. No code prices an enemy or checks its Level against B(L), and a saved Options → LLM override can replace them.
-- **The prompt contradicts itself on single-target damage.** Its magnitude table says L+2 (T-20, §D18-2), but its T-55 line still says "single target = L+1". `enemy_analysis.LEVERS` also still quotes L+1 and Drain ceil(L/2)+1.
+- **Enemy prices are now code (M4.8, §D25-5).** `llm.ARCHETYPE_COSTS`, `KEYWORD_COSTS`, `RISES_COST` and `component_cost` implement T-09–T-19, T-28–T-36 and the later archetype costs; generated Levels are priced against them. The magnitude schedule (T-20–T-24, T-26, T-39, T-47, T-53, T-65, T-67) is still prose only, and a saved Options → LLM override can still teach different numbers than the code checks.
+- **Single-target damage** reads L+2 everywhere in the prompt now (M4.18). `enemy_analysis.LEVERS` still quotes L+1 and Drain ceil(L/2)+1.
 - **Literals without constants (M9.7).** T-52 (`// 2`, twice) and T-45/T-46 (1 per counter).
-- **Tunables without T-ids (M9.7).** Updates 18–24 added none. Candidates for T-89 onward: the stat buffs, the ability and row bonuses, `enrage_scale`, `ATTACK_CADENCE`, `EMERGENCY_BAND`, `DOUBLE_INTENT_DIFFICULTIES`, the lockdown budget, `GAUGE_LEVEL_STEP`, the boss-dial ranges (their build-time default is T-88), the variety floor, `_defend_value`, the later archetype costs, and the `lose_life` / `sap` / `drain_ultimate` magnitudes.
+- **Tunables without T-ids (M9.7).** Updates 18–24 added none. Candidates for T-95 onward: the stat buffs, the ability and row bonuses, `enrage_scale`, `ATTACK_CADENCE`, `EMERGENCY_BAND`, `DOUBLE_INTENT_DIFFICULTIES`, `GAUGE_LEVEL_STEP`, the boss-dial ranges (their build-time default is T-88), the variety floor, `_defend_value`, the later archetype costs, and the `lose_life` / `sap` / `drain_ultimate` magnitudes.
 - **The history's own register tables are stale** (T-40, T-78, T-79, T-81 rows in §X-7 and §D17-11). This page supersedes them.
 

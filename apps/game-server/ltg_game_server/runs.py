@@ -474,7 +474,8 @@ class RunManager:
             # Loadouts are the bulk of a snapshot (portraits ride inside them):
             # content-address each so identical builds across saves share one file.
             loadout_refs = [st.put(lo) for lo in block.pop("loadouts")]
-            phase_index, phases_total = block["phase_index"], len(adventure.phases)
+            phase_index = block["phase_index"]
+            phases_total = max(len(adventure.phases), adventure.phases_total)
             adv_name = adventure.name
             snap["adventure"] = {"adventure_id": adventure.adventure_id,
                                  "ref": adventure_ref,
@@ -515,6 +516,29 @@ class RunManager:
         return {"save_id": save_id, "saved_at": snap["saved_at"],
                 "label": snap["label"], "kind": kind, "auto": auto}
 
+    @staticmethod
+    def _freshest_detail(st: "RunStore", run: Dict[str, Any],
+                         detail: Optional[Dict[str, Any]]) -> "tuple[Optional[Dict[str, Any]], bool]":
+        """§D25-3: a save made while its adventure was still being written
+        points at the phases that existed THEN. If the run's job has since
+        frozen a fuller copy of the SAME adventure (same id, same phases so
+        far, more of them), load that — a written phase is never written
+        again. Returns ``(detail, took_newer)``."""
+        job = run.get("adventure_job") or {}
+        ref = job.get("adventure_ref")
+        if not detail or not ref:
+            return detail, False
+        try:
+            newer = st.get(ref)
+        except KeyError:
+            return detail, False
+        old_ids = [p.get("encounter_id") for p in detail.get("phases") or []]
+        new_ids = [p.get("encounter_id") for p in (newer or {}).get("phases") or []]
+        if (isinstance(newer, dict) and newer.get("id") == detail.get("id")
+                and len(new_ids) > len(old_ids) and new_ids[:len(old_ids)] == old_ids):
+            return newer, True
+        return detail, False
+
     def mark_dead(self, run_id: str) -> None:
         """Hardcore defeat: the run ends; its saves stay viewable, not
         continuable (§D17-6.4)."""
@@ -554,7 +578,7 @@ class RunManager:
         adv_block = snap.get("adventure")
         if adv_block is None:
             return self._run_meta(run), None, None, {}, {}, ""
-        detail = st.get(adv_block["ref"])
+        detail, _ = self._freshest_detail(st, run, st.get(adv_block["ref"]))
         adventure = AdventureRun(adv_block.get("adventure_id") or "run-adventure",
                                  detail=detail)
         party = copy.deepcopy(snap["party"])
@@ -581,6 +605,12 @@ class RunManager:
         loadouts = [_shrink_portraits(st.get(h)) for h in block.get("loadout_refs", [])]
         act = st.get(block["act_ref"]) if block.get("act_ref") else None
         adv = st.get(block["adventure_ref"]) if block.get("adventure_ref") else None
+        adv, newer = self._freshest_detail(st, run, adv)
+        if newer:
+            # The job's record describes the fuller copy (its phase count, its
+            # ref), so it rides along with it.
+            block["adventure_job"] = {**(block.get("adventure_job") or {}),
+                                      **(run.get("adventure_job") or {})}
         # Update 24 §D24-6: identity is read LIVE from the character file on
         # every load; the instance keeps its points-buy and progression.
         notices = content.refresh_party(block.get("character_ids", []), loadouts)

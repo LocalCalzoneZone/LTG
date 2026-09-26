@@ -1,6 +1,6 @@
 # How LTG content is generated
 
-A reference for designers and coding agents, verified against the code on 2026-09-24. The code is the source of truth. Symbols live in `apps/game-server/ltg_game_server/` unless a path says otherwise. Design decisions are cited by section and resolved in [design/README.md](design/README.md). Known gaps are tracked in [roadmap.md](roadmap.md) (mostly M4).
+A reference for designers and coding agents, verified against the code on 2026-09-24 and updated for Design Update 25 (the generation pipeline, roadmap M4) on 2026-09-25. The code is the source of truth. Symbols live in `apps/game-server/ltg_game_server/` unless a path says otherwise. Design decisions are cited by section and resolved in [design/README.md](design/README.md). Known gaps are tracked in [roadmap.md](roadmap.md) (mostly M4).
 
 ## 1. The wall
 
@@ -15,18 +15,18 @@ A reference for designers and coding agents, verified against the code on 2026-0
 
 | Writer | Function | Trigger | Inputs (system; user) | Output | Gates | Task | Tokens / timeout / attempts |
 |---|---|---|---|---|---|---|---|
-| Encounter designer | `llm.generate_encounter` | New Game → Generate encounter (`POST /api/encounters/generate`); Autoplay Tester gauntlets (`persist=False`) | `settings["instructions"]`; `_request_block` | an encounter saved to `content/<slug>.json` | §6 encounter chain, then `content.save_encounter` | `encounters` | 24,000 / 120 s / 2 |
-| Adventure writer | `llm.generate_adventure` | Quest Accept (`jobs.AdventureJobRunner`, `run_only=True`); New Game or Options → Adventures (`POST /api/adventures/generate`) | the instructions plus `ADVENTURE_EXTENSION`; `_adventure_request_block`, plus `_adventure_context_lines` in a run | 3 phases with narrations, saved as a wrapper plus `<id>__phase1..3` | the per-phase chain, `_narration_problems`, `content.save_adventure` | `adventures` | 64,000 / 900 s / 3 |
-| Town generator | `llm.generate_town` | Options → Towns (`POST /api/towns/generate`); Continue on a `new` hook | `TOWN_INSTRUCTIONS`; `town_prompt` | a town plus its `world_entry`, saved to `content/towns/` and `content/world/` | `validate_town`, `world.validate_entry`, the seed name | `towns` | 64,000 / 1,200 s / 3 |
+| Encounter designer | `llm.generate_encounter` | New Game → Generate encounter (`POST /api/encounters/generate`); Autoplay Tester gauntlets (`persist=False`) | `settings["instructions"]` plus `ENCOUNTER_EXTENSION` (objectives); `_request_block` | an encounter saved to `content/<slug>.json` | §6 encounter chain, then `content.save_encounter` | `encounters` | 24,000 / 420 s / 2 |
+| Adventure writer | `llm.generate_adventure` | Quest Accept (`jobs.AdventureJobRunner`, `run_only=True`); New Game or Options → Adventures (`POST /api/adventures/generate`) | **Outline** (§D25-3): `OUTLINE_INSTRUCTIONS`; `_adventure_request_block`, plus `_adventure_context_lines` in a run. **Each phase:** the instructions plus `ADVENTURE_EXTENSION`; `_phase_request_block` (the outline, the phases already written, this phase's budgets, rules and roll) | an outline, then one phase per call, each saved as it lands (`content.save_adventure_phase`: `<id>__phase<n>` plus a *partial* wrapper), then `content.finalize_adventure` | outline: `_outline_fix`; each phase: `_phase_ladder_problems`, the encounter chain, `_narration_problems`, the phase save gate; finally the §D10-4.1 adventure checks | `adventures` | outline 6,000 / 180 s; phase 32,000 / 480 s; 3 attempts **per call** |
+| Town generator | `llm.generate_town` | Options → Towns (`POST /api/towns/generate`); Continue on a `new` hook | `TOWN_INSTRUCTIONS`; `town_prompt` (with `# ALREADY TAKEN`) | a town plus its `world_entry`, saved to `content/towns/` and `content/world/` | `validate_town`, `world.validate_entry`, the seed name, no taken town name | `towns` | 64,000 / 1,200 s / 3 |
 | Standing topics | `llm.generate_town_topics` | Options → Towns → topics (`POST /api/towns/{id}/topics`) | `TOPICS_INSTRUCTIONS`; `_town_block(topics=False)` plus the NPCs without topics | `{topics: {npc: [{ask, reply}]}}`, merged into the town | NPC resolution, `clean_topics`, coverage of every listed NPC | `towns` | same |
-| Arc writer | `llm.generate_arc` | Town + New (blocking inside `POST /api/games`); `scenario.pregenerate_scenario`; Continue | `ARC_INSTRUCTIONS`; `arc_prompt` | title, villain, stakes, cast, places, 3 act outlines | `validate_arc` | `scenarios` | same |
-| Act writer | `llm.generate_act` | every arrival in town; after a Normal-mode defeat; `pregenerate_scenario` (Act I); resume on load | `ACT_INSTRUCTIONS`; `act_prompt` | quests, arrival, dialogue trees, flavour, topics, closing lines, `town_state_delta` | `validate_materialization` | `scenarios` | same |
-| Interlude planner | `llm.generate_interlude` | the Act III boss's death (`jobs.InterludeJobRunner`); Continue re-queues a failure | `INTERLUDE_INSTRUCTIONS`; `interlude_prompt` | the post-victory town plus 3 hooks | `validate_interlude` | `scenarios` (default) | same |
+| Arc writer | `llm.generate_arc` | Town + New (blocking inside `POST /api/games`); `scenario.pregenerate_scenario`; Continue | `ARC_INSTRUCTIONS`; `arc_prompt` (with `# ALREADY TAKEN`) | title, villain, stakes, cast, places, 3 act outlines | `validate_arc`; no taken or attractor villain name | `scenarios` | same |
+| Act writer | `llm.generate_act` | every arrival in town; after a Normal-mode defeat; `pregenerate_scenario` (Act I); resume on load | `ACT_INSTRUCTIONS`; `act_prompt` (with the rolled stock) | quests, arrival, dialogue trees, flavour, topics, closing lines, `town_state_delta`, `stock_names` | `validate_materialization` (the `defeated_once` branch after a defeat; `name_stock`) | `scenarios` | same |
+| Interlude planner | `llm.generate_interlude` | the Act III boss's death (`jobs.InterludeJobRunner`); Continue re-queues a failure | `INTERLUDE_INSTRUCTIONS`; `interlude_prompt` (with `# ALREADY TAKEN`) | the post-victory town plus 3 hooks | `validate_interlude`; a `new` hook's seed takes no existing town name | `scenarios` (default) | same |
 | Worldbook backfill | `scripts/backfill_worldbook.py` `backfill` | run by hand, for towns with no entry (`--dry-run` prints the prompts) | `BACKFILL_INSTRUCTIONS`; `_town_block` plus `_book_block` | a `world_entry`, written by `world.append_entry` | `world.validate_entry` | `towns` | same |
 | Deck flavour | `ltg_deckbuilder.flavour.generate_flavours` | Deckbuilder topbar → Generate deck flavour (`POST /api/flavour/generate`) | `flavour.INSTRUCTIONS`; `prompt_for` | `{flavours: {card id: text}}`, which the client writes into `flavor_text` | every card, Skill and Ultimate id covered | `flavour` | 16,000 / 300 s / 2 |
 | Art | `art.generate`, `generate_town_art`, `generate_item_art`, `generate_cast_art`, `generate_place_art`, `generate_spoil_art` | per-image buttons; `art.QUEUE` | `_style()` plus task framing plus the content's prose | an image file, with its URL written onto the JSON | backend errors only | `ART_MODEL` or ComfyUI | 180 s (OpenRouter) or 300 s (ComfyUI) / 1 |
 
-No model is involved in loot or item naming (`loot`, `items`), merchant stock, or panel animations. Animations are made offline and uploaded (§11).
+No model is involved in loot naming (`loot`), rolling merchant stock (`items`), or panel animations. The act writer may name the rolled stock (§D25-9); animations are made offline and uploaded (§11).
 
 ## 3. When generation happens in play
 
@@ -36,10 +36,10 @@ No model is involved in loot or item naming (`loot`, `items`), merchant stock, o
    - *Library scenario*: `pregenerate_scenario` stores an arc (written for a generic two-hero party at `standard`) and Act I's town portion, with no adventure (§D20-3). `content/scenarios/` is empty today, so every scenario starts from a town.
 3. **Arrival (every act).** `_take_materialization` rolls the stock and forges the spoils in code, and their art queues. Acts II and III materialize on arrival. A Normal-mode defeat re-materializes the act with `defeated_once` set (§D17-6.4).
 4. **Quest Accept.** A `grant_quest` + `unlock_adventure` choice auto-saves `quest_accept` and starts `jobs.AdventureJobRunner`.
-   - The state (`idle → pending → ready | failed`, with `progress`, `adventure_ref` and `error`) persists to `run.json` via `RunManager.set_job`.
-   - The generator runs in a worker thread with the run's party copies, `levels()`, `effective_level()`, `phase_budget_levels()` and `adventure_context()`. The player's note is not passed.
-   - On success the detail is frozen into the content store before `ready`, and its art queues, Phase I first.
-   - On failure the button reads "Generation failed — Retry" (`retry_job` restarts the whole loop), and the quest stays accepted. Loading a save with an unlocked adventure and no detail resumes the job.
+   - The state (`idle → pending → ready | failed`, with `progress`, `adventure_ref`, `error`, and §D25-3's `phases_ready`, `phases_total`, `writing`, `phase_error`, `adventure_id` and `outline`) persists to `run.json` via `RunManager.set_job`.
+   - The generator runs in a worker thread with the run's party copies, `levels()`, `effective_level()`, `phase_budget_levels()`, `adventure_context()` and the heroes' recent chronicle deeds. The player's note is not passed.
+   - **Phase by phase** (§D25-3): the outline, then Phase I; the job turns `ready` as soon as Phase I is frozen into the content store, and its art queues. Phases II and III follow in the same worker while Phase I is played; each is frozen and handed to a running adventure as it lands (`Session.phase_landed`). A party that confirms a boundary before the next phase exists waits on the level-up screen.
+   - On failure before Phase I the button reads "Generation failed — Retry" and the quest stays accepted. A failure after it leaves the job `ready` with a `phase_error`; the boundary shows it with a Retry. Either Retry resumes at the first missing phase with the stored outline. A loaded save resumes an unfinished job when a client connects (the load endpoint has no event loop), and takes the job's fuller copy of the same adventure over the save's (`RunManager._freshest_detail`).
 5. **The closing boss's death (Act III).** `Session._scenario_transitions` calls `note_boss_death` and queues `jobs.InterludeJobRunner` before the spoils modal. The result lands on `pending_interlude` and in `run.json` (`interlude_ref`). An early Continue sets `continue_requested` and lands when the planner returns.
 6. **Continue.** `continue_campaign` → `begin_interlude` runs no model: the planner's town is the act. The inn's `rest` opens the rest screen, and choosing a hook (`choose_hook`) applies the days, heals and saves `hooks_chosen`. Then `app._continue_sync` runs in a thread:
    1. A `new` hook calls `generate_town(seed line, 3, placement_context(anchor), seed)`. `neighbour` uses the named town; `stay` keeps this one.
@@ -56,11 +56,11 @@ The table follows the code. † marks a difference from the reader matrix in §D
 
 | Reader | Party | Lore | Ledger | Town | Worldbook | Also |
 |---|---|---|---|---|---|---|
-| Arc writer (`arc_prompt`) | a roster line (name, level, colours) and difficulty, plus `_party_block(depth="full", chronicle="summaries")` (at a campaign's start from `opening_party_state`: briefs and default situations, no chronicle) | never | at Continue (a new campaign has none) | `_town_block` of the raw town file, with no town state † | this town and its neighbours (a pre-generated scenario's arc gets neither party nor world) | `_hook_block` at Continue; the note |
-| Act writer (`act_prompt`) | `_party_block(full, recent)` | up to 2 entries | all scenarios, including the one in progress | the composed town (`town_for_act`: cast, places, town state) plus `_arc_block` with the cast's secrets | this town only | the day, public flags, the `knows` list, a `defeated_once` paragraph; `_hook_block` on a continuation's Act I (the chosen hook's road, bridge and note) |
-| Interlude planner (`interlude_prompt`) | `_party_block(full, recent)` | never | all, with the current scenario recorded as a victory | the last act's composed town plus `_arc_block` | this town and its neighbours, or a "stay/new only" line | the villain is defeated |
-| Enemy designer (`_request_block`, `_adventure_request_block`) | name, level, colours and `brief.concept` (§D24-9.5) | never | — | in a run: the town's name, region and NPC names | — | in a run, the arc, act and quest; the library avoid-list; signature rolls |
-| Town generator (`town_prompt`) | — | — | — | — | `_world_placement_block`: the region to join or found, and the towns it sits beside | the seed (name, line, bridge); the note |
+| Arc writer (`arc_prompt`) | a roster line (name, level, colours) and difficulty, plus `_party_block(depth="full", chronicle="summaries")` (at a campaign's start from `opening_party_state`: briefs and default situations, no chronicle) | never | at Continue (a new campaign has none) | `_town_block` of the raw town file, with no town state † | this town and its neighbours (a pre-generated scenario's arc gets the world since M4.14, but no party) | `_hook_block` at Continue; the note; `# ALREADY TAKEN` |
+| Act writer (`act_prompt`) | `_party_block(full, recent)` | up to 2 entries | all scenarios, including the one in progress | the composed town (`town_for_act`: cast, places, town state) plus `_arc_block` with the cast's secrets | this town only | the day, public flags, the `knows` list, a `defeated_once` paragraph; `_hook_block` on a continuation's Act I (the chosen hook's road, bridge and note); the rolled merchant stock (§D25-9) |
+| Interlude planner (`interlude_prompt`) | `_party_block(full, recent)` | never | all, with the current scenario recorded as a victory | the last act's composed town plus `_arc_block` | this town and its neighbours, or a "stay/new only" line | the villain is defeated; `# ALREADY TAKEN` (for a `new` hook's seed) |
+| Enemy designer (`_request_block`, `_adventure_request_block`, `_phase_request_block`) | name, level, colours, `brief.concept` (§D24-9.5) and, since §D25-7, the tactical facts: attack mode and row, keyword, types and classes, Skill and Ultimate (name and text), carried gear, the 3 latest chronicle deeds (`_roster_text`) | never | — | in a run: the town's name, region and NPC names | — | in a run, the arc, act and quest; the library avoid-list; signature rolls; each phase call: the outline and the phases already written |
+| Town generator (`town_prompt`) | — | — | — | — | `_world_placement_block`: the region to join or found, and the towns it sits beside | the seed (name, line, bridge); the note; `# ALREADY TAKEN` (§D25-8) |
 | Topics writer, backfill | — | — | — | `_town_block(topics=False)` | the backfill only: the whole book (`_book_block`) | the topics writer: the NPCs it must cover |
 | Deck flavour | concept, appearance, voice register | the first 300 words of `character.lore` | — | — | — | `combat_lore` and every card's text |
 
@@ -68,8 +68,13 @@ The table follows the code. † marks a difference from the reader matrix in §D
 
 | Block | Renderer | Content |
 |---|---|---|
-| `# THIS ENCOUNTER'S PARAMETERS` | `_request_block` | Roster, average level, difficulty. Per party size: `_min_enemies` bodies, a `_budget` level target and a `_lockdown_budget` count. Boss rule (hard), channeler rule (not easy), 2 signature rolls, library lines, note. |
-| `# THIS ADVENTURE'S PARAMETERS` | `_adventure_request_block` | Roster, difficulty, entry level. Bodies and budget per phase and size at `phase_budget_levels` (+10/+20/+30 grants), with **no lockdown lines**. Boss rule, a channeler per phase, one roll per phase, library lines, context. |
+| `# THIS ENCOUNTER'S PARAMETERS` | `_request_block` | Roster (the tactical facts, `_roster_text`), average level, difficulty. Per party size: `_min_enemies` bodies, a `_budget` level target and a `_lockdown_budget` floor. Boss rule (hard), channeler rule (not easy), 2 signature rolls, library lines, note. |
+| `# THIS ADVENTURE'S PARAMETERS` | `_adventure_request_block` | The outline call's user turn. Roster, difficulty, entry level. Bodies, budget and the lockdown floor per phase and size at `phase_budget_levels` (+10/+20/+30 grants). Boss rule, a channeler per phase, one roll per phase, library lines, context. |
+| `# THE ADVENTURE OUTLINE` | `_outline_block` | Name, flavour, faction, the boss (name, level, concept), the objective's phase, and per phase its station, threat, mini-boss, signature and beats. Every phase call. |
+| `# THE PHASES ALREADY WRITTEN` | `_written_digest` | One line per written phase: its name, each enemy with Level, boss mark and archetypes, its objective, and the last lines of its narration. |
+| `# WRITE PHASE n OF 3 NOW` | `_phase_request_block` | Roster, difficulty, this phase's per-size lines, the boss or mini-boss rule against the outline's level, the channeler, whether it may carry the objective, its roll, context, note. |
+| `# ALREADY TAKEN` | `_avoid_block` | Town names (tracked towns and the worldbook), run villains, town NPC names — at most `AVOID_MAX` (60) — plus the fixed `ATTRACTOR_NAMES` and `ATTRACTOR_MOTIFS`. Town, arc and interlude writers. |
+| `# THE MERCHANTS' STOCK` | `_stock_block` | Each shop's rolled items by `[id]`, name, rarity and slot. The act writer. |
 | `# SCENARIO CONTEXT` | `_adventure_context_lines` | Arc title, villain and stakes; the act outline, with the accepted quest's `adventure_theme` replacing the outline's; act *n* of 3 (the finale's boss is the villain); town name, region and NPC names; the quest's title and text. |
 | Library steer | `_library_lines`, `_recurring_motifs` | Owned encounters (with enemy names) and non-run adventures (with flavour), marked off-limits, plus five-letter stems recurring across two or more of them. |
 | Signature rolls | `_signature_rolls(k)` | `random.sample` of `SIGNATURE_POOL` (24 mechanics) |
@@ -90,10 +95,10 @@ The table follows the code. † marks a difference from the reader matrix in §D
 
 ### The encounter designer: `DEFAULT_INSTRUCTIONS`
 
-84,379 characters (about 21k tokens), sent as the system message on every encounter and adventure call. Its headings, in order:
+88,843 characters (about 22k tokens), sent as the system message on every encounter call and every adventure phase call (not the outline). Its headings, in order:
 
 - `# Setting & theme`: classic high fantasy (MTG / D&D register), NO CHILD COMBATANTS, one fresh theme, owned titles off-limits, BE CONCRETE.
-- `# The enemy framework` (Update 04): chassis; types and classes (§D21, closed lists substituted at import); archetypes and costs; the HARD REQUIREMENTS (two components, the punching-bag rule, no lone taunt, row shapes aim at ground); typed counters; resource attacks and hostile `modify_action`; magnitudes by level; the trigger, condition and target-rule vocabulary; corpses, forced movement, positional intents, windups, channels; spell vs ability ("Combat Abilities are DERIVED"); keywords; budget → level (B(L) = 5L + 5).
+- `# The enemy framework` (Update 04): chassis; types and classes (§D21, closed lists substituted at import); archetypes and costs; the HARD REQUIREMENTS (two components, the punching-bag rule, no lone taunt, row shapes aim at ground); typed counters; resource attacks and hostile `modify_action`; magnitudes by level (single target L+2 throughout since M4.18); the trigger, condition and target-rule vocabulary (grudges `hero_class:`/`hero_type:` since §D25-7); corpses, forced movement and self-moving composite intents (charge, hit-and-fade), positional intents, windups, channels and countdown rites (`after_turns` + `channel_drop`); spell vs ability ("Combat Abilities are DERIVED"); keywords (with `relentless`, T-91); budget → level (B(L) = 5L + 5), and the statement that the game prices every enemy and raises an underpriced Level.
 - `# Design guidance` (6.7k characters): the pattern palette, MECHANICAL VARIETY anti-rut rules, one signature mechanic per fight.
 - `# Party-size layouts`: a pool of 5–8, size+1 distinct designs, at most 3 copies, the boss in every layout.
 - `# Bosses` (4.8k): 2.5× budget, execute window, two intents, the required `enrage_round`/`neglect`, a multi-verb Enrage, phase gates, silhouettes.
@@ -109,13 +114,22 @@ The table follows the code. † marks a difference from the reader matrix in §D
 - `_scale_hp` then multiplies HP by `ENEMY_HP_MULT` (1.0 / 1.2 / 1.5) × `ENEMY_STAT_BUFF` (1.2; `BOSS_STAT_BUFF` 1.3), and Power by the buff alone.
 - At play, `AdventureRun` rescales HP by the `ENEMY_HP_MULT` ratio when the run's difficulty differs from the adventure's stamp, and `content.apply_boss_difficulty` gives bosses two intents on standard and hard. `content._bump_enemy_power` adds the Update 18 register (+2 Power and hostile damage, +4 for bosses, +2 more on row shapes), so generated files show numbers from before the register.
 
-### `ADVENTURE_EXTENSION` (10.2k characters, about 2.5k tokens)
+### `OUTLINE_INSTRUCTIONS` (about 3.2k characters with the concreteness rule)
 
-Appended for adventures (§D10-5). It asks for:
-- three stations of one place, with per-phase budgets and one rolled signature per phase;
-- exactly one boss in Phase III, the adventure's highest-level enemy; optional, strictly lower mini-bosses in Phases I and II;
-- a `narration` per phase (2–4 paragraphs, 120–250 words, second person: the road in, the discovery, the reason, one voice) and a one-line `flavor`;
-- an objectives block (§D12-1, amended by §D23-5): at most one objective per adventure, and on Phase III only a guarded race on the boss, waves ending on the boss, or a deadline. §6 covers how the save gate treats that.
+The outline call's system prompt (§D25-3). It designs no enemy: it fixes the place and its faction, the boss (name, concept and a Level at or above the Phase III party level), three stations with a threat built on each phase's rolled signature, the mini-boss flags, 2–3 narration beats per phase, `objective_phase` (0–3) and the one-line `flavor`.
+
+### `ADVENTURE_EXTENSION` (about 10.4k characters, 2.6k tokens)
+
+Appended to the encounter instructions for each **phase** call (§D10-5, §D25-3). The system prompt is the same for all three phases, so it caches. It asks for:
+- this phase's station of the place the outline fixed, its own rolled signature, and no kit an earlier phase used;
+- in Phase III, exactly one boss: the outline's, at (at least) the outline's Level; mini-bosses in Phases I and II only where the outline says, strictly below the boss; every other enemy below the boss's Level;
+- a `narration` (2–4 paragraphs, 120–250 words, second person: the road in, the discovery, the reason, one voice);
+- an objective only on the outline's `objective_phase`; on Phase III only a guarded race on the boss, waves ending on the boss, or a deadline;
+- the output `{narration, …encounter}`.
+
+### `ENCOUNTER_EXTENSION` (about 4.8k characters)
+
+Appended to the encounter instructions for a standalone encounter (§D12-7, M4.12): at most one optional objective, roughly one fight in three, and in a boss fight the shapes that modify the boss kill. It shares `OBJECTIVE_KINDS` (the four kinds) with the phase extension.
 
 ### The scenario writers
 
@@ -131,38 +145,48 @@ Appended for adventures (§D10-5). It asks for:
 
 | Gate | Where | What it enforces |
 |---|---|---|
-| `_extract_json` | every `llm.py` writer | Strips code fences, falls back to the outermost `{…}`, and requires an object. Duplicate keys pass, with the last one winning. |
+| `_extract_json` | every `llm.py` writer | Strips code fences, falls back to the outermost `{…}`, and requires an object. A repeated key inside one object is rejected by name (M4.11, `_no_duplicate_keys`). |
+| `_coerce_encounter` | encounters, each adventure phase (after `_normalize`, before `_scale_hp`) | Not a gate: fixes faults with one right answer (§D25-1.4) — numeric strings, `supertypes` → `classes`, unknown tags dropped when a valid one remains, a ranged enemy in Front moved to Mid, boss dials filled (T-88) or clamped to 3–5 / 1–2, and a Level below its price raised to it (`price_enemy`, §D25-5). |
 | `_normalize` | encounters, each adventure phase | `enemies` must be a list. Fills in missing enemy ids (from the name) and component ids (from the archetype). |
 | `_scale_hp` | same | Not a check: applies the stat multipliers from §5. |
-| `_check_layouts` | same | Layouts "1"–"4" exist; each has at least 2 × size bodies and size + 1 distinct designs; no design appears more than 3 times. Then calls `_check_ranged_placement`: no ranged enemy in the front row (§D23-3). |
+| `_layout_problems` | same | Layouts "1"–"4" exist; each has at least 2 × size bodies and size + 1 distinct designs; no design appears more than 3 times; no ranged enemy in the front row (§D23-3). Every problem is reported, not the first. |
 | inline scene / description checks | `generate_encounter`, `generate_adventure` | A top-level `scene`, and a `description` on every enemy. |
 | `_design_problems` | same | The §D14 kit floor: at least 2 components; no proactive, repeatable, cooldown-under-2 component built only from self-buffs (`_SELF_DEV_KINDS`); every `charge` has its `on_charge_full` detonation. |
 | `_corpse_problems` | same | §D19-1: when a corpse `exile` shares a component with other verbs, it must be `consume_corpse`. |
 | `_type_problems` | same | §D21: 1–2 `types` and 1–2 `classes`, each from its closed list. |
 | `_taunt_problems` | same | §D18-1: a taunt also carries `deal_damage`, `lose_life` or `drain`. |
-| `_sameness_problems` | same | Rejects:<br>• two enemies with the same kit signature (archetype, timing, trigger and verb shapes; amounts ignored)<br>• three or more hero-aimed components that all use one `target_rule`<br>• fewer than min(4, pool size) distinct archetypes<br>• a pool of 3 or more that all share one row or one attack mode |
-| `_boss_pressure_problems` | same | Every boss has `enrage_round` (accepted range 2–6; the prompt says 3–5) and `neglect` of 1–2. |
+| `_sameness_problems` | same | Rejects:<br>• two enemies with the same kit signature (archetype, timing, trigger and verb shapes; amounts ignored)<br>• three or more hero-aimed components that all use one `target_rule`<br>• fewer than min(4, pool size) distinct archetypes<br>• a pool of 3 or more that all share one row or one attack mode<br>• more than `MAX_SHARED_REACTION` (2) enemies wearing the same reactive signature (C-10) |
+| `_boss_pressure_problems` | same | Every boss has `enrage_round` 3–5 and `neglect` 1–2 (the prompt's ranges; coercion normally settles them first). |
+| `_lockdown_problems` | same | §D25-6: each layout (plus a `waves` objective's waves) fields at least `_lockdown_budget(size, difficulty)` bodies whose kit attacks the party's turns. |
+| `_cap_problems` | same | §D25-6: at most one design per pool that is a resource attacker, a poisoner, an infect creature, a counter piece or a gauge-punisher (a boss's `on_ultimate_cast` counter excepted). |
+| `_channeler_problems` | same | §E6-5: a channeler at standard and hard. |
+| `_outline_fix` | the adventure outline | A name; a boss with a name and a Level of at least the Phase III party level; exactly 3 phases, each with a station. Coerces a bad `objective_phase` to 0 and Phase III's mini-boss flag off. |
+| `_phase_ladder_problems` | each adventure phase | Against the outline: no enemy at or above the boss's Level except the finale's boss (lifted to the outline's Level if written below); exactly one boss in Phase III; an objective only on `objective_phase`, and a §D23-5 modifier shape on Phase III. The message names the offending enemy's price. |
 | `_objective_problems` | same | A race needs 1–2 `guards` and 3–5 `turns`. A survive needs at least 2 reinforcement entries. A deadline needs 4–6 `turns`. |
 | `_narration_problems` | adventure phases | The narration is at least `NARRATION_MIN_WORDS` (100). |
 | `_lockdown_budget` | `_request_block` | Not a gate: it prints a number, and nothing counts lockdown pieces. |
-| `content._validate_encounter` (inside `save_encounter`; called directly when `persist=False`) | encounters, each phase | Named enemies with positive hp and level; at most one boss; layout ids exist, with the boss in every layout (or the final wave); the objective schema, with a race's target and guards in every layout. Then a **build probe**: `state_from_dict` with a stub party for every layout runs the engine's own component checks (for example the §D12-2.3 ultimate-counter guardrail). |
-| `content.save_adventure` | adventures | Exactly 3 phases, at most one objective, and **no objective at all on Phase III** ("Phase III is always the standard boss kill"). Each phase passes `_validate_encounter` and `_validate_phase` (layouts, bodies, descriptions). `_validate_adventure` then checks the narrations, a single Phase III boss, strictly lower mini-bosses, and no enemy above the boss. |
+| `content._validate_encounter` (inside `save_encounter`; called directly when `persist=False`) | encounters, each phase | Named enemies with positive hp and level; at most one boss; layout ids exist, with the boss in every layout (or the final wave); the objective schema, with a race's target and guards in every layout. Then a **build probe**: `state_from_dict` with a stub party for every layout runs the engine's own component checks (for example the §D12-2.3 ultimate-counter guardrail, and since M4.11 `_check_rule_vocabulary`: every `target_rule` and `trigger` must be known, a grudge must name a real class or type). |
+| `content.save_adventure` | adventures | Exactly 3 phases, at most one objective, and **no objective at all on Phase III** ("Phase III is always the standard boss kill"). Each phase passes `_validate_encounter` and `_validate_phase` (layouts, bodies, descriptions). `_validate_adventure` then checks the narrations, a single Phase III boss, strictly lower mini-bosses, and no enemy above the boss. Generated adventures take `content.save_adventure_phase` (the same per-phase gates, one phase at a time, in order, onto a partial wrapper) and then `content.finalize_adventure` (the adventure checks over all three). A partial adventure is hidden from every picker, and an art write on its phase skips the whole-adventure check. |
 | `scenario_content.validate_town` | towns, topics | Name and scene; each required function exactly once; 1–8 flavour locations; an interior scene everywhere (exterior optional); 1–4 NPCs per location, each with a persona and a `portrait_desc`. Ids are slugged and de-duplicated; one vendor per shop is settled, not rejected. `clean_topics` keeps at most 4. |
 | `world.validate_entry` | towns, backfill | A gist (silently cut at 160 words); a `region_id` or a valid `new_region`; at most 6 notable things and 4 neighbours (extras dropped), each neighbour a known town. `generate_town` also makes a continuation town keep its seed's name. |
-| `scenario_content.validate_arc` | arcs | Title, villain, stakes; exactly 3 acts, each with a title, hook and `adventure_theme`. The questgiver resolves (by id or name) to a town NPC or a cast member present that act; an unknown handoff becomes none. Cast is capped at 4 and places at 2 (extras dropped), and every cast member stands at a real location. |
-| `scenario_content.validate_materialization` | acts, interludes | • `_clean_quests`: 2–4 options, each with its own non-empty `adventure_theme`; exact duplicates are refused<br>• an arrival paragraph<br>• dialogue only for real NPCs (`dialogue.validate_dialogue`), and a tree for the questgiver<br>• narration nodes: at least 1 in any tree of 4 or more nodes, and at least 2 in the questgiver's<br>• `_bind_quest_hooks`: every grant names an option and carries `unlock_adventure`; every option can be accepted somewhere; a defer sits beside every accept<br>• `check_flag_consistency`<br>• every NPC has something to say<br>• `validate_town_state_delta` (at most 2 real locations)<br>Lines addressed to unknown NPCs are dropped silently. |
-| `dialogue.validate_dialogue` | inside the above | Closed `HOOKS`; speakers limited to npc, party and narration; at most 5 choices per node; every `next` exists; no cycles; depth at most 10; no `freeform`. |
+| `scenario_content.validate_arc` | arcs | Title, villain, stakes; exactly 3 acts, each with a title, hook and `adventure_theme`. The questgiver resolves (by id or name) to a town NPC or a cast member present that act; an unknown handoff becomes none. Cast is capped at 3 (the prompt's 0–3) and places at 2 (extras dropped), and every cast member stands at a real location. `generate_arc` also rejects a villain wearing a taken or attractor name (§D25-8). |
+| `scenario_content.validate_materialization` | acts, interludes | • `_clean_quests`: 2–4 options, each with its own non-empty `adventure_theme`; two themes sharing ≥ 60 % of their content stems are refused (`theme_overlap`)<br>• an arrival paragraph<br>• dialogue only for real NPCs (`dialogue.validate_dialogue`), and a tree for the questgiver<br>• narration nodes: at least 1 in any tree of 4 or more nodes, and at least 2 in the questgiver's<br>• `_bind_quest_hooks`: every grant names an option and carries `unlock_adventure`; every option can be accepted somewhere; a defer sits beside every accept<br>• `check_flag_consistency`<br>• every NPC has something to say<br>• `validate_town_state_delta` (at most 2 real locations)<br>• after a defeat (`defeated=True`), a `defeated_once` branch in the questgiver's tree (C-07)<br>• `stock_names` applied to the rolled stock (`name_stock`: names 2–40 characters, flavour ≤ 160; malformed entries dropped)<br>Lines, topics and flavour addressed to anyone not in the composed town are rejected by name (C-08). |
+| `dialogue.validate_dialogue` | inside the above | Closed `HOOKS`; speakers limited to npc, party and narration; at most 5 choices per node; every `next` exists; no cycles; depth at most 8 (the prompt's figure); no `freeform`. |
 | `dialogue.check_flag_consistency` | inside the above | Every `requires` flag must be standing (`STANDING_FLAGS`), have an `item_` or `town:` prefix, already be true in the run, or be set by some `set_flag` in this act's trees. |
 | `scenario_content.validate_interlude` | the interlude | Exactly 3 hooks, at least one staying and at least one leaving. Each has a narration and a bridge. A `neighbour` names a known town (checked only when this town has a worldbook entry). A `new` hook carries a seed and a known anchor. At most 2 foreshadow exchanges per hook, spoken by NPCs in town who have no interlude tree. The town portion passes `validate_materialization` with no quests and `QUEST_HOOKS` forbidden. |
 | flavour check | `generate_flavours` | Every card, Skill and Ultimate id gets non-empty text. |
 
 ## 7. The repair loop
 
-- **Shape.** Call, parse, validate. On a `ValueError` the writer appends its reply plus `That output was rejected: <error>\nFix it and return ONLY the corrected <what> JSON.` and calls again, up to `attempts`: 2 for encounters and flavour, 3 for everything else. Then it raises `<what> generation failed after N attempts: <last error>`.
-- **What is fed back** is the validator's own message. The `_*_problems` gates collect every problem; `_normalize`, `_check_layouts`, the content gates and the scenario validators stop at the first. Adventure phases are checked in order and the loop stops at the first failing phase ("phase 2: …"), so later phases go unchecked in that attempt. The retry re-emits the whole adventure, which can break a phase that had passed.
-- **Growth.** Each retry re-sends the system prompt, every earlier reply and every error. No call uses prompt caching.
-- **`_chat`.** Consults the tape first (§8, *Playtest profile and tape*), then makes one POST per attempt (`_live_chat`) with `temperature` 0.9, `response_format: {"type": "json_object"}`, `max_tokens`, and the caller's timeout (120 s if none is given). Transport errors, a 401, any other status of 400 or above, and malformed bodies raise `ValueError` outside the repair `try`, ending the loop at once. `finish_reason == "length"` also raises ("ran out of room … raise the budget"), so truncation never burns a repair. There is no transport-level retry.
-- **Budgets.** Encounters: 24,000 tokens with `_chat`'s default 120 s timeout. Adventures: 64,000 / 900 s. Scenario writers: 64,000 / 1,200 s, sized for about 75 tokens/s. Flavour: 16,000 / 300 s; it does not check `finish_reason`, so a truncated flavour reply does burn a repair.
+- **Shape.** One loop, `llm._repair_loop`, serves every game-server writer: call, parse, `fix(raw)`. On a `ValueError` — or a shape fault (`TypeError`, `AttributeError`, `KeyError`, `IndexError` from a gate reading malformed output, §D25-1.3) — the writer appends its reply plus `That output was rejected: <error>\nFix it and return ONLY the corrected <what> JSON.` and calls again, up to `attempts`: 2 for encounters and flavour, 3 for everything else. Then it raises `<what> generation failed after N attempts: <last error>`.
+- **What is fed back** is the validator's own message. The encounter and phase chain (`_encounter_problems`) collects every problem and sends them one per line ("3 problems — …"). The content gates and the scenario validators still stop at the first.
+- **Per phase** (§D25-4). An adventure's outline and each of its phases has its own loop, so a failure re-prompts that phase only; a phase that passed is saved and never re-emitted. A run's job resumes at the first missing phase.
+- **Growth.** Each retry re-sends the system prompt, every earlier reply and every error — now from cache on the providers that need breakpoints (below).
+- **`_chat`.** Consults the tape first (§8, *Playtest profile and tape*), then `_live_chat` POSTs with `temperature` 0.9, `response_format: {"type": "json_object"}`, `max_tokens`, and the caller's timeout (120 s if none is given).
+  - **Transport retry** (T-89, §D25-1): a connection error, 408/409/425/429/5xx (and an error code of that kind inside a 200 body) is retried up to 3 tries in all, with backoff 2 s × 3ⁿ or the server's `Retry-After`, capped at 30 s; a timeout is retried once only. A 401, any other 4xx and a malformed body raise at once, outside the repair loop.
+  - **Prompt caching** (§D25-2): for `anthropic/` and `google/` slugs, `_wire_messages` sends the system message and the newest user turn as content blocks with `cache_control: {"type": "ephemeral"}`. OpenAI caches long prefixes by itself. The tape hashes the plain messages, so it is unaffected.
+  - `finish_reason == "length"` raises ("ran out of room … raise the budget"), so truncation never burns a repair.
+- **Budgets.** Encounters: 24,000 tokens / 420 s (T-90). Adventure outline 6,000 / 180 s; each phase 32,000 / 480 s (T-92). Scenario writers: 64,000 / 1,200 s, sized for about 75 tokens/s. Flavour: 16,000 / 300 s; it does not check `finish_reason`, so a truncated flavour reply does burn a repair.
 - **What a failure costs** after the last attempt:
 
 | Where | Result |
@@ -170,7 +194,7 @@ Appended for adventures (§D10-5). It asks for:
 | Options or New Game (encounter, adventure, town, topics, pregenerated scenario) | HTTP 422 or 502 with the last error. Nothing is saved. |
 | Town + New arc | `POST /api/games` returns 502. No run is created. |
 | Act materialization | The splash shows "The chronicle faltered: …" with *Try again* (the `retry_materialize` town verb), and a banner keeps the retry if the splash is dismissed. An act-less `act_start` save is written, so reloading runs it again too. Any exception counts, not only a `ValueError`. |
-| Adventure job | The job becomes `failed`. *Retry* re-runs the whole loop from a fresh conversation, and the quest stays accepted. |
+| Adventure job | Before Phase I: the job becomes `failed`, and *Retry* starts again (a fresh outline); the quest stays accepted. After it: the job stays `ready` with a `phase_error`, shown at the next boundary with *Retry*, which resumes at the missing phase with the same outline. |
 | Interlude | The job becomes `failed`, and Continue re-queues it. |
 | Continue (town, arc or act) | `materialize_error` is set and the chosen hook stays. *Try again* re-runs the whole road ahead (town, arc, Act I) when the next scenario never began, or only Act I when it did. Reloading also retries. |
 
@@ -223,23 +247,17 @@ Appended for adventures (§D10-5). It asks for:
 
 ## 10. Variety and known attractors
 
-- **Floors in code.** Each layout needs size+1 distinct designs, no more than 3 clones and at least 2 × size bodies. Bosses need `enrage_round` and `neglect`; races need guards. The shipped content does not set the bar: the older clone-horde content fails these gates on purpose.
+- **Floors in code.** Each layout needs size+1 distinct designs, no more than 3 clones, at least 2 × size bodies and its lockdown floor. Bosses need `enrage_round` and `neglect`; races need guards; at most two enemies share one reaction. The shipped content does not set the bar: the older clone-horde content fails these gates on purpose.
 - **The code rolls the variety.** `_signature_rolls` samples `SIGNATURE_POOL`, two per encounter and one per adventure phase. Without it, models converge on the same healer, clock and ticking-channel kit.
-- **The steer covers only the library.** Encounters and adventures receive `_library_lines` and `_recurring_motifs`, which leave out run-only adventures. No other writer receives an avoid-list.
+- **Two steers.** Encounters and adventure outlines receive `_library_lines` and `_recurring_motifs`, which leave out run-only adventures. The town, arc and interlude writers receive `# ALREADY TAKEN` (§D25-8, `_avoid_block`): the world's town names, run villains, town NPC names and the attractors below.
 - **Attractors that span vendors.** With no names in the prompt, different models re-invent the same things:
   - NPCs: "Hedda Stromm" and a smith named Hedda, "Pip", a retired boatman "Tobiah Rell"/"Tobin Rale", a "Seven Lamps" chapel, an artificer named "Quill";
   - villains named Rook; a mole-outrider;
   - bosses: the ledger or contract necromancer, and an iron Bosun who punishes ultimates in phase 2.
 
-  Regenerating does not diversify the output, and Gemini is near-deterministic. The recommended fix is an avoid-list of existing NPC names, villains and towns in the arc and town prompts. It has not been built.
+  Regenerating does not diversify the output, and Gemini is near-deterministic. The fix is the avoid-list above (`ATTRACTOR_NAMES`, `ATTRACTOR_MOTIFS`), plus two hard checks: a new town may not take an existing town's name, and an arc's villain may not wear a taken villain's or an attractor's name. NPC names are prompt-only.
 - **Name collisions overwrite.** `save_encounter`, `save_adventure` and `save_town` key files by the slug of the name, with no collision check.
-- **Validator blind spots.**
-  - The `defeated_once` branch is only asked for in the prompt, although `validate_materialization`'s docstring claims it is checked.
-  - Lines written for NPCs who are not present (for example, cast members absent from an act) are dropped silently.
-  - Duplicate JSON keys pass.
-  - The sameness gate catches identical kits but not identical reactions across different kits, such as every enemy carrying an `on_incoming_lethal` save.
-  - The lockdown budget and the one-per-encounter caps go unchecked.
-  - Quest themes are compared as exact strings, so two paraphrases of the same dungeon pass.
+- **Validator blind spots** closed by M4.11 (2026-09-25): the `defeated_once` branch, lines for absent NPCs, duplicate JSON keys, identical reactions across kits, the lockdown floor and the one-per-encounter caps, paraphrased quest themes, the gate ranges that were looser than the prompt, and unvalidated `target_rule`/`trigger` strings. Still prompt-only: the 5–8 pool size, the Level budget per layout, the forced-mover cap, the verb magnitude schedule, NPC-name reuse.
 
 ## 11. Art and animation
 
@@ -254,7 +272,7 @@ Appended for adventures (§D10-5). It asks for:
 | Forged spoils | same | same | `loadouts/art/spoils/<item_id>/` | `spoils:<run>:<scenario>:<act>` |
 
 - **Serving.** `/art/…` serves `content/art` first, then `loadouts/art` (run data and pre-split legacy art). Every write carries a random token, so a regenerated image gets a new URL. Hero portraits are player uploads, not generated.
-- **`art.ArtQueue`** runs one sequential job per key, one image in flight. Enqueueing is idempotent and re-checked at execution; a failure is logged and skipped; state lives in memory only. It is fed by the *Generate all art* buttons and by an adventure job reaching `ready`. Spoils and cast art also queue at run start, after each materialization, after Continue, and on every client connect. The playtest profile idles every automatic queue; the buttons still work.
+- **`art.ArtQueue`** runs one sequential job per key, one image in flight. Enqueueing is idempotent and re-checked at execution; a failure is logged and skipped; state lives in memory only. It is fed by the *Generate all art* buttons and by each adventure phase as it lands (§D25-3). Spoils, cast and a ready adventure's art (M4.16) also queue on every client connect, so a restart re-queues what was left unpainted; spoils and cast art queue at run start, after each materialization and after Continue too. The playtest profile idles every automatic queue; the buttons still work.
 - **Style.** Each prompt is `_style()` (`settings["art_style"]`, defaulting to `DEFAULT_ART_STYLE`, a romantic dark-fantasy chiaroscuro), then task framing, then the content's prose. The town, exterior and interior framings add "classic high fantasy" and warm light.
 - **Backends.** OpenRouter sends `image_config.aspect_ratio` (via `OPENROUTER_ASPECTS`), retries once without it on HTTP 400, and times out at 180 s. ComfyUI needs an API-format workflow containing `%prompt%` (`%width%`, `%height%`, `%seed%` optional), uses `COMFY_SIZES`, and times out at 300 s.
 

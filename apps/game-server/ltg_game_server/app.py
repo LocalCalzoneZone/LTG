@@ -254,11 +254,19 @@ def _scenario_async(session, kind: str) -> None:
             if not pre.get("quest_id") or pre["quest_id"] == sc.quest.get("id"):
                 jobs.RUNNER.prepare_pregenerated(session, pre["adventure_id"])
                 return
-        if sc.adventure_detail is not None and sc.adventure_job.get("state") == "ready":
-            return  # a reload: already ready
+        if sc.adventure_detail is not None and sc.adventure_job.get("state") == "ready" \
+                and not _adventure_partial(sc.adventure_detail):
+            return  # a reload: already ready (and whole)
         jobs.RUNNER.start(session, _broadcast, _refresh_sessions_art)
     elif kind == "confirm_timer" and loop is not None:
         loop.create_task(_confirm_timer(session))
+
+
+def _adventure_partial(detail: Optional[Dict[str, Any]]) -> bool:
+    """§D25-3: is this adventure still missing phases?"""
+    if not detail:
+        return False
+    return len(detail.get("phases") or []) < int(detail.get("phases_total") or 0)
 
 
 async def _materialize_task(session) -> None:
@@ -377,6 +385,21 @@ def _after_town_change(session) -> None:
         session.start_pacer(_broadcast)
         session.start_autopilot(_broadcast)
     _queue_spoils_art(session)
+
+
+def _queue_adventure_art(session) -> None:
+    """Roadmap M4.16: the art queue lives in memory, so a restart dropped a
+    ready adventure's unpainted phases. Re-queue them when a save opens;
+    anything already painted is adopted, never repainted (`ArtQueue._missing`)."""
+    sc = getattr(session, "scenario", None)
+    if sc is None or not sc.adventure_id or not sc.adventure_detail or llm.playtest_on():
+        return
+    ids = [p.get("encounter_id") for p in sc.adventure_detail.get("phases") or []
+           if p.get("encounter_id")]
+    try:
+        art.QUEUE.start(f"adventure:{sc.adventure_id}", ids, _refresh_sessions_art)
+    except RuntimeError:
+        pass  # no running loop (tests / sync callers)
 
 
 def _queue_spoils_art(session) -> None:
@@ -531,7 +554,10 @@ def _open_save(run_id: str, save_id: str, continue_campaign: bool = False) -> Di
         job = scenario.adventure_job.get("state")
         if scenario.adventure_unlocked and job in ("pending", "failed", "idle") \
                 and scenario.adventure_detail is None:
-            _scenario_async(session, "adventure_job")
+            # Resumed when a client connects (`ws_endpoint`): this endpoint has
+            # no event loop, so starting here would write the whole adventure
+            # inside the load request.
+            session.resume_adventure_job = True
         # Update 24 §D24-4: a campaign opened at the scenario-end menu runs the
         # continue path; one whose road was chosen resumes the generation.
         if scenario.mode == "complete" and not scenario.dead and continue_campaign:
@@ -540,6 +566,12 @@ def _open_save(run_id: str, save_id: str, continue_campaign: bool = False) -> Di
             scenario.materializing = True
             _scenario_async(session, "continue")
     session.async_hook = _scenario_async
+    # §D25-3: an adventure still being written when the server stopped
+    # resumes at its first missing phase — in town or mid-adventure.
+    if scenario.adventure_job.get("writing"):
+        scenario.adventure_job = {**scenario.adventure_job, "writing": False}
+    if _adventure_partial(scenario.adventure_detail):
+        session.resume_adventure_job = True   # started on connect, as above
     # A save taken inside an act's WRAP-UP (§D17-2.3) — the spoils modal or the
     # act-end level-up screen — resumes where it stopped instead of stalling in
     # a won adventure with nothing driving it.
@@ -1290,6 +1322,12 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     # (a loaded save queues from its sync endpoint, where there is no loop).
     _queue_spoils_art(session)
     _queue_cast_art(session)
+    # M4.16: a ready adventure's art resumes after a restart (painted images
+    # are adopted); §D25-3: so does an adventure still being written.
+    _queue_adventure_art(session)
+    if getattr(session, "resume_adventure_job", False) and session.scenario is not None:
+        session.resume_adventure_job = False
+        _scenario_async(session, "adventure_job")
 
     try:
         while True:
