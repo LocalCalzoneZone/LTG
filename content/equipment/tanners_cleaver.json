@@ -8,7 +8,6 @@
   "points_price": 30,
   "flavor": "It takes a little back with every cut.",
   "art_desc": "A broad rectangular cleaver, the iron dark with old tannin, the edge mirror-bright.",
-  "art_url": "/art/items/tanners_cleaver/item-f8c5cdac.png",
   "statics": [
     {
       "kind": "attack_mode",

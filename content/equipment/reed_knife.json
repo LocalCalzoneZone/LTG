@@ -8,7 +8,6 @@
   "points_price": 0,
   "flavor": "It cuts thatch. It cuts other things.",
   "art_desc": "A curved cutting knife with a wide blade and a plain wooden haft, green stains along the edge.",
-  "art_url": "/art/items/reed_knife/item-0925705a.png",
   "statics": [
     {
       "kind": "attack_mode",

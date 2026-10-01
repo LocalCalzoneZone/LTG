@@ -56,7 +56,7 @@ def wire(monkeypatch):
     return box
 
 
-def _call(model="openai/gpt-5.6-sol"):
+def _call(model="openai/gpt-6-sol"):
     return llm._live_chat("sk", model, [{"role": "system", "content": "sys"},
                                         {"role": "user", "content": "go"}], 100, 30.0)
 
@@ -109,9 +109,9 @@ def test_a_provider_error_inside_a_200_is_retried(wire):
 # --------------------------------------------------------------------------- #
 def test_anthropic_and_google_get_cache_breakpoints_openai_does_not(wire):
     wire["script"] = [_ok(), _ok(), _ok()]
-    _call("anthropic/claude-opus-5")
+    _call("anthropic/claude-opus-5.5")
     _call("google/gemini-3.8-flash")
-    _call("openai/gpt-5.6-sol")
+    _call("openai/gpt-6-sol")
     for sent in (wire["calls"][0], wire["calls"][1]):
         sys_msg, user_msg = sent["payload"]["messages"]
         assert sys_msg["content"][0]["cache_control"] == {"type": "ephemeral"}
@@ -122,7 +122,7 @@ def test_anthropic_and_google_get_cache_breakpoints_openai_does_not(wire):
 def test_only_the_newest_user_turn_is_marked_on_a_repair():
     msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "u1"},
             {"role": "assistant", "content": "a1"}, {"role": "user", "content": "u2"}]
-    wired = llm._wire_messages("anthropic/claude-opus-5", msgs)
+    wired = llm._wire_messages("anthropic/claude-opus-5.5", msgs)
     assert isinstance(wired[0]["content"], list) and isinstance(wired[3]["content"], list)
     assert wired[1]["content"] == "u1" and wired[2]["content"] == "a1"
     assert msgs[0]["content"] == "s"           # the caller's (tape-hashed) copy is untouched

@@ -8,7 +8,6 @@
   "points_price": 5,
   "flavor": "It moved oxen. It will move you.",
   "art_desc": "A long ash pole tipped with a blunt iron prod and a small hooked spur.",
-  "art_url": "/art/items/drovers_goad/item-d3802069.png",
   "statics": [
     {
       "kind": "attack_mode",

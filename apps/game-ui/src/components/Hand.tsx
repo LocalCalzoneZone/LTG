@@ -74,9 +74,6 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
         const choice: Choice | undefined = choices?.casts[card.id];
         const playable = !!choice;
         const active = armed?.cardId === card.id;
-        // The why-not chip (M2.7): the server names the reason; the client
-        // only shows it.
-        const why = playable ? null : card.unplayable_reason ?? null;
         return (
           <div
             key={`${card.id}-${i}`}
@@ -94,11 +91,6 @@ export function Hand({ hand, choices }: { hand: CardView[]; choices: Choices | n
               onClick={() => choice && select(choice)}
               focusable
             />
-            {why && (
-              <span className="caps-label pointer-events-none absolute inset-x-1 bottom-[22%] z-10 truncate border border-line2 bg-ink-0/90 px-1 py-0.5 text-center text-[clamp(8px,1.1vh,10px)] tracking-[0.12em] text-mist">
-                {why}
-              </span>
-            )}
           </div>
         );
       })}

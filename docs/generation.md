@@ -201,9 +201,9 @@ Appended to the encounter instructions for a standalone encounter (§D12-7, M4.1
 ## 8. Models
 
 - **Transport.** OpenRouter chat completions (`OPENROUTER_URL`) via `httpx`. The key lives in the gitignored `apps/deckbuilder/loadouts/llm_settings.json`, shared with the Deckbuilder; `public_settings()` reports only `has_key`.
-- **`MODELS`**: Gemini 3.8 Flash (`MODELS[0]`, the fallback default), Claude Opus 5, Claude Fable 5.1, Claude Opus 5 Fast, GPT-5.6 Sol, GPT-5.6 Luna Pro.
+- **`MODELS`**: Gemini 3.8 Flash (`MODELS[0]`, the fallback default), Claude Opus 5.5, Claude Fable 5.1, Claude Opus 5 Fast, GPT-6 Sol, GPT-6 Luna Pro.
 - **`MODEL_TASKS`** is the registry Options → LLM renders verbatim: `encounters`; `adventures`; `towns` (towns, topics, backfill); `scenarios` (arcs, acts, and the interlude through `_scenario_chat`'s default task); `flavour`. `""` follows the default `model`; `model_for(task)` resolves it. A new task needs no client change.
-- **`_MODEL_ALIASES`** maps retired slugs on read: GLM and Gemini 3.5 / 3.7 Flash → Gemini 3.8 Flash, Opus 4.8 → Opus 5, Sonnet 5 → Sol. Unknown slugs fall back to the default. `flavour.py` keeps its own copy (`_RETIRED_MODELS`) because the apps may not import each other; change both.
+- **`_MODEL_ALIASES`** maps retired slugs on read: GLM and Gemini 3.5 / 3.7 Flash → Gemini 3.8 Flash, Opus 4.8 and Opus 5 → Opus 5.5 (2026-09-25; OpenRouter has no Opus 5.5 Fast, so Opus 5 Fast stays), GPT-5.6 Sol and Luna Pro → their GPT-6 versions (2026-09-25), Sonnet 5 → Sol. Unknown slugs fall back to the default. `flavour.py` keeps its own copy (`_RETIRED_MODELS`) because the apps may not import each other; change both.
 - **Images**: `ART_MODEL` (`google/gemini-3.1-flash-lite-image`) or ComfyUI (`ART_BACKENDS`).
 
 **Playtest profile and tape** (roadmap M3.3, M3.4; Options → LLM → Playtest):
@@ -217,10 +217,10 @@ Appended to the encounter instructions for a standalone encounter (§D12-7, M4.1
 | Model | Verdict | Evidence |
 |---|---|---|
 | Opus 5 Fast | Showcase and finale; the fast premium tier | Richest act output (134¢, 106 s); the only clean pass in the 08-29 adventure round (about 296¢ per adventure) |
-| Opus 5 | Best prose. Suited to work where latency does not matter (towns, scenarios made ahead of time). Best encounter craft per cent. | Best town of its round (40¢, 247 s); an encounter run costs about 178¢; once wrote a dialogue cycle |
+| Opus 5 (replaced by Opus 5.5, not yet bake-off tested) | Best prose. Suited to work where latency does not matter (towns, scenarios made ahead of time). Best encounter craft per cent. | Best town of its round (40¢, 247 s); an encounter run costs about 178¢; once wrote a dialogue cycle |
 | Fable 5.1 | Best campaign seeds and best single ideas; the most expensive | Town 94¢; encounter run about 341¢; once produced a child enemy |
-| GPT-5.6 Sol | Mid tier, the default | About 90% of Sol Pro's quality at a third of the price; act 10¢, 83 s |
-| GPT-5.6 Luna Pro | Volume; best quality per cent | Act about 3¢, 86 s |
+| GPT-5.6 Sol (replaced by GPT-6 Sol, not yet bake-off tested) | Mid tier, the default | About 90% of Sol Pro's quality at a third of the price; act 10¢, 83 s |
+| GPT-5.6 Luna Pro (replaced by GPT-6 Luna Pro, not yet bake-off tested) | Volume; best quality per cent | Act about 3¢, 86 s |
 | Gemini Flash | Speed fallback | Tested as 3.7 (about 3¢, 25 s), which is now aliased to 3.8. Near-deterministic across trials. |
 | GPT-6 Astra | Reliable for encounters on a budget; dropped from towns | Clean first-try encounters (118¢, 252 s). Its towns were thin and written in the quip register. It is not in `MODELS`. |
 | Pruned | Sonnet 5 (aliased to Sol), Sol Pro, GLM (aliased to Gemini Flash) | — |

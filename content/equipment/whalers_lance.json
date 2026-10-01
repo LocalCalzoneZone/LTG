@@ -8,7 +8,6 @@
   "points_price": 30,
   "flavor": "Thrown once, and thrown well.",
   "art_desc": "A long slender throwing lance with a leaf-shaped head and a weighted butt.",
-  "art_url": "/art/items/whalers_lance/item-4b50ee2f.png",
   "statics": [
     {
       "kind": "attack_mode",

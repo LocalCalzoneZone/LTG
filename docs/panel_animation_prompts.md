@@ -119,7 +119,7 @@ Recommended starter set (per character, reused across all their cards):
 | `defend` | Defend action resolves (gain temp HP) | full clip, ×1 (5 s) | no |
 | `mitigate` | Mitigate reaction applies to an incoming hit | full clip, ×1 (5 s) | no |
 | `skill` | skill/channel begins (the power-up moment) | full clip, ×1 (5 s) | no |
-| `channel` | a channeled card resolves (the channel begins) | full clip, ×1 (5 s) | authored as a loop (end matches start); the game plays it once today — looping while the stance is held is roadmap M2.22 |
+| `channel` | a channeled card resolves (the channel begins) | full clip, ×1 (5 s) | authored as a loop (end matches start); the game plays it once, on the cast (a held-stance loop was tried and removed 2026-09-25 as too distracting) |
 | `ultimate` | ultimate resolves | full clip, ×1 (5–8 s) | no |
 | `hit` | takes damage | full clip, ×1 (5 s) | no |
 | `death` | HP reaches 0 | full clip, ×1, hold last frame | no |

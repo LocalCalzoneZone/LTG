@@ -8,7 +8,6 @@
   "points_price": 5,
   "flavor": "Light in the hand, light on the belt.",
   "art_desc": "A bundle of short feathered throwing darts in a stiffened leather quiver.",
-  "art_url": "/art/items/fowlers_darts/item-ee079460.png",
   "statics": [
     {
       "kind": "attack_mode",

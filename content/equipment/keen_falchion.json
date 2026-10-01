@@ -8,7 +8,6 @@
   "points_price": 15,
   "flavor": "It wants the neck. Let it.",
   "art_desc": "A heavy single-edged falchion, blade bright along the curve, brass-capped pommel.",
-  "art_url": "/art/items/keen_falchion/item-64c5e8c4.png",
   "statics": [
     {
       "kind": "attack_mode",

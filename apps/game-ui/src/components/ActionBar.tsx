@@ -163,9 +163,10 @@ export function ActionBar({ choices, reaction, char }: {
     );
   };
 
-  // The End Turn guard (M2.14): what ending now would leave behind, on the
-  // button itself; with the setting on, the first click asks and the second
-  // ends the turn. `leftover` counts only what could actually be done.
+  // The End Turn guard (M2.14): what ending now would leave behind, in the
+  // button's tooltip (not on its face — owner, 2026-09-25: too cluttered); with
+  // the setting on, the first click asks and the second ends the turn.
+  // `leftover` counts only what could actually be done.
   const castable = choices ? Object.keys(choices.casts).length : 0;
   const leftover = [
     castable ? `${castable} card${castable === 1 ? "" : "s"}` : "",
@@ -261,8 +262,7 @@ export function ActionBar({ choices, reaction, char }: {
           onClick={endTurn}
           data-end-turn
           data-tip={leftover && choices?.endTurn ? `Still available: ${leftover}` : undefined}
-          className={`chamfer-x caps-label flex flex-col items-center justify-center leading-none transition ${
-            leftover && choices?.endTurn ? "py-1" : "py-2"} ${
+          className={`chamfer-x caps-label flex items-center justify-center py-2 leading-none transition ${
             !choices?.endTurn
               ? "cursor-not-allowed bg-white/[0.02] text-dimmed/60"
               : confirming
@@ -271,11 +271,6 @@ export function ActionBar({ choices, reaction, char }: {
           }`}
         >
           <span className="text-[12px] tracking-[0.3em]">{confirming ? "Confirm" : "End Turn"}</span>
-          {leftover && choices?.endTurn && (
-            <span className="mt-0.5 text-[8px] tracking-[0.14em] opacity-80">
-              {confirming ? `leave ${leftover}?` : leftover}
-            </span>
-          )}
         </button>
       </div>
     </div>

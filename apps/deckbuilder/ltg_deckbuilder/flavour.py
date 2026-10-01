@@ -33,11 +33,14 @@ _RETIRED_MODELS = {
     "z-ai/glm-5.3-flash": "google/gemini-3.8-flash",
     "google/gemini-3.5-flash": "google/gemini-3.8-flash",
     "google/gemini-3.7-flash": "google/gemini-3.8-flash",
-    "anthropic/claude-opus-4.8": "anthropic/claude-opus-5",
-    "anthropic/claude-sonnet-5": "openai/gpt-5.6-sol",
+    "anthropic/claude-opus-4.8": "anthropic/claude-opus-5.5",
+    "anthropic/claude-opus-5": "anthropic/claude-opus-5.5",
+    "anthropic/claude-sonnet-5": "openai/gpt-6-sol",
+    "openai/gpt-5.6-sol": "openai/gpt-6-sol",
+    "openai/gpt-5.6-luna-pro": "openai/gpt-6-luna-pro",
 }
 # The game's `llm.PLAYTEST_MODEL` (copied, not imported — see above).
-PLAYTEST_MODEL = "openai/gpt-5.6-luna-pro"
+PLAYTEST_MODEL = "openai/gpt-6-luna-pro"
 MAX_TOKENS = 16000
 TIMEOUT = 300.0
 

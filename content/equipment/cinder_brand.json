@@ -8,7 +8,6 @@
   "points_price": 30,
   "flavor": "Drawn faster than it is thought about.",
   "art_desc": "A slim arming sword with a blackened blade and a red-corded grip.",
-  "art_url": "/art/items/cinder_brand/item-7a68a1ed.png",
   "statics": [
     {
       "kind": "attack_mode",
