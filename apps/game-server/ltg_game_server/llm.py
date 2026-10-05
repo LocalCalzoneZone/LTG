@@ -38,11 +38,11 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # these if a slug 404s (OpenRouter slugs drift). `label` is the dropdown display.
 MODELS: List[Dict[str, str]] = [
     {"id": "google/gemini-3.8-flash", "label": "Gemini 3.8 Flash (Google)"},
-    {"id": "anthropic/claude-opus-5", "label": "Claude Opus 5 (Anthropic)"},
+    {"id": "anthropic/claude-opus-5.5", "label": "Claude Opus 5.5 (Anthropic)"},
     {"id": "anthropic/claude-fable-5.1", "label": "Claude Fable 5.1 (Anthropic)"},
     {"id": "anthropic/claude-opus-5-fast", "label": "Claude Opus 5 Fast (Anthropic)"},
-    {"id": "openai/gpt-5.6-sol", "label": "GPT-5.6 Sol (OpenAI)"},
-    {"id": "openai/gpt-5.6-luna-pro", "label": "GPT-5.6 Luna Pro (OpenAI)"},
+    {"id": "openai/gpt-6-sol", "label": "GPT-6 Sol (OpenAI)"},
+    {"id": "openai/gpt-6-luna-pro", "label": "GPT-6 Luna Pro (OpenAI)"},
 ]
 # Retired slugs → their successors, so a saved settings file keeps working.
 _MODEL_ALIASES = {
@@ -52,9 +52,15 @@ _MODEL_ALIASES = {
     "z-ai/glm-5.3-flash": "google/gemini-3.8-flash",
     "google/gemini-3.5-flash": "google/gemini-3.8-flash",
     "google/gemini-3.7-flash": "google/gemini-3.8-flash",
-    "anthropic/claude-opus-4.8": "anthropic/claude-opus-5",
+    "anthropic/claude-opus-4.8": "anthropic/claude-opus-5.5",
+    # Replaced 2026-09-25 by its successor. OpenRouter has no Opus 5.5 Fast,
+    # so `claude-opus-5-fast` stays in MODELS.
+    "anthropic/claude-opus-5": "anthropic/claude-opus-5.5",
     # Pruned 2026-08: mid-tier niche now covered by Sol (see model tests).
-    "anthropic/claude-sonnet-5": "openai/gpt-5.6-sol",
+    "anthropic/claude-sonnet-5": "openai/gpt-6-sol",
+    # Replaced 2026-09-25 by their GPT-6 successors.
+    "openai/gpt-5.6-sol": "openai/gpt-6-sol",
+    "openai/gpt-5.6-luna-pro": "openai/gpt-6-luna-pro",
 }
 # The generation TASKS a model can be chosen for (Options → LLM). Each may
 # override the default `model`; "" means "use the default".
@@ -76,7 +82,7 @@ MODEL_TASKS: List[Dict[str, str]] = [
 # from the environment without touching the settings file (the CLI tools use
 # it). Luna Pro is the best quality-per-cent pick of the 2026-08 bake-off;
 # Gemini Flash is faster but fails the closed-list gates more often.
-PLAYTEST_MODEL = "openai/gpt-5.6-luna-pro"
+PLAYTEST_MODEL = "openai/gpt-6-luna-pro"
 
 
 def _env_playtest() -> Optional[bool]:

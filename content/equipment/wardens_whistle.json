@@ -8,7 +8,7 @@
   "points_price": 20,
   "flavor": "Two short blasts: hold where you are.",
   "art_desc": "A bone whistle on a braided cord, the mouthpiece polished dark.",
-  "art_url": "/art/items/wardens_whistle/item-acb0c9be.png",
+  "art_url": "/art/items/wardens_whistle/item-c1694605.png",
   "statics": [
     {
       "kind": "ability",
@@ -48,6 +48,7 @@
         "needs_translation": false,
         "text_override": false,
         "validated": true,
+        "trigger_animations": {},
         "image": ""
       }
     }

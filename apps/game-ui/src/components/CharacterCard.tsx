@@ -100,8 +100,7 @@ export function CharacterCard({ char, focused, isHolder, waiting, isTarget, widt
     >
       {/* Panel animation (Update 16): a clip over the portrait while an action
           resolves; renders nothing when the loadout has no clips. */}
-      <PanelAnim charId={char.id} bundle={char.anims} incapacitated={char.incapacitated}
-        stanceCardId={char.stance?.card_id ?? null} />
+      <PanelAnim charId={char.id} bundle={char.anims} incapacitated={char.incapacitated} />
 
       {/* scrims keep overlays legible without boxing the art */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-black/50 to-transparent" />

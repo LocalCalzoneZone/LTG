@@ -1,0 +1,408 @@
+{
+  "name": "The Shardwake Choir",
+  "scene": "An open-sided mountain quarry cuts through a vast seam of violet amethyst, its terraces glittering beneath a cold dawn sky. Copper chimes hang from scaffold poles, ringing over heaps of crystal shards and the blue-white glow of freshly split geodes.",
+  "scene_image": "/art/the_shardwake_choir/scene-52c5e864.png",
+  "enemies": [
+    {
+      "id": "chisel_adept",
+      "name": "Chisel Adept",
+      "flavor": "Steps into the front rank, then grows more dangerous if left alone.",
+      "description": "An adult quarry hand in a leather apron dusted with purple grit, carrying a broad iron chisel and a mallet wrapped in copper wire. Thin crystal splinters glint beneath the skin of both forearms.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "mid",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "warrior"
+      ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/chisel_adept-993202ff.png",
+      "components": [
+        {
+          "id": "facet_step",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Facet-Step \u2014 close toward the front rank",
+          "verbs": []
+        },
+        {
+          "id": "splintering_blow",
+          "archetype": "Escalate",
+          "timing": "proactive",
+          "cooldown": 2,
+          "once_per_encounter": true,
+          "priority": 40,
+          "target_rule": "self",
+          "telegraph": "Splintering Blow \u2014 harden with permanent +2/+2 counters",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "geode_tender",
+      "name": "Geode Tender",
+      "flavor": "Carries a one-use reserve of crystal growth, then presses into the melee.",
+      "description": "A broad-shouldered adult quarry tender wears a faded green coat and a belt of small, carefully wrapped geodes. A pale crystal bud protrudes from one gloved palm, shedding flecks of light as it moves.",
+      "hp": 3,
+      "power": 1,
+      "level": 1,
+      "row": "mid",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "healer"
+      ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/geode_tender-45e01e2e.png",
+      "components": [
+        {
+          "id": "tendering_step",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Tendering Step \u2014 move toward the front rank",
+          "verbs": []
+        },
+        {
+          "id": "geode_sap",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "once_per_encounter": true,
+          "priority": 35,
+          "target_rule": "self",
+          "telegraph": "Geode Sap \u2014 gain one regen counter",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prism_guard",
+      "name": "Prism Guard",
+      "flavor": "A ranged shard-sentry that can ward itself against a single blow.",
+      "description": "A lean construct of clear quartz plates stands on jointed copper limbs, its head a many-faceted prism set above a narrow chest. A bow-like crystal spur grows from its forearm and flashes whenever it draws back to fire.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "mid",
+      "home_row": "rear",
+      "attack_mode": "ranged",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "archer",
+        "soldier"
+      ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/prism_guard-c57aa928.png",
+      "components": [
+        {
+          "id": "prism_retreat",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 20,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Prism Retreat \u2014 slip back toward the rear",
+          "verbs": []
+        },
+        {
+          "id": "shardward",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "once_per_encounter": true,
+          "priority": 30,
+          "target_rule": "self",
+          "telegraph": "Shardward \u2014 brace against the next damaging blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resonance_matron",
+      "name": "Resonance Matron",
+      "flavor": "Channels a steady healing hymn; break the song or her attendants recover.",
+      "description": "An adult woman in layered indigo quarry robes stands with a forked crystal staff tucked beneath one arm. Silver chimes braid her grey hair, and a polished amethyst plate rests over the sternum like a second heart.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "mid",
+      "home_row": "mid",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "cleric",
+        "ritualist"
+      ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/resonance_matron-546768a9.png",
+      "components": [
+        {
+          "id": "hymn_of_the_open_seam",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 20,
+          "target_rule": "wounded_ally",
+          "action_type": "spell",
+          "channel": true,
+          "telegraph": "Hymn of the Open Seam \u2014 channel a rite that heals a wounded ally at each Upkeep",
+          "verbs": [
+            {
+              "kind": "heal",
+              "amount": 4,
+              "trigger": "upkeep",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "chimeback_rebuke",
+          "archetype": "Punish",
+          "timing": "reactive",
+          "trigger": "on_ally_hit",
+          "once_per_encounter": true,
+          "condition": {
+            "kind": "self_hp_pct",
+            "op": "<",
+            "value": 50
+          },
+          "priority": 20,
+          "target_rule": "trigger_source",
+          "telegraph": "Chimeback Rebuke \u2014 strike the hero who hit her attendant",
+          "verbs": [
+            {
+              "kind": "deal_damage",
+              "amount": 4,
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "calcite_stag",
+      "name": "Calcite Stag",
+      "flavor": "Its regen counters demand a real hit to break, and its ward buys it time.",
+      "description": "A heavy four-legged construct shaped like a stag, with a rib cage of milky calcite and branching antlers tipped in rose quartz. Each step grinds pale mineral dust from its hooves, while fresh crystal beads gather in cracks across its hide.",
+      "hp": 6,
+      "power": 2,
+      "level": 2,
+      "row": "front",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "construct"
+      ],
+      "classes": [
+        "brute"
+      ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/calcite_stag-3d394a3b.png",
+      "components": [
+        {
+          "id": "calcite_regrowth",
+          "archetype": "Fortify",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 25,
+          "target_rule": "self",
+          "telegraph": "Calcite Regrowth \u2014 gain one regen counter",
+          "verbs": [
+            {
+              "kind": "regen",
+              "amount": 1,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        },
+        {
+          "id": "antler_shardward",
+          "archetype": "Ward",
+          "timing": "proactive",
+          "cooldown": 2,
+          "once_per_encounter": true,
+          "priority": 15,
+          "target_rule": "self",
+          "telegraph": "Antler Shardward \u2014 brace against the next damaging blow",
+          "verbs": [
+            {
+              "kind": "protection",
+              "parameter": "all_damage",
+              "combat_kind": "all",
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shardhook_warden",
+      "name": "Shardhook Warden",
+      "flavor": "Stuns a hero and avenges fallen choir-mates once the battle turns.",
+      "description": "An adult quarry guard in a blue-grey coat of scales and leather carries a hooked polearm with a translucent crystal blade. Short quartz spurs jut through the guard's shoulder plates, catching the light as the weapon sweeps around.",
+      "hp": 3,
+      "power": 1,
+      "level": 2,
+      "row": "mid",
+      "home_row": "front",
+      "attack_mode": "melee",
+      "types": [
+        "human"
+      ],
+      "classes": [
+        "soldier",
+        "warrior"
+      ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/shardhook_warden-4e286263.png",
+      "components": [
+        {
+          "id": "hooking_step",
+          "archetype": "Evasive",
+          "timing": "proactive",
+          "cooldown": 2,
+          "priority": 45,
+          "target_rule": "self",
+          "move_home": true,
+          "telegraph": "Hooking Step \u2014 press toward the front rank",
+          "verbs": []
+        },
+        {
+          "id": "crystal_snare",
+          "archetype": "Debilitate",
+          "timing": "proactive",
+          "cooldown": 3,
+          "priority": 25,
+          "target_rule": "valuation",
+          "telegraph": "Crystal Snare \u2014 stun a hero with the hooked polearm",
+          "verbs": [
+            {
+              "kind": "stun",
+              "target": {
+                "mode": "chosen",
+                "side": "ally",
+                "targeted": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "fallen_shard_oath",
+          "archetype": "Escalate",
+          "timing": "reactive",
+          "trigger": "on_ally_death",
+          "once_per_encounter": true,
+          "condition": {
+            "kind": "turn",
+            "op": ">=",
+            "value": 3
+          },
+          "priority": 18,
+          "target_rule": "self",
+          "telegraph": "Fallen Shard Oath \u2014 gain permanent +2/+2 counters",
+          "verbs": [
+            {
+              "kind": "counters",
+              "power": 2,
+              "toughness": 2,
+              "target": {
+                "mode": "self"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tokens": {},
+  "layouts": {
+    "1": [
+      "chisel_adept",
+      "resonance_matron"
+    ],
+    "2": [
+      "chisel_adept",
+      "shardhook_warden",
+      "resonance_matron",
+      "calcite_stag"
+    ],
+    "3": [
+      "chisel_adept",
+      "geode_tender",
+      "shardhook_warden",
+      "shardhook_warden",
+      "prism_guard",
+      "calcite_stag"
+    ],
+    "4": [
+      "chisel_adept",
+      "chisel_adept",
+      "geode_tender",
+      "shardhook_warden",
+      "shardhook_warden",
+      "shardhook_warden",
+      "resonance_matron",
+      "prism_guard"
+    ]
+  },
+  "difficulty": "standard"
+}

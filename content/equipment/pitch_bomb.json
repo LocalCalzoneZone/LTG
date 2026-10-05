@@ -8,7 +8,7 @@
   "points_price": 18,
   "flavor": "The last argument in the bag.",
   "art_desc": "A tarred canvas ball bound in cord, a short fuse braided into the seam.",
-  "art_url": "/art/items/pitch_bomb/item-490c960f.png",
+  "art_url": "/art/items/pitch_bomb/item-b09d8f79.png",
   "statics": [],
   "effects": [
     {
@@ -19,8 +19,7 @@
         "side": "enemy",
         "exclude_self": false,
         "targeted": false
-      },
-      "nonlethal": false
+      }
     }
   ],
   "targets": {},

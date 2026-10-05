@@ -164,12 +164,12 @@ def test_card_flavour_is_a_tunable_task_in_the_llm_settings(monkeypatch, tmp_pat
     assert "flavour" in {t["id"] for t in llm.MODEL_TASKS}
     # It reaches the Options → LLM panel, which renders `model_tasks` verbatim.
     assert "flavour" in {t["id"] for t in llm.public_settings()["model_tasks"]}
-    llm.save_settings({"model": "anthropic/claude-opus-5",
+    llm.save_settings({"model": "anthropic/claude-opus-5.5",
                        "task_models": {"flavour": "google/gemini-3.8-flash"}})
     assert llm.model_for("flavour") == "google/gemini-3.8-flash"
     # "" means follow the default, as for every other task.
     llm.save_settings({"task_models": {"flavour": ""}})
-    assert llm.model_for("flavour") == "anthropic/claude-opus-5"
+    assert llm.model_for("flavour") == "anthropic/claude-opus-5.5"
     with pytest.raises(ValueError, match="unknown model"):
         llm.save_settings({"task_models": {"flavour": "no/such-model"}})
 
@@ -180,11 +180,11 @@ def test_the_deckbuilder_reads_the_card_flavour_model_from_the_shared_settings(t
     assert flavour.load_llm_settings(tmp_path)["model"] == flavour.DEFAULT_MODEL
     assert llm._valid_model(flavour.DEFAULT_MODEL) == flavour.DEFAULT_MODEL
     path = tmp_path / "llm_settings.json"
-    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5"}))
-    assert flavour.load_llm_settings(tmp_path) == {"api_key": "k", "model": "anthropic/claude-opus-5"}
+    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5.5"}))
+    assert flavour.load_llm_settings(tmp_path) == {"api_key": "k", "model": "anthropic/claude-opus-5.5"}
     # The per-task pick wins over the default.
-    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5",
-                                "task_models": {"scenarios": "openai/gpt-5.6-sol",
+    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5.5",
+                                "task_models": {"scenarios": "openai/gpt-6-sol",
                                                 "flavour": "google/gemini-3.8-flash"}}))
     assert flavour.load_llm_settings(tmp_path)["model"] == "google/gemini-3.8-flash"
     # A settings file written BEFORE a rename still holds the retired slug on
@@ -193,3 +193,14 @@ def test_the_deckbuilder_reads_the_card_flavour_model_from_the_shared_settings(t
     assert flavour.load_llm_settings(tmp_path)["model"] == "google/gemini-3.8-flash"
     path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-sonnet-5"}))
     assert flavour.load_llm_settings(tmp_path)["model"] == llm._valid_model("anthropic/claude-sonnet-5")
+    # Opus 5 was replaced by Opus 5.5 (2026-09-25); Opus 5 Fast has no successor.
+    assert llm._valid_model("anthropic/claude-opus-5") == "anthropic/claude-opus-5.5"
+    assert llm._valid_model("anthropic/claude-opus-5-fast") == "anthropic/claude-opus-5-fast"
+    path.write_text(json.dumps({"api_key": "k", "model": "anthropic/claude-opus-5"}))
+    assert flavour.load_llm_settings(tmp_path)["model"] == "anthropic/claude-opus-5.5"
+    # GPT-5.6 Sol and Luna Pro were replaced by GPT-6 (2026-09-25).
+    assert llm._valid_model("openai/gpt-5.6-sol") == "openai/gpt-6-sol"
+    assert llm._valid_model("openai/gpt-5.6-luna-pro") == "openai/gpt-6-luna-pro"
+    assert flavour.PLAYTEST_MODEL == llm.PLAYTEST_MODEL == "openai/gpt-6-luna-pro"
+    path.write_text(json.dumps({"api_key": "k", "model": "openai/gpt-5.6-luna-pro"}))
+    assert flavour.load_llm_settings(tmp_path)["model"] == "openai/gpt-6-luna-pro"

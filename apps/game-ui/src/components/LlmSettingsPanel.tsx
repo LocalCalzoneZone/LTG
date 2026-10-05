@@ -36,9 +36,11 @@ export function LlmSettingsPanel() {
     setArtBackend(s.art_backend);
     setComfyUrl(s.comfyui_url);
     setComfyWorkflow(s.comfyui_workflow);
-    setPlaytest(s.playtest);
-    setPlaytestModel(s.playtest_model);
-    setTapeMode(s.tape);
+    // The playtest fields arrived in M3; a server still running older code
+    // omits them, so default rather than crash the whole panel.
+    setPlaytest(s.playtest ?? false);
+    setPlaytestModel(s.playtest_model ?? "");
+    setTapeMode(s.tape ?? "off");
   };
 
   useEffect(() => {
@@ -160,7 +162,7 @@ export function LlmSettingsPanel() {
               disabled={settings?.tape_forced}
               onChange={(e) => setTapeMode(e.target.value)}
             >
-              {settings?.tape_modes.map((m) => (
+              {settings?.tape_modes?.map((m) => (
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>
@@ -170,7 +172,7 @@ export function LlmSettingsPanel() {
           The tape keeps generated replies on this machine and answers a repeated request from them,
           so replaying a flow costs nothing. Replay works without an API key.
           {settings?.tape_forced ? " Set for this server by LTG_LLM_TAPE." : ""}{" "}
-          {settings && Object.keys(settings.tape_counts).length > 0
+          {settings?.tape_counts && Object.keys(settings.tape_counts).length > 0
             ? `Recorded: ${Object.entries(settings.tape_counts).map(([k, n]) => `${n} ${k}`).join(", ")}.`
             : "Nothing recorded yet."}
         </div>

@@ -551,11 +551,14 @@ def town_art_items(town_id: str) -> List[Dict[str, Any]]:
     return items
 
 
+# No example lists here ("metal, leather, glass, wax…"): the image model paints
+# every example it is given, so a list of materials put wax on every item.
 _ITEM_TASK = (
     "Paint a single ITEM for a card in a painterly tactical fantasy card game: "
     "the object alone, centred, on a dark atmospheric ground falling off into a "
-    "vignette — no people, no hands, no creatures. Rich material detail: metal, "
-    "leather, glass, wax, cloth.\n\nThe item:\n"
+    "vignette — no people, no hands, no creatures. Paint only what the item is "
+    "made of, in rich material detail; add nothing that is not described.\n\n"
+    "The item:\n"
 )
 
 

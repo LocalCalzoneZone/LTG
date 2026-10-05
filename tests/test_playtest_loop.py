@@ -51,7 +51,7 @@ def _msgs(user, system="sys"):
 # M3.3 — the playtest profile
 # --------------------------------------------------------------------------- #
 def test_the_playtest_profile_routes_every_task_to_the_playtest_model():
-    llm.save_settings({"model": "anthropic/claude-opus-5",
+    llm.save_settings({"model": "anthropic/claude-opus-5.5",
                        "task_models": {"adventures": "anthropic/claude-opus-5-fast"}})
     assert llm.model_for("adventures") == "anthropic/claude-opus-5-fast"
     llm.save_settings({"playtest": True})
@@ -66,7 +66,7 @@ def test_the_playtest_profile_routes_every_task_to_the_playtest_model():
 def test_the_environment_forces_the_profile_without_writing_it(monkeypatch):
     monkeypatch.setenv("LTG_PLAYTEST", "1")
     assert llm.playtest_on() and llm.public_settings()["playtest_forced"]
-    llm.save_settings({"model": "openai/gpt-5.6-sol"})       # any save
+    llm.save_settings({"model": "openai/gpt-6-sol"})       # any save
     on_disk = json.loads(llm.SETTINGS_PATH.read_text())
     assert on_disk["playtest"] is False                        # the env was not persisted
 
@@ -74,10 +74,10 @@ def test_the_environment_forces_the_profile_without_writing_it(monkeypatch):
 def test_the_deckbuilder_flavour_follows_the_profile(tmp_path, monkeypatch):
     from ltg_deckbuilder import flavour
     (tmp_path / "llm_settings.json").write_text(json.dumps(
-        {"model": "anthropic/claude-opus-5", "playtest": True}))
+        {"model": "anthropic/claude-opus-5.5", "playtest": True}))
     assert flavour.load_llm_settings(tmp_path)["model"] == flavour.PLAYTEST_MODEL == llm.PLAYTEST_MODEL
-    (tmp_path / "llm_settings.json").write_text(json.dumps({"model": "anthropic/claude-opus-5"}))
-    assert flavour.load_llm_settings(tmp_path)["model"] == "anthropic/claude-opus-5"
+    (tmp_path / "llm_settings.json").write_text(json.dumps({"model": "anthropic/claude-opus-5.5"}))
+    assert flavour.load_llm_settings(tmp_path)["model"] == "anthropic/claude-opus-5.5"
     monkeypatch.setenv("LTG_PLAYTEST", "1")
     assert flavour.load_llm_settings(tmp_path)["model"] == flavour.PLAYTEST_MODEL
 

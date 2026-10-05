@@ -81,7 +81,7 @@ function PlaySection() {
         Confirm End Turn while a card is castable or the Attack is unused
       </label>
       <div className="mt-1.5 max-w-[560px] text-[11px] font-light text-dimmed">
-        End Turn always shows what you would leave behind; with this on, the
+        Hover End Turn to see what you would leave behind; with this on, the
         first click asks and a second click ends the turn.
       </div>
     </section>

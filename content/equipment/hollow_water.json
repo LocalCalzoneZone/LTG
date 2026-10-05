@@ -8,7 +8,7 @@
   "points_price": 20,
   "flavor": "Drawn where the spring runs backward.",
   "art_desc": "A leather costrel beaded with condensation, the water inside perfectly still.",
-  "art_url": "/art/items/hollow_water/item-47ed06f4.png",
+  "art_url": "/art/items/hollow_water/item-d96897b6.png",
   "statics": [],
   "effects": [
     {
@@ -24,7 +24,6 @@
     {
       "kind": "regen",
       "amount": 1,
-      "turns": 3,
       "target": {
         "mode": "chosen",
         "side": "ally",
