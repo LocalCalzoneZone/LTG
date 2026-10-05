@@ -8,6 +8,7 @@
   "points_price": 20,
   "flavor": "Made for driving pins. Repurposed.",
   "art_desc": "A short heavy hammer with a square iron head and a shaft bound in copper wire.",
+  "art_url": "/art/items/mill_hammer/item-b8034352.png",
   "statics": [
     {
       "kind": "attack_mode",

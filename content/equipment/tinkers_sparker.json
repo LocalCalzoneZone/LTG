@@ -8,6 +8,7 @@
   "points_price": 15,
   "flavor": "One spark, held ready in a tin box.",
   "art_desc": "A flint-and-steel striker in a small tin case, scorch marks around the hinge.",
+  "art_url": "/art/items/tinkers_sparker/item-8c47a028.png",
   "statics": [
     {
       "kind": "ability",
@@ -38,14 +39,14 @@
               "side": "enemy",
               "exclude_self": false,
               "targeted": false
-            },
-            "nonlethal": false
+            }
           }
         ],
         "targets": {},
         "needs_translation": false,
         "text_override": false,
         "validated": true,
+        "trigger_animations": {},
         "image": ""
       }
     }

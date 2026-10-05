@@ -8,6 +8,7 @@
   "points_price": 30,
   "flavor": "Loosed before the shout finishes.",
   "art_desc": "A tall bow of layered yew laths, bound at the belly with sinew.",
+  "art_url": "/art/items/long_lath_bow/item-bf9bb2b8.png",
   "statics": [
     {
       "kind": "attack_mode",

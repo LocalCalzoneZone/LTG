@@ -8,6 +8,7 @@
   "points_price": 35,
   "flavor": "It never seems to need putting down.",
   "art_desc": "A recurve bow of pale horn and glassy lacquer, strung with braided gut.",
+  "art_url": "/art/items/gullglass_bow/item-b9df531b.png",
   "statics": [
     {
       "kind": "attack_mode",

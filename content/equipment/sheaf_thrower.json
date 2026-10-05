@@ -8,6 +8,7 @@
   "points_price": 40,
   "flavor": "One shot, and the row behind it too.",
   "art_desc": "An oversized bow firing barbed sheaf arrows, its limbs reinforced with iron strips.",
+  "art_url": "/art/items/sheaf_thrower/item-10c86d2d.png",
   "statics": [
     {
       "kind": "attack_mode",

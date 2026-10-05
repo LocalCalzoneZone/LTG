@@ -8,6 +8,7 @@
   "points_price": 15,
   "flavor": "Everything calms down under the smoke.",
   "art_desc": "A wide straw hat trailing a veil of fine grey netting, smelling of scorched pine.",
+  "art_url": "/art/items/beekeepers_veil/item-17fe87d7.png",
   "statics": [
     {
       "kind": "ability",
@@ -44,6 +45,7 @@
         "needs_translation": false,
         "text_override": false,
         "validated": true,
+        "trigger_animations": {},
         "image": ""
       }
     }

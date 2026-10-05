@@ -8,6 +8,7 @@
   "points_price": 5,
   "flavor": "Straw, and a year's worth of hoping.",
   "art_desc": "A small braided figure of wheat straw bound with red thread, pinned at the shoulder.",
+  "art_url": "/art/items/harvest_knot/item-45b34b2f.png",
   "statics": [
     {
       "kind": "stat",

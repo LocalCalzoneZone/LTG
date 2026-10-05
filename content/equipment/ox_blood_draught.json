@@ -8,6 +8,7 @@
   "points_price": 12,
   "flavor": "Drink it and stop asking questions.",
   "art_desc": "A horn cup sealed with wax, the contents dark and slow.",
+  "art_url": "/art/items/ox_blood_draught/item-1f7a52e3.png",
   "statics": [],
   "effects": [
     {

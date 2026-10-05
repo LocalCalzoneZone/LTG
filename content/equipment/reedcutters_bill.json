@@ -8,6 +8,7 @@
   "points_price": 20,
   "flavor": "A farm tool that learned a second trade.",
   "art_desc": "A hooked bill blade lashed to a two-yard pole, the hook filed to a point.",
+  "art_url": "/art/items/reedcutters_bill/item-0f2bca0e.png",
   "statics": [
     {
       "kind": "attack_mode",

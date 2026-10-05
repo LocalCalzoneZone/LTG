@@ -8,6 +8,7 @@
   "points_price": 15,
   "flavor": "It pulls. It has never said toward what.",
   "art_desc": "A forked hazel switch, bark stripped at the grips, the tine ends stained green.",
+  "art_url": "/art/items/dowsers_forkstick/item-f8fd195e.png",
   "statics": [
     {
       "kind": "ability",
@@ -44,6 +45,7 @@
         "needs_translation": false,
         "text_override": false,
         "validated": true,
+        "trigger_animations": {},
         "image": ""
       }
     }

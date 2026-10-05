@@ -8,6 +8,7 @@
   "points_price": 0,
   "flavor": "Every third house owns one. Two of them are honest.",
   "art_desc": "A short single-edged knife with a horn handle, the blade thinned by years of sharpening.",
+  "art_url": "/art/items/hedge_knife/item-3032b151.png",
   "statics": [
     {
       "kind": "attack_mode",

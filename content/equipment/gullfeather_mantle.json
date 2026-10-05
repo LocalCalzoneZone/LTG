@@ -8,6 +8,7 @@
   "points_price": 25,
   "flavor": "The wind takes an interest in you.",
   "art_desc": "A short cape of overlapping grey-white feathers, clasped with a hooked beak of brass.",
+  "art_url": "/art/items/gullfeather_mantle/item-79f6bc40.png",
   "statics": [
     {
       "kind": "keyword",

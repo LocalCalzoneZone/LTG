@@ -8,6 +8,7 @@
   "points_price": 15,
   "flavor": "It hurts, then it stops hurting.",
   "art_desc": "A rolled canvas kit of splints, waxed thread, and a curved needle.",
+  "art_url": "/art/items/bonesetters_kit/item-82bca77d.png",
   "statics": [
     {
       "kind": "ability",
@@ -45,6 +46,7 @@
         "needs_translation": false,
         "text_override": false,
         "validated": true,
+        "trigger_animations": {},
         "image": ""
       }
     }

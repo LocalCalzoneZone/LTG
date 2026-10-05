@@ -1,7 +1,7 @@
 {
   "name": "The Shardwake Choir",
   "scene": "An open-sided mountain quarry cuts through a vast seam of violet amethyst, its terraces glittering beneath a cold dawn sky. Copper chimes hang from scaffold poles, ringing over heaps of crystal shards and the blue-white glow of freshly split geodes.",
-  "scene_image": "",
+  "scene_image": "/art/the_shardwake_choir/scene-52c5e864.png",
   "enemies": [
     {
       "id": "chisel_adept",
@@ -20,6 +20,8 @@
       "classes": [
         "warrior"
       ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/chisel_adept-993202ff.png",
       "components": [
         {
           "id": "facet_step",
@@ -29,7 +31,8 @@
           "priority": 20,
           "target_rule": "self",
           "move_home": true,
-          "telegraph": "Facet-Step \u2014 close toward the front rank"
+          "telegraph": "Facet-Step \u2014 close toward the front rank",
+          "verbs": []
         },
         {
           "id": "splintering_blow",
@@ -70,6 +73,8 @@
       "classes": [
         "healer"
       ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/geode_tender-45e01e2e.png",
       "components": [
         {
           "id": "tendering_step",
@@ -79,7 +84,8 @@
           "priority": 20,
           "target_rule": "self",
           "move_home": true,
-          "telegraph": "Tendering Step \u2014 move toward the front rank"
+          "telegraph": "Tendering Step \u2014 move toward the front rank",
+          "verbs": []
         },
         {
           "id": "geode_sap",
@@ -120,6 +126,8 @@
         "archer",
         "soldier"
       ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/prism_guard-c57aa928.png",
       "components": [
         {
           "id": "prism_retreat",
@@ -129,7 +137,8 @@
           "priority": 20,
           "target_rule": "self",
           "move_home": true,
-          "telegraph": "Prism Retreat \u2014 slip back toward the rear"
+          "telegraph": "Prism Retreat \u2014 slip back toward the rear",
+          "verbs": []
         },
         {
           "id": "shardward",
@@ -171,6 +180,8 @@
         "cleric",
         "ritualist"
       ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/resonance_matron-546768a9.png",
       "components": [
         {
           "id": "hymn_of_the_open_seam",
@@ -240,6 +251,8 @@
       "classes": [
         "brute"
       ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/calcite_stag-3d394a3b.png",
       "components": [
         {
           "id": "calcite_regrowth",
@@ -299,6 +312,8 @@
         "soldier",
         "warrior"
       ],
+      "keywords": [],
+      "image": "/art/the_shardwake_choir/shardhook_warden-4e286263.png",
       "components": [
         {
           "id": "hooking_step",
@@ -308,7 +323,8 @@
           "priority": 45,
           "target_rule": "self",
           "move_home": true,
-          "telegraph": "Hooking Step \u2014 press toward the front rank"
+          "telegraph": "Hooking Step \u2014 press toward the front rank",
+          "verbs": []
         },
         {
           "id": "crystal_snare",
@@ -358,7 +374,6 @@
     }
   ],
   "tokens": {},
-  "difficulty": "standard",
   "layouts": {
     "1": [
       "chisel_adept",
@@ -388,5 +403,6 @@
       "resonance_matron",
       "prism_guard"
     ]
-  }
+  },
+  "difficulty": "standard"
 }

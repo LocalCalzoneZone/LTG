@@ -8,6 +8,7 @@
   "points_price": 5,
   "flavor": "See the shoal before the hull does.",
   "art_desc": "A short brass spyglass, scratched, one lens ringed with verdigris.",
+  "art_url": "/art/items/pilots_glass/item-2d1091d4.png",
   "statics": [],
   "effects": [
     {
